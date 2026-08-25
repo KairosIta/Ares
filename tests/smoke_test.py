@@ -90,6 +90,7 @@ from assistant import (  # noqa: E402
     build_filesystem,
     build_workspace,
 )
+from cli_ui import CliRenderer, RichRunStream  # noqa: E402
 from chat import (  # noqa: E402
     COMANDI,
     apri_cronologia,
@@ -106,6 +107,7 @@ from chat import (  # noqa: E402
     stampa_aiuto,
 )
 from schemas import KairosProfile  # noqa: E402
+from rich.console import Console  # noqa: E402
 from stores import (  # noqa: E402
     leggi_entita,
     leggi_intuizioni,
@@ -1370,6 +1372,86 @@ def esito_strumenti() -> str:
     return "errore reso una volta sola, anteprima tagliata in righe e larghezza"
 
 
+def renderer_rich() -> str:
+    """Il renderer e' sicuro anche fuori da un terminale interattivo.
+
+    Test e pipe vedono una sola copia del testo, senza ANSI e senza
+    interpretare come markup parentesi quadre provenienti da modello, path o
+    argomenti. E' la via che ``RichRunStream`` sceglie quando stdout non e'
+    un TTY; il percorso Markdown del Live e' coperto dal controllo successivo.
+    """
+    catturato = io.StringIO()
+    renderer = CliRenderer(
+        Console(file=catturato, color_system=None, force_terminal=False, width=120)
+    )
+    renderer.line("[red]testo del modello[/red]")
+    renderer.banner(
+        modello="modello[Q8_0]", sessione="sessione[prova]", utente="utente[prova]"
+    )
+    renderer.confirmation(
+        [
+            "Ares chiede di eseguire: workspace_run_command",
+            "   args: ['bash', '-lc', 'printf [red]']",
+        ]
+    )
+    with renderer.stream() as flusso:
+        flusso.content("Risposta **Markdown** [cyan]")
+        flusso.tool_started("workspace_read_file")
+        flusso.tool_result(["   esito: 2 caratteri", "   | ok"])
+
+    reso = catturato.getvalue()
+    esigi("\x1b" not in reso, "una pipe riceve sequenze ANSI: " + repr(reso))
+    esigi("[red]testo del modello[/red]" in reso, "il testo viene interpretato come markup")
+    esigi("modello[Q8_0]" in reso, "il nome del modello perde il testo fra parentesi")
+    esigi("sessione[prova]" in reso and "utente[prova]" in reso, "gli identificativi vengono interpretati")
+    esigi(reso.count("Risposta **Markdown** [cyan]") == 1, "lo stream rediretto duplica la risposta")
+    esigi("workspace_read_file" in reso and "2 caratteri" in reso, "gli eventi dei tool spariscono")
+    return "markup letterale, zero ANSI, stream singolo e identificativi integri"
+
+
+def renderer_live_sicuro_e_limitato() -> str:
+    """Il Live filtra i controlli e non riparsa il Markdown a ogni token.
+
+    Questa e' deliberatamente la via TTY, che il controllo precedente non
+    attraversa. Le sequenze per clipboard, pulizia schermo e titolo sono
+    divise anche fra frammenti: pulire ciascun token da solo non basterebbe.
+    L'orologio finto rende deterministico il limite, senza sleep fragili.
+    """
+    catturato = io.StringIO()
+    renderer = CliRenderer(
+        Console(file=catturato, color_system="standard", force_terminal=True, width=120)
+    )
+    ora = [100.0]
+    flusso = RichRunStream(renderer, clock=lambda: ora[0])
+
+    markdown_originale = flusso._markdown
+    render_eseguiti = [0]
+
+    def markdown_contato():
+        render_eseguiti[0] += 1
+        return markdown_originale()
+
+    flusso._markdown = markdown_contato
+    with flusso:
+        flusso.content("prima \x1b]")
+        flusso.content("52;c;ZXNjaGVk\x07 dopo \x1b[2J")
+        for _ in range(2_000):
+            flusso.content("x")
+        ora[0] += 0.126
+        flusso.content(" fine \x1b]0;titolo\x1b\\ C1 \x9b2J")
+
+    reso = catturato.getvalue()
+    esigi("\x1b]52" not in reso and "\x1b]0" not in reso, "un comando OSC raggiunge il terminale")
+    esigi("\x1b[2J" not in reso and "\x9b2J" not in reso, "un comando CSI raggiunge il terminale")
+    esigi("ZXNjaGVk" not in reso and "titolo" not in reso, "resta il contenuto di un comando terminale")
+    esigi("prima" in reso and "dopo" in reso and "fine" in reso, "la pulizia elimina testo ordinario")
+    esigi(
+        render_eseguiti[0] == 3,
+        "2.004 frammenti causano " + str(render_eseguiti[0]) + " parsing Markdown invece di tre",
+    )
+    return "controlli TTY filtrati e 2.004 frammenti raccolti in tre rendering"
+
+
 def cronologia_persistente() -> str:
     """La cronologia si rilegge, si accoda e non cancella quella di un'altra chat.
 
@@ -1612,6 +1694,8 @@ def main() -> int:
             ("conferme leggibili  ", lambda: conferme_leggibili()),
             ("metriche del turno  ", lambda: metriche_del_turno()),
             ("esito strumenti     ", lambda: esito_strumenti()),
+            ("renderer Rich       ", lambda: renderer_rich()),
+            ("renderer Live       ", lambda: renderer_live_sicuro_e_limitato()),
             ("cronologia          ", lambda: cronologia_persistente()),
             ("comandi             ", lambda: comandi()),
             ("archivio vero intatto", lambda: archivio_vero_intatto(reale_prima)),

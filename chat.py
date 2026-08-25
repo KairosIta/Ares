@@ -29,6 +29,7 @@ from agno.run.agent import RunOutput
 
 import config
 from assistant import build_assistant, build_filesystem
+from cli_ui import UI
 from state_lock import StatoOccupato, lock_stato
 from stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
 
@@ -65,19 +66,20 @@ def _comando_contesto(agent, session_id, user_id, argomento):
 
 
 def _comando_sessioni(agent, session_id, user_id, argomento):
+    UI.heading("Sessioni")
     sessioni = leggi_sessioni(agent, user_id=user_id, query=argomento)
     mostrate = sessioni[:config.SESSIONI_ELENCO]
     for s in mostrate:
         for riga in righe_sessione(s, corrente=(getattr(s, "session_id", None) == session_id)):
-            print(riga)
+            UI.line(riga)
     if not mostrate:
         if argomento:
-            print("Nessuna sessione il cui nome contenga '" + argomento + "'.")
+            UI.line("Nessuna sessione il cui nome contenga '" + argomento + "'.", style="ares.muted")
         else:
-            print("Nessuna sessione in archivio.")
+            UI.line("Nessuna sessione in archivio.", style="ares.muted")
     nascoste = len(sessioni) - len(mostrate)
     if nascoste:
-        print("(altre " + str(nascoste) + ": /sessioni <testo> filtra per nome)")
+        UI.line("(altre " + str(nascoste) + ": /sessioni <testo> filtra per nome)", style="ares.muted")
     if not argomento and all(getattr(s, "session_id", None) != session_id for s in sessioni):
         # La sessione in corso entra in archivio col primo turno salvato.
         # Prima di allora manca dall'elenco, e un'assenza non spiegata si
@@ -87,47 +89,53 @@ def _comando_sessioni(agent, session_id, user_id, argomento):
         # frase e' falsa in due casi raggiungibili: sotto un filtro che la
         # esclude, e quando e' in archivio ma oltre il tetto. In tutti e due
         # la sessione c'e', e dire che manca e' peggio del silenzio.
-        print("Questa sessione (" + session_id + ") compare qui dal primo turno salvato.")
+        UI.line(
+            "Questa sessione (" + session_id + ") compare qui dal primo turno salvato.",
+            style="ares.muted",
+        )
 
 
 def _comando_entita(agent, session_id, user_id, argomento):
+    UI.heading("Entita'")
     entita = leggi_entita(agent.learning_machine, user_id=user_id, query=argomento)
     if not entita:
         if argomento:
             # La ricerca delle entita' e' testuale, non semantica: senza una
             # parola che compaia davvero nel nome o nei fatti non trova
             # niente, e da fuori e' indistinguibile da un archivio vuoto.
-            print("Nessuna entita' per '" + argomento + "'.")
-            print("La ricerca e' testuale: prova una parola che ci sia scritta dentro,")
-            print("o /entita senza argomento per l'elenco intero.")
+            UI.line("Nessuna entita' per '" + argomento + "'.", style="ares.muted")
+            UI.line("La ricerca e' testuale: prova una parola che ci sia scritta dentro,", style="ares.muted")
+            UI.line("o /entita senza argomento per l'elenco intero.", style="ares.muted")
         else:
-            print("Nessuna entita' registrata.")
+            UI.line("Nessuna entita' registrata.", style="ares.muted")
         return
     for e in entita:
         for riga in righe_entita(e):
-            print(riga)
+            UI.line(riga)
 
 
 def _comando_file(agent, session_id, user_id, argomento):
+    UI.heading("Quaderno privato")
     fs = build_filesystem(user_id)
     elenco = fs.list()
     if not elenco:
-        print("Nessun file.")
+        UI.line("Nessun file.", style="ares.muted")
     for f in elenco:
-        print("-", f.path, "  ", f.size_bytes, "byte")
+        UI.line("- " + str(f.path) + "   " + str(f.size_bytes) + " byte")
 
 
 def _comando_lavoro(agent, session_id, user_id, argomento):
+    UI.heading("Workspace")
     if not config.WORKSPACE:
-        print("Lo spazio di lavoro e' spento in config.py.")
+        UI.line("Lo spazio di lavoro e' spento in config.py.", style="ares.muted")
         return
     radice = config.WORKSPACE_DIR
-    print(str(radice))
+    UI.line(str(radice), style="ares.cyan")
     voci = sorted(radice.iterdir()) if radice.exists() else []
     if not voci:
-        print("(vuota)")
+        UI.line("(vuota)", style="ares.muted")
     for voce in voci:
-        print("-", voce.name + ("/" if voce.is_dir() else ""))
+        UI.line("- " + voce.name + ("/" if voce.is_dir() else ""))
 
 
 def _comando_esci(agent, session_id, user_id, argomento):
@@ -160,12 +168,7 @@ def nomi_comandi() -> list:
 
 
 def stampa_aiuto() -> None:
-    larghezza = max(len(voce[0]) for voce in COMANDI)
-    for nome, _, descrizione, _funzione in COMANDI:
-        print("  " + nome.ljust(larghezza + 2) + descrizione)
-    print()
-    print("  Lo slash apre l'elenco, il TAB completa, e basta l'inizio finche'")
-    print("  resta unico: /mem vale /memorie.")
+    UI.help(COMANDI)
 
 
 def risolvi_comando(nome: str) -> tuple:
@@ -251,8 +254,7 @@ def gestisci_comando(comando: str, agent, session_id: str, user_id: str) -> bool
     nome, _, argomento = comando.partition(" ")
     voce, righe = risolvi_comando(nome)
     if voce is None:
-        for riga in righe:
-            print(riga)
+        UI.command_problem(righe)
         return True
     return voce[3](agent, session_id, user_id, argomento.strip()) is not False
 
@@ -282,10 +284,10 @@ def apri_cronologia() -> int:
         try:
             readline.write_history_file(percorso)
         except OSError as errore:
-            print("Cronologia non creata:", errore)
+            UI.line("Cronologia non creata: " + str(errore), style="ares.warning")
     except OSError as errore:
         # Una cronologia illeggibile non vale una chat che non parte.
-        print("Cronologia non caricata:", errore)
+        UI.line("Cronologia non caricata: " + str(errore), style="ares.warning")
     return readline.get_current_history_length()
 
 
@@ -303,7 +305,7 @@ def salva_cronologia(gia_presenti: int) -> None:
     try:
         readline.append_history_file(nuove, str(config.CRONOLOGIA_FILE))
     except OSError as errore:
-        print("Cronologia non salvata:", errore)
+        UI.line("Cronologia non salvata: " + str(errore), style="ares.warning")
 
 
 def mostra_flusso(eventi) -> Optional[RunOutput]:
@@ -316,60 +318,43 @@ def mostra_flusso(eventi) -> Optional[RunOutput]:
     compresa.
     """
     risposta = None
-    for evento in eventi:
-        if isinstance(evento, RunOutput):
-            risposta = evento
-            continue
-        tipo = getattr(evento, "event", "")
-        if tipo == "ToolCallStarted":
-            strumento = getattr(evento, "tool", None)
-            nome = getattr(strumento, "tool_name", None) or "?"
-            print("\n[" + nome + "]", flush=True)
-        elif tipo == "ToolCallCompleted":
-            strumento = getattr(evento, "tool", None)
-            # Uno strumento fallito emette Completed **e poi** Error, non
-            # l'uno o l'altro. Senza questa
-            # guardia l'errore comparirebbe due volte, la prima presentato
-            # come un esito riuscito.
-            if config.MOSTRA_ESITO_STRUMENTI and not getattr(strumento, "tool_call_error", False):
-                for riga in righe_esito(strumento):
-                    print(riga)
-        elif tipo == "ToolCallError":
-            strumento = getattr(evento, "tool", None)
-            # Agno costruisce l'evento con `error=str(tool.result)`, ma il
-            # risultato sullo strumento e' la fonte: se un giorno l'evento
-            # arrivasse senza, un errore muto sarebbe letto come un successo.
-            errore = getattr(evento, "error", None) or getattr(strumento, "result", None) or ""
-            if config.MOSTRA_ESITO_STRUMENTI:
-                for riga in righe_esito(strumento, errore=errore):
-                    print(riga)
-        elif tipo == "RunContent":
-            contenuto = getattr(evento, "content", None)
-            if isinstance(contenuto, str):
-                print(contenuto, end="", flush=True)
-        elif tipo == "RunError":
-            # print_response mostrava gli errori da solo. Qui il flusso e'
-            # nostro: senza questa riga un turno fallito uscirebbe muto.
-            print("\nErrore:", getattr(evento, "content", None) or "senza messaggio")
-        elif tipo == "RunCancelled":
-            # Un Ctrl-C mentre Ollama genera non arriva fin qui come
-            # eccezione: Agno lo cattura dentro il proprio generatore
-            # (`_run_stream`, `except KeyboardInterrupt`), marca il run
-            # `cancelled`, ne conserva il pezzo di risposta gia' prodotto e
-            # continua a produrre eventi. Senza questa riga la conseguenza a
-            # schermo e' un testo che si ferma a meta' parola e un prompt
-            # nuovo, senza niente che dica cosa e' successo.
-            #
-            # Le due cose da dire sono asimmetriche e nessuna delle due si
-            # indovina: il run *e'* in archivio, perche' quel ramo chiama
-            # `cleanup_and_store`; e non e' stato appreso, perche' i post-hook
-            # stanno piu' avanti nella funzione e quel ramo non li raggiunge.
-            # Dopo un turno interrotto non esiste ancora un output completo
-            # da consegnare alla macchina di apprendimento.
-            print()
-            print("Turno interrotto: la risposta qui sopra e' parziale.")
-            print("Resta in archivio come annullato, ma non e' stato appreso.")
-    print()
+    with UI.stream() as flusso:
+        for evento in eventi:
+            if isinstance(evento, RunOutput):
+                risposta = evento
+                continue
+            tipo = getattr(evento, "event", "")
+            if tipo == "ToolCallStarted":
+                strumento = getattr(evento, "tool", None)
+                nome = getattr(strumento, "tool_name", None) or "?"
+                flusso.tool_started(nome)
+            elif tipo == "ToolCallCompleted":
+                strumento = getattr(evento, "tool", None)
+                # Uno strumento fallito emette Completed **e poi** Error, non
+                # l'uno o l'altro. Senza questa guardia l'errore comparirebbe
+                # due volte, la prima presentato come un esito riuscito.
+                if config.MOSTRA_ESITO_STRUMENTI and not getattr(strumento, "tool_call_error", False):
+                    flusso.tool_result(righe_esito(strumento))
+            elif tipo == "ToolCallError":
+                strumento = getattr(evento, "tool", None)
+                # Agno costruisce l'evento con `error=str(tool.result)`, ma il
+                # risultato sullo strumento e' la fonte: se un giorno l'evento
+                # arrivasse senza, un errore muto sarebbe letto come un successo.
+                errore = getattr(evento, "error", None) or getattr(strumento, "result", None) or ""
+                if config.MOSTRA_ESITO_STRUMENTI:
+                    flusso.tool_result(righe_esito(strumento, errore=errore), errore=True)
+            elif tipo == "RunContent":
+                contenuto = getattr(evento, "content", None)
+                if isinstance(contenuto, str):
+                    flusso.content(contenuto)
+            elif tipo == "RunError":
+                # print_response mostrava gli errori da solo. Qui il flusso e'
+                # nostro: senza questa riga un turno fallito uscirebbe muto.
+                flusso.run_error(getattr(evento, "content", None))
+            elif tipo == "RunCancelled":
+                # Agno conserva il run annullato ma non raggiunge i post-hook:
+                # le due conseguenze restano entrambe esplicite a schermo.
+                flusso.cancelled()
     return risposta
 
 
@@ -500,21 +485,20 @@ def chiedi_conferme(risposta) -> int:
         esecuzione = requisito.tool_execution
         nome = str(esecuzione.tool_name or "")
         radice = config.WORKSPACE_DIR if nome.startswith(config.WORKSPACE_PREFIX) else None
-        for riga in righe_richiesta(esecuzione, radice=radice):
-            print(riga)
+        UI.confirmation(righe_richiesta(esecuzione, radice=radice))
         try:
-            scelta = input("Autorizzi? [s/N] ").strip().lower()
+            scelta = UI.ask("Autorizzi? [s/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             # Ctrl-C davanti a una richiesta e' un no, non un errore.
-            print()
+            UI.blank()
             scelta = ""
         if scelta in ("s", "si", "si'", "sì"):
             requisito.confirm()
         else:
             try:
-                motivo = input("Motivo (invio per saltare): ").strip()
+                motivo = UI.ask("Motivo (invio per saltare): ", muted=True).strip()
             except (EOFError, KeyboardInterrupt):
-                print()
+                UI.blank()
                 motivo = ""
             # Il motivo arriva al modello: senza, un rifiuto e' muto e lui
             # ritenta con una variante dello stesso comando.
@@ -637,7 +621,10 @@ def _turno(agent, testo: str) -> Optional[RunOutput]:
 
     while risposta is not None and risposta.is_paused:
         if chiedi_conferme(risposta) == 0:
-            print("Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.")
+            UI.line(
+                "Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.",
+                style="ares.warning",
+            )
             return risposta
         risposta = mostra_flusso(
             agent.continue_run(
@@ -677,12 +664,18 @@ def esegui_turno(agent, testo: str) -> Optional[RunOutput]:
     except KeyboardInterrupt:
         # A capo nostro: `mostra_flusso` stava scrivendo la risposta e il suo
         # print finale non e' stato raggiunto.
-        print()
-        print("Interrotto fuori dal turno. Non e' stato appreso.")
+        UI.blank()
+        UI.line("Interrotto fuori dal turno. Non e' stato appreso.", style="ares.warning")
     except Exception as errore:
-        print()
-        print("Il turno e' fallito -", type(errore).__name__ + ":", errore)
-        print("La sessione resta aperta: quello che Ares sapeva prima e' ancora li'.")
+        UI.blank()
+        UI.line(
+            "Il turno e' fallito - " + type(errore).__name__ + ": " + str(errore),
+            style="ares.error",
+        )
+        UI.line(
+            "La sessione resta aperta: quello che Ares sapeva prima e' ancora li'.",
+            style="ares.muted",
+        )
     return None
 
 
@@ -708,19 +701,15 @@ def _esegui_chat() -> None:
     gia_presenti = apri_cronologia()
     accendi_completamento()
 
-    print("Assistente locale su", config.MAIN_MODEL)
-    print("Sessione:", args.session, "  Utente:", args.user)
-    # Non l'elenco intero a ogni avvio: e' otto righe che si leggono una volta
-    # sola e poi si scorrono.
-    print("Comandi: / apre l'elenco, /aiuto lo descrive.")
-    print()
+    UI.banner(modello=config.MAIN_MODEL, sessione=args.session, utente=args.user)
+    UI.blank()
 
     try:
         while True:
             try:
-                testo = input("> ").strip()
+                testo = UI.prompt().strip()
             except (EOFError, KeyboardInterrupt):
-                print()
+                UI.blank()
                 break
 
             if not testo:
@@ -729,21 +718,21 @@ def _esegui_chat() -> None:
             if testo.startswith("/"):
                 if not gestisci_comando(testo, agent, args.session, args.user):
                     break
-                print()
+                UI.blank()
                 continue
 
             risposta = esegui_turno(agent, testo)
             if mostra_metriche and risposta is not None:
                 for riga in righe_metriche(risposta):
-                    print(riga)
-            print()
+                    UI.metrics(riga)
+            UI.blank()
     finally:
         # Anche su una via d'uscita che non passa dal break: cio' che si e'
         # scritto in una sessione finita male e' precisamente cio' che si
         # vorra' riprendere alla successiva.
         salva_cronologia(gia_presenti)
 
-    print("A presto.")
+    UI.line("A presto.", style="ares.title")
 
 
 def main() -> None:
@@ -753,14 +742,14 @@ def main() -> None:
         with lock_stato(esclusivo=False):
             _esegui_chat()
     except StatoOccupato as errore:
-        print("Impossibile avviare Ares:", errore)
-        print("Attendi che backup o restore terminino e riprova.")
+        UI.line("Impossibile avviare Ares: " + str(errore), style="ares.error")
+        UI.line("Attendi che backup o restore terminino e riprova.", style="ares.muted")
     except KeyboardInterrupt:
         # Dentro la chat il Ctrl-C e' gia' gestito - dal prompt esce, da un
         # turno lo interrompe. Resta scoperta la costruzione dell'agente, che
         # apre database e indice: li' un traceback sarebbe l'unica traccia.
-        print()
-        print("Avvio interrotto.")
+        UI.blank()
+        UI.line("Avvio interrotto.", style="ares.warning")
 
 
 if __name__ == "__main__":

@@ -36,3 +36,8 @@ openai
 
 # Carica le personalizzazioni locali da un file .env ignorato da Git.
 python-dotenv
+
+# Renderer della CLI: Markdown, streaming Live, pannelli, tabelle e tema.
+# Dipendenza diretta perche' la importiamo in cli_ui.py; non ci affidiamo alla
+# copia che oggi arriva transitivamente da Agno.
+rich==15.0.0
