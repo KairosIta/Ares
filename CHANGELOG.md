@@ -6,6 +6,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-25
+
 ### Added
 
 - assistente locale basato su Agno e Ollama;
@@ -23,3 +25,6 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - telemetria Agno disabilitata;
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
+
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/KairosIta/Ares/releases/tag/v0.1.0

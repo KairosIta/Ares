@@ -2,9 +2,13 @@
 
 ## Versioni supportate
 
-Ares è ancora in fase pre-release. Le correzioni di sicurezza vengono
-applicate alla branch `main`; non sono ancora mantenute linee di rilascio
-precedenti.
+Le correzioni di sicurezza vengono applicate alla branch `main` e alla linea
+di rilascio corrente.
+
+| Versione | Supportata |
+| --- | --- |
+| 0.1.x | Sì |
+| < 0.1 | No |
 
 ## Segnalare una vulnerabilità
 
