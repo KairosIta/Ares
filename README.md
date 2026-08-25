@@ -1,5 +1,7 @@
 # Ares
 
+![Ares — Local-first AI agent](docs/assets/ares-social-preview.png)
+
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/runtime-Ollama-white.svg)](https://ollama.com/)
 [![Agno 2.9](https://img.shields.io/badge/framework-Agno%202.9-6C5CE7.svg)](https://www.agno.com/)
