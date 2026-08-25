@@ -1,0 +1,62 @@
+name: Bug report
+description: Segnala un comportamento riproducibile di Ares.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Non includere prompt, memorie, snapshot, token o altri dati personali.
+        Per vulnerabilità usa il canale privato indicato in SECURITY.md.
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Comportamento osservato
+      description: Cosa è successo e cosa ti aspettavi?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Riproduzione minima
+      description: Usa soltanto dati sintetici e indica i comandi eseguiti.
+    validations:
+      required: true
+
+  - type: input
+    id: revision
+    attributes:
+      label: Revisione
+      description: Commit, tag o branch interessata.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model_required
+    attributes:
+      label: Richiede Ollama?
+      options:
+        - "No"
+        - "Sì, inferenza"
+        - "Sì, embedding"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Ambiente
+      description: Sistema operativo, Python, Ollama, modello e hardware rilevanti.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: Ho rimosso dati personali, segreti e contenuti dello stato reale.
+          required: true

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Segnalazione di sicurezza privata
+    url: https://github.com/KairosIta/Ares/security/advisories/new
+    about: Non pubblicare vulnerabilità o dati sensibili nelle issue.

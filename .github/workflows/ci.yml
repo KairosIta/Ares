@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python 3.12
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Installa uv
+        run: python -m pip install --disable-pip-version-check uv==0.11.29
+
+      - name: Sincronizza l’ambiente
+        run: |
+          uv venv --python python .venv
+          uv pip sync --python .venv/bin/python requirements.txt
+          uv pip check --python .venv/bin/python
+
+      - name: Compila il codice
+        run: |
+          .venv/bin/python -m compileall -q \
+            assistant.py backup.py chat.py config.py entity_maintenance.py \
+            inspect_learning.py preflight.py schemas.py state_lock.py stores.py tests
+
+      - name: Smoke test
+        run: .venv/bin/python tests/smoke_test.py
+
+      - name: Backup e restore
+        run: .venv/bin/python tests/backup_test.py
+
+      - name: Manutenzione entità
+        run: .venv/bin/python tests/entity_maintenance_test.py

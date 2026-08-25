@@ -1,0 +1,38 @@
+# Dipendenze dirette
+# ==================
+# Ogni riga qui e' un pacchetto che questo progetto importa davvero, con il
+# motivo per cui c'e'. Tutto il resto (numpy, pyarrow, httpx, pydantic...)
+# arriva per transitivita' e vive solo in requirements.txt, compilato con:
+#
+#     uv pip compile requirements.in -o requirements.txt
+#
+
+# Il framework dell'agente. Pinnato alla versione su cui e' stato scritto e
+# verificato tutto: le API di agno.learn sono giovani e cambiano tra minor.
+agno==2.9.0
+
+# Client del server Ollama su localhost:11434. Serve sia al modello
+# conversazionale sia a OllamaEmbedder.
+ollama
+
+# Indice vettoriale delle intuizioni apprese, incorporato nel processo:
+# nessun servizio da avviare, nessun container.
+lancedb
+
+# Motore di ricerca full-text di LanceDB. Senza, SearchType.hybrid non ha la
+# meta' testuale e resta la sola distanza coseno, che su una collezione
+# piccola e' rumorosa.
+tantivy
+
+# Backend SQLite di Agno (SqliteDb): profilo, memorie, entita', sessioni e il
+# filesystem privato dell'agente. Non e' una dipendenza di agno base.
+sqlalchemy
+
+# Non lo usiamo: e' l'__init__ di agno.models.ollama a pretenderlo, perche'
+# importa OllamaResponses insieme a Ollama. Importare il sottomodulo `.chat`
+# non lo evita, perche' Python esegue comunque l'__init__ del package: in
+# agno 2.9.0 un progetto solo-Ollama installa lo stesso un client cloud.
+openai
+
+# Carica le personalizzazioni locali da un file .env ignorato da Git.
+python-dotenv

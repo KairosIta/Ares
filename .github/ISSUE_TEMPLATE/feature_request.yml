@@ -1,0 +1,29 @@
+name: Feature request
+description: Proponi un miglioramento coerente con gli obiettivi di Ares.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Quale limite concreto dovrebbe risolvere?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Soluzione proposta
+      description: Descrivi comportamento, rischi e possibili alternative.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verifica
+      description: Come dimostreremmo che la modifica funziona?
+    validations:
+      required: true
