@@ -47,7 +47,7 @@ jobs:
       - name: Compila il codice
         run: |
           .venv/bin/python -m compileall -q \
-            assistant.py backup.py chat.py config.py entity_maintenance.py \
+            assistant.py backup.py chat.py cli_input.py cli_ui.py config.py entity_maintenance.py \
             inspect_learning.py preflight.py schemas.py state_lock.py stores.py tests
 
       - name: Smoke test

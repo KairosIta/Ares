@@ -6,7 +6,9 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 
 ## Componenti
 
-- `chat.py` gestisce CLI, sessioni, conferme e continuazione dei run;
+- `chat.py` coordina sessioni, comandi, conferme e continuazione dei run;
+- `cli_input.py` gestisce editor, completamento e cronologia della REPL;
+- `cli_ui.py` rende streaming Markdown, pannelli, tabelle e messaggi;
 - `assistant.py` assembla modello, istruzioni, strumenti e store;
 - `learning.py` coordina l'apprendimento sul run completo;
 - `stores.py` espone profilo, memorie, contesto, entita' e conoscenza;

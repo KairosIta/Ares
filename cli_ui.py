@@ -221,14 +221,6 @@ class CliRenderer:
     def speaker(self, nome: str, *, style: str) -> None:
         self.console.print(_testo(nome, style))
 
-    def prompt(self) -> str:
-        invito = Text.assemble(("Tu", "bold #69ddea"), (" › ", "ares.muted"))
-        return self.console.input(invito)
-
-    def ask(self, etichetta: str, *, muted: bool = False) -> str:
-        stile = "ares.muted" if muted else "ares.warning"
-        return self.console.input(_testo(etichetta, stile))
-
     def banner(self, *, modello: str, sessione: str, utente: str) -> None:
         dati = Table.grid(padding=(0, 2))
         dati.add_column(style="ares.muted", no_wrap=True)
@@ -241,7 +233,10 @@ class CliRenderer:
             Text(""),
             dati,
             Text(""),
-            _testo("/ apre i comandi · Ctrl-C interrompe il turno", "ares.muted"),
+            _testo(
+                "/ apre i comandi · Alt+Invio va a capo · Ctrl-C interrompe",
+                "ares.muted",
+            ),
         )
         self.console.print(
             Panel(

@@ -13,15 +13,16 @@ sessioni. Usa sessioni diverse per lavori diversi.
 
 Frecce su e giu' ripercorrono cio' che hai gia' scritto, anche di una
 sessione precedente; le frecce laterali correggono la riga senza riscriverla.
+Invio spedisce il messaggio, Alt+Invio aggiunge una nuova riga.
 
-Comandi durante la chat: lo slash apre l'elenco, `/aiuto` lo descrive, il TAB
-completa e bastano le iniziali finche' restano uniche. L'elenco vive in `COMANDI`, qui sotto: era
-scritto anche qui e le due copie erano gia' divergite.
+Comandi durante la chat: lo slash apre il menu, `/aiuto` lo descrive, il TAB
+completa e bastano le iniziali finche' restano uniche. L'elenco vive in
+`COMANDI`, qui sotto: era scritto anche qui e le due copie erano gia'
+divergite.
 """
 
 import argparse
 import difflib
-import readline
 import shlex
 from typing import Optional
 
@@ -29,6 +30,7 @@ from agno.run.agent import RunOutput
 
 import config
 from assistant import build_assistant, build_filesystem
+from cli_input import CliInput
 from cli_ui import UI
 from state_lock import StatoOccupato, lock_stato
 from stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
@@ -206,49 +208,6 @@ def risolvi_comando(nome: str) -> tuple:
     return None, righe
 
 
-def candidati_comando(riga: str, testo: str) -> list:
-    """I candidati per il TAB, separati da readline per poterli verificare.
-
-    Guarda la riga intera e non solo la parola: un TAB dentro un messaggio
-    normale non deve proporre niente, e un comando comincia sempre a inizio
-    riga.
-    """
-    if not riga.lstrip().startswith("/"):
-        return []
-    return [nome for nome in nomi_comandi() if nome.startswith(testo)]
-
-
-def _completa(testo: str, stato: int):
-    candidati = candidati_comando(readline.get_line_buffer(), testo)
-    if stato < len(candidati):
-        # Lo spazio in coda apre la strada a un argomento senza doverlo
-        # battere, e la REPL lo toglie.
-        return candidati[stato] + " "
-    return None
-
-
-def accendi_completamento() -> None:
-    readline.set_completer(_completa)
-    # Lo slash e' fra i separatori di parola di serie: senza questa riga il
-    # completatore riceverebbe `mem` invece di `/mem` e non troverebbe niente.
-    readline.set_completer_delims(" ")
-    readline.parse_and_bind("tab: complete")
-    # Un TAB solo mostra i candidati, invece di chiederne un secondo.
-    readline.parse_and_bind("set show-all-if-ambiguous on")
-    # La campanella suonerebbe a ogni slash scritto in una frase normale: la
-    # macro qui sotto tenta un completamento che non trova niente, e senza
-    # candidati readline suona ripetutamente. Non si perde niente a
-    # spegnerla, perche' l'unico
-    # completamento di questa REPL sono i comandi.
-    readline.parse_and_bind("set bell-style none")
-    # Lo slash apre l'elenco senza premere altro. La forma ovvia - `"/": "/\t"`
-    # - manda readline in ricorsione infinita, perche' lo slash della macro
-    # ri-attiva la macro: `\C-q` e' `quoted-insert` e inserisce il carattere
-    # saltando le associazioni. In una frase normale la macro parte lo stesso e
-    # non produce niente, perche' il completatore guarda la riga intera.
-    readline.parse_and_bind(r'"/": "\C-q/\t"')
-
-
 def gestisci_comando(comando: str, agent, session_id: str, user_id: str) -> bool:
     """Esegue un comando locale. Ritorna False se la sessione deve terminare."""
     nome, _, argomento = comando.partition(" ")
@@ -257,55 +216,6 @@ def gestisci_comando(comando: str, agent, session_id: str, user_id: str) -> bool
         UI.command_problem(righe)
         return True
     return voce[3](agent, session_id, user_id, argomento.strip()) is not False
-
-
-def apri_cronologia() -> int:
-    """Carica la cronologia dei turni e dice quante righe erano gia' li'.
-
-    L'import di readline in cima al file basta a far funzionare frecce e
-    correzione di riga: senza, `input()` non interpreta i tasti e li lascia
-    nel testo. Una freccia in su per riprendere la domanda precedente non
-    recupera niente, entra nel messaggio come sequenza di escape, va al
-    modello e finisce in archivio come turno.
-
-    Il file viene creato da `write_history_file` e non da un touch: readline
-    lo apre a 0600, mentre `open(..., "a")` segue la umask e a 0644 lascia
-    leggere a chiunque abbia un account sulla macchina tutto cio' che si e'
-    detto ad Ares. Deve comunque esistere prima dell'append, che su un file
-    mancante solleva FileNotFoundError.
-    """
-    percorso = str(config.CRONOLOGIA_FILE)
-    # Il tetto vale anche in coda a un append: readline tronca il file dopo
-    # averci scritto, quindi non serve nessuna potatura nostra.
-    readline.set_history_length(config.CRONOLOGIA_RIGHE)
-    try:
-        readline.read_history_file(percorso)
-    except FileNotFoundError:
-        try:
-            readline.write_history_file(percorso)
-        except OSError as errore:
-            UI.line("Cronologia non creata: " + str(errore), style="ares.warning")
-    except OSError as errore:
-        # Una cronologia illeggibile non vale una chat che non parte.
-        UI.line("Cronologia non caricata: " + str(errore), style="ares.warning")
-    return readline.get_current_history_length()
-
-
-def salva_cronologia(gia_presenti: int) -> None:
-    """Accoda le sole righe di questa sessione.
-
-    `write_history_file` riscriverebbe il file intero, e il lock condiviso
-    ammette apposta piu' chat insieme: l'ultima che esce cancellerebbe cio'
-    che le altre hanno scritto mentre era aperta. `append_history_file`
-    scrive solo la coda nuova e regge l'intreccio.
-    """
-    nuove = readline.get_current_history_length() - gia_presenti
-    if nuove <= 0:
-        return
-    try:
-        readline.append_history_file(nuove, str(config.CRONOLOGIA_FILE))
-    except OSError as errore:
-        UI.line("Cronologia non salvata: " + str(errore), style="ares.warning")
 
 
 def mostra_flusso(eventi) -> Optional[RunOutput]:
@@ -471,7 +381,7 @@ def righe_richiesta(esecuzione, radice=None) -> list:
     return righe
 
 
-def chiedi_conferme(risposta) -> int:
+def chiedi_conferme(risposta, input_cli: CliInput) -> int:
     """Chiede il permesso per gli strumenti in pausa. Ritorna quanti ne ha risolti.
 
     Il conto serve a non restare appesi: se il turno e' in pausa per un
@@ -487,7 +397,7 @@ def chiedi_conferme(risposta) -> int:
         radice = config.WORKSPACE_DIR if nome.startswith(config.WORKSPACE_PREFIX) else None
         UI.confirmation(righe_richiesta(esecuzione, radice=radice))
         try:
-            scelta = UI.ask("Autorizzi? [s/N] ").strip().lower()
+            scelta = input_cli.ask("Autorizzi? [s/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             # Ctrl-C davanti a una richiesta e' un no, non un errore.
             UI.blank()
@@ -496,7 +406,7 @@ def chiedi_conferme(risposta) -> int:
             requisito.confirm()
         else:
             try:
-                motivo = UI.ask("Motivo (invio per saltare): ", muted=True).strip()
+                motivo = input_cli.ask("Motivo (invio per saltare): ", muted=True).strip()
             except (EOFError, KeyboardInterrupt):
                 UI.blank()
                 motivo = ""
@@ -613,14 +523,14 @@ def righe_metriche(risposta) -> list:
     return ["[" + "  ".join(pezzi) + "]"]
 
 
-def _turno(agent, testo: str) -> Optional[RunOutput]:
+def _turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
     """Il turno vero, senza le difese: le pause per autorizzare uno strumento."""
     risposta = mostra_flusso(
         agent.run(testo, stream=True, stream_events=True, yield_run_output=True)
     )
 
     while risposta is not None and risposta.is_paused:
-        if chiedi_conferme(risposta) == 0:
+        if chiedi_conferme(risposta, input_cli) == 0:
             UI.line(
                 "Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.",
                 style="ares.warning",
@@ -638,7 +548,7 @@ def _turno(agent, testo: str) -> Optional[RunOutput]:
     return risposta
 
 
-def esegui_turno(agent, testo: str) -> Optional[RunOutput]:
+def esegui_turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
     """Un turno intero, con una rete sotto per cio' che Agno non prende.
 
     Questa rete cattura molto meno di quanto sembri, e vale la pena dire cosa
@@ -660,7 +570,7 @@ def esegui_turno(agent, testo: str) -> Optional[RunOutput]:
     fermato, al secondo serve l'errore, altrimenti sparisce.
     """
     try:
-        return _turno(agent, testo)
+        return _turno(agent, testo, input_cli)
     except KeyboardInterrupt:
         # A capo nostro: `mostra_flusso` stava scrivendo la risposta e il suo
         # print finale non e' stato raggiunto.
@@ -698,39 +608,42 @@ def _esegui_chat() -> None:
     # per un pomeriggio, non una preferenza permanente.
     mostra_metriche = config.MOSTRA_METRICHE or args.metriche
 
-    gia_presenti = apri_cronologia()
-    accendi_completamento()
+    input_cli = CliInput(
+        comandi=[(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI],
+        cronologia_file=config.CRONOLOGIA_FILE,
+        cronologia_righe=config.CRONOLOGIA_RIGHE,
+    )
+    if input_cli.history_warning:
+        UI.line(
+            "Cronologia non disponibile; resta solo per questa sessione: "
+            + input_cli.history_warning,
+            style="ares.warning",
+        )
 
     UI.banner(modello=config.MAIN_MODEL, sessione=args.session, utente=args.user)
     UI.blank()
 
-    try:
-        while True:
-            try:
-                testo = UI.prompt().strip()
-            except (EOFError, KeyboardInterrupt):
-                UI.blank()
-                break
-
-            if not testo:
-                continue
-
-            if testo.startswith("/"):
-                if not gestisci_comando(testo, agent, args.session, args.user):
-                    break
-                UI.blank()
-                continue
-
-            risposta = esegui_turno(agent, testo)
-            if mostra_metriche and risposta is not None:
-                for riga in righe_metriche(risposta):
-                    UI.metrics(riga)
+    while True:
+        try:
+            testo = input_cli.prompt().strip()
+        except (EOFError, KeyboardInterrupt):
             UI.blank()
-    finally:
-        # Anche su una via d'uscita che non passa dal break: cio' che si e'
-        # scritto in una sessione finita male e' precisamente cio' che si
-        # vorra' riprendere alla successiva.
-        salva_cronologia(gia_presenti)
+            break
+
+        if not testo:
+            continue
+
+        if testo.startswith("/"):
+            if not gestisci_comando(testo, agent, args.session, args.user):
+                break
+            UI.blank()
+            continue
+
+        risposta = esegui_turno(agent, testo, input_cli)
+        if mostra_metriche and risposta is not None:
+            for riga in righe_metriche(risposta):
+                UI.metrics(riga)
+        UI.blank()
 
     UI.line("A presto.", style="ares.title")
 

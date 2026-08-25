@@ -16,7 +16,10 @@ toccare i dati del clone in uso.
 
 Queste prove controllano assemblaggio dell'agente, isolamento degli store,
 lock, snapshot, restore, fusione delle entita' e propagazione del run completo
-alla macchina di apprendimento. Non generano risposte con il modello.
+alla macchina di apprendimento. Lo smoke test usa inoltre un terminale
+simulato per verificare streaming Rich, completamento, multilinea, Ctrl-C/D e
+cronologia senza richiedere interazione umana. Non generano risposte con il
+modello.
 
 ## Prova end-to-end
 

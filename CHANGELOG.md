@@ -6,6 +6,17 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- interfaccia Rich con streaming Markdown, pannelli e output sicuro per pipe;
+- editor Prompt Toolkit con menu dei comandi, suggerimenti, input multilinea
+  e cronologia privata coordinata fra sessioni concorrenti.
+
+### Security
+
+- sequenze di controllo del terminale filtrate dalle risposte del modello;
+- cronologia della chat atomica, limitata e creata con permessi `0600`.
+
 ## [0.1.0] - 2026-08-25
 
 ### Added

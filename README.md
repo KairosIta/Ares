@@ -100,9 +100,11 @@ Per aprire una sessione separata:
 .venv/bin/python chat.py --session progetto-demo
 ```
 
-Durante la chat `/` mostra i comandi disponibili. Fra quelli principali:
-`/profilo`, `/memorie`, `/contesto`, `/sessioni`, `/entita`, `/file` e
-`/lavoro`.
+Durante la chat `/` apre il menu dei comandi e TAB completa la voce
+selezionata. Invio spedisce il messaggio, `Alt+Invio` aggiunge una nuova riga,
+le frecce percorrono la cronologia e i suggerimenti riprendono le domande
+precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
+`/sessioni`, `/entita`, `/file` e `/lavoro`.
 
 ## Verifica
 

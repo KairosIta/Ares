@@ -73,6 +73,8 @@ packaging==26.3
     #   agno
     #   deprecation
     #   lancedb
+prompt-toolkit==3.0.53
+    # via -r requirements.in
 pyarrow==25.0.1
     # via lancedb
 pydantic==2.13.4
@@ -138,3 +140,5 @@ typing-inspection==0.4.4
     #   pydantic-settings
 urllib3==2.7.0
     # via lance-namespace-urllib3-client
+wcwidth==0.8.2
+    # via prompt-toolkit

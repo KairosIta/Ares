@@ -41,3 +41,7 @@ python-dotenv
 # Dipendenza diretta perche' la importiamo in cli_ui.py; non ci affidiamo alla
 # copia che oggi arriva transitivamente da Agno.
 rich==15.0.0
+
+# Editor della REPL: completamento visuale, cronologia, suggerimenti e input
+# multilinea. E' separato da Rich, che continua a occuparsi solo dell'output.
+prompt-toolkit==3.0.53

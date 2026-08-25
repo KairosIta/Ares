@@ -248,15 +248,15 @@ BACKUP_KEEP = 20
 # cronologia vera - e `backup.py` la copia negli snapshot insieme al resto.
 # Un restore pero' non la riavvolge: riporta indietro Ares, non chi gli parla,
 # e quella dello snapshot torna solo se tmp/ e' andata persa davvero.
-# Contiene tutto cio' che si e' scritto ad Ares:
-# il file va creato con `write_history_file`, che lo apre a 0600, e non con
-# un open(..., "a"), che segue la umask e a 0644 lo lascia leggere a chiunque
-# abbia un account sulla macchina.
+# Contiene tutto cio' che si e' scritto ad Ares. `CronologiaSicura` lo crea a
+# 0600, conserva una voce JSON per messaggio (anche multilinea) e coordina con
+# un lock breve le chat aperte insieme. Il vecchio formato GNU Readline viene
+# riletto e migrato alla prima nuova voce.
 CRONOLOGIA_FILE = TMP_DIR / "cronologia_chat.txt"
 
 # Un tetto perche' un file che cresce e basta e' esattamente cio' che questo
-# progetto conta altrove. readline lo applica anche in coda a un append,
-# quindi non serve una potatura separata.
+# progetto conta altrove. Il backend lo applica atomicamente a ogni nuova
+# voce, tenendo la coda piu' recente.
 CRONOLOGIA_RIGHE = 2000
 
 # ---------------------------------------------------------------------------

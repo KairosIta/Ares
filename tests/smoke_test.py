@@ -47,7 +47,6 @@ import contextlib
 import importlib
 import io
 import os
-import readline
 import shlex
 import shutil
 import sqlite3
@@ -90,11 +89,15 @@ from assistant import (  # noqa: E402
     build_filesystem,
     build_workspace,
 )
+from cli_input import (  # noqa: E402
+    CRONOLOGIA_INTESTAZIONE,
+    CliInput,
+    CompletamentoComandi,
+    CronologiaSicura,
+)
 from cli_ui import CliRenderer, RichRunStream  # noqa: E402
 from chat import (  # noqa: E402
     COMANDI,
-    apri_cronologia,
-    candidati_comando,
     gestisci_comando,
     finestra_occupata,
     mostra_flusso,
@@ -103,9 +106,12 @@ from chat import (  # noqa: E402
     righe_metriche,
     righe_richiesta,
     risolvi_comando,
-    salva_cronologia,
     stampa_aiuto,
 )
+from prompt_toolkit.completion import CompleteEvent  # noqa: E402
+from prompt_toolkit.document import Document  # noqa: E402
+from prompt_toolkit.input.defaults import create_pipe_input  # noqa: E402
+from prompt_toolkit.output import DummyOutput  # noqa: E402
 from schemas import KairosProfile  # noqa: E402
 from rich.console import Console  # noqa: E402
 from stores import (  # noqa: E402
@@ -1453,75 +1459,136 @@ def renderer_live_sicuro_e_limitato() -> str:
 
 
 def cronologia_persistente() -> str:
-    """La cronologia si rilegge, si accoda e non cancella quella di un'altra chat.
-
-    Il rischio vero non e' che il file manchi: e' che venga riscritto intero.
-    Il lock condiviso ammette apposta piu' chat insieme, e chi salva con
-    `write_history_file` cancella cio' che le altre hanno scritto mentre era
-    aperta. L'altro modo di sbagliare e' contare male le righe gia' presenti:
-    la cronologia si duplicherebbe a ogni avvio.
-
-    Le frecce non si provano qui perche' richiedono un terminale interattivo.
-    """
+    """Migrazione, multilinea, concorrenza, permessi e retention."""
     percorso = config.CRONOLOGIA_FILE
     if percorso.exists():
         percorso.unlink()
 
-    readline.clear_history()
-    esigi(apri_cronologia() == 0, "una cronologia inesistente non parte da zero")
-    esigi(percorso.exists(), "il file di cronologia non e' stato creato")
-    # 0600 e non 0644: dentro ci sta tutto cio' che si e' scritto ad Ares.
+    # Un clone aggiornato puo' avere ancora il formato GNU Readline: una voce
+    # per riga e nessuna intestazione. La prima scrittura lo migra.
+    percorso.write_text("prima domanda\n", encoding="utf-8")
+    percorso.chmod(0o644)
+    prima_chat = CronologiaSicura(percorso, 4)
+    seconda_chat = CronologiaSicura(percorso, 4)
+    esigi(
+        list(prima_chat.load_history_strings()) == ["prima domanda"],
+        "la cronologia Readline precedente non viene riletta",
+    )
+
+    prima_chat.append_string("seconda domanda")
+    # La seconda istanza e' nata prima della scrittura: store_string deve
+    # rileggere il disco sotto lock, non sovrascrivere dalla propria cache.
+    seconda_chat.append_string("riga di un'altra chat")
+    seconda_chat.append_string("domanda su due\nrighe")
+
+    rilette = list(CronologiaSicura(percorso, 4).load_history_strings())
+    esigi(
+        rilette
+        == ["domanda su due\nrighe", "riga di un'altra chat", "seconda domanda", "prima domanda"],
+        "migrazione o intreccio delle chat errato: " + repr(rilette),
+    )
+    esigi(
+        percorso.read_text(encoding="utf-8").splitlines()[0] == CRONOLOGIA_INTESTAZIONE,
+        "la cronologia non e' stata migrata al formato multilinea",
+    )
     esigi(
         oct(percorso.stat().st_mode)[-3:] == "600",
         "cronologia leggibile da altri: " + oct(percorso.stat().st_mode)[-3:],
     )
-
-    readline.add_history("prima domanda")
-    salva_cronologia(0)
     esigi(
-        percorso.read_text().splitlines() == ["prima domanda"],
-        "la riga della sessione non e' finita nel file",
+        oct(prima_chat.lock_file.stat().st_mode)[-3:] == "600",
+        "lock della cronologia leggibile da altri",
     )
 
-    # Un'altra chat, aperta nel frattempo, scrive la sua riga.
-    with percorso.open("a") as fh:
-        fh.write("riga di un'altra chat\n")
-    readline.add_history("seconda domanda")
-    salva_cronologia(1)
+    limitata = CronologiaSicura(percorso, 2)
+    limitata.append_string("quarta domanda")
+    ultime = list(CronologiaSicura(percorso, 2).load_history_strings())
     esigi(
-        percorso.read_text().splitlines()
-        == ["prima domanda", "riga di un'altra chat", "seconda domanda"],
-        "il salvataggio ha riscritto il file invece di accodare: "
-        + repr(percorso.read_text()),
+        ultime == ["quarta domanda", "domanda su due\nrighe"],
+        "retention applicata dalla parte sbagliata: " + repr(ultime),
+    )
+    return "formato precedente migrato, multilinea e due chat, retention a 2"
+
+
+def input_repl() -> str:
+    """Prompt reale su pipe: completamento, multilinea, segnali e fallback."""
+    metadati = [(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI]
+    percorso = Path(ARCHIVIO_PROVA) / "cronologia_input_test.txt"
+
+    with create_pipe_input() as pipe:
+        input_cli = CliInput(
+            comandi=metadati,
+            cronologia_file=percorso,
+            cronologia_righe=20,
+            interactive=True,
+            input=pipe,
+            output=DummyOutput(),
+        )
+        pipe.send_text("/me\t\r")
+        esigi(input_cli.prompt() == "/memorie", "TAB non completa nel prompt reale")
+
+        pipe.send_text("prima riga\x1b\rseconda riga\r")
+        esigi(
+            input_cli.prompt() == "prima riga\nseconda riga",
+            "Alt+Invio non inserisce una nuova riga",
+        )
+
+        pipe.send_text("s\r")
+        esigi(input_cli.ask("Autorizzi? ") == "s", "il prompt breve non restituisce la scelta")
+
+        pipe.send_text("\x03")
+        try:
+            input_cli.prompt()
+        except KeyboardInterrupt:
+            pass
+        else:
+            raise AssertionError("Ctrl-C non interrompe il prompt")
+
+        pipe.send_text("\x04")
+        try:
+            input_cli.prompt()
+        except EOFError:
+            pass
+        else:
+            raise AssertionError("Ctrl-D non chiude il prompt")
+
+    rilette = list(CronologiaSicura(percorso, 20).load_history_strings())
+    esigi("s" not in rilette, "una risposta di autorizzazione finisce in cronologia")
+    esigi(
+        rilette[:2] == ["prima riga\nseconda riga", "/memorie"],
+        "il prompt non salva le domande: " + repr(rilette),
     )
 
-    # Un avvio nuovo rilegge le tre righe e ne conta tre: se ne contasse zero,
-    # il salvataggio successivo le riscriverebbe tutte in coda a se stesse.
-    readline.clear_history()
-    esigi(apri_cronologia() == 3, "la cronologia esistente non viene riletta")
-    readline.add_history("terza domanda")
-    salva_cronologia(3)
-    esigi(
-        len(percorso.read_text().splitlines()) == 4,
-        "righe duplicate al secondo avvio: " + repr(percorso.read_text()),
+    risposte = iter(["testo da pipe", "no"])
+    etichette = []
+
+    def fallback(etichetta: str) -> str:
+        etichette.append(etichetta)
+        return next(risposte)
+
+    fallback_cli = CliInput(
+        comandi=metadati,
+        cronologia_file=Path(ARCHIVIO_PROVA) / "cronologia_fallback_test.txt",
+        cronologia_righe=20,
+        interactive=False,
+        fallback_input=fallback,
     )
+    esigi(fallback_cli.prompt() == "testo da pipe", "il fallback non legge il messaggio")
+    esigi(fallback_cli.ask("Scelta: ") == "no", "il fallback non legge la scelta")
+    esigi(etichette == ["Tu › ", "Scelta: "], "prompt del fallback inattesi: " + repr(etichette))
 
-    # Il tetto e' quello di config, applicato da readline in coda all'append.
-    tetto = config.CRONOLOGIA_RIGHE
-    try:
-        config.CRONOLOGIA_RIGHE = 2
-        readline.clear_history()
-        gia = apri_cronologia()
-        readline.add_history("quarta domanda")
-        salva_cronologia(gia)
-        righe = percorso.read_text().splitlines()
-        esigi(len(righe) == 2, "il tetto non e' stato applicato: " + str(len(righe)))
-        esigi(righe[-1] == "quarta domanda", "il tetto ha tagliato dalla parte sbagliata")
-    finally:
-        config.CRONOLOGIA_RIGHE = tetto
-        readline.clear_history()
-
-    return "riletta, accodata senza cancellare, tagliata a " + str(tetto) + " righe"
+    ostacolo = Path(ARCHIVIO_PROVA) / "non-e-una-directory"
+    ostacolo.write_text("file", encoding="utf-8")
+    degradata = CliInput(
+        comandi=metadati,
+        cronologia_file=ostacolo / "cronologia.txt",
+        cronologia_righe=20,
+        interactive=False,
+        fallback_input=lambda _etichetta: "continua",
+    )
+    esigi(degradata.history_warning is not None, "il guasto della cronologia non viene annunciato")
+    esigi(degradata.prompt() == "continua", "un guasto della cronologia blocca la chat")
+    return "menu e TAB, multilinea, Ctrl-C/D, fallback pipe e cronologia in memoria"
 
 
 def comandi() -> str:
@@ -1589,17 +1656,21 @@ def comandi() -> str:
         esigi(gestisci_comando("/esci", None, "sessione", "utente") is False, "/esci non chiude")
         esigi(gestisci_comando("/qu", None, "sessione", "utente") is False, "/qu non chiude")
 
-    # I candidati del TAB guardano la riga intera: dentro un messaggio normale
-    # non si propone niente, altrimenti una data diventerebbe un menu.
-    esigi(candidati_comando("/me", "/me") == ["/memorie"], "il TAB non completa un comando")
-    esigi(candidati_comando("/", "/") == nomi, "il TAB non elenca tutti i comandi")
-    # La parola sotto il cursore e' un comando valido e la riga no: e' il caso
-    # che distingue una guardia vera da una che passa per caso.
-    esigi(
-        candidati_comando("ricordami di scrivere /mem", "/mem") == [],
-        "il TAB propone un comando dentro una frase normale",
+    completatore = CompletamentoComandi(
+        [(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI]
     )
-    esigi(candidati_comando("scrivo 23/08", "23/08") == [], "il TAB propone dentro una frase")
+
+    def completa(testo: str) -> list[str]:
+        return [
+            voce.text
+            for voce in completatore.get_completions(Document(testo), CompleteEvent())
+        ]
+
+    esigi(completa("/me") == ["/memorie"], "il menu non completa un comando")
+    esigi(completa("/") == nomi, "lo slash non elenca tutti i comandi")
+    esigi(completa("ricordami /mem") == [], "un comando dentro una frase apre il menu")
+    esigi(completa("scrivo 23/08") == [], "una data dentro una frase apre il menu")
+    esigi(completa("/sessioni lavoro") == [], "il menu copre l'argomento di un comando")
 
     return str(len(nomi)) + " comandi dalla tabella, refusi e troncamenti distinti"
 
@@ -1697,6 +1768,7 @@ def main() -> int:
             ("renderer Rich       ", lambda: renderer_rich()),
             ("renderer Live       ", lambda: renderer_live_sicuro_e_limitato()),
             ("cronologia          ", lambda: cronologia_persistente()),
+            ("input REPL          ", lambda: input_repl()),
             ("comandi             ", lambda: comandi()),
             ("archivio vero intatto", lambda: archivio_vero_intatto(reale_prima)),
         )
