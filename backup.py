@@ -84,6 +84,39 @@ def _rinomina_directory(sorgente: Path, destinazione: Path) -> None:
     os.rename(sorgente, destinazione)
 
 
+def _pubblica_snapshot(staging: Path, definitivo: Path) -> None:
+    """Rende visibile lo snapshot con rename o con un commit marker.
+
+    Il manifest e' il requisito usato da ``elenco_snapshot`` per riconoscere
+    una directory come snapshot. Nel fallback viene pubblicato per ultimo,
+    dopo dati e checksum, tramite una rinomina di file atomica.
+    """
+    try:
+        _rinomina_directory(staging, definitivo)
+        return
+    except PermissionError:
+        pass
+
+    temporaneo_manifest = definitivo / ("." + MANIFEST + ".pending")
+
+    def ignora_manifest_radice(directory: str, nomi: list[str]) -> list[str]:
+        if Path(directory) == staging and MANIFEST in nomi:
+            return [MANIFEST]
+        return []
+
+    try:
+        shutil.copytree(staging, definitivo, ignore=ignora_manifest_radice)
+        shutil.copy2(staging / MANIFEST, temporaneo_manifest)
+        rendi_privato(temporaneo_manifest)
+        _privato(definitivo)
+        os.replace(temporaneo_manifest, definitivo / MANIFEST)
+    except Exception:
+        shutil.rmtree(definitivo, ignore_errors=True)
+        raise
+    else:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def valida_percorsi() -> None:
     """Il backup non puo' contenere o essere contenuto da cio' che protegge."""
     backup = config.BACKUP_DIR.resolve()
@@ -349,7 +382,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
         verifica_snapshot(staging, percorso_diretto=True)
 
         definitivo = root / identificativo
-        _rinomina_directory(staging, definitivo)
+        _pubblica_snapshot(staging, definitivo)
         return definitivo
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
@@ -512,6 +545,25 @@ def _prepara_restore(snapshot: Path, manifest: Dict[str, Any]) -> Path:
         raise
 
 
+def _installa_restore_per_copia(staging: Path, destinazione: Path, precedente: Path) -> None:
+    """Fallback Windows con copia di rollback gia' pronta prima dello swap."""
+    copiato_precedente = False
+    try:
+        if destinazione.exists():
+            shutil.copytree(destinazione, precedente)
+            copiato_precedente = True
+            shutil.rmtree(destinazione)
+        shutil.copytree(staging, destinazione)
+    except Exception:
+        shutil.rmtree(destinazione, ignore_errors=True)
+        if copiato_precedente and precedente.exists():
+            shutil.copytree(precedente, destinazione)
+        raise
+    else:
+        shutil.rmtree(precedente, ignore_errors=True)
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Optional[Path]:
     """Ripristina uno snapshot verificato e ritorna l'eventuale pre-restore."""
     with lock_stato(esclusivo=True):
@@ -524,6 +576,14 @@ def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Optional[
         staging = _prepara_restore(snapshot, manifest)
         destinazione = config.TMP_DIR.resolve()
         precedente = destinazione.with_name("." + destinazione.name + "-precedente-" + uuid4().hex)
+        if os.name == "nt":
+            # Windows puo' rifiutare il rename di directory LanceDB non vuote
+            # anche senza processi Ares attivi. La copia precedente permette
+            # il rollback e lo snapshot pre-restore resta la rete di sicurezza
+            # persistente in caso di interruzione del processo.
+            _installa_restore_per_copia(staging, destinazione, precedente)
+            return sicurezza
+
         spostato = False
         try:
             if destinazione.exists():

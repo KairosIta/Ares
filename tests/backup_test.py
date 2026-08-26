@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
@@ -32,6 +33,8 @@ os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
 import config  # noqa: E402
 from backup import (  # noqa: E402
     ErroreBackup,
+    _installa_restore_per_copia,
+    _pubblica_snapshot,
     crea_snapshot,
     elenco_snapshot,
     pota_snapshot,
@@ -144,8 +147,38 @@ def main() -> int:
             esigi(
                 all((f.stat().st_mode & 0o777) == 0o600 for f in primo.rglob("*") if f.is_file()),
                 "file non privato",
-            )
+        )
         ok("create + verify", primo.name)
+
+        pubblicazione_staging = RADICE_PROVA / "pubblicazione-staging"
+        pubblicazione_finale = RADICE_PROVA / "pubblicazione-finale"
+        pubblicazione_staging.mkdir()
+        (pubblicazione_staging / "dato.bin").write_bytes(b"completo")
+        (pubblicazione_staging / "checksums.sha256").write_text("checksum\n", encoding="utf-8")
+        (pubblicazione_staging / "manifest.json").write_text("{}\n", encoding="utf-8")
+        with patch("backup._rinomina_directory", side_effect=PermissionError("rename negata")):
+            _pubblica_snapshot(pubblicazione_staging, pubblicazione_finale)
+        esigi(not pubblicazione_staging.exists(), "staging non eliminato dopo il fallback")
+        esigi((pubblicazione_finale / "dato.bin").read_bytes() == b"completo", "dati fallback incompleti")
+        esigi((pubblicazione_finale / "manifest.json").is_file(), "commit marker fallback mancante")
+        shutil.rmtree(pubblicazione_finale)
+        ok("pubblicazione Windows", "fallback completo con manifest pubblicato per ultimo")
+
+        restore_staging = RADICE_PROVA / "restore-staging"
+        restore_destinazione = RADICE_PROVA / "restore-destinazione"
+        restore_precedente = RADICE_PROVA / "restore-precedente"
+        restore_staging.mkdir()
+        restore_destinazione.mkdir()
+        (restore_staging / "stato.txt").write_text("nuovo\n", encoding="utf-8")
+        (restore_destinazione / "stato.txt").write_text("vecchio\n", encoding="utf-8")
+        _installa_restore_per_copia(restore_staging, restore_destinazione, restore_precedente)
+        esigi(
+            (restore_destinazione / "stato.txt").read_text(encoding="utf-8") == "nuovo\n",
+            "fallback restore non ha installato il nuovo stato",
+        )
+        esigi(not restore_staging.exists() and not restore_precedente.exists(), "residui dopo fallback restore")
+        shutil.rmtree(restore_destinazione)
+        ok("restore Windows", "copia di rollback rimossa dopo l'installazione")
 
         aggiungi_sqlite(Path(config.DB_FILE), "profilo-modificato")
         aggiungi_sqlite(Path(config.FS_DB_FILE), "nota-modificata")
