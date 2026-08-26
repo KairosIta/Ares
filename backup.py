@@ -27,7 +27,7 @@ import subprocess
 import sys
 import tempfile
 from contextlib import closing, nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 from uuid import uuid4
@@ -396,21 +396,16 @@ def crea_snapshot(tipo: str = "manuale", acquisisci_lock: bool = True) -> Path:
         return _crea_snapshot_senza_lock(tipo=tipo)
 
 
-def _ordine_snapshot(percorso: Path) -> tuple[datetime, str]:
+def _ordine_snapshot(percorso: Path) -> tuple[float, str]:
     """Ordina per istante reale, non per suffissi manuale/pre-restore."""
     try:
         manifest = json.loads((percorso / MANIFEST).read_text(encoding="utf-8"))
         creato = datetime.fromisoformat(manifest["created_at"])
-        if creato.tzinfo is None:
-            creato = creato.replace(tzinfo=timezone.utc)
-        else:
-            creato = creato.astimezone(timezone.utc)
-        return creato, percorso.name
+        return creato.timestamp(), percorso.name
     except (KeyError, OSError, TypeError, UnicodeError, ValueError, json.JSONDecodeError):
         # Un manifest rotto deve restare visibile e verificabile. L'mtime e'
         # soltanto un ripiego per collocarlo nell'elenco.
-        epoca = datetime(1970, 1, 1, tzinfo=timezone.utc)
-        return epoca + timedelta(seconds=percorso.stat().st_mtime), percorso.name
+        return percorso.stat().st_mtime, percorso.name
 
 
 def elenco_snapshot() -> list[Path]:

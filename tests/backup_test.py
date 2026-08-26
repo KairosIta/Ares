@@ -233,7 +233,7 @@ def main() -> int:
                 json.dumps({"created_at": "2099-08-21T20:00:01+00:00"}),
                 encoding="utf-8",
             )
-            esigi(elenco_snapshot()[-1] == nuovo, "latest segue il nome invece della data")
+            esigi(elenco_snapshot()[-1].name == nuovo.name, "latest segue il nome invece della data")
         finally:
             shutil.rmtree(vecchio, ignore_errors=True)
             shutil.rmtree(nuovo, ignore_errors=True)
