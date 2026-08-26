@@ -74,6 +74,7 @@ SPAZIO_PROVA = tempfile.mkdtemp(prefix="ares-lavoro-")
 os.environ["ARES_WORKSPACE"] = SPAZIO_PROVA
 
 import config  # noqa: E402
+import platform_files  # noqa: E402
 # Normalizzatore privato di Agno, importato di proposito invece di
 # riscritto: una copia locale verificherebbe la copia, non il
 # comportamento del FileSystem su cui i namespace finiscono davvero.
@@ -204,7 +205,7 @@ def conta_apprendimenti(learning_type: str, namespace: str) -> int:
     zero entita' con tre in archivio, e solo un conteggio indipendente
     rendeva visibile la differenza.
     """
-    with sqlite3.connect(config.DB_FILE) as connessione:
+    with contextlib.closing(sqlite3.connect(config.DB_FILE)) as connessione:
         try:
             righe = connessione.execute(
                 "select count(*) from agno_learnings where learning_type = ? and namespace = ?",
@@ -1491,14 +1492,15 @@ def cronologia_persistente() -> str:
         percorso.read_text(encoding="utf-8").splitlines()[0] == CRONOLOGIA_INTESTAZIONE,
         "la cronologia non e' stata migrata al formato multilinea",
     )
-    esigi(
-        oct(percorso.stat().st_mode)[-3:] == "600",
-        "cronologia leggibile da altri: " + oct(percorso.stat().st_mode)[-3:],
-    )
-    esigi(
-        oct(prima_chat.lock_file.stat().st_mode)[-3:] == "600",
-        "lock della cronologia leggibile da altri",
-    )
+    if os.name == "posix":
+        esigi(
+            oct(percorso.stat().st_mode)[-3:] == "600",
+            "cronologia leggibile da altri: " + oct(percorso.stat().st_mode)[-3:],
+        )
+        esigi(
+            oct(prima_chat.lock_file.stat().st_mode)[-3:] == "600",
+            "lock della cronologia leggibile da altri",
+        )
 
     limitata = CronologiaSicura(percorso, 2)
     limitata.append_string("quarta domanda")
@@ -1588,6 +1590,27 @@ def input_repl() -> str:
     )
     esigi(degradata.history_warning is not None, "il guasto della cronologia non viene annunciato")
     esigi(degradata.prompt() == "continua", "un guasto della cronologia blocca la chat")
+
+    lock_originale = platform_files.portalocker.lock
+    try:
+        def lock_guasto(_file, _operazione):
+            raise platform_files.portalocker.LockException("guasto simulato")
+
+        platform_files.portalocker.lock = lock_guasto
+        lock_degradato = CliInput(
+            comandi=metadati,
+            cronologia_file=Path(ARCHIVIO_PROVA) / "cronologia-lock-guasto.txt",
+            cronologia_righe=20,
+            interactive=False,
+            fallback_input=lambda _etichetta: "ancora disponibile",
+        )
+    finally:
+        platform_files.portalocker.lock = lock_originale
+    esigi(lock_degradato.history_warning is not None, "il guasto del lock non viene annunciato")
+    esigi(
+        lock_degradato.prompt() == "ancora disponibile",
+        "un guasto del backend di lock blocca la chat",
+    )
     return "menu e TAB, multilinea, Ctrl-C/D, fallback pipe e cronologia in memoria"
 
 

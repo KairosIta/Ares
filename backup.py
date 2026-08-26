@@ -15,6 +15,7 @@ restore richiedono il lock esclusivo: chiudere la chat prima di eseguirli.
 """
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -25,13 +26,14 @@ import string
 import subprocess
 import sys
 import tempfile
-from contextlib import nullcontext
+from contextlib import closing, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 from uuid import uuid4
 
 import config
+from platform_files import rendi_privato
 from state_lock import StatoOccupato, lock_stato
 
 
@@ -39,6 +41,7 @@ FORMATO_BACKUP = 1
 MANIFEST = "manifest.json"
 CHECKSUM = "checksums.sha256"
 DATABASE = ("kairos.db", "filesystem.db")
+SONDA_LANCEDB = "__lancedb-tables"
 
 # La cronologia della riga di comando vive in tmp/ insieme al resto, ma non e'
 # stato appreso: e' cio' che l'utente ha digitato. Da qui le due regole
@@ -55,18 +58,63 @@ class ErroreBackup(RuntimeError):
 def _privato(percorso: Path) -> None:
     """Permessi locali: lo snapshot contiene conversazioni e profilo."""
     if percorso.is_dir():
-        os.chmod(percorso, 0o700)
+        rendi_privato(percorso)
         for voce in percorso.rglob("*"):
             if voce.is_symlink():
                 continue
-            os.chmod(voce, 0o700 if voce.is_dir() else 0o600)
+            rendi_privato(voce)
     elif percorso.exists():
-        os.chmod(percorso, 0o600)
+        rendi_privato(percorso)
 
 
 def _si_sovrappongono(primo: Path, secondo: Path) -> bool:
     primo, secondo = primo.resolve(), secondo.resolve()
     return primo == secondo or primo.is_relative_to(secondo) or secondo.is_relative_to(primo)
+
+
+def _rinomina_directory(sorgente: Path, destinazione: Path) -> None:
+    """Pubblica una directory su un nome nuovo con una rinomina atomica.
+
+    ``os.replace`` seleziona su Windows la semantica di sostituzione e alcuni
+    filesystem la rifiutano per directory non vuote. Qui il target deve essere
+    assente per contratto, quindi ``os.rename`` e' l'operazione corretta.
+    """
+    if os.path.lexists(destinazione):
+        raise ErroreBackup("la destinazione della rinomina esiste gia': " + str(destinazione))
+    os.rename(sorgente, destinazione)
+
+
+def _pubblica_snapshot(staging: Path, definitivo: Path) -> None:
+    """Rende visibile lo snapshot con rename o con un commit marker.
+
+    Il manifest e' il requisito usato da ``elenco_snapshot`` per riconoscere
+    una directory come snapshot. Nel fallback viene pubblicato per ultimo,
+    dopo dati e checksum, tramite una rinomina di file atomica.
+    """
+    try:
+        _rinomina_directory(staging, definitivo)
+        return
+    except PermissionError:
+        pass
+
+    temporaneo_manifest = definitivo / ("." + MANIFEST + ".pending")
+
+    def ignora_manifest_radice(directory: str, nomi: list[str]) -> list[str]:
+        if Path(directory) == staging and MANIFEST in nomi:
+            return [MANIFEST]
+        return []
+
+    try:
+        shutil.copytree(staging, definitivo, ignore=ignora_manifest_radice)
+        shutil.copy2(staging / MANIFEST, temporaneo_manifest)
+        rendi_privato(temporaneo_manifest)
+        _privato(definitivo)
+        os.replace(temporaneo_manifest, definitivo / MANIFEST)
+    except Exception:
+        shutil.rmtree(definitivo, ignore_errors=True)
+        raise
+    else:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def valida_percorsi() -> None:
@@ -88,7 +136,7 @@ def _root_backup() -> Path:
     root.mkdir(parents=True, exist_ok=True)
     # Non ripercorrere tutti gli snapshot a ogni list/verify: ogni snapshot
     # viene gia' reso privato quando nasce.
-    os.chmod(root, 0o700)
+    rendi_privato(root)
     return root
 
 
@@ -115,7 +163,7 @@ def _scrivi_checksum(snapshot: Path) -> None:
         righe.append(_sha256(percorso) + "  " + relativo)
     destinazione = snapshot / CHECKSUM
     destinazione.write_text("\n".join(righe) + "\n", encoding="utf-8")
-    os.chmod(destinazione, 0o600)
+    rendi_privato(destinazione)
 
 
 def _leggi_checksum(snapshot: Path) -> Dict[str, str]:
@@ -151,7 +199,7 @@ def _integrita_sqlite(percorso: Path) -> None:
     if not percorso.is_file():
         raise ErroreBackup("database mancante: " + str(percorso))
     try:
-        with sqlite3.connect(str(percorso)) as connessione:
+        with closing(sqlite3.connect(str(percorso))) as connessione:
             esito = connessione.execute("pragma integrity_check").fetchone()
     except sqlite3.DatabaseError as errore:
         raise ErroreBackup("SQLite illeggibile: " + percorso.name + ": " + str(errore)) from errore
@@ -168,22 +216,49 @@ def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     finally:
         copia.close()
         origine.close()
-    os.chmod(destinazione, 0o600)
+    rendi_privato(destinazione)
     _integrita_sqlite(destinazione)
 
 
-def _tabelle_lancedb(percorso: Path) -> Dict[str, int]:
-    """Apre ogni tabella senza embedder e ne conta le righe."""
-    try:
-        import lancedb
+async def _sonda_lancedb_locale(percorso: Path) -> Dict[str, int]:
+    """Conta le righe usando soltanto l'API pubblica che espone ``close``."""
+    import lancedb
 
-        connessione = lancedb.connect(str(percorso))
-        if hasattr(connessione, "list_tables"):
-            risultato = connessione.list_tables()
-            nomi = list(getattr(risultato, "tables", risultato))
-        else:
-            nomi = list(connessione.table_names())
-        return {nome: int(connessione.open_table(nome).count_rows()) for nome in sorted(nomi)}
+    conteggi = {}
+    with await lancedb.connect_async(str(percorso)) as connessione:
+        risultato = await connessione.list_tables()
+        for nome in sorted(risultato.tables):
+            with await connessione.open_table(nome) as tabella:
+                conteggi[nome] = int(await tabella.count_rows())
+    return conteggi
+
+
+def _tabelle_lancedb(percorso: Path) -> Dict[str, int]:
+    """Verifica LanceDB in un processo isolato e ne conta le righe.
+
+    Alcuni reader nativi possono conservare per poco tempo handle sui frammenti
+    anche dopo ``close``. Su Windows cio' impedirebbe la successiva rinomina
+    atomica della directory; la fine del processo sonda chiude gli handle a
+    livello di sistema prima che il chiamante prosegua.
+    """
+    try:
+        risultato = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), SONDA_LANCEDB, str(percorso)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if risultato.returncode != 0:
+            dettaglio = (risultato.stderr or risultato.stdout).strip()
+            raise ErroreBackup(dettaglio or "la sonda LanceDB non ha prodotto un risultato")
+        dati = json.loads(risultato.stdout)
+        if not isinstance(dati, dict) or any(
+            not isinstance(nome, str) or not isinstance(righe, int) or righe < 0
+            for nome, righe in dati.items()
+        ):
+            raise ErroreBackup("risposta non valida dalla sonda LanceDB")
+        return dict(sorted(dati.items()))
     except Exception as errore:
         raise ErroreBackup("LanceDB illeggibile in " + str(percorso) + ": " + str(errore)) from errore
 
@@ -250,7 +325,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
     root = _root_backup()
     identificativo = _id_snapshot(tipo)
     staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=root))
-    os.chmod(staging, 0o700)
+    rendi_privato(staging)
     componenti: Dict[str, Any] = {}
 
     try:
@@ -307,7 +382,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
         verifica_snapshot(staging, percorso_diretto=True)
 
         definitivo = root / identificativo
-        os.replace(staging, definitivo)
+        _pubblica_snapshot(staging, definitivo)
         return definitivo
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
@@ -439,7 +514,7 @@ def _prepara_restore(snapshot: Path, manifest: Dict[str, Any]) -> Path:
     parent = config.TMP_DIR.resolve().parent
     parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="." + config.TMP_DIR.name + "-restore-", dir=parent))
-    os.chmod(staging, 0o700)
+    rendi_privato(staging)
     componenti = manifest.get("components") or {}
     try:
         for nome in DATABASE:
@@ -470,6 +545,50 @@ def _prepara_restore(snapshot: Path, manifest: Dict[str, Any]) -> Path:
         raise
 
 
+def _svuota_directory(percorso: Path) -> None:
+    """Rimuove il contenuto lasciando stabile la directory radice."""
+    for voce in list(percorso.iterdir()):
+        if voce.is_symlink() or voce.is_file():
+            voce.unlink()
+        else:
+            shutil.rmtree(voce)
+
+
+def _installa_restore_per_copia(staging: Path, destinazione: Path, precedente: Path) -> None:
+    """Fallback Windows con copia di rollback gia' pronta prima dello swap."""
+    esisteva = destinazione.is_dir()
+    try:
+        if esisteva:
+            shutil.copytree(destinazione, precedente)
+        else:
+            destinazione.mkdir(parents=True)
+        _svuota_directory(destinazione)
+        shutil.copytree(staging, destinazione, dirs_exist_ok=True)
+        _privato(destinazione)
+    except Exception as errore_originale:
+        try:
+            if destinazione.is_dir():
+                _svuota_directory(destinazione)
+            if esisteva and precedente.exists():
+                destinazione.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(precedente, destinazione, dirs_exist_ok=True)
+            elif destinazione.exists():
+                shutil.rmtree(destinazione)
+        except Exception as errore_rollback:
+            raise ErroreBackup(
+                "restore fallito ("
+                + str(errore_originale)
+                + ") e rollback fallito ("
+                + str(errore_rollback)
+                + "); copia precedente: "
+                + str(precedente)
+            ) from errore_rollback
+        raise
+    else:
+        shutil.rmtree(precedente, ignore_errors=True)
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Optional[Path]:
     """Ripristina uno snapshot verificato e ritorna l'eventuale pre-restore."""
     with lock_stato(esclusivo=True):
@@ -482,15 +601,23 @@ def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Optional[
         staging = _prepara_restore(snapshot, manifest)
         destinazione = config.TMP_DIR.resolve()
         precedente = destinazione.with_name("." + destinazione.name + "-precedente-" + uuid4().hex)
+        if os.name == "nt":
+            # Windows puo' rifiutare il rename di directory LanceDB non vuote
+            # anche senza processi Ares attivi. La copia precedente permette
+            # il rollback e lo snapshot pre-restore resta la rete di sicurezza
+            # persistente in caso di interruzione del processo.
+            _installa_restore_per_copia(staging, destinazione, precedente)
+            return sicurezza
+
         spostato = False
         try:
             if destinazione.exists():
-                os.replace(destinazione, precedente)
+                _rinomina_directory(destinazione, precedente)
                 spostato = True
-            os.replace(staging, destinazione)
+            _rinomina_directory(staging, destinazione)
         except Exception:
             if spostato and precedente.exists() and not destinazione.exists():
-                os.replace(precedente, destinazione)
+                _rinomina_directory(precedente, destinazione)
             shutil.rmtree(staging, ignore_errors=True)
             raise
         else:
@@ -532,6 +659,14 @@ def _stampa_elenco() -> None:
 
 
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == SONDA_LANCEDB:
+        try:
+            print(json.dumps(asyncio.run(_sonda_lancedb_locale(Path(sys.argv[2]))), sort_keys=True))
+        except Exception as errore:
+            print(str(errore), file=sys.stderr)
+            return 1
+        return 0
+
     parser = argparse.ArgumentParser(description="Snapshot locali dello stato di Ares")
     sottocomandi = parser.add_subparsers(dest="comando", required=True)
     sottocomandi.add_parser("create", help="crea e verifica uno snapshot")

@@ -11,24 +11,16 @@ progetto; uno script che scrive direttamente in tmp/ senza usarlo resta fuori
 dal contratto.
 """
 
-import fcntl
-import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, TextIO
+from typing import Iterator
 
 import config
+from platform_files import FileOccupato, lock_file
 
 
 class StatoOccupato(RuntimeError):
     """Un altro processo sta usando lo stato con un lock incompatibile."""
-
-
-def _apri_lock(percorso: Path) -> TextIO:
-    percorso.parent.mkdir(parents=True, exist_ok=True)
-    file_lock = percorso.open("a+", encoding="utf-8")
-    os.chmod(percorso, 0o600)
-    return file_lock
 
 
 @contextmanager
@@ -38,22 +30,15 @@ def lock_stato(
     percorso: Path = config.STATE_LOCK_FILE,
 ) -> Iterator[None]:
     """Acquisisce il lock condiviso o esclusivo e lo rilascia sempre."""
-    file_lock = _apri_lock(Path(percorso))
-    operazione = fcntl.LOCK_EX if esclusivo else fcntl.LOCK_SH
-    if not bloccante:
-        operazione |= fcntl.LOCK_NB
-
     try:
-        try:
-            fcntl.flock(file_lock.fileno(), operazione)
-        except BlockingIOError as errore:
-            tipo = "esclusivo" if esclusivo else "condiviso"
-            raise StatoOccupato(
-                "lo stato di Ares e' in uso: impossibile acquisire il lock " + tipo
-            ) from errore
-        yield
-    finally:
-        try:
-            fcntl.flock(file_lock.fileno(), fcntl.LOCK_UN)
-        finally:
-            file_lock.close()
+        with lock_file(
+            Path(percorso),
+            esclusivo=esclusivo,
+            bloccante=bloccante,
+        ):
+            yield
+    except FileOccupato as errore:
+        tipo = "esclusivo" if esclusivo else "condiviso"
+        raise StatoOccupato(
+            "lo stato di Ares e' in uso: impossibile acquisire il lock " + tipo
+        ) from errore

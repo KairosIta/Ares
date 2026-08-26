@@ -4,7 +4,7 @@
 # motivo per cui c'e'. Tutto il resto (numpy, pyarrow, httpx, pydantic...)
 # arriva per transitivita' e vive solo in requirements.txt, compilato con:
 #
-#     uv pip compile requirements.in -o requirements.txt
+#     uv pip compile --universal requirements.in -o requirements.txt
 #
 
 # Il framework dell'agente. Pinnato alla versione su cui e' stato scritto e
@@ -45,3 +45,8 @@ rich==15.0.0
 # Editor della REPL: completamento visuale, cronologia, suggerimenti e input
 # multilinea. E' separato da Rich, che continua a occuparsi solo dell'output.
 prompt-toolkit==3.0.53
+
+# Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
+# aggiunge pywin32 solo su Windows, dove serve per conservare i lock condivisi
+# usati dalle chat concorrenti.
+portalocker[win32]==4.0.0
