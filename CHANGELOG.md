@@ -6,8 +6,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-26
+
 ### Added
 
+- identità visiva del repository con marchio e social preview;
 - interfaccia Rich con streaming Markdown, pannelli e output sicuro per pipe;
 - editor Prompt Toolkit con menu dei comandi, suggerimenti, input multilinea
   e cronologia privata coordinata fra sessioni concorrenti;
@@ -41,5 +44,6 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/KairosIta/Ares/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/KairosIta/Ares/releases/tag/v0.1.0
