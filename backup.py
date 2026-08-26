@@ -41,6 +41,7 @@ FORMATO_BACKUP = 1
 MANIFEST = "manifest.json"
 CHECKSUM = "checksums.sha256"
 DATABASE = ("kairos.db", "filesystem.db")
+SONDA_LANCEDB = "__lancedb-tables"
 
 # La cronologia della riga di comando vive in tmp/ insieme al resto, ma non e'
 # stato appreso: e' cio' che l'utente ha digitato. Da qui le due regole
@@ -174,22 +175,45 @@ def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     _integrita_sqlite(destinazione)
 
 
+async def _sonda_lancedb_locale(percorso: Path) -> Dict[str, int]:
+    """Conta le righe usando soltanto l'API pubblica che espone ``close``."""
+    import lancedb
+
+    conteggi = {}
+    with await lancedb.connect_async(str(percorso)) as connessione:
+        risultato = await connessione.list_tables()
+        for nome in sorted(risultato.tables):
+            with await connessione.open_table(nome) as tabella:
+                conteggi[nome] = int(await tabella.count_rows())
+    return conteggi
+
+
 def _tabelle_lancedb(percorso: Path) -> Dict[str, int]:
-    """Apre ogni tabella senza embedder e ne conta le righe."""
+    """Verifica LanceDB in un processo isolato e ne conta le righe.
+
+    Alcuni reader nativi possono conservare per poco tempo handle sui frammenti
+    anche dopo ``close``. Su Windows cio' impedirebbe la successiva rinomina
+    atomica della directory; la fine del processo sonda chiude gli handle a
+    livello di sistema prima che il chiamante prosegua.
+    """
     try:
-        import lancedb
-
-        async def conta() -> Dict[str, int]:
-            conteggi = {}
-            with await lancedb.connect_async(str(percorso)) as connessione:
-                risultato = await connessione.list_tables()
-                nomi = list(risultato.tables)
-                for nome in sorted(nomi):
-                    with await connessione.open_table(nome) as tabella:
-                        conteggi[nome] = int(await tabella.count_rows())
-            return conteggi
-
-        return asyncio.run(conta())
+        risultato = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), SONDA_LANCEDB, str(percorso)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if risultato.returncode != 0:
+            dettaglio = (risultato.stderr or risultato.stdout).strip()
+            raise ErroreBackup(dettaglio or "la sonda LanceDB non ha prodotto un risultato")
+        dati = json.loads(risultato.stdout)
+        if not isinstance(dati, dict) or any(
+            not isinstance(nome, str) or not isinstance(righe, int) or righe < 0
+            for nome, righe in dati.items()
+        ):
+            raise ErroreBackup("risposta non valida dalla sonda LanceDB")
+        return dict(sorted(dati.items()))
     except Exception as errore:
         raise ErroreBackup("LanceDB illeggibile in " + str(percorso) + ": " + str(errore)) from errore
 
@@ -538,6 +562,14 @@ def _stampa_elenco() -> None:
 
 
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == SONDA_LANCEDB:
+        try:
+            print(json.dumps(asyncio.run(_sonda_lancedb_locale(Path(sys.argv[2]))), sort_keys=True))
+        except Exception as errore:
+            print(str(errore), file=sys.stderr)
+            return 1
+        return 0
+
     parser = argparse.ArgumentParser(description="Snapshot locali dello stato di Ares")
     sottocomandi = parser.add_subparsers(dest="comando", required=True)
     sottocomandi.add_parser("create", help="crea e verifica uno snapshot")

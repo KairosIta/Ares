@@ -7,11 +7,11 @@ li modifica e ripristina lo snapshot. Prova anche checksum, lock, guardie sui
 percorsi e pruning. Non legge ne' scrive tmp/ o ares-backup reali.
 """
 
-import asyncio
 import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -42,6 +42,30 @@ from backup import (  # noqa: E402
 from state_lock import StatoOccupato, lock_stato  # noqa: E402
 
 
+OPERAZIONE_LANCEDB = r"""
+import json
+import sys
+
+import lancedb
+
+azione, uri, dimensioni = sys.argv[1], sys.argv[2], int(sys.argv[3])
+db = lancedb.connect(uri)
+if azione == "create":
+    db.create_table(
+        "learned_knowledge",
+        data=[{"id": "prima", "testo": "prima intuizione", "vector": [0.0] * dimensioni}],
+    )
+elif azione == "add":
+    db.open_table("learned_knowledge").add(
+        [{"id": "seconda", "testo": "seconda intuizione", "vector": [1.0] * dimensioni}]
+    )
+elif azione == "count":
+    print(json.dumps(db.open_table("learned_knowledge").count_rows()))
+else:
+    raise ValueError("operazione LanceDB sconosciuta: " + azione)
+"""
+
+
 def esigi(condizione: bool, messaggio: str) -> None:
     if not condizione:
         raise AssertionError(messaggio)
@@ -68,54 +92,34 @@ def valori_sqlite(percorso: Path) -> list[str]:
         return [riga[0] for riga in connessione.execute("select valore from prova order by rowid")]
 
 
+def _operazione_lancedb(azione: str) -> str:
+    risultato = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            OPERAZIONE_LANCEDB,
+            azione,
+            config.LANCEDB_URI,
+            str(config.EMBEDDER_DIMENSIONS),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    return risultato.stdout.strip()
+
+
 def crea_lancedb() -> None:
-    import lancedb
-
-    async def crea() -> None:
-        with await lancedb.connect_async(config.LANCEDB_URI) as db:
-            with await db.create_table(
-                "learned_knowledge",
-                data=[
-                    {
-                        "id": "prima",
-                        "testo": "prima intuizione",
-                        "vector": [0.0] * config.EMBEDDER_DIMENSIONS,
-                    }
-                ],
-            ):
-                pass
-
-    asyncio.run(crea())
+    _operazione_lancedb("create")
 
 
 def aggiungi_lancedb() -> None:
-    import lancedb
-
-    async def aggiungi() -> None:
-        with await lancedb.connect_async(config.LANCEDB_URI) as db:
-            with await db.open_table("learned_knowledge") as tabella:
-                await tabella.add(
-                    [
-                        {
-                            "id": "seconda",
-                            "testo": "seconda intuizione",
-                            "vector": [1.0] * config.EMBEDDER_DIMENSIONS,
-                        }
-                    ]
-                )
-
-    asyncio.run(aggiungi())
+    _operazione_lancedb("add")
 
 
 def righe_lancedb() -> int:
-    import lancedb
-
-    async def conta() -> int:
-        with await lancedb.connect_async(config.LANCEDB_URI) as db:
-            with await db.open_table("learned_knowledge") as tabella:
-                return int(await tabella.count_rows())
-
-    return asyncio.run(conta())
+    return int(json.loads(_operazione_lancedb("count")))
 
 
 def main() -> int:
