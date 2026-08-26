@@ -205,7 +205,7 @@ def conta_apprendimenti(learning_type: str, namespace: str) -> int:
     zero entita' con tre in archivio, e solo un conteggio indipendente
     rendeva visibile la differenza.
     """
-    with sqlite3.connect(config.DB_FILE) as connessione:
+    with contextlib.closing(sqlite3.connect(config.DB_FILE)) as connessione:
         try:
             righe = connessione.execute(
                 "select count(*) from agno_learnings where learning_type = ? and namespace = ?",

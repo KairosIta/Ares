@@ -38,6 +38,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+from contextlib import closing
 from pathlib import Path
 
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
@@ -139,7 +140,7 @@ def conta_per_tipo() -> dict:
     codice di lettura del difetto non puo' vederlo.
     """
     conteggi = {}
-    with sqlite3.connect(config.DB_FILE) as connessione:
+    with closing(sqlite3.connect(config.DB_FILE)) as connessione:
         try:
             righe = connessione.execute("select learning_type, count(*) from agno_learnings group by 1")
         except sqlite3.OperationalError:
@@ -150,7 +151,7 @@ def conta_per_tipo() -> dict:
 
 
 def conta_sessioni() -> int:
-    with sqlite3.connect(config.DB_FILE) as connessione:
+    with closing(sqlite3.connect(config.DB_FILE)) as connessione:
         try:
             return connessione.execute("select count(*) from agno_sessions").fetchone()[0]
         except sqlite3.OperationalError:

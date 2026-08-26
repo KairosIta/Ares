@@ -26,7 +26,7 @@ import string
 import subprocess
 import sys
 import tempfile
-from contextlib import nullcontext
+from contextlib import closing, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
@@ -199,7 +199,7 @@ def _integrita_sqlite(percorso: Path) -> None:
     if not percorso.is_file():
         raise ErroreBackup("database mancante: " + str(percorso))
     try:
-        with sqlite3.connect(str(percorso)) as connessione:
+        with closing(sqlite3.connect(str(percorso))) as connessione:
             esito = connessione.execute("pragma integrity_check").fetchone()
     except sqlite3.DatabaseError as errore:
         raise ErroreBackup("SQLite illeggibile: " + percorso.name + ": " + str(errore)) from errore

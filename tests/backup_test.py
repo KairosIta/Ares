@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -80,18 +81,20 @@ def ok(nome: str, nota: str) -> None:
 
 def crea_sqlite(percorso: Path, valore: str) -> None:
     percorso.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(percorso) as connessione:
-        connessione.execute("create table prova (valore text not null)")
-        connessione.execute("insert into prova values (?)", (valore,))
+    with closing(sqlite3.connect(percorso)) as connessione:
+        with connessione:
+            connessione.execute("create table prova (valore text not null)")
+            connessione.execute("insert into prova values (?)", (valore,))
 
 
 def aggiungi_sqlite(percorso: Path, valore: str) -> None:
-    with sqlite3.connect(percorso) as connessione:
-        connessione.execute("insert into prova values (?)", (valore,))
+    with closing(sqlite3.connect(percorso)) as connessione:
+        with connessione:
+            connessione.execute("insert into prova values (?)", (valore,))
 
 
 def valori_sqlite(percorso: Path) -> list[str]:
-    with sqlite3.connect(percorso) as connessione:
+    with closing(sqlite3.connect(percorso)) as connessione:
         return [riga[0] for riga in connessione.execute("select valore from prova order by rowid")]
 
 
