@@ -15,9 +15,18 @@ concurrency:
 
 jobs:
   tests:
-    name: Python 3.12
-    runs-on: ubuntu-24.04
+    name: Python 3.12 · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python: ./.venv/bin/python
+          - os: windows-latest
+            python: ./.venv/Scripts/python.exe
 
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -41,20 +50,17 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: |
           uv venv --python python .venv
-          uv pip sync --python .venv/bin/python requirements.txt
-          uv pip check --python .venv/bin/python
+          uv pip sync --python "${{ matrix.python }}" requirements.txt
+          uv pip check --python "${{ matrix.python }}"
 
       - name: Compila il codice
-        run: |
-          .venv/bin/python -m compileall -q \
-            assistant.py backup.py chat.py cli_input.py cli_ui.py config.py entity_maintenance.py \
-            inspect_learning.py preflight.py schemas.py state_lock.py stores.py tests
+        run: ${{ matrix.python }} -m compileall -q assistant.py backup.py chat.py cli_input.py cli_ui.py config.py entity_maintenance.py inspect_learning.py platform_files.py preflight.py schemas.py state_lock.py stores.py tests
 
       - name: Smoke test
-        run: .venv/bin/python tests/smoke_test.py
+        run: ${{ matrix.python }} tests/smoke_test.py
 
       - name: Backup e restore
-        run: .venv/bin/python tests/backup_test.py
+        run: ${{ matrix.python }} tests/backup_test.py
 
       - name: Manutenzione entità
-        run: .venv/bin/python tests/entity_maintenance_test.py
+        run: ${{ matrix.python }} tests/entity_maintenance_test.py

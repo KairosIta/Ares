@@ -9,14 +9,14 @@ test non interattivi.
 from __future__ import annotations
 
 import builtins
-import fcntl
 import json
 import os
 import sys
 import tempfile
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, Optional, Sequence
+from typing import Callable, Iterable, Optional, Sequence
+
+from platform_files import lock_file, rendi_privato
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -54,26 +54,15 @@ class CronologiaSicura(History):
             if not self.percorso.exists():
                 self._scrivi([])
             else:
-                os.chmod(self.percorso, 0o600)
+                rendi_privato(self.percorso)
 
-    @contextmanager
-    def _lock(self) -> Iterator[None]:
-        descrittore = os.open(self.lock_file, os.O_RDWR | os.O_CREAT, 0o600)
-        bloccato = False
-        try:
-            os.fchmod(descrittore, 0o600)
-            fcntl.flock(descrittore, fcntl.LOCK_EX)
-            bloccato = True
-            yield
-        finally:
-            if bloccato:
-                fcntl.flock(descrittore, fcntl.LOCK_UN)
-            os.close(descrittore)
+    def _lock(self):
+        return lock_file(self.lock_file, esclusivo=True, bloccante=True)
 
     def _leggi(self) -> list[str]:
         if not self.percorso.exists():
             return []
-        os.chmod(self.percorso, 0o600)
+        rendi_privato(self.percorso)
         with self.percorso.open("r", encoding="utf-8", errors="replace") as file:
             righe = file.read().splitlines()
         if not righe:
@@ -103,7 +92,8 @@ class CronologiaSicura(History):
             dir=self.percorso.parent,
         )
         try:
-            os.fchmod(descrittore, 0o600)
+            if os.name == "posix":
+                os.fchmod(descrittore, 0o600)
             file = os.fdopen(descrittore, "w", encoding="utf-8")
             descrittore = -1
             with file:
@@ -113,7 +103,7 @@ class CronologiaSicura(History):
                 file.flush()
                 os.fsync(file.fileno())
             os.replace(temporaneo, self.percorso)
-            os.chmod(self.percorso, 0o600)
+            rendi_privato(self.percorso)
         finally:
             if descrittore >= 0:
                 os.close(descrittore)

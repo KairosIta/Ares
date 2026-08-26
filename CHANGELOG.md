@@ -11,6 +11,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - interfaccia Rich con streaming Markdown, pannelli e output sicuro per pipe;
 - editor Prompt Toolkit con menu dei comandi, suggerimenti, input multilinea
   e cronologia privata coordinata fra sessioni concorrenti.
+- backend cooperativo dei lock condivisi/esclusivi per POSIX e Windows, con
+  lock delle dipendenze universale e matrice CI sui due sistemi.
 
 ### Security
 

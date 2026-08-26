@@ -21,6 +21,10 @@ simulato per verificare streaming Rich, completamento, multilinea, Ctrl-C/D e
 cronologia senza richiedere interazione umana. Non generano risposte con il
 modello.
 
+La CI esegue smoke test, backup/restore e manutenzione delle entita' sia su
+Ubuntu sia su Windows. La prova end-to-end con Ollama resta locale, perche' i
+runner non dispongono dei modelli configurati.
+
 ## Prova end-to-end
 
 ```bash

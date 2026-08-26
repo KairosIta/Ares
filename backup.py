@@ -32,6 +32,7 @@ from typing import Any, Dict, Iterable, Optional
 from uuid import uuid4
 
 import config
+from platform_files import rendi_privato
 from state_lock import StatoOccupato, lock_stato
 
 
@@ -55,13 +56,13 @@ class ErroreBackup(RuntimeError):
 def _privato(percorso: Path) -> None:
     """Permessi locali: lo snapshot contiene conversazioni e profilo."""
     if percorso.is_dir():
-        os.chmod(percorso, 0o700)
+        rendi_privato(percorso)
         for voce in percorso.rglob("*"):
             if voce.is_symlink():
                 continue
-            os.chmod(voce, 0o700 if voce.is_dir() else 0o600)
+            rendi_privato(voce)
     elif percorso.exists():
-        os.chmod(percorso, 0o600)
+        rendi_privato(percorso)
 
 
 def _si_sovrappongono(primo: Path, secondo: Path) -> bool:
@@ -88,7 +89,7 @@ def _root_backup() -> Path:
     root.mkdir(parents=True, exist_ok=True)
     # Non ripercorrere tutti gli snapshot a ogni list/verify: ogni snapshot
     # viene gia' reso privato quando nasce.
-    os.chmod(root, 0o700)
+    rendi_privato(root)
     return root
 
 
@@ -115,7 +116,7 @@ def _scrivi_checksum(snapshot: Path) -> None:
         righe.append(_sha256(percorso) + "  " + relativo)
     destinazione = snapshot / CHECKSUM
     destinazione.write_text("\n".join(righe) + "\n", encoding="utf-8")
-    os.chmod(destinazione, 0o600)
+    rendi_privato(destinazione)
 
 
 def _leggi_checksum(snapshot: Path) -> Dict[str, str]:
@@ -168,7 +169,7 @@ def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     finally:
         copia.close()
         origine.close()
-    os.chmod(destinazione, 0o600)
+    rendi_privato(destinazione)
     _integrita_sqlite(destinazione)
 
 
@@ -250,7 +251,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
     root = _root_backup()
     identificativo = _id_snapshot(tipo)
     staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=root))
-    os.chmod(staging, 0o700)
+    rendi_privato(staging)
     componenti: Dict[str, Any] = {}
 
     try:
@@ -439,7 +440,7 @@ def _prepara_restore(snapshot: Path, manifest: Dict[str, Any]) -> Path:
     parent = config.TMP_DIR.resolve().parent
     parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="." + config.TMP_DIR.name + "-restore-", dir=parent))
-    os.chmod(staging, 0o700)
+    rendi_privato(staging)
     componenti = manifest.get("components") or {}
     try:
         for nome in DATABASE:

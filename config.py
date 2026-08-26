@@ -249,9 +249,10 @@ BACKUP_KEEP = 20
 # Un restore pero' non la riavvolge: riporta indietro Ares, non chi gli parla,
 # e quella dello snapshot torna solo se tmp/ e' andata persa davvero.
 # Contiene tutto cio' che si e' scritto ad Ares. `CronologiaSicura` lo crea a
-# 0600, conserva una voce JSON per messaggio (anche multilinea) e coordina con
-# un lock breve le chat aperte insieme. Il vecchio formato GNU Readline viene
-# riletto e migrato alla prima nuova voce.
+# 0600 su POSIX (su Windows conserva la DACL ereditata), tiene una voce JSON
+# per messaggio anche multilinea e coordina con un lock breve le chat aperte
+# insieme. Il vecchio formato GNU Readline viene riletto e migrato alla prima
+# nuova voce.
 CRONOLOGIA_FILE = TMP_DIR / "cronologia_chat.txt"
 
 # Un tetto perche' un file che cresce e basta e' esattamente cio' che questo

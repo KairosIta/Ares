@@ -107,8 +107,12 @@ def main() -> int:
             (primo / config.CRONOLOGIA_FILE.name).read_text(encoding="utf-8") == "prima domanda\n",
             "cronologia non copiata nello snapshot",
         )
-        esigi((primo.stat().st_mode & 0o777) == 0o700, "directory snapshot non privata")
-        esigi(all((f.stat().st_mode & 0o777) == 0o600 for f in primo.rglob("*") if f.is_file()), "file non privato")
+        if os.name == "posix":
+            esigi((primo.stat().st_mode & 0o777) == 0o700, "directory snapshot non privata")
+            esigi(
+                all((f.stat().st_mode & 0o777) == 0o600 for f in primo.rglob("*") if f.is_file()),
+                "file non privato",
+            )
         ok("create + verify", primo.name)
 
         aggiungi_sqlite(Path(config.DB_FILE), "profilo-modificato")
@@ -178,17 +182,33 @@ def main() -> int:
         ok("compatibilita'", "embedder differente rifiutato")
 
         collegamento = config.BACKUP_DIR / "snapshot-symlink"
+        symlink_disponibile = True
         try:
-            collegamento.symlink_to(primo, target_is_directory=True)
             try:
-                verifica_snapshot(collegamento, percorso_diretto=True)
-            except ErroreBackup as errore:
-                esigi("link simbolico" in str(errore), "errore symlink inatteso: " + str(errore))
+                collegamento.symlink_to(primo, target_is_directory=True)
+            except OSError as errore:
+                # Su Windows la creazione richiede un privilegio che non e'
+                # garantito dai runner GitHub. La guardia resta coperta su
+                # Ubuntu e viene provata anche su Windows quando disponibile.
+                if os.name == "nt" and getattr(errore, "winerror", None) == 1314:
+                    symlink_disponibile = False
+                else:
+                    raise
+            if not symlink_disponibile:
+                ok("symlink", "creazione non autorizzata dal runner Windows")
+                collegamento = None
             else:
-                esigi(False, "una radice snapshot simbolica e' stata accettata")
+                try:
+                    verifica_snapshot(collegamento, percorso_diretto=True)
+                except ErroreBackup as errore:
+                    esigi("link simbolico" in str(errore), "errore symlink inatteso: " + str(errore))
+                else:
+                    esigi(False, "una radice snapshot simbolica e' stata accettata")
         finally:
-            collegamento.unlink(missing_ok=True)
-        ok("symlink", "radice snapshot simbolica rifiutata")
+            if collegamento is not None:
+                collegamento.unlink(missing_ok=True)
+        if symlink_disponibile:
+            ok("symlink", "radice snapshot simbolica rifiutata")
 
         corrotto = config.BACKUP_DIR / "99999999T999999Z-corrotto"
         shutil.copytree(primo, corrotto)
@@ -208,6 +228,10 @@ def main() -> int:
         ok("corruzione", "checksum modificato rifiutato")
 
         with lock_stato(esclusivo=False):
+            # Due chat sono lettori compatibili anche sul backend Windows;
+            # solo il backup, che richiede lo scrittore esclusivo, si ferma.
+            with lock_stato(esclusivo=False):
+                pass
             try:
                 crea_snapshot()
             except StatoOccupato:
