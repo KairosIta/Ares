@@ -15,6 +15,7 @@ restore richiedono il lock esclusivo: chiudere la chat prima di eseguirli.
 """
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -178,13 +179,17 @@ def _tabelle_lancedb(percorso: Path) -> Dict[str, int]:
     try:
         import lancedb
 
-        connessione = lancedb.connect(str(percorso))
-        if hasattr(connessione, "list_tables"):
-            risultato = connessione.list_tables()
-            nomi = list(getattr(risultato, "tables", risultato))
-        else:
-            nomi = list(connessione.table_names())
-        return {nome: int(connessione.open_table(nome).count_rows()) for nome in sorted(nomi)}
+        async def conta() -> Dict[str, int]:
+            conteggi = {}
+            with await lancedb.connect_async(str(percorso)) as connessione:
+                risultato = await connessione.list_tables()
+                nomi = list(risultato.tables)
+                for nome in sorted(nomi):
+                    with await connessione.open_table(nome) as tabella:
+                        conteggi[nome] = int(await tabella.count_rows())
+            return conteggi
+
+        return asyncio.run(conta())
     except Exception as errore:
         raise ErroreBackup("LanceDB illeggibile in " + str(percorso) + ": " + str(errore)) from errore
 

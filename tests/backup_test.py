@@ -7,6 +7,7 @@ li modifica e ripristina lo snapshot. Prova anche checksum, lock, guardie sui
 percorsi e pruning. Non legge ne' scrive tmp/ o ares-backup reali.
 """
 
+import asyncio
 import json
 import os
 import shutil
@@ -70,24 +71,51 @@ def valori_sqlite(percorso: Path) -> list[str]:
 def crea_lancedb() -> None:
     import lancedb
 
-    db = lancedb.connect(config.LANCEDB_URI)
-    db.create_table(
-        "learned_knowledge",
-        data=[{"id": "prima", "testo": "prima intuizione", "vector": [0.0] * config.EMBEDDER_DIMENSIONS}],
-    )
+    async def crea() -> None:
+        with await lancedb.connect_async(config.LANCEDB_URI) as db:
+            with await db.create_table(
+                "learned_knowledge",
+                data=[
+                    {
+                        "id": "prima",
+                        "testo": "prima intuizione",
+                        "vector": [0.0] * config.EMBEDDER_DIMENSIONS,
+                    }
+                ],
+            ):
+                pass
+
+    asyncio.run(crea())
 
 
 def aggiungi_lancedb() -> None:
     import lancedb
 
-    tabella = lancedb.connect(config.LANCEDB_URI).open_table("learned_knowledge")
-    tabella.add([{"id": "seconda", "testo": "seconda intuizione", "vector": [1.0] * config.EMBEDDER_DIMENSIONS}])
+    async def aggiungi() -> None:
+        with await lancedb.connect_async(config.LANCEDB_URI) as db:
+            with await db.open_table("learned_knowledge") as tabella:
+                await tabella.add(
+                    [
+                        {
+                            "id": "seconda",
+                            "testo": "seconda intuizione",
+                            "vector": [1.0] * config.EMBEDDER_DIMENSIONS,
+                        }
+                    ]
+                )
+
+    asyncio.run(aggiungi())
 
 
 def righe_lancedb() -> int:
     import lancedb
 
-    return int(lancedb.connect(config.LANCEDB_URI).open_table("learned_knowledge").count_rows())
+    async def conta() -> int:
+        with await lancedb.connect_async(config.LANCEDB_URI) as db:
+            with await db.open_table("learned_knowledge") as tabella:
+                return int(await tabella.count_rows())
+
+    return asyncio.run(conta())
 
 
 def main() -> int:
