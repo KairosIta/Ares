@@ -10,6 +10,8 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 - `cli_input.py` gestisce editor, completamento e cronologia della REPL;
 - `cli_ui.py` rende streaming Markdown, pannelli, tabelle e messaggi;
 - `platform_files.py` uniforma lock condivisi/esclusivi fra POSIX e Windows;
+- `setup.sh` e `setup.ps1` ricostruiscono lo stesso ambiente bloccato sui due
+  sistemi verificati;
 - `assistant.py` assembla modello, istruzioni, strumenti e store;
 - `learning.py` coordina l'apprendimento sul run completo;
 - `stores.py` espone profilo, memorie, contesto, entita' e conoscenza;
@@ -35,6 +37,11 @@ Gli strumenti per i file sono limitati a una directory di lavoro, ma questo
 confine non e' una sandbox di processo. I comandi shell possono accedere alle
 risorse dell'host e alla rete, quindi richiedono conferma esplicita. Stato,
 workspace, backup e `.env` restano fuori dal controllo versione.
+
+Su POSIX gli snapshot vengono pubblicati con una rinomina di directory. Su
+Windows, dove LanceDB può impedire quella rinomina anche dopo la chiusura dei
+reader nativi, il manifest viene pubblicato per ultimo come commit marker e
+il restore conserva stabile la directory radice con una copia di rollback.
 
 ## Configurazione
 

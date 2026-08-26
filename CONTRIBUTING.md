@@ -6,17 +6,23 @@ verificabili e motivate da un rischio o da un comportamento osservato.
 ## Ambiente
 
 Servono Python 3.12, `uv` e Ollama. Dopo aver scaricato i modelli indicati nel
-README:
+README, prepara l’ambiente su Linux con:
 
 ```bash
 ./setup.sh
+```
+
+oppure su Windows PowerShell con:
+
+```powershell
+.\setup.ps1
 ```
 
 Le dipendenze dirette vivono in `requirements.in`; `requirements.txt` è il
 lock completo. Se cambia una dipendenza diretta, rigenera il lock con:
 
 ```bash
-uv pip compile requirements.in -o requirements.txt
+uv pip compile --universal requirements.in -o requirements.txt
 ```
 
 ## Flusso consigliato
@@ -29,20 +35,27 @@ uv pip compile requirements.in -o requirements.txt
 
 ## Verifiche minime
 
+I comandi mostrano il percorso Linux. Su Windows usa
+`.\.venv\Scripts\python.exe` al posto di `.venv/bin/python`.
+
 ```bash
 .venv/bin/python tests/smoke_test.py
 .venv/bin/python tests/backup_test.py
 .venv/bin/python tests/entity_maintenance_test.py
 ```
 
-Le modifiche al percorso conversazionale o di apprendimento richiedono anche:
+Le modifiche al percorso conversazionale o di apprendimento richiedono anche
+le prove pertinenti con Ollama:
 
 ```bash
+.venv/bin/python tests/learning_reliability_test.py
+.venv/bin/python -u tests/learned_knowledge_test.py
 .venv/bin/python -u tests/e2e_test.py
 ```
 
 Tutte le prove devono usare archivi temporanei. Non leggere, copiare o
 committare lo stato reale in `tmp/`, i workspace o gli snapshot locali.
+La CI deve restare verde sia su Ubuntu sia su Windows prima del merge.
 
 ## Stile
 

@@ -5,9 +5,11 @@ roadmap privilegia affidabilità, comprensibilità e controllo dell’utente.
 
 ## Stato attuale
 
-La prima versione pubblica comprende memoria persistente, apprendimento dopo
+La versione corrente comprende memoria persistente, apprendimento dopo
 `continue_run`, workspace controllato, backup locale, manutenzione delle
-entita' e una suite di test isolata.
+entita', REPL Rich/Prompt Toolkit e installazione riproducibile. Lock, CLI,
+backup e suite principale sono verificati automaticamente su Ubuntu e
+Windows.
 
 ## Evoluzione
 
@@ -16,7 +18,7 @@ entita' e una suite di test isolata.
 - copertura automatica più ampia del percorso asincrono;
 - interfaccia opzionale oltre alla CLI, senza perdere il funzionamento locale;
 - documentazione inglese completa;
-- valutazione esplicita di Linux alternativi e altri sistemi operativi.
+- valutazione esplicita di macOS e distribuzioni Linux fuori dalla matrice CI.
 
 ## Non obiettivi attuali
 

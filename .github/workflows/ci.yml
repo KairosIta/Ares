@@ -46,12 +46,20 @@ jobs:
         run: python -m pip install --disable-pip-version-check uv==0.11.29
 
       - name: Sincronizza l’ambiente
+        if: runner.os != 'Windows'
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: |
           uv venv --python python .venv
           uv pip sync --python "${{ matrix.python }}" requirements.txt
           uv pip check --python "${{ matrix.python }}"
+
+      - name: Prepara l’ambiente Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+        run: ./setup.ps1 -SkipPreflight
 
       - name: Compila il codice
         run: ${{ matrix.python }} -m compileall -q assistant.py backup.py chat.py cli_input.py cli_ui.py config.py entity_maintenance.py inspect_learning.py platform_files.py preflight.py schemas.py state_lock.py stores.py tests

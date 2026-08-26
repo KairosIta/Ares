@@ -5,6 +5,7 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/runtime-Ollama-white.svg)](https://ollama.com/)
 [![Agno 2.9](https://img.shields.io/badge/framework-Agno%202.9-6C5CE7.svg)](https://www.agno.com/)
+[![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4C8BF5.svg)](#requisiti)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/KairosIta/Ares/actions/workflows/ci.yml/badge.svg)](https://github.com/KairosIta/Ares/actions/workflows/ci.yml)
 
@@ -56,11 +57,16 @@ decide di chiamarne gli strumenti.
 
 ## Requisiti
 
-- Linux; la CI verifica il progetto su Ubuntu 24.04;
-- Python 3.12;
+- Linux o Windows; la CI verifica Ubuntu 24.04 e `windows-latest`;
+- Python 3.12, installabile automaticamente da `uv`;
 - [`uv`](https://docs.astral.sh/uv/);
 - [Ollama](https://ollama.com/) in ascolto su `localhost:11434`;
 - spazio sufficiente per i modelli configurati.
+
+Su Windows, [Ollama richiede Windows 10 22H2 o
+successivo](https://docs.ollama.com/windows). Il percorso verificato dal
+progetto è Windows x86_64 con PowerShell; macOS e altre distribuzioni Linux
+possono funzionare, ma non sono ancora nella matrice CI.
 
 La configurazione di riferimento è pensata per circa 16 GiB di VRAM. Il
 modello Qwythos-9B Q8_0 può richiedere circa 14 GB con 262k token di contesto;
@@ -74,30 +80,55 @@ le risposte tecniche o sensibili richiedono verifica umana.
 
 ## Avvio rapido
 
-Scarica i due modelli unici richiesti dalla configurazione predefinita:
+Installa [uv](https://docs.astral.sh/uv/getting-started/installation/) e
+[Ollama](https://ollama.com/download), quindi scarica i due modelli unici
+richiesti dalla configurazione predefinita:
 
 ```bash
 ollama pull hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q8_0
 ollama pull nomic-embed-text-v2-moe
 ```
 
-Poi clona e prepara il progetto:
+Clona il progetto:
 
 ```bash
 git clone https://github.com/KairosIta/Ares.git
 cd Ares
+```
+
+Su Linux:
+
+```bash
 ./setup.sh
 .venv/bin/python chat.py
 ```
 
-Se Ollama non è gestito come servizio, avvialo prima con `ollama serve`.
-`setup.sh` crea il virtualenv, sincronizza le versioni bloccate in
-[`requirements.txt`](requirements.txt) ed esegue il preflight.
+Su Windows, da PowerShell:
+
+```powershell
+.\setup.ps1
+.\.venv\Scripts\python.exe chat.py
+```
+
+Se la policy di PowerShell impedisce l’avvio dello script locale, usa una
+sola volta `powershell -ExecutionPolicy Bypass -File .\setup.ps1`.
+
+Se Ollama non è già attivo, avvialo prima con `ollama serve`. Entrambi gli
+script di setup creano il virtualenv, sincronizzano esattamente le versioni
+di [`requirements.txt`](requirements.txt) ed eseguono il preflight. Su
+Windows `setup.ps1 -SkipPreflight` prepara soltanto le dipendenze e viene
+usato dalla CI, dove Ollama non è disponibile.
 
 Per aprire una sessione separata:
 
 ```bash
 .venv/bin/python chat.py --session progetto-demo
+```
+
+Su Windows il comando equivalente è:
+
+```powershell
+.\.venv\Scripts\python.exe chat.py --session progetto-demo
 ```
 
 Durante la chat `/` apre il menu dei comandi e TAB completa la voce
@@ -109,6 +140,8 @@ precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
 ## Verifica
 
 La suite evita lo stato reale e costruisce archivi temporanei usa-e-getta.
+I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
+`.venv/bin/python` con `.\.venv\Scripts\python.exe`.
 
 ```bash
 # Cablaggio, store, strumenti e isolamento; nessuna inferenza
@@ -131,9 +164,10 @@ La distinzione fra test offline ed E2E è descritta nella
 
 ```bash
 .venv/bin/python backup.py create
-.venv/bin/python backup.py list --verify
+.venv/bin/python backup.py list
+.venv/bin/python backup.py verify latest
 .venv/bin/python backup.py restore <snapshot>
-.venv/bin/python backup.py prune
+.venv/bin/python backup.py prune --keep 20
 ```
 
 Gli snapshot vivono per default nella directory `ares-backup` accanto al
@@ -173,10 +207,10 @@ un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).
 
 ## Stato del progetto
 
-Ares è un progetto personale in sviluppo attivo. È pensato prima di tutto per
-un singolo host Linux con Ollama locale; compatibilità multipiattaforma,
-packaging come libreria e deployment distribuito non sono ancora obiettivi
-garantiti.
+Ares è un progetto personale in sviluppo attivo, pensato per un singolo host
+Linux o Windows con Ollama locale. La suite principale è verificata su
+entrambi i sistemi; macOS, packaging come libreria e deployment distribuito
+non sono ancora obiettivi garantiti.
 
 ## Licenza
 
