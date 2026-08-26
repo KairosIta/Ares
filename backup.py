@@ -72,6 +72,18 @@ def _si_sovrappongono(primo: Path, secondo: Path) -> bool:
     return primo == secondo or primo.is_relative_to(secondo) or secondo.is_relative_to(primo)
 
 
+def _rinomina_directory(sorgente: Path, destinazione: Path) -> None:
+    """Pubblica una directory su un nome nuovo con una rinomina atomica.
+
+    ``os.replace`` seleziona su Windows la semantica di sostituzione e alcuni
+    filesystem la rifiutano per directory non vuote. Qui il target deve essere
+    assente per contratto, quindi ``os.rename`` e' l'operazione corretta.
+    """
+    if os.path.lexists(destinazione):
+        raise ErroreBackup("la destinazione della rinomina esiste gia': " + str(destinazione))
+    os.rename(sorgente, destinazione)
+
+
 def valida_percorsi() -> None:
     """Il backup non puo' contenere o essere contenuto da cio' che protegge."""
     backup = config.BACKUP_DIR.resolve()
@@ -337,7 +349,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
         verifica_snapshot(staging, percorso_diretto=True)
 
         definitivo = root / identificativo
-        os.replace(staging, definitivo)
+        _rinomina_directory(staging, definitivo)
         return definitivo
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
@@ -515,12 +527,12 @@ def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Optional[
         spostato = False
         try:
             if destinazione.exists():
-                os.replace(destinazione, precedente)
+                _rinomina_directory(destinazione, precedente)
                 spostato = True
-            os.replace(staging, destinazione)
+            _rinomina_directory(staging, destinazione)
         except Exception:
             if spostato and precedente.exists() and not destinazione.exists():
-                os.replace(precedente, destinazione)
+                _rinomina_directory(precedente, destinazione)
             shutil.rmtree(staging, ignore_errors=True)
             raise
         else:
