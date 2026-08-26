@@ -12,6 +12,7 @@ dice di ricordare: dove sta questa informazione, e la ritrovera' davvero?
 """
 
 import argparse
+import sys
 
 import config
 from assistant import build_assistant, build_filesystem
@@ -81,7 +82,8 @@ def _ispeziona() -> None:
     for f in elenco:
         print("-", f.path, "  ", f.size_bytes, "byte")
     print()
-    print("Per leggerne uno: .venv/bin/python inspect_learning.py --file <percorso>")
+    python_venv = r".venv\Scripts\python.exe" if sys.platform == "win32" else ".venv/bin/python"
+    print("Per leggerne uno:", python_venv, "inspect_learning.py --file <percorso>")
 
 
 def main() -> None:

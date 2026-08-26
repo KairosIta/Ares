@@ -1004,7 +1004,8 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
         )
         raise
     print("Fusione completata e verificata:", piano.sorgente.riferimento, "->", piano.canonica.riferimento)
-    print("Per tornare indietro: .venv/bin/python backup.py restore", snapshot.name)
+    python_venv = r".venv\Scripts\python.exe" if sys.platform == "win32" else ".venv/bin/python"
+    print("Per tornare indietro:", python_venv, "backup.py restore", snapshot.name)
     return 0
 
 

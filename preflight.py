@@ -86,7 +86,8 @@ def main() -> int:
         return 1
 
     print()
-    print("Ambiente pronto:", ".venv/bin/python chat.py")
+    python_venv = r".venv\Scripts\python.exe" if sys.platform == "win32" else ".venv/bin/python"
+    print("Ambiente pronto:", python_venv, "chat.py")
     return 0
 
 
