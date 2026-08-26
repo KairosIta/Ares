@@ -545,19 +545,44 @@ def _prepara_restore(snapshot: Path, manifest: Dict[str, Any]) -> Path:
         raise
 
 
+def _svuota_directory(percorso: Path) -> None:
+    """Rimuove il contenuto lasciando stabile la directory radice."""
+    for voce in list(percorso.iterdir()):
+        if voce.is_symlink() or voce.is_file():
+            voce.unlink()
+        else:
+            shutil.rmtree(voce)
+
+
 def _installa_restore_per_copia(staging: Path, destinazione: Path, precedente: Path) -> None:
     """Fallback Windows con copia di rollback gia' pronta prima dello swap."""
-    copiato_precedente = False
+    esisteva = destinazione.is_dir()
     try:
-        if destinazione.exists():
+        if esisteva:
             shutil.copytree(destinazione, precedente)
-            copiato_precedente = True
-            shutil.rmtree(destinazione)
-        shutil.copytree(staging, destinazione)
-    except Exception:
-        shutil.rmtree(destinazione, ignore_errors=True)
-        if copiato_precedente and precedente.exists():
-            shutil.copytree(precedente, destinazione)
+        else:
+            destinazione.mkdir(parents=True)
+        _svuota_directory(destinazione)
+        shutil.copytree(staging, destinazione, dirs_exist_ok=True)
+        _privato(destinazione)
+    except Exception as errore_originale:
+        try:
+            if destinazione.is_dir():
+                _svuota_directory(destinazione)
+            if esisteva and precedente.exists():
+                destinazione.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(precedente, destinazione, dirs_exist_ok=True)
+            elif destinazione.exists():
+                shutil.rmtree(destinazione)
+        except Exception as errore_rollback:
+            raise ErroreBackup(
+                "restore fallito ("
+                + str(errore_originale)
+                + ") e rollback fallito ("
+                + str(errore_rollback)
+                + "); copia precedente: "
+                + str(precedente)
+            ) from errore_rollback
         raise
     else:
         shutil.rmtree(precedente, ignore_errors=True)

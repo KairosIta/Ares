@@ -171,11 +171,13 @@ def main() -> int:
         restore_destinazione.mkdir()
         (restore_staging / "stato.txt").write_text("nuovo\n", encoding="utf-8")
         (restore_destinazione / "stato.txt").write_text("vecchio\n", encoding="utf-8")
+        identita_radice = restore_destinazione.stat().st_ino
         _installa_restore_per_copia(restore_staging, restore_destinazione, restore_precedente)
         esigi(
             (restore_destinazione / "stato.txt").read_text(encoding="utf-8") == "nuovo\n",
             "fallback restore non ha installato il nuovo stato",
         )
+        esigi(restore_destinazione.stat().st_ino == identita_radice, "radice sostituita durante il restore")
         esigi(not restore_staging.exists() and not restore_precedente.exists(), "residui dopo fallback restore")
         shutil.rmtree(restore_destinazione)
         ok("restore Windows", "copia di rollback rimossa dopo l'installazione")
