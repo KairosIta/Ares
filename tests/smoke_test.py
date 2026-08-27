@@ -46,6 +46,7 @@ import argparse
 import contextlib
 import importlib
 import io
+import logging
 import os
 import shlex
 import shutil
@@ -81,6 +82,8 @@ import platform_files  # noqa: E402
 from agno.fs._paths import normalize_namespace  # noqa: E402
 from agno.metrics import MessageMetrics, ModelMetrics, RunMetrics, ToolCallMetrics  # noqa: E402
 from agno.models.response import ToolExecution  # noqa: E402
+from agno.run.agent import RunOutput  # noqa: E402
+from agno.run.base import RunStatus  # noqa: E402
 from agno.tools.workspace import Workspace  # noqa: E402
 from assistant import (  # noqa: E402
     KairosLearningMachine,
@@ -99,6 +102,8 @@ from cli_input import (  # noqa: E402
 from cli_ui import CliRenderer, RichRunStream  # noqa: E402
 from chat import (  # noqa: E402
     COMANDI,
+    AGNO_LOGGER_NAMES,
+    configura_log_agno,
     gestisci_comando,
     finestra_occupata,
     mostra_flusso,
@@ -115,6 +120,7 @@ from prompt_toolkit.input.defaults import create_pipe_input  # noqa: E402
 from prompt_toolkit.output import DummyOutput  # noqa: E402
 from schemas import KairosProfile  # noqa: E402
 from rich.console import Console  # noqa: E402
+from rich.text import Text  # noqa: E402
 from stores import (  # noqa: E402
     leggi_entita,
     leggi_intuizioni,
@@ -124,6 +130,12 @@ from stores import (  # noqa: E402
     righe_entita,
     righe_sessione,
     stampa_store,
+)
+from turn_core import (  # noqa: E402
+    TurnEngine,
+    TurnEventKind,
+    normalize_events,
+    run_turn_cycle,
 )
 
 # Utente che non esiste in nessun archivio: serve solo a controllare che i
@@ -1297,7 +1309,7 @@ def metriche_del_turno() -> str:
 
 
 class _EventoFinto:
-    """Un evento del flusso di Agno con i soli campi che `mostra_flusso` legge."""
+    """Evento Agno ridotto ai campi letti dal normalizzatore del core."""
 
     def __init__(self, event, tool=None, error=None, content=None):
         self.event = event
@@ -1366,7 +1378,7 @@ def esito_strumenti() -> str:
     ]
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        mostra_flusso(flusso)
+        mostra_flusso(normalize_events(flusso))
     reso = catturato.getvalue()
     esigi(reso.count("pippo.md") == 1, "l'errore compare " + str(reso.count("pippo.md")) + " volte:\n" + reso)
     esigi("esito:" not in reso, "un tool fallito viene annunciato come riuscito:\n" + reso)
@@ -1384,8 +1396,8 @@ def renderer_rich() -> str:
 
     Test e pipe vedono una sola copia del testo, senza ANSI e senza
     interpretare come markup parentesi quadre provenienti da modello, path o
-    argomenti. E' la via che ``RichRunStream`` sceglie quando stdout non e'
-    un TTY; il percorso Markdown del Live e' coperto dal controllo successivo.
+    argomenti. ``RichRunStream`` usa ora la stessa via append-only anche su un
+    TTY; il controllo successivo verifica in piu' i comandi del cursore.
     """
     catturato = io.StringIO()
     renderer = CliRenderer(
@@ -1416,47 +1428,322 @@ def renderer_rich() -> str:
     return "markup letterale, zero ANSI, stream singolo e identificativi integri"
 
 
-def renderer_live_sicuro_e_limitato() -> str:
-    """Il Live filtra i controlli e non riparsa il Markdown a ogni token.
-
-    Questa e' deliberatamente la via TTY, che il controllo precedente non
-    attraversa. Le sequenze per clipboard, pulizia schermo e titolo sono
-    divise anche fra frammenti: pulire ciascun token da solo non basterebbe.
-    L'orologio finto rende deterministico il limite, senza sleep fragili.
-    """
+def renderer_tty_markdown_sicuro() -> str:
+    """Anteprima a una riga, controlli filtrati e Markdown finale unico."""
     catturato = io.StringIO()
-    renderer = CliRenderer(
-        Console(file=catturato, color_system="standard", force_terminal=True, width=120)
+    console = Console(
+        file=catturato,
+        color_system="standard",
+        force_terminal=True,
+        width=120,
     )
+    renderer = CliRenderer(console)
     ora = [100.0]
-    flusso = RichRunStream(renderer, clock=lambda: ora[0])
-
-    markdown_originale = flusso._markdown
-    render_eseguiti = [0]
-
-    def markdown_contato():
-        render_eseguiti[0] += 1
-        return markdown_originale()
-
-    flusso._markdown = markdown_contato
-    with flusso:
+    with RichRunStream(renderer, clock=lambda: ora[0], auto_activity=False) as flusso:
         flusso.content("prima \x1b]")
-        flusso.content("52;c;ZXNjaGVk\x07 dopo \x1b[2J")
+        flusso.content("52;c;ZXNjaGVk\x07 dopo \x1b[")
+        flusso.content("2J Markdown **letterale** ")
+        esigi(flusso._activity_live is not None, "manca l'anteprima dello stream")
+        esigi(
+            flusso._activity_live._live_render._shape[1] == 1,
+            "l'anteprima occupa piu' di una riga",
+        )
+
+        console.width = 1
+        ora[0] += 0.125
+        flusso.content("x")
+        esigi(
+            flusso._activity_live._live_render._shape[1] == 1,
+            "il resize fa rifluire l'anteprima",
+        )
+        console.width = 120
         for _ in range(2_000):
             flusso.content("x")
-        ora[0] += 0.126
-        flusso.content(" fine \x1b]0;titolo\x1b\\ C1 \x9b2J")
+        flusso.content(" fine \x1b]0;titolo\x1b")
+        flusso.content("\\ C1 \x9b")
+        flusso.content("2J")
+        # Un comando non terminato non deve far uscire ne' il controllo ne'
+        # il suo payload quando il turno si chiude.
+        flusso.content(" coda-visibile \x1b]0;titolo-incompleto")
 
     reso = catturato.getvalue()
     esigi("\x1b]52" not in reso and "\x1b]0" not in reso, "un comando OSC raggiunge il terminale")
     esigi("\x1b[2J" not in reso and "\x9b2J" not in reso, "un comando CSI raggiunge il terminale")
-    esigi("ZXNjaGVk" not in reso and "titolo" not in reso, "resta il contenuto di un comando terminale")
-    esigi("prima" in reso and "dopo" in reso and "fine" in reso, "la pulizia elimina testo ordinario")
     esigi(
-        render_eseguiti[0] == 3,
-        "2.004 frammenti causano " + str(render_eseguiti[0]) + " parsing Markdown invece di tre",
+        "ZXNjaGVk" not in reso and "titolo" not in reso,
+        "resta il contenuto di un comando terminale",
     )
-    return "controlli TTY filtrati e 2.004 frammenti raccolti in tre rendering"
+
+    # Tutto cio' che segue l'ultimo erase dell'anteprima e' output
+    # permanente. Text.from_ansi rimuove soltanto gli stili Rich.
+    finale = Text.from_ansi(reso.rsplit("\x1b[2K", 1)[-1]).plain
+    esigi(
+        all(finale.count(parola) == 1 for parola in ("prima", "dopo", "fine", "coda-visibile")),
+        "il commit Markdown elimina o duplica testo: " + repr(finale),
+    )
+    esigi(finale.count("x") == 2_001, "i frammenti non arrivano tutti al commit finale")
+    esigi("**letterale**" not in finale, "il Markdown resta sorgente letterale")
+    esigi("Markdown letterale" in finale, "il Markdown finale perde contenuto")
+    esigi("\x1b[2A" not in reso, "l'anteprima risale piu' di una riga")
+    return "2.008 frammenti, anteprima a una riga e Markdown finale unico"
+
+
+def indicatore_attivita() -> str:
+    """L'attesa usa una sola riga e segue tutto il ciclo degli eventi.
+
+    L'orologio e il pulse manuali evitano sleep fragili. La larghezza cambia
+    fra due refresh: il testo ``no_wrap`` deve conservare altezza uno, che e'
+    l'invariante da cui dipende la sicurezza del resize.
+    """
+    catturato = io.StringIO()
+    console = Console(
+        file=catturato,
+        color_system="standard",
+        force_terminal=True,
+        width=80,
+    )
+    renderer = CliRenderer(console)
+    ora = [100.0]
+    with RichRunStream(
+        renderer,
+        clock=lambda: ora[0],
+        auto_activity=False,
+    ) as flusso:
+        flusso.activity_started("Ares sta elaborando...")
+        ora[0] = 101.9
+        flusso.pulse_activity()
+        esigi(flusso._activity_live is None, "l'indicatore compare prima della soglia")
+
+        ora[0] = 102.0
+        flusso.pulse_activity()
+        esigi(flusso._activity_live is not None, "l'attesa lunga resta senza indicatore")
+        esigi(
+            flusso._activity_live._live_render._shape[1] == 1,
+            "l'indicatore occupa piu' di una riga",
+        )
+
+        console.width = 1
+        ora[0] = 165.0
+        flusso.pulse_activity()
+        esigi(
+            flusso._activity_live._live_render._shape[1] == 1,
+            "il resize cambia l'altezza dell'indicatore",
+        )
+
+        flusso.content("risposta-visibile ")
+        esigi(flusso._activity_live is not None, "lo stream non aggiorna l'anteprima")
+        esigi(not flusso._activity_waiting, "l'anteprima continua a sembrare in attesa")
+        ora[0] = 167.0
+        flusso.pulse_activity()
+        esigi(flusso._activity_waiting, "l'indicatore non riparte dopo una nuova attesa")
+        flusso.activity_stopped()
+        console.width = 80
+        flusso.content("finale")
+
+    reso = catturato.getvalue()
+    finale = Text.from_ansi(reso.rsplit("\x1b[2K", 1)[-1]).plain
+    esigi(
+        "risposta-visibile finale" in finale,
+        "l'indicatore inserisce un ritorno a capo permanente: " + repr(finale),
+    )
+    esigi(
+        reso.count("Ares sta elaborando...") == 0,
+        "l'etichetta temporanea resta nello scrollback",
+    )
+    esigi("\x1b[2A" not in reso, "l'indicatore risale piu' di una riga")
+
+    class FlussoFinto:
+        def __init__(self):
+            self.chiamate = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def activity_started(self, label):
+            self.chiamate.append(("start", label))
+
+        def activity_stopped(self):
+            self.chiamate.append(("stop", None))
+
+        def content(self, content):
+            self.chiamate.append(("content", content))
+
+        def flush(self):
+            self.chiamate.append(("flush", None))
+
+        def tool_started(self, nome):
+            self.chiamate.append(("tool", nome))
+
+        def tool_result(self, _righe, *, errore=False):
+            self.chiamate.append(("result", errore))
+
+        def run_error(self, messaggio):
+            self.chiamate.append(("error", messaggio))
+
+        def cancelled(self):
+            self.chiamate.append(("cancelled", None))
+
+    class UiFinta:
+        def __init__(self, flusso):
+            self.flusso = flusso
+
+        def stream(self):
+            return self.flusso
+
+    registrato = FlussoFinto()
+    strumento = ToolExecution(tool_name="workspace_read_file", result="ok")
+    mostra_flusso(
+        normalize_events(
+            [
+            _EventoFinto("ModelRequestStarted"),
+            _EventoFinto("RunContent", content="ciao"),
+            _EventoFinto("ModelRequestCompleted"),
+            _EventoFinto("ToolCallStarted", tool=strumento),
+            _EventoFinto("ToolCallCompleted", tool=strumento),
+            _EventoFinto("PostHookStarted"),
+            _EventoFinto("PostHookCompleted"),
+            _EventoFinto("RunCompleted"),
+            _EventoFinto("RunError", content="guasto"),
+            _EventoFinto("RunCancelled"),
+            ]
+        ),
+        ui=UiFinta(registrato),
+    )
+    etichette = [valore for azione, valore in registrato.chiamate if azione == "start"]
+    esigi("Ares sta elaborando..." in etichette, "il modello non attiva l'indicatore")
+    esigi(
+        "workspace_read_file in esecuzione..." in etichette,
+        "un tool lungo non attiva l'indicatore",
+    )
+    esigi(
+        "Ares sta aggiornando cio' che ricorda..." in etichette,
+        "il post-hook non attiva l'indicatore",
+    )
+    azioni = [azione for azione, _valore in registrato.chiamate]
+    indice_errore = azioni.index("error")
+    esigi(
+        azioni[indice_errore - 1] == "stop",
+        "l'errore precede la chiusura dello stato",
+    )
+    esigi(azioni[-2:] == ["stop", "cancelled"], "l'annullamento lascia l'indicatore attivo")
+    return "soglia 2 s, resize a una riga, nessun newline e lifecycle chiuso"
+
+
+def core_del_turno() -> str:
+    """Il core normalizza eventi e possiede run/continue senza dipendere dalla UI."""
+    pausa = RunOutput(run_id="pausa", status=RunStatus.paused, requirements=[])
+    completato = RunOutput(run_id="fine", status=RunStatus.completed)
+
+    class AgenteFinto:
+        def __init__(self):
+            self.chiamate = []
+
+        def run(self, testo, **opzioni):
+            self.chiamate.append(("run", testo, opzioni))
+            return iter(
+                [
+                    _EventoFinto("ModelRequestStarted"),
+                    _EventoFinto("RunContent", content="prima"),
+                    _EventoFinto("RunPaused"),
+                    pausa,
+                ]
+            )
+
+        def continue_run(self, run_response, requirements, **opzioni):
+            self.chiamate.append(("continue", run_response, requirements, opzioni))
+            return iter(
+                [
+                    _EventoFinto("EventoFuturo", content="conservato"),
+                    _EventoFinto("RunContent", content="seconda"),
+                    _EventoFinto("RunCompleted"),
+                    completato,
+                ]
+            )
+
+    # Il primo evento precede anche la chiamata al provider: copre il lavoro
+    # che Agno svolge prima di ModelRequestStarted.
+    pigro = AgenteFinto()
+    stream = TurnEngine(pigro).start("ciao")
+    primo = next(stream)
+    esigi(primo.kind is TurnEventKind.PROCESSING_STARTED, "manca lo stato iniziale del core")
+    esigi(pigro.chiamate == [], "agent.run parte prima che il client veda l'attivita'")
+    secondo = next(stream)
+    esigi(secondo.kind is TurnEventKind.MODEL_STARTED, "l'evento modello non e' normalizzato")
+    esigi(pigro.chiamate[0][0] == "run", "il core non avvia il run dopo lo stato iniziale")
+
+    agente = AgenteFinto()
+    eventi = []
+    pause_risolte = []
+
+    def risolvi(output):
+        pause_risolte.append(output.run_id)
+        return 1
+
+    risultato = run_turn_cycle(
+        agente,
+        "domanda",
+        on_event=eventi.append,
+        resolve_pause=risolvi,
+    )
+    esigi(risultato is completato, "il ciclo non restituisce l'output della continuazione")
+    esigi([c[0] for c in agente.chiamate] == ["run", "continue"], "sequenza run/continue errata")
+    esigi(pause_risolte == ["pausa"], "la pausa non attraversa il resolver iniettato")
+    esigi(
+        sum(e.kind is TurnEventKind.PROCESSING_STARTED for e in eventi) == 2,
+        "run e continuazione non annunciano entrambi la preparazione",
+    )
+    sconosciuto = next(e for e in eventi if e.source_name == "EventoFuturo")
+    esigi(sconosciuto.kind is TurnEventKind.OTHER, "un evento futuro viene perso dal core")
+    esigi(sconosciuto.content == "conservato", "l'evento futuro perde il proprio payload")
+    return "eventi neutri, avvio anticipato e ciclo run/continue indipendente"
+
+
+def log_cli_puliti() -> str:
+    """La CLI normale filtra INFO di Agno; --debug lo riabilita."""
+    logger = logging.getLogger("agno")
+    snapshot = {
+        nome: (
+            logging.getLogger(nome).level,
+            list(logging.getLogger(nome).handlers),
+            [handler.level for handler in logging.getLogger(nome).handlers],
+        )
+        for nome in AGNO_LOGGER_NAMES
+    }
+    catturato = io.StringIO()
+    handler_prova = logging.StreamHandler(catturato)
+
+    try:
+        # Isola l'asserzione dall'handler Rich reale, che altrimenti
+        # stamperebbe il warning di prova nel resoconto della smoke suite.
+        logger.handlers = [handler_prova]
+        logger.setLevel(logging.DEBUG)
+
+        configura_log_agno(False)
+        logger.info("Found 0 documents")
+        logger.warning("warning-visibile")
+        normale = catturato.getvalue()
+        esigi("Found 0 documents" not in normale, "un INFO Agno compare nella CLI normale")
+        esigi("warning-visibile" in normale, "la pulizia nasconde anche i warning Agno")
+
+        catturato.seek(0)
+        catturato.truncate(0)
+        configura_log_agno(True)
+        logger.debug("debug-visibile")
+        logger.info("info-visibile")
+        debug = catturato.getvalue()
+        esigi("debug-visibile" in debug and "info-visibile" in debug, "--debug filtra i log Agno")
+    finally:
+        for nome, (livello, handlers, livelli_handler) in snapshot.items():
+            logger_originale = logging.getLogger(nome)
+            logger_originale.handlers = handlers
+            logger_originale.setLevel(livello)
+            for handler, livello_handler in zip(handlers, livelli_handler):
+                handler.setLevel(livello_handler)
+
+    return "INFO interni nascosti, warning preservati e --debug completo"
 
 
 def cronologia_persistente() -> str:
@@ -1789,7 +2076,10 @@ def main() -> int:
             ("metriche del turno  ", lambda: metriche_del_turno()),
             ("esito strumenti     ", lambda: esito_strumenti()),
             ("renderer Rich       ", lambda: renderer_rich()),
-            ("renderer Live       ", lambda: renderer_live_sicuro_e_limitato()),
+            ("renderer TTY        ", lambda: renderer_tty_markdown_sicuro()),
+            ("indicatore attivita ", lambda: indicatore_attivita()),
+            ("core del turno      ", lambda: core_del_turno()),
+            ("log CLI             ", lambda: log_cli_puliti()),
             ("cronologia          ", lambda: cronologia_persistente()),
             ("input REPL          ", lambda: input_repl()),
             ("comandi             ", lambda: comandi()),

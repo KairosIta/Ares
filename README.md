@@ -39,7 +39,8 @@ spazio controllato sul disco senza richiedere API cloud.
 
 ```mermaid
 flowchart LR
-    U["Utente / CLI"] --> A["Ares · Agno Agent"]
+    U["Utente / CLI"] --> C["Core del turno"]
+    C --> A["Ares · Agno Agent"]
     A --> O["Ollama · LLM locale"]
     A --> T["Strumenti e workspace"]
     A --> L["LearningMachine"]

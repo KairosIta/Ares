@@ -192,8 +192,8 @@ MOSTRA_METRICHE = False
 # nella nostra: se `read_file` non trova il file, l'utente vede il nome dello
 # strumento, poi una risposta costruita su un errore che non ha mai letto.
 #
-# Gratis come le metriche: gli eventi passano gia' da `mostra_flusso`, che
-# finora li scartava. Acceso di default, al contrario delle metriche, perche'
+# Gratis come le metriche: gli eventi passano gia' dal core del turno e dal
+# client CLI. Acceso di default, al contrario delle metriche, perche'
 # non e' una misura da tuning ma la differenza fra guardare cosa fa Ares e
 # fidarsi del suo racconto.
 MOSTRA_ESITO_STRUMENTI = True

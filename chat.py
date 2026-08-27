@@ -23,6 +23,7 @@ divergite.
 
 import argparse
 import difflib
+import logging
 import shlex
 from typing import Optional
 
@@ -34,6 +35,25 @@ from cli_input import CliInput
 from cli_ui import UI
 from state_lock import StatoOccupato, lock_stato
 from stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
+from turn_core import TurnEvent, TurnEventKind, consume_events, run_turn_cycle
+
+
+AGNO_LOGGER_NAMES = ("agno", "agno-team", "agno-workflow")
+
+
+def configura_log_agno(debug: bool) -> None:
+    """Nasconde il rumore INFO di Agno, salvo quando si chiede il debug.
+
+    Agno riporta il livello del proprio logger a INFO all'inizio di ogni run.
+    La soglia sugli handler non viene invece riscritta e continua quindi a
+    filtrare messaggi interni come ``Found 0 documents`` per tutta la REPL.
+    Warning ed errori restano sempre visibili.
+    """
+    livello = logging.DEBUG if debug else logging.WARNING
+    for nome in AGNO_LOGGER_NAMES:
+        for handler in logging.getLogger(nome).handlers:
+            handler.setLevel(livello)
+
 
 # ---------------------------------------------------------------------------
 # I comandi
@@ -218,54 +238,81 @@ def gestisci_comando(comando: str, agent, session_id: str, user_id: str) -> bool
     return voce[3](agent, session_id, user_id, argomento.strip()) is not False
 
 
-def mostra_flusso(eventi) -> Optional[RunOutput]:
-    """Stampa un turno mentre arriva e restituisce l'esito.
+def mostra_evento(flusso, evento: TurnEvent) -> None:
+    """Adatta un evento neutro del core ai componenti della CLI."""
+    tipo = evento.kind
+    if tipo is TurnEventKind.PROCESSING_STARTED:
+        flusso.activity_started("Ares sta preparando il turno...")
+    elif tipo is TurnEventKind.MODEL_STARTED:
+        flusso.activity_started("Ares sta elaborando...")
+    elif tipo is TurnEventKind.MODEL_COMPLETED:
+        flusso.activity_stopped()
+    elif tipo is TurnEventKind.PRE_HOOK_STARTED:
+        flusso.activity_started("Ares sta preparando il turno...")
+    elif tipo is TurnEventKind.PRE_HOOK_COMPLETED:
+        flusso.activity_stopped()
+    elif tipo is TurnEventKind.POST_HOOK_STARTED:
+        flusso.activity_started("Ares sta aggiornando cio' che ricorda...")
+    elif tipo is TurnEventKind.POST_HOOK_COMPLETED:
+        flusso.activity_stopped()
+    elif tipo is TurnEventKind.MEMORY_STARTED:
+        flusso.activity_started("Ares sta aggiornando la memoria...")
+    elif tipo is TurnEventKind.MEMORY_COMPLETED:
+        flusso.activity_stopped()
+    elif tipo is TurnEventKind.SUMMARY_STARTED:
+        flusso.activity_started("Ares sta aggiornando il riepilogo...")
+    elif tipo is TurnEventKind.SUMMARY_COMPLETED:
+        flusso.activity_stopped()
+    elif tipo is TurnEventKind.TOOL_STARTED:
+        flusso.activity_stopped()
+        nome = getattr(evento.tool, "tool_name", None) or "?"
+        flusso.tool_started(nome)
+        flusso.activity_started(nome + " in esecuzione...")
+    elif tipo is TurnEventKind.TOOL_COMPLETED:
+        flusso.activity_stopped()
+        # Uno strumento fallito emette Completed **e poi** Error, non l'uno
+        # o l'altro. La guardia evita un esito riuscito prima dell'errore.
+        if config.MOSTRA_ESITO_STRUMENTI and not getattr(
+            evento.tool, "tool_call_error", False
+        ):
+            flusso.tool_result(righe_esito(evento.tool))
+    elif tipo is TurnEventKind.TOOL_ERROR:
+        flusso.activity_stopped()
+        errore = evento.error or getattr(evento.tool, "result", None) or ""
+        if config.MOSTRA_ESITO_STRUMENTI:
+            flusso.tool_result(
+                righe_esito(evento.tool, errore=errore),
+                errore=True,
+            )
+    elif tipo is TurnEventKind.CONTENT:
+        if isinstance(evento.content, str):
+            flusso.content(evento.content)
+    elif tipo is TurnEventKind.RUN_ERROR:
+        flusso.activity_stopped()
+        flusso.run_error(evento.content)
+    elif tipo is TurnEventKind.RUN_CANCELLED:
+        flusso.activity_stopped()
+        flusso.cancelled()
+    elif tipo in (TurnEventKind.RUN_COMPLETED, TurnEventKind.RUN_PAUSED):
+        flusso.activity_stopped()
+        flusso.flush()
+    elif tipo is TurnEventKind.OUTPUT:
+        flusso.activity_stopped()
+        # L'output conclude una singola run o continuazione. Il commit qui
+        # garantisce che un'eventuale conferma venga dopo il testo prodotto.
+        flusso.flush()
 
-    Sostituisce `print_response`, che qui non e' utilizzabile: e' annotato
-    `-> None` e davanti a una pausa disegna un pannello e ritorna, quindi chi
-    chiama non ha in mano niente da confermare e il turno finisce li'. Con
-    `yield_run_output` l'ultimo elemento del flusso e' il RunOutput, pausa
-    compresa.
+
+def mostra_flusso(eventi, *, ui=None) -> Optional[RunOutput]:
+    """Mostra uno stream di eventi del core e restituisce il suo output.
+
+    E' il piccolo adapter riusabile nei test. Il ciclo completo usa la stessa
+    funzione ``mostra_evento`` mantenendo un solo stream attraverso tutte le
+    eventuali continuazioni.
     """
-    risposta = None
-    with UI.stream() as flusso:
-        for evento in eventi:
-            if isinstance(evento, RunOutput):
-                risposta = evento
-                continue
-            tipo = getattr(evento, "event", "")
-            if tipo == "ToolCallStarted":
-                strumento = getattr(evento, "tool", None)
-                nome = getattr(strumento, "tool_name", None) or "?"
-                flusso.tool_started(nome)
-            elif tipo == "ToolCallCompleted":
-                strumento = getattr(evento, "tool", None)
-                # Uno strumento fallito emette Completed **e poi** Error, non
-                # l'uno o l'altro. Senza questa guardia l'errore comparirebbe
-                # due volte, la prima presentato come un esito riuscito.
-                if config.MOSTRA_ESITO_STRUMENTI and not getattr(strumento, "tool_call_error", False):
-                    flusso.tool_result(righe_esito(strumento))
-            elif tipo == "ToolCallError":
-                strumento = getattr(evento, "tool", None)
-                # Agno costruisce l'evento con `error=str(tool.result)`, ma il
-                # risultato sullo strumento e' la fonte: se un giorno l'evento
-                # arrivasse senza, un errore muto sarebbe letto come un successo.
-                errore = getattr(evento, "error", None) or getattr(strumento, "result", None) or ""
-                if config.MOSTRA_ESITO_STRUMENTI:
-                    flusso.tool_result(righe_esito(strumento, errore=errore), errore=True)
-            elif tipo == "RunContent":
-                contenuto = getattr(evento, "content", None)
-                if isinstance(contenuto, str):
-                    flusso.content(contenuto)
-            elif tipo == "RunError":
-                # print_response mostrava gli errori da solo. Qui il flusso e'
-                # nostro: senza questa riga un turno fallito uscirebbe muto.
-                flusso.run_error(getattr(evento, "content", None))
-            elif tipo == "RunCancelled":
-                # Agno conserva il run annullato ma non raggiunge i post-hook:
-                # le due conseguenze restano entrambe esplicite a schermo.
-                flusso.cancelled()
-    return risposta
+    renderer = UI if ui is None else ui
+    with renderer.stream() as flusso:
+        return consume_events(eventi, lambda evento: mostra_evento(flusso, evento))
 
 
 def anteprima_risultato(testo: str) -> list:
@@ -525,25 +572,18 @@ def righe_metriche(risposta) -> list:
 
 def _turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
     """Il turno vero, senza le difese: le pause per autorizzare uno strumento."""
-    risposta = mostra_flusso(
-        agent.run(testo, stream=True, stream_events=True, yield_run_output=True)
-    )
+    with UI.stream() as flusso:
+        risposta = run_turn_cycle(
+            agent,
+            testo,
+            on_event=lambda evento: mostra_evento(flusso, evento),
+            resolve_pause=lambda output: chiedi_conferme(output, input_cli),
+        )
 
-    while risposta is not None and risposta.is_paused:
-        if chiedi_conferme(risposta, input_cli) == 0:
-            UI.line(
-                "Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.",
-                style="ares.warning",
-            )
-            return risposta
-        risposta = mostra_flusso(
-            agent.continue_run(
-                run_response=risposta,
-                requirements=risposta.requirements,
-                stream=True,
-                stream_events=True,
-                yield_run_output=True,
-            )
+    if risposta is not None and risposta.is_paused:
+        UI.line(
+            "Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.",
+            style="ares.warning",
         )
     return risposta
 
@@ -555,8 +595,8 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
     resta fuori. Agno gestisce da se' sia `KeyboardInterrupt` sia le
     eccezioni dentro i propri generatori di streaming - `_run_stream` alle
     righe 1220 e 1243, `_continue_run_stream` alla 4061 - e non le rilancia:
-    un Ctrl-C mentre Ollama genera diventa un evento `RunCancelled`, che
-    `mostra_flusso` stampa, e un guasto diventa un evento `RunError`, idem.
+    un Ctrl-C mentre Ollama genera diventa un evento `RunCancelled`, che il
+    client stampa, e un guasto diventa un evento `RunError`, idem.
     Quando il generatore termina, la REPL torna autonomamente al prompt.
 
     Restano fuori i pezzi che non stanno dentro quei generatori: costruire gli
@@ -572,8 +612,8 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
     try:
         return _turno(agent, testo, input_cli)
     except KeyboardInterrupt:
-        # A capo nostro: `mostra_flusso` stava scrivendo la risposta e il suo
-        # print finale non e' stato raggiunto.
+        # Il context manager del renderer ha gia' chiuso l'anteprima e reso
+        # permanente l'eventuale Markdown parziale.
         UI.blank()
         UI.line("Interrotto fuori dal turno. Non e' stato appreso.", style="ares.warning")
     except Exception as errore:
@@ -601,6 +641,7 @@ def _esegui_chat() -> None:
     )
     args = parser.parse_args()
 
+    configura_log_agno(args.debug)
     agent = build_assistant(user_id=args.user, session_id=args.session, debug=args.debug)
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione

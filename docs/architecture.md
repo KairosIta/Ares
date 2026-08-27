@@ -6,7 +6,9 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 
 ## Componenti
 
-- `chat.py` coordina sessioni, comandi, conferme e continuazione dei run;
+- `chat.py` e' il client CLI: comandi, rendering e richieste di conferma;
+- `turn_core.py` normalizza gli eventi Agno e coordina `run/continue_run`
+  senza dipendere dall'interfaccia;
 - `cli_input.py` gestisce editor, completamento e cronologia della REPL;
 - `cli_ui.py` rende streaming Markdown, pannelli, tabelle e messaggi;
 - `platform_files.py` uniforma lock condivisi/esclusivi fra POSIX e Windows;
@@ -22,11 +24,12 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 
 ## Flusso di un turno
 
-1. La CLI invia il messaggio all'agente.
-2. Il modello puo' rispondere o richiedere uno strumento.
-3. Le operazioni sensibili sospendono il run in attesa di conferma.
-4. `continue_run` completa lo stesso run dopo la decisione dell'utente.
-5. La macchina di apprendimento riceve l'output completo e aggiorna gli store.
+1. Il client consegna il messaggio al core del turno.
+2. Il core avvia Agno e pubblica eventi indipendenti dall'interfaccia.
+3. Il modello puo' rispondere o richiedere uno strumento.
+4. Le operazioni sensibili sospendono il run in attesa di conferma del client.
+5. Il core esegue `continue_run` sullo stesso run dopo la decisione.
+6. La macchina di apprendimento riceve l'output completo e aggiorna gli store.
 
 L'ultimo passaggio e' separato dall'interfaccia: l'apprendimento usa sempre il
 run finale, evitando di perdere il contenuto prodotto dopo una conferma.
