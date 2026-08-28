@@ -51,6 +51,13 @@ PROVE = (
     ("e2e", "e2e_test.py", True, "un turno completo e la rilettura da un altro processo"),
 )
 
+# Un test bloccato e' diverso da un test lento: senza un limite il runner non
+# arriva mai al riepilogo e in CI consuma l'intero timeout del job. Le prove
+# offline normalmente finiscono in secondi; quelle con Ollama hanno piu'
+# margine per caricamento del modello, inferenza e GPU meno veloci.
+TIMEOUT_OFFLINE_SECONDI = 180
+TIMEOUT_OLLAMA_SECONDI = 900
+
 
 def costruisci_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -173,7 +180,12 @@ def esegui(prova: tuple[str, str, bool, str], copertura: bool) -> tuple[int, flo
         ambiente.update(ambiente_figli())
     comando.append(str(percorso))
     avvio = time.monotonic()
-    esito = subprocess.run(comando, cwd=RADICE, env=ambiente).returncode
+    timeout = TIMEOUT_OLLAMA_SECONDI if prova[2] else TIMEOUT_OFFLINE_SECONDI
+    try:
+        esito = subprocess.run(comando, cwd=RADICE, env=ambiente, timeout=timeout).returncode
+    except subprocess.TimeoutExpired:
+        print(f"TIMEOUT: {prova[0]} non e' terminata entro {timeout} secondi.")
+        esito = 124
     return esito, time.monotonic() - avvio
 
 

@@ -55,6 +55,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- la manutenzione delle entità non vive più in un unico modulo da oltre mille
+  righe: `entity_maintenance.py` conserva CLI e API compatibile,
+  `entity_audit.py` contiene il rilevamento in sola lettura,
+  `entity_merge.py` pianifica e applica le fusioni e `entity_models.py` ospita
+  i contratti condivisi;
+- il runner delle prove applica ora un timeout per singolo processo (tre
+  minuti offline, quindici con Ollama), così un deadlock arriva al riepilogo
+  come fallimento invece di bloccare terminale e CI; `setup.sh` verifica anche
+  la coerenza delle dipendenze installate, come già faceva `setup.ps1`;
 - `chat.py` traduce eventi neutri invece di consumare direttamente lo stream
   di Agno: rendering e ciclo del turno sono separati;
 - il filtro dei controlli di terminale è un parser a stati che consuma i
