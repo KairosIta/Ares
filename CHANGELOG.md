@@ -14,7 +14,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - indicatore di attività nella REPL dopo due secondi di attesa, per i turni in
   cui il modello non ha ancora emesso niente;
 - prova dedicata ai permessi dello stato appreso nello smoke test, che copre
-  anche la correzione di un archivio preesistente con permessi larghi.
+  anche la correzione di un archivio preesistente con permessi larghi;
+- analisi statica con ruff e mypy, in `requirements-dev.in` separato e in un
+  job di CI dedicato. Mypy gira senza `ignore_missing_imports`, perché
+  l'intero albero delle dipendenze è tipizzato, e copre i moduli e non le
+  prove; ruff copre tutto, con `PTH` escluso perché litigherebbe con la
+  scelta motivata fra `os.rename` e `os.replace` in `backup.py`.
 
 ### Changed
 
@@ -34,7 +39,16 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   formato di backup e non una rinomina;
 - `docs/architecture.md` elencava `learning.py`, che non esiste, e ometteva
   cinque moduli; la voce su `stores.py` descriveva store che quel modulo non
-  legge.
+  legge;
+- codice riformattato con ruff, riga a 120: il limite descrive lo stile già
+  presente invece di riscriverlo. Nessun cambio di comportamento;
+- `backup.py` riusava `snapshot` per una `Path` in un ramo e per una lista in
+  un altro, `entity_maintenance.py` riusava `chiave` per il nome di una
+  proprietà e per la chiave a due campi di un'entità: rami distinti, quindi
+  nessun difetto a runtime, ma due nomi per quattro cose;
+- il terzo parametro di `_continuazione` era annotato `bool`, mentre
+  prompt_toolkit ci passa `wrap_count`, che è un intero; `esigi` nelle prove
+  dichiarava `bool` e riceve da sempre anche tuple e liste.
 
 ### Security
 
