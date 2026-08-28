@@ -13,6 +13,9 @@ source = .
 # `config.py` legge all'import - quindi ognuna scrive il proprio file e
 # `coverage combine` li unisce.
 parallel = true
+# I rami contano quanto le righe, e vanno chiesti: senza questa riga il
+# commento qui sotto descriveva una misura che non veniva fatta.
+branch = true
 omit =
     tests/*
     */tests/*

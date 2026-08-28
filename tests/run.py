@@ -11,12 +11,12 @@ Ogni prova resta uno script eseguibile da solo: questo file non le importa,
 le lancia. Non e' una preferenza di stile. Ognuna prepara il proprio ambiente
 scrivendo `ARES_TMP`, `ARES_BACKUP_DIR` e `ARES_WORKSPACE` *prima* di
 importare `config`, che quelle variabili le legge una volta sola all'import e
-in base a quelle crea directory su disco. Due prove nello stesso interprete
-condividerebbero il primo `config` importato, cioe' l'archivio della prima:
-la seconda scriverebbe dove ha preparato la prima, e il giorno in cui una
-delle due sbagliasse variabile scriverebbe nell'archivio vero senza che
-nessuno se ne accorga. Un processo per prova rende quell'errore impossibile
-invece che improbabile.
+non le rilegge mai piu'. Due prove nello stesso interprete condividerebbero
+il primo `config` importato, cioe' i percorsi della prima: la seconda
+scriverebbe dove ha preparato la prima, e il giorno in cui una delle due
+sbagliasse variabile scriverebbe nell'archivio vero senza che nessuno se ne
+accorga. Un processo per prova rende quell'errore impossibile invece che
+improbabile.
 
 Per lo stesso motivo la misura di copertura gira in modalita' parallela: un
 file per processo, uniti da `coverage combine` alla fine. La configurazione
@@ -221,11 +221,24 @@ def main(argomenti: list[str] | None = None) -> int:
 
     if copertura:
         print()
-        subprocess.run([sys.executable, "-m", "coverage", "combine"], cwd=RADICE)
-        subprocess.run([sys.executable, "-m", "coverage", "report"], cwd=RADICE)
+        # Gli esiti si guardano. Senza `fail_under` in `.coveragerc` un codice
+        # diverso da zero qui significa che la misura non c'e' - nessun dato
+        # raccolto, configurazione illeggibile - e una misura mancante che
+        # stampa "Nessun fallimento" e' il modo esatto in cui questo runner ha
+        # gia' mentito una volta.
+        guasti = []
+        for passo in ("combine", "report"):
+            if subprocess.run([sys.executable, "-m", "coverage", passo], cwd=RADICE).returncode != 0:
+                guasti.append(passo)
         if args.html:
-            subprocess.run([sys.executable, "-m", "coverage", "html"], cwd=RADICE)
-            print("Rapporto navigabile:", RADICE / "htmlcov" / "index.html")
+            if subprocess.run([sys.executable, "-m", "coverage", "html"], cwd=RADICE).returncode != 0:
+                guasti.append("html")
+            else:
+                print("Rapporto navigabile:", RADICE / "htmlcov" / "index.html")
+        if guasti:
+            print()
+            print("La misura di copertura e' fallita:", ", ".join(guasti))
+            falliti.append("copertura")
         if not args.tutte and not args.solo:
             # Una percentuale senza il suo perimetro e' un numero che invita
             # a inseguirlo: meta' di cio' che resta scoperto sta nei percorsi
