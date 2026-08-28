@@ -62,9 +62,7 @@ I comandi mostrano il percorso Linux. Su Windows usa
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 .venv/bin/python -m mypy .
-.venv/bin/python tests/smoke_test.py
-.venv/bin/python tests/backup_test.py
-.venv/bin/python tests/entity_maintenance_test.py
+.venv/bin/python tests/run.py
 ```
 
 I primi tre sono gli stessi comandi del job `Analisi statica` della CI. Le
@@ -76,10 +74,17 @@ Le modifiche al percorso conversazionale o di apprendimento richiedono anche
 le prove pertinenti con Ollama:
 
 ```bash
-.venv/bin/python tests/learning_reliability_test.py
-.venv/bin/python -u tests/learned_knowledge_test.py
-.venv/bin/python -u tests/e2e_test.py
+.venv/bin/python tests/run.py --tutte
 ```
+
+Il runner elenca le prove con `--help` e ne esegue una sola con
+`--solo <nome>`. Se aggiungi una prova, registrala nella tabella `PROVE` di
+`tests/run.py`: è l'unico elenco, e la CI legge quello.
+
+La copertura si misura con `.venv/bin/python tests/run.py --copertura`
+(`--html` per il rapporto navigabile). Non c'è una soglia da rispettare:
+serve a sapere quale ramo non è mai stato eseguito, non a produrre un
+numero da difendere.
 
 Tutte le prove devono usare archivi temporanei. Non leggere, copiare o
 committare lo stato reale in `tmp/`, i workspace o gli snapshot locali.

@@ -19,7 +19,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   job di CI dedicato. Mypy gira senza `ignore_missing_imports`, perché
   l'intero albero delle dipendenze è tipizzato, e copre i moduli e non le
   prove; ruff copre tutto, con `PTH` escluso perché litigherebbe con la
-  scelta motivata fra `os.rename` e `os.replace` in `backup.py`.
+  scelta motivata fra `os.rename` e `os.replace` in `backup.py`;
+- `tests/run.py`, runner unico delle sei prove, e misura di copertura con
+  `--copertura`. Il runner non importa le prove, le lancia una per processo:
+  ognuna scrive `ARES_TMP` e le altre variabili prima di importare `config`,
+  che le legge una volta sola all'import, quindi due prove nello stesso
+  interprete condividerebbero l'archivio della prima. L'elenco delle prove
+  vive ora in un posto solo e la CI legge quello.
 
 ### Changed
 
@@ -48,7 +54,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   nessun difetto a runtime, ma due nomi per quattro cose;
 - il terzo parametro di `_continuazione` era annotato `bool`, mentre
   prompt_toolkit ci passa `wrap_count`, che è un intero; `esigi` nelle prove
-  dichiarava `bool` e riceve da sempre anche tuple e liste.
+  dichiarava `bool` e riceve da sempre anche tuple e liste;
+- la CI esegue le prove con un passo solo invece di tre, e compila il codice
+  per esclusione invece che per elenco: l'elenco scritto a mano si era già
+  perso `turn_core.py`, aggiunto dopo.
 
 ### Security
 

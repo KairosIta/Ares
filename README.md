@@ -145,16 +145,20 @@ I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
 `.venv/bin/python` con `.\.venv\Scripts\python.exe`.
 
 ```bash
-# Cablaggio, store, strumenti e isolamento; nessuna inferenza
-.venv/bin/python tests/smoke_test.py
+# Le prove offline: cablaggio, store, lock, backup/restore, entità
+.venv/bin/python tests/run.py
 
-# Backup/restore e manutenzione delle entità
-.venv/bin/python tests/backup_test.py
-.venv/bin/python tests/entity_maintenance_test.py
+# Anche quelle che accendono Ollama, incluso un turno completo
+.venv/bin/python tests/run.py --tutte
 
-# Turno completo con modello locale e rilettura da un secondo processo
-.venv/bin/python -u tests/e2e_test.py
+# Offline, con la misura di copertura dei moduli
+.venv/bin/python tests/run.py --copertura
 ```
+
+Ogni prova resta anche uno script eseguibile da solo
+(`.venv/bin/python tests/backup_test.py`); il runner le lancia una per
+processo, perché ognuna prepara il proprio archivio temporaneo prima di
+importare la configurazione.
 
 La distinzione fra test offline ed E2E è descritta nella
 [guida ai test](docs/testing.md).
