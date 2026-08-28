@@ -58,7 +58,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   accanto e gli snapshot erano privati da sempre: era protetta la copia e non
   l'originale. I database vengono creati vuoti e con i propri permessi prima
   che li apra SQLite, così non esiste una finestra fra creazione e correzione,
-  e un archivio già scritto viene corretto alla costruzione successiva.
+  e un archivio già scritto viene corretto alla costruzione successiva;
+- i lock delle dipendenze portano gli hash SHA-256 di ogni artefatto, e
+  `uv pip sync` rifiuta un pacchetto che non corrisponda. Le versioni sono
+  invariate: il pin diceva già quale versione installare, l'hash aggiunge
+  quale file, cioè la parte che una ripubblicazione su PyPI cambierebbe senza
+  toccare il numero di versione. Vale per `setup.sh`, `setup.ps1`, la CI e le
+  PR settimanali di Dependabot.
 
 ## [0.2.0] - 2026-08-26
 

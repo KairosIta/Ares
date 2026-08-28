@@ -32,6 +32,12 @@ Ares mantiene inferenza e stato sul computer locale nell’uso ordinario e
 disabilita la telemetria Agno. I dati persistenti vivono in directory escluse
 da Git e i backup vengono verificati prima del restore.
 
+Le dipendenze sono bloccate a versione e ad artefatto: `requirements.txt` e
+`requirements-dev.txt` portano gli hash SHA-256 di ogni file, e
+`uv pip sync` rifiuta un pacchetto che non corrisponda. Un pin dice quale
+versione installare, un hash dice quale file: senza, la ripubblicazione di una
+versione già esistente su PyPI passerebbe inosservata.
+
 Sono particolarmente rilevanti vulnerabilità che permettono:
 
 - accesso fuori dal workspace configurato;

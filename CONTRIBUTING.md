@@ -22,8 +22,19 @@ Le dipendenze dirette vivono in `requirements.in`; `requirements.txt` è il
 lock completo. Se cambia una dipendenza diretta, rigenera il lock con:
 
 ```bash
-uv pip compile --universal requirements.in -o requirements.txt
+uv pip compile --universal --generate-hashes requirements.in -o requirements.txt
 ```
+
+Rigenera sempre **sopra** il file esistente: uv legge il lock che sta per
+riscrivere come preferenza, quindi aggiungere una dipendenza non aggiorna di
+nascosto tutte le altre. Compilare su un percorso nuovo perde quel vincolo.
+
+Gli hash valgono per il motivo per cui esiste un lock. Un pin dice quale
+versione installare; un hash dice quale artefatto. Se un account su PyPI viene
+compromesso e un file ripubblicato, `agno==2.9.0` resta vero e il contenuto
+cambia: con gli hash l'installazione si ferma invece di riuscire. Vale su ogni
+macchina che esegue `setup.sh` e su ogni PR di Dependabot, che di aggiornamenti
+automatici ne apre uno a settimana.
 
 Ruff e mypy stanno in `requirements-dev.in`, separati perché non si importano:
 si eseguono. Per averli nel venv insieme al resto — è quello che fa anche la
@@ -31,7 +42,7 @@ CI, e `uv pip sync` rimuove ciò che non è nei file che gli passi:
 
 ```bash
 uv pip sync --python .venv/bin/python requirements.txt requirements-dev.txt
-uv pip compile --universal requirements-dev.in -o requirements-dev.txt
+uv pip compile --universal --generate-hashes requirements-dev.in -o requirements-dev.txt
 ```
 
 ## Flusso consigliato
