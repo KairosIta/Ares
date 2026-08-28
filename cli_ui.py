@@ -249,9 +249,7 @@ class RichRunStream:
         self._frammenti.clear()
         self._preview_tail = ""
         if self.console.is_terminal:
-            self.console.print(
-                Markdown(contenuto, code_theme="monokai", hyperlinks=False)
-            )
+            self.console.print(Markdown(contenuto, code_theme="monokai", hyperlinks=False))
         else:
             # Una pipe conserva il sorgente Markdown, utile per log e file.
             # Si aggiunge soltanto il newline che la CLI usa per separare il
@@ -445,10 +443,7 @@ class CliRenderer:
 
     def confirmation(self, righe: Sequence[str]) -> None:
         contenuto = Group(
-            *[
-                _testo(riga, "ares.warning" if indice == 0 else "ares.text")
-                for indice, riga in enumerate(righe)
-            ]
+            *[_testo(riga, "ares.warning" if indice == 0 else "ares.text") for indice, riga in enumerate(righe)]
         )
         self.console.print(
             Panel(

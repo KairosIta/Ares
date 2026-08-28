@@ -82,15 +82,13 @@ def _comando_memorie(agent, session_id, user_id, argomento):
 
 
 def _comando_contesto(agent, session_id, user_id, argomento):
-    stampa_store(
-        agent.learning_machine.session_context_store, "Contesto", session_id=session_id
-    )
+    stampa_store(agent.learning_machine.session_context_store, "Contesto", session_id=session_id)
 
 
 def _comando_sessioni(agent, session_id, user_id, argomento):
     UI.heading("Sessioni")
     sessioni = leggi_sessioni(agent, user_id=user_id, query=argomento)
-    mostrate = sessioni[:config.SESSIONI_ELENCO]
+    mostrate = sessioni[: config.SESSIONI_ELENCO]
     for s in mostrate:
         for riga in righe_sessione(s, corrente=(getattr(s, "session_id", None) == session_id)):
             UI.line(riga)
@@ -206,9 +204,7 @@ def risolvi_comando(nome: str) -> tuple:
             return voce, []
 
     candidati = [
-        voce
-        for voce in COMANDI
-        if voce[0].startswith(nome) or any(alias.startswith(nome) for alias in voce[1])
+        voce for voce in COMANDI if voce[0].startswith(nome) or any(alias.startswith(nome) for alias in voce[1])
     ]
     if len(candidati) == 1:
         return candidati[0], []
@@ -272,9 +268,7 @@ def mostra_evento(flusso, evento: TurnEvent) -> None:
         flusso.activity_stopped()
         # Uno strumento fallito emette Completed **e poi** Error, non l'uno
         # o l'altro. La guardia evita un esito riuscito prima dell'errore.
-        if config.MOSTRA_ESITO_STRUMENTI and not getattr(
-            evento.tool, "tool_call_error", False
-        ):
+        if config.MOSTRA_ESITO_STRUMENTI and not getattr(evento.tool, "tool_call_error", False):
             flusso.tool_result(righe_esito(evento.tool))
     elif tipo is TurnEventKind.TOOL_ERROR:
         flusso.activity_stopped()
@@ -394,7 +388,10 @@ def righe_argomento(nome: str, valore) -> list:
     if isinstance(valore, list) and all(isinstance(v, str) for v in valore):
         return [
             "   " + nome + ": " + shlex.join(valore),
-            "   " + " " * len(nome) + "  (lista di " + str(len(valore))
+            "   "
+            + " " * len(nome)
+            + "  (lista di "
+            + str(len(valore))
             + " elementi, ricomposta qui solo per leggerla)",
         ]
     testo = str(valore)
@@ -553,8 +550,13 @@ def righe_metriche(risposta) -> list:
     if prompt and config.NUM_CTX:
         quota = 100.0 * prompt / config.NUM_CTX
         pezzi.append(
-            "finestra " + _token(prompt) + "/" + _token(config.NUM_CTX)
-            + " (" + ("<1" if quota < 1 else str(round(quota))) + "%)"
+            "finestra "
+            + _token(prompt)
+            + "/"
+            + _token(config.NUM_CTX)
+            + " ("
+            + ("<1" if quota < 1 else str(round(quota)))
+            + "%)"
         )
     if uscita:
         pezzi.append("risposta " + _token(uscita) + " tok / " + str(round(secondi_risposta, 1)) + " s")
@@ -656,8 +658,7 @@ def _esegui_chat() -> None:
     )
     if input_cli.history_warning:
         UI.line(
-            "Cronologia non disponibile; resta solo per questa sessione: "
-            + input_cli.history_warning,
+            "Cronologia non disponibile; resta solo per questa sessione: " + input_cli.history_warning,
             style="ares.warning",
         )
 

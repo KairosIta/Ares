@@ -39,6 +39,4 @@ def lock_stato(
             yield
     except FileOccupato as errore:
         tipo = "esclusivo" if esclusivo else "condiviso"
-        raise StatoOccupato(
-            "lo stato di Ares e' in uso: impossibile acquisire il lock " + tipo
-        ) from errore
+        raise StatoOccupato("lo stato di Ares e' in uso: impossibile acquisire il lock " + tipo) from errore

@@ -125,9 +125,7 @@ def valida_percorsi() -> None:
         vietati.append(("il workspace", config.WORKSPACE_DIR))
     for nome, percorso in vietati:
         if _si_sovrappongono(backup, Path(percorso)):
-            raise ErroreBackup(
-                "BACKUP_DIR si sovrappone con " + nome + " (" + str(Path(percorso).resolve()) + ")"
-            )
+            raise ErroreBackup("BACKUP_DIR si sovrappone con " + nome + " (" + str(Path(percorso).resolve()) + ")")
 
 
 def _root_backup() -> Path:
@@ -254,8 +252,7 @@ def _tabelle_lancedb(percorso: Path) -> Dict[str, int]:
             raise ErroreBackup(dettaglio or "la sonda LanceDB non ha prodotto un risultato")
         dati = json.loads(risultato.stdout)
         if not isinstance(dati, dict) or any(
-            not isinstance(nome, str) or not isinstance(righe, int) or righe < 0
-            for nome, righe in dati.items()
+            not isinstance(nome, str) or not isinstance(righe, int) or righe < 0 for nome, righe in dati.items()
         ):
             raise ErroreBackup("risposta non valida dalla sonda LanceDB")
         return dict(sorted(dati.items()))
@@ -414,10 +411,7 @@ def elenco_snapshot() -> list[Path]:
         (
             voce
             for voce in root.iterdir()
-            if voce.is_dir()
-            and not voce.is_symlink()
-            and not voce.name.startswith(".")
-            and (voce / MANIFEST).is_file()
+            if voce.is_dir() and not voce.is_symlink() and not voce.name.startswith(".") and (voce / MANIFEST).is_file()
         ),
         key=_ordine_snapshot,
     )
@@ -490,10 +484,7 @@ def verifica_snapshot(snapshot: Any, percorso_diretto: bool = False) -> Dict[str
         embedder = modelli.get("embedder")
         if embedder != config.EMBEDDER_MODEL:
             raise ErroreBackup(
-                "embedder incompatibile: snapshot="
-                + repr(embedder)
-                + ", Ares="
-                + repr(config.EMBEDDER_MODEL)
+                "embedder incompatibile: snapshot=" + repr(embedder) + ", Ares=" + repr(config.EMBEDDER_MODEL)
             )
         dimensioni = modelli.get("embedder_dimensions")
         if dimensioni != config.EMBEDDER_DIMENSIONS:
@@ -714,7 +705,7 @@ def main() -> int:
             if args.keep < 1:
                 raise ErroreBackup("--keep deve essere almeno 1")
             snapshot = elenco_snapshot()
-            candidati = snapshot[:-args.keep] if len(snapshot) > args.keep else []
+            candidati = snapshot[: -args.keep] if len(snapshot) > args.keep else []
             if not candidati:
                 print("Niente da eliminare; snapshot:", len(snapshot), " keep:", args.keep)
                 return 0
@@ -729,7 +720,7 @@ def main() -> int:
             nomi_visti = [percorso.name for percorso in candidati]
             with lock_stato(esclusivo=True):
                 attuali = elenco_snapshot()
-                candidati_attuali = attuali[:-args.keep] if len(attuali) > args.keep else []
+                candidati_attuali = attuali[: -args.keep] if len(attuali) > args.keep else []
                 if [percorso.name for percorso in candidati_attuali] != nomi_visti:
                     raise ErroreBackup("l'elenco degli snapshot e' cambiato; ripeti prune")
                 eliminati = pota_snapshot(args.keep, acquisisci_lock=False)

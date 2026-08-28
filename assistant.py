@@ -33,6 +33,7 @@ from agno.learn import (
     UserProfileConfig,
 )
 from agno.learn.stores import SessionContextStore
+
 # Questo import trascina il pacchetto openai, che qui non serve a niente:
 # l'__init__ di agno.models.ollama importa anche OllamaResponses, che discende
 # dal client OpenAI. Importare il sottomodulo `agno.models.ollama.chat` non
@@ -311,11 +312,7 @@ class AresSessionContextStore(SessionContextStore):
                     + "/"
                     + str(config.SESSION_CONTEXT_RETRIES)
                 )
-        log_warning(
-            "Session context non salvato dopo "
-            + str(self.last_extraction_attempts)
-            + " tentativi"
-        )
+        log_warning("Session context non salvato dopo " + str(self.last_extraction_attempts) + " tentativi")
         return risultato
 
     async def aextract_and_save(self, *args, **kwargs) -> str:
@@ -334,11 +331,7 @@ class AresSessionContextStore(SessionContextStore):
                     + "/"
                     + str(config.SESSION_CONTEXT_RETRIES)
                 )
-        log_warning(
-            "Session context non salvato dopo "
-            + str(self.last_extraction_attempts)
-            + " tentativi"
-        )
+        log_warning("Session context non salvato dopo " + str(self.last_extraction_attempts) + " tentativi")
         return risultato
 
 
@@ -385,9 +378,7 @@ def apprendi_a_run_completato(
         messages=messaggi,
         user_id=user_id or getattr(run_output, "user_id", None),
         session_id=(
-            getattr(session, "session_id", None)
-            if session is not None
-            else getattr(run_output, "session_id", None)
+            getattr(session, "session_id", None) if session is not None else getattr(run_output, "session_id", None)
         ),
         agent_id=getattr(agent, "id", None),
         team_id=getattr(agent, "team_id", None),

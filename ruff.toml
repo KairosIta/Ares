@@ -1,0 +1,28 @@
+# Configurazione del linter e del formattatore
+# ===========================================
+# Sta in un file suo e non in un pyproject.toml perche' Ares non e' un
+# pacchetto: la ROADMAP tiene il packaging fra i non obiettivi, e un
+# pyproject.toml in radice direbbe il contrario a chiunque lo veda.
+
+# I default di ruff sono 88, ereditati da Black. Qui lo stile prevalente e'
+# piu' largo: la riga piu' lunga scritta a mano era 130 e solo due superavano
+# 120, quindi il limite descrive il codice invece di riscriverlo.
+line-length = 120
+
+exclude = [".venv", "__pycache__"]
+
+[lint]
+# Esclusi di proposito:
+#
+#   PTH  vorrebbe Path.rename al posto di os.rename in backup.py, dove la
+#        scelta fra rename e replace ha un commento che spiega perche' su
+#        Windows la semantica di sostituzione e' quella sbagliata. Una regola
+#        che litiga con una decisione motivata insegna a mettere noqa.
+#   D    docstring: qui ci sono gia' e sono piu' lunghe di quanto qualunque
+#        regola chieda; imporne la forma non aggiungerebbe niente.
+select = ["E", "W", "F", "I", "B", "C4", "PIE", "SIM", "RUF", "UP"]
+
+# Il carattere ambiguo che RUF001 trova e' il `›` del prompt della REPL,
+# scelto perche' e' un prompt e non un maggiore-di. La regola e' pensata per
+# gli omoglifi copiati per sbaglio, non per un simbolo scelto apposta.
+ignore = ["RUF001"]

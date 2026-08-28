@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, List
 
 from agno.db.base import SessionType
+
 # Verifica di Agno riusata invece che riscritta: e' la meta' precisa della sua
 # ricerca - la query confrontata con i valori e non con i nomi dei campi - e
 # una copia locale verificherebbe la copia. La differenza sta in cosa le si
@@ -130,9 +131,7 @@ def leggi_entita(lm: Any, user_id: str, query: str = "", limit: int = 50) -> Lis
         return []
     namespace = namespace_entita(user_id)
     if query:
-        larghe = store.search(
-            query=query, user_id=user_id, namespace=namespace, limit=config.ENTITA_FINESTRA_RICERCA
-        )
+        larghe = store.search(query=query, user_id=user_id, namespace=namespace, limit=config.ENTITA_FINESTRA_RICERCA)
         strette = [e for e in larghe if values_match_query(contenuto_entita(e), query)]
         return strette[:limit]
     return store.list_entities(user_id=user_id, namespace=namespace, limit=limit)
@@ -191,12 +190,15 @@ def leggi_sessioni(agent: Any, user_id: str, query: str = "") -> List[Any]:
     db = getattr(agent, "db", None)
     if db is None:
         return []
-    sessioni = db.get_sessions(
-        session_type=SessionType.AGENT,
-        user_id=user_id,
-        sort_by="updated_at",
-        sort_order="desc",
-    ) or []
+    sessioni = (
+        db.get_sessions(
+            session_type=SessionType.AGENT,
+            user_id=user_id,
+            sort_by="updated_at",
+            sort_order="desc",
+        )
+        or []
+    )
     if not query:
         return list(sessioni)
     cercato = query.casefold()
@@ -211,8 +213,8 @@ def prima_domanda(sessione: Any, larghezza: int = 90) -> str:
     messaggio non e' sempre una stringa - puo' essere una lista di parti - e
     leggerlo come stringa e basta restituisce righe vuote in silenzio.
     """
-    for run in (getattr(sessione, "runs", None) or []):
-        for messaggio in (getattr(run, "messages", None) or []):
+    for run in getattr(sessione, "runs", None) or []:
+        for messaggio in getattr(run, "messages", None) or []:
             if getattr(messaggio, "role", None) != "user":
                 continue
             testo = _testo_messaggio(messaggio)

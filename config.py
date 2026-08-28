@@ -93,11 +93,11 @@ SESSION_CONTEXT_RETRIES = 1
 # extra per turno. Sul 9B in scheda e col pensiero spento (LEARNING_THINK)
 # sono rapide, ma la latenza percepita cresce comunque: disattiva quello
 # che non ti serve.
-LEARN_USER_PROFILE = True      # ALWAYS - chi sei, come preferisci le risposte
-LEARN_USER_MEMORY = True       # ALWAYS - osservazioni non strutturate su di te
-LEARN_SESSION_CONTEXT = True   # ALWAYS - obiettivo, piano, avanzamento
-LEARN_ENTITIES = True          # AGENTIC - persone, progetti (nessun costo fisso)
-LEARN_KNOWLEDGE = True         # AGENTIC - intuizioni riutilizzabili
+LEARN_USER_PROFILE = True  # ALWAYS - chi sei, come preferisci le risposte
+LEARN_USER_MEMORY = True  # ALWAYS - osservazioni non strutturate su di te
+LEARN_SESSION_CONTEXT = True  # ALWAYS - obiettivo, piano, avanzamento
+LEARN_ENTITIES = True  # AGENTIC - persone, progetti (nessun costo fisso)
+LEARN_KNOWLEDGE = True  # AGENTIC - intuizioni riutilizzabili
 
 # Tetto di scritture per singola estrazione. Il default di Agno e' 10.
 MAX_UPDATES_PER_RUN = 5
@@ -116,8 +116,8 @@ MEMORY_AGENT_TOOLS = True
 
 # Le sessioni restano separate. Questi strumenti consentono all'agente di
 # consultare esplicitamente sessioni precedenti quando serve.
-SEARCH_PAST_SESSIONS = True   # elenca le sessioni passate e ne rilegge una
-READ_CHAT_HISTORY = True      # rilegge questa sessione oltre NUM_HISTORY_RUNS
+SEARCH_PAST_SESSIONS = True  # elenca le sessioni passate e ne rilegge una
+READ_CHAT_HISTORY = True  # rilegge questa sessione oltre NUM_HISTORY_RUNS
 
 # Quante sessioni elencare e quanti scambi mostrare per ognuna. I default di
 # Agno sono 20 e 3, e ogni scambio porta 2 messaggi troncati a 200 caratteri:

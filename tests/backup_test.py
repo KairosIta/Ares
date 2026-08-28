@@ -150,7 +150,7 @@ def main() -> int:
             esigi(
                 all((f.stat().st_mode & 0o777) == 0o600 for f in primo.rglob("*") if f.is_file()),
                 "file non privato",
-        )
+            )
         ok("create + verify", primo.name)
 
         pubblicazione_staging = RADICE_PROVA / "pubblicazione-staging"

@@ -76,6 +76,7 @@ os.environ["ARES_WORKSPACE"] = SPAZIO_PROVA
 
 import config  # noqa: E402
 import platform_files  # noqa: E402
+
 # Normalizzatore privato di Agno, importato di proposito invece di
 # riscritto: una copia locale verificherebbe la copia, non il
 # comportamento del FileSystem su cui i namespace finiscono davvero.
@@ -258,9 +259,7 @@ def semina(lm, fs, user_id: str, session_id: str) -> str:
         seminato.append("1 contesto")
     if "entity_memory" in lm.stores:
         for nome, tipo, fatti in ENTITA_SEMINATE:
-            lm.entity_memory_store.remember_about(
-                entity=nome, entity_type=tipo, facts=list(fatti), user_id=user_id
-            )
+            lm.entity_memory_store.remember_about(entity=nome, entity_type=tipo, facts=list(fatti), user_id=user_id)
         seminato.append(str(len(ENTITA_SEMINATE)) + " entita' con " + str(FATTI_SEMINATI) + " fatti")
     fs.write(*FILE_SEMINATO)
     seminato.append("1 file")
@@ -285,7 +284,12 @@ def store_attivi(lm) -> str:
     for nome, acceso in attesi.items():
         esigi(
             (nome in presenti) == acceso,
-            nome + (" e' acceso in config ma non e' stato costruito" if acceso else " e' spento in config ma e' stato costruito"),
+            nome
+            + (
+                " e' acceso in config ma non e' stato costruito"
+                if acceso
+                else " e' spento in config ma e' stato costruito"
+            ),
         )
     return str(len(presenti)) + " store attivi: " + ", ".join(sorted(presenti))
 
@@ -519,8 +523,7 @@ def ragionamento_modelli(agent, lm) -> str:
     chat_params = getattr(agent.model, "request_params", None) or {}
     esigi(
         chat_params.get("think") is config.MAIN_THINK,
-        "l'agente passa think=" + repr(chat_params.get("think"))
-        + " invece di " + repr(config.MAIN_THINK),
+        "l'agente passa think=" + repr(chat_params.get("think")) + " invece di " + repr(config.MAIN_THINK),
     )
 
     estrattori = []
@@ -531,8 +534,7 @@ def ragionamento_modelli(agent, lm) -> str:
         params = getattr(modello, "request_params", None) or {}
         esigi(
             params.get("think") is config.LEARNING_THINK,
-            nome + " passa think=" + repr(params.get("think"))
-            + " invece di " + repr(config.LEARNING_THINK),
+            nome + " passa think=" + repr(params.get("think")) + " invece di " + repr(config.LEARNING_THINK),
         )
         estrattori.append(nome)
 
@@ -796,9 +798,14 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
     finally:
         config.WORKSPACE_DIR = scelta_vera
 
-    return str(len(attesi)) + " strumenti su " + str(len(consegnati)) + ", " + str(
-        sum(1 for v in attesi.values() if v)
-    ) + " da confermare, nessun nome in comune col quaderno"
+    return (
+        str(len(attesi))
+        + " strumenti su "
+        + str(len(consegnati))
+        + ", "
+        + str(sum(1 for v in attesi.values() if v))
+        + " da confermare, nessun nome in comune col quaderno"
+    )
 
 
 def tempo(agent, lm, user_id: str) -> str:
@@ -882,7 +889,13 @@ def profilo_rileggibile(lm, user_id: str) -> str:
     popolati = campi_popolati(profilo)
     esigi(
         len(popolati) == len(PROFILO_SEMINATO),
-        "campi popolati: " + str(len(popolati)) + " invece di " + str(len(PROFILO_SEMINATO)) + " (" + ", ".join(popolati) + ")",
+        "campi popolati: "
+        + str(len(popolati))
+        + " invece di "
+        + str(len(PROFILO_SEMINATO))
+        + " ("
+        + ", ".join(popolati)
+        + ")",
     )
     return type(profilo).__name__ + ", " + str(len(popolati)) + " campi come seminati"
 
@@ -1038,9 +1051,7 @@ def _sessione_finta(nome: str, creata: int, domanda: str, user_id: str):
         agent_id="ares-prova",
         messages=[Message(role="user", content=domanda), Message(role="assistant", content="risposta")],
     )
-    return AgentSession(
-        session_id=nome, agent_id="ares-prova", user_id=user_id, created_at=creata, runs=[run]
-    )
+    return AgentSession(session_id=nome, agent_id="ares-prova", user_id=user_id, created_at=creata, runs=[run])
 
 
 def semina_sessioni(agent, user_id: str) -> list:
@@ -1272,7 +1283,8 @@ def conferme_leggibili() -> str:
     Il caso lungo verifica anche comandi distribuiti su piu' righe.
     """
     comando = [
-        "bash", "-lc",
+        "bash",
+        "-lc",
         "find . -name '*.tmp' -newer riferimento.txt -print0 | xargs -0 rm -f",
     ] + ["--opzione-" + str(n) for n in range(17)]
     esecuzione = ToolExecution(
@@ -1319,21 +1331,29 @@ def metriche_del_turno() -> str:
     silenzio: i numeri qui sotto distinguono il totale del run dal prompt.
     """
     principale = ModelMetrics(
-        id=config.MAIN_MODEL, input_tokens=7097, output_tokens=25,
+        id=config.MAIN_MODEL,
+        input_tokens=7097,
+        output_tokens=25,
         provider_metrics={"total_duration": 1197811950},
     )
     apprendimento = ModelMetrics(
-        id=config.MAIN_MODEL, input_tokens=3902, output_tokens=959,
+        id=config.MAIN_MODEL,
+        input_tokens=3902,
+        output_tokens=959,
         provider_metrics={"total_duration": 16064666271},
     )
     risposta = _RunFinto(
         metrics=RunMetrics(
-            input_tokens=10999, output_tokens=984, duration=20.1,
+            input_tokens=10999,
+            output_tokens=984,
+            duration=20.1,
             details={"model": [principale], "learning_model": [apprendimento]},
         ),
         messages=[
-            _MessaggioFinto("system", 0), _MessaggioFinto("user", 0),
-            _MessaggioFinto("assistant", 6872), _MessaggioFinto("user", 0),
+            _MessaggioFinto("system", 0),
+            _MessaggioFinto("user", 0),
+            _MessaggioFinto("assistant", 6872),
+            _MessaggioFinto("user", 0),
             _MessaggioFinto("assistant", 7097),
         ],
     )
@@ -1450,13 +1470,9 @@ def renderer_rich() -> str:
     TTY; il controllo successivo verifica in piu' i comandi del cursore.
     """
     catturato = io.StringIO()
-    renderer = CliRenderer(
-        Console(file=catturato, color_system=None, force_terminal=False, width=120)
-    )
+    renderer = CliRenderer(Console(file=catturato, color_system=None, force_terminal=False, width=120))
     renderer.line("[red]testo del modello[/red]")
-    renderer.banner(
-        modello="modello[Q8_0]", sessione="sessione[prova]", utente="utente[prova]"
-    )
+    renderer.banner(modello="modello[Q8_0]", sessione="sessione[prova]", utente="utente[prova]")
     renderer.confirmation(
         [
             "Ares chiede di eseguire: workspace_run_command",
@@ -1648,16 +1664,16 @@ def indicatore_attivita() -> str:
     mostra_flusso(
         normalize_events(
             [
-            _EventoFinto("ModelRequestStarted"),
-            _EventoFinto("RunContent", content="ciao"),
-            _EventoFinto("ModelRequestCompleted"),
-            _EventoFinto("ToolCallStarted", tool=strumento),
-            _EventoFinto("ToolCallCompleted", tool=strumento),
-            _EventoFinto("PostHookStarted"),
-            _EventoFinto("PostHookCompleted"),
-            _EventoFinto("RunCompleted"),
-            _EventoFinto("RunError", content="guasto"),
-            _EventoFinto("RunCancelled"),
+                _EventoFinto("ModelRequestStarted"),
+                _EventoFinto("RunContent", content="ciao"),
+                _EventoFinto("ModelRequestCompleted"),
+                _EventoFinto("ToolCallStarted", tool=strumento),
+                _EventoFinto("ToolCallCompleted", tool=strumento),
+                _EventoFinto("PostHookStarted"),
+                _EventoFinto("PostHookCompleted"),
+                _EventoFinto("RunCompleted"),
+                _EventoFinto("RunError", content="guasto"),
+                _EventoFinto("RunCancelled"),
             ]
         ),
         ui=UiFinta(registrato),
@@ -1821,8 +1837,7 @@ def cronologia_persistente() -> str:
 
     rilette = list(CronologiaSicura(percorso, 4).load_history_strings())
     esigi(
-        rilette
-        == ["domanda su due\nrighe", "riga di un'altra chat", "seconda domanda", "prima domanda"],
+        rilette == ["domanda su due\nrighe", "riga di un'altra chat", "seconda domanda", "prima domanda"],
         "migrazione o intreccio delle chat errato: " + repr(rilette),
     )
     esigi(
@@ -1930,6 +1945,7 @@ def input_repl() -> str:
 
     lock_originale = platform_files.portalocker.lock
     try:
+
         def lock_guasto(_file, _operazione):
             raise platform_files.portalocker.LockException("guasto simulato")
 
@@ -2016,15 +2032,10 @@ def comandi() -> str:
         esigi(gestisci_comando("/esci", None, "sessione", "utente") is False, "/esci non chiude")
         esigi(gestisci_comando("/qu", None, "sessione", "utente") is False, "/qu non chiude")
 
-    completatore = CompletamentoComandi(
-        [(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI]
-    )
+    completatore = CompletamentoComandi([(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI])
 
     def completa(testo: str) -> list[str]:
-        return [
-            voce.text
-            for voce in completatore.get_completions(Document(testo), CompleteEvent())
-        ]
+        return [voce.text for voce in completatore.get_completions(Document(testo), CompleteEvent())]
 
     esigi(completa("/me") == ["/memorie"], "il menu non completa un comando")
     esigi(completa("/") == nomi, "lo slash non elenca tutti i comandi")
@@ -2061,7 +2072,7 @@ def esegui(prove) -> tuple:
             falliti.append(nome)
             continue
         if nota.startswith(NON_CONCLUSIVO):
-            print("n.c.    ", nome, "-", nota[len(NON_CONCLUSIVO):])
+            print("n.c.    ", nome, "-", nota[len(NON_CONCLUSIVO) :])
             non_conclusivi.append(nome)
         else:
             print("ok      ", nome, "-", nota)

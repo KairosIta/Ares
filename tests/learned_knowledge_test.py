@@ -112,17 +112,11 @@ def ok(nome: str, nota: str) -> None:
 
 
 def nomi_strumenti(risposta) -> list[str]:
-    return [
-        str(getattr(strumento, "tool_name", "") or "")
-        for strumento in (getattr(risposta, "tools", None) or [])
-    ]
+    return [str(getattr(strumento, "tool_name", "") or "") for strumento in (getattr(risposta, "tools", None) or [])]
 
 
 def testo_intuizione(voce) -> str:
-    return " ".join(
-        str(getattr(voce, campo, "") or "")
-        for campo in ("title", "learning", "context")
-    )
+    return " ".join(str(getattr(voce, campo, "") or "") for campo in ("title", "learning", "context"))
 
 
 def fotografia(percorso: Path) -> list[tuple[str, int, int]]:
@@ -176,9 +170,7 @@ def modelli_pronti() -> tuple[bool, str]:
     presenti = [modello.get("name", "") for modello in modelli_disponibili(config.OLLAMA_HOST)]
     richiesti = (config.MAIN_MODEL, config.EMBEDDER_MODEL)
     mancanti = [
-        richiesto
-        for richiesto in richiesti
-        if not any(stessa_etichetta(richiesto, presente) for presente in presenti)
+        richiesto for richiesto in richiesti if not any(stessa_etichetta(richiesto, presente) for presente in presenti)
     ]
     if mancanti:
         return False, "modelli assenti: " + ", ".join(mancanti)

@@ -69,8 +69,7 @@ class AresProfile(UserProfile):
         default=None,
         metadata={
             "description": (
-                "Come l'utente vuole le risposte: lunghezza, tono, uso di esempi, "
-                "se preferisce codice o prosa"
+                "Come l'utente vuole le risposte: lunghezza, tono, uso di esempi, se preferisce codice o prosa"
             )
         },
     )

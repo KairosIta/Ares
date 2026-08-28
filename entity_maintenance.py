@@ -265,19 +265,19 @@ def trova_candidati(
         for seconda in entita[indice + 1 :]:
             motivi = _motivi(prima, seconda)
             if motivi:
-                livello = "forte" if any(
-                    motivo.startswith(("stesso entity_id", "stesso nome", "nome o alias")) for motivo in motivi
-                ) else "possibile"
-            elif includi_tutte_le_coppie and normalizza_testo(
-                str(prima.entita.entity_type)
-            ) == normalizza_testo(str(seconda.entita.entity_type)):
+                livello = (
+                    "forte"
+                    if any(motivo.startswith(("stesso entity_id", "stesso nome", "nome o alias")) for motivo in motivi)
+                    else "possibile"
+                )
+            elif includi_tutte_le_coppie and normalizza_testo(str(prima.entita.entity_type)) == normalizza_testo(
+                str(seconda.entita.entity_type)
+            ):
                 livello = "manuale"
                 motivi = ("nessun indizio lessicale; coppia dello stesso tipo",)
             else:
                 continue
-            candidati.append(
-                CandidatoDuplicato(prima=prima, seconda=seconda, livello=livello, motivi=motivi)
-            )
+            candidati.append(CandidatoDuplicato(prima=prima, seconda=seconda, livello=livello, motivi=motivi))
 
     priorita = {"forte": 0, "possibile": 1, "manuale": 2}
     candidati.sort(
@@ -343,9 +343,7 @@ def _trova_riferimento(indice: dict[str, EntitaArchivio], riferimento: str, ruol
     if trovato is not None:
         return trovato
     disponibili = ", ".join(sorted(indice)) or "nessuna"
-    raise ErroreManutenzione(
-        ruolo + " inesistente: " + repr(riferimento) + ". Riferimenti disponibili: " + disponibili
-    )
+    raise ErroreManutenzione(ruolo + " inesistente: " + repr(riferimento) + ". Riferimenti disponibili: " + disponibili)
 
 
 def _valida_collezione(entita: EntityMemory, campo: str, riferimento: str) -> list[dict[str, Any]]:
@@ -502,9 +500,7 @@ def _deduplica_relazioni(
     return risultato, unificate
 
 
-def _id_relazione(
-    proprietario: tuple[str, str], lontana: tuple[str, str], relazione: str, direzione: str
-) -> str:
+def _id_relazione(proprietario: tuple[str, str], lontana: tuple[str, str], relazione: str, direzione: str) -> str:
     testo = "|".join((*proprietario, *lontana, relazione, direzione))
     return hashlib.sha256(testo.encode("utf-8")).hexdigest()[:8]
 
@@ -555,8 +551,7 @@ def _valida_grafo_fuso(
             destinazione = entita.get(lontana)
             if destinazione is None:
                 raise ErroreManutenzione(
-                    "relazione coinvolta nella fusione verso entita' inesistente: "
-                    + _riferimento_chiave(lontana)
+                    "relazione coinvolta nella fusione verso entita' inesistente: " + _riferimento_chiave(lontana)
                 )
             if not _ha_reciproca(destinazione.relationships or [], proprietario, relazione):
                 raise ErroreManutenzione("la fusione produrrebbe una relazione senza reciproca")
@@ -684,8 +679,7 @@ def pianifica_fusione(
             destinazione = oggetti.get(lontana)
             if destinazione is None:
                 raise ErroreManutenzione(
-                    "relazione coinvolta nella fusione verso entita' inesistente: "
-                    + _riferimento_chiave(lontana)
+                    "relazione coinvolta nella fusione verso entita' inesistente: " + _riferimento_chiave(lontana)
                 )
             if _ha_reciproca(destinazione.relationships or [], proprietario, relazione):
                 continue
@@ -775,9 +769,7 @@ def applica_piano(db: SqliteDb, piano: PianoFusione) -> None:
     except ErroreManutenzione:
         raise
     except Exception as errore:
-        raise ErroreManutenzione(
-            "transazione annullata: " + type(errore).__name__ + ": " + str(errore)
-        ) from errore
+        raise ErroreManutenzione("transazione annullata: " + type(errore).__name__ + ": " + str(errore)) from errore
 
 
 def verifica_piano(db: Any, namespace: str, piano: PianoFusione) -> None:
@@ -878,9 +870,7 @@ def stampa_piano(piano: PianoFusione) -> None:
     alias_finali = aggiornamento_canonico.dopo.get("aliases") or []
     print("  " + (", ".join(str(alias) for alias in alias_finali) if alias_finali else "(nessuno)"))
 
-    fatti_canonici = {
-        _identita_ricordo(fatto, "fatto") for fatto in (piano.canonica.entita.facts or [])
-    }
+    fatti_canonici = {_identita_ricordo(fatto, "fatto") for fatto in (piano.canonica.entita.facts or [])}
     if piano.sorgente.entita.facts:
         print()
         print("Fatti della sorgente:")
@@ -888,9 +878,7 @@ def stampa_piano(piano: PianoFusione) -> None:
             azione = "unifica" if _identita_ricordo(fatto, "fatto") in fatti_canonici else "aggiunge"
             print("  -", azione + ":", fatto.get("content"))
 
-    eventi_canonici = {
-        _identita_ricordo(evento, "evento") for evento in (piano.canonica.entita.events or [])
-    }
+    eventi_canonici = {_identita_ricordo(evento, "evento") for evento in (piano.canonica.entita.events or [])}
     if piano.sorgente.entita.events:
         print()
         print("Eventi della sorgente:")
@@ -964,9 +952,7 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
     entita, ignorate = carica_entita(db=db, namespace=namespace)
     if ignorate:
         raise ErroreManutenzione(
-            "la scansione contiene righe malformate ("
-            + ", ".join(ignorate)
-            + "); correggile prima di fondere"
+            "la scansione contiene righe malformate (" + ", ".join(ignorate) + "); correggile prima di fondere"
         )
     piano = pianifica_fusione(
         entita=entita,

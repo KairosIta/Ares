@@ -42,11 +42,7 @@ def lock_file(
     acquisito = False
     try:
         rendi_privato(percorso)
-        operazione = (
-            portalocker.LockFlags.EXCLUSIVE
-            if esclusivo
-            else portalocker.LockFlags.SHARED
-        )
+        operazione = portalocker.LockFlags.EXCLUSIVE if esclusivo else portalocker.LockFlags.SHARED
         if not bloccante:
             operazione |= portalocker.LockFlags.NON_BLOCKING
         try:

@@ -71,10 +71,7 @@ SESSIONE = "prova-e2e"
 # prova non distinguerebbe un agente che impara da uno che risponde e basta.
 # "In una riga" tiene corto il turno: qui si misura che il giro si chiuda, non
 # quanto bene scriva il modello.
-DOMANDA = (
-    "Mi chiamo Prova e uso Linux. "
-    "In una riga: a cosa serve un file di lock delle dipendenze?"
-)
+DOMANDA = "Mi chiamo Prova e uso Linux. In una riga: a cosa serve un file di lock delle dipendenze?"
 
 # Il processo figlio rilegge l'archivio da zero. Vive come stringa e non come
 # funzione importata perche' il punto e' proprio che sia un interprete diverso,
