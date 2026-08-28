@@ -52,7 +52,9 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
   offre a `chat.py` il promemoria di rifarne uno quando l'ultimo e'
   vecchio: la lettura non crea la directory dei backup e non solleva,
   perche' un avviso non deve poter impedire l'avvio;
-- `entity_maintenance.py` rileva e fonde entita' duplicate;
+- `entity_maintenance.py` espone la CLI e coordina lock e backup; l'audit in
+  sola lettura vive in `entity_audit.py`, il piano e la transazione di fusione
+  in `entity_merge.py`, i contratti condivisi in `entity_models.py`;
 - `setup.sh` e `setup.ps1` ricostruiscono lo stesso ambiente bloccato sui due
   sistemi verificati.
 

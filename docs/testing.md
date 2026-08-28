@@ -103,6 +103,11 @@ figli — `OLLAMA_HOST` è una costante, non una variabile d'ambiente — quindi
 la REPL provata in un processo separato riceve solo righe che cominciano con
 `/`, e una asserzione verifica che nessun turno col modello sia stato aperto.
 
+Il runner interrompe una prova offline dopo tre minuti e una prova con Ollama
+dopo quindici. Non sono tempi attesi ma limiti di sicurezza: evitano che un
+deadlock o una dipendenza bloccata consumino indefinitamente il terminale o
+l'intero timeout della CI. Un superamento appare nel riepilogo come fallimento.
+
 Due controlli sorvegliano un'invariante che nessun'altra prova vedrebbe:
 importare `config` non deve creare niente su disco (`smoke`), e `--help` di
 ognuno dei cinque comandi nemmeno (`cli`). Entrambi girano in processi nuovi,

@@ -56,6 +56,12 @@ then
     uv pip install --python .venv/bin/python --reinstall-package agno -r requirements.txt
 fi
 
+# `sync` allinea cio' che e' installato al lock; `check` verifica anche che i
+# requisiti dichiarati dai pacchetti installati siano compatibili fra loro.
+# setup.ps1 fa lo stesso controllo: i due percorsi di installazione devono
+# rifiutare lo stesso ambiente incoerente.
+uv pip check --python .venv/bin/python
+
 echo
 if ! .venv/bin/python preflight.py; then
     echo
