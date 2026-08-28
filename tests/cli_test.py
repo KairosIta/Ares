@@ -56,10 +56,13 @@ import backup  # noqa: E402
 import config  # noqa: E402
 import inspect_learning  # noqa: E402
 import preflight  # noqa: E402
-from assistant import build_assistant, build_filesystem  # noqa: E402
 
 UTENTE = "prova-cli"
 SESSIONE = "cli"
+# Il file che l'agente scrive nel proprio quaderno: lo crea il figlio che
+# costruisce l'archivio, lo rilegge l'ispezione e lo elenca la REPL.
+FILE_AGENTE = "note/appunto.md"
+CONTENUTO_FILE = "riga di prova"
 
 # Nessuna di queste prove deve accendere un modello, e su una macchina di
 # sviluppo Ollama e' spesso acceso: senza questa riga la prova passerebbe qui
@@ -145,6 +148,59 @@ def esegui_preflight(modelli: list[str] | None) -> tuple[int, str]:
         if servitore is not None:
             servitore.shutdown()
             servitore.server_close()
+
+
+COSTRUZIONE = """
+import sys
+
+sys.path.insert(0, {radice!r})
+
+from assistant import build_assistant, build_filesystem
+
+build_assistant(user_id=sys.argv[1], session_id=sys.argv[2])
+build_filesystem(sys.argv[1]).write(sys.argv[3], sys.argv[4])
+"""
+
+
+def costruisci_archivio() -> str:
+    """Crea l'archivio in un processo figlio, che poi muore.
+
+    In-process sarebbe piu' breve, e su Linux funzionerebbe. Non su Windows:
+    `build_assistant` lascia aperti i due SQLite per tutta la vita del
+    processo, e li' un file aperto non si sostituisce, quindi il `restore`
+    provato piu' sotto falliva con WinError 32 - su `filesystem.db`, dentro
+    la directory che il restore stava rimpiazzando.
+
+    Non e' un dettaglio della prova: e' il modo in cui il restore si usa
+    davvero. Si ripristina con Ares chiuso, ed e' per questo che la chat
+    tiene un lock condiviso e il restore ne chiede uno esclusivo. Una prova
+    che ripristina tenendo l'archivio aperto sta provando una situazione che
+    il prodotto vieta.
+
+    Il figlio scrive anche il file dell'agente, cosi' lo snapshot creato
+    dopo lo contiene: uno snapshot di un archivio vuoto proverebbe meno.
+    """
+    figlio = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            COSTRUZIONE.format(radice=str(config.BASE_DIR)),
+            UTENTE,
+            SESSIONE,
+            FILE_AGENTE,
+            CONTENUTO_FILE,
+        ],
+        cwd=config.BASE_DIR,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    esigi(figlio.returncode == 0, "costruzione dell'archivio fallita: " + figlio.stderr[-800:])
+    esigi(Path(config.DB_FILE).is_file(), "il database dell'agente non e' stato creato")
+    esigi(Path(config.FS_DB_FILE).is_file(), "il database del filesystem non e' stato creato")
+    return "costruito in un processo separato, che non lo tiene aperto"
 
 
 # ---------------------------------------------------------------------------
@@ -292,13 +348,11 @@ def inspect_learning_cli() -> str:
         inspect_learning.main()
     esigi("Nessun file a questo percorso" in uscita.getvalue(), "un file assente non viene segnalato")
 
-    percorso, contenuto = "note/appunto.md", "riga di prova"
-    build_filesystem(UTENTE).write(percorso, contenuto)
     uscita = io.StringIO()
-    argv = ["inspect_learning.py", "--user", UTENTE, "--file", percorso]
+    argv = ["inspect_learning.py", "--user", UTENTE, "--file", FILE_AGENTE]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
-    esigi(contenuto in uscita.getvalue(), "il contenuto del file non viene stampato")
+    esigi(CONTENUTO_FILE in uscita.getvalue(), "il contenuto del file non viene stampato")
     return "cinque sezioni, archivio invariato, --file presente e assente"
 
 
@@ -408,8 +462,7 @@ def main() -> int:
     print("Archivio della prova:", RADICE_PROVA)
     print()
     try:
-        build_assistant(user_id=UTENTE, session_id=SESSIONE)
-        ok("archivio", "costruito con database, indice e filesystem")
+        ok("archivio", costruisci_archivio())
 
         for nome, prova in (
             ("preflight pronto", preflight_pronto),
@@ -418,10 +471,12 @@ def main() -> int:
         ):
             ok(nome, prova())
 
-        ok("inspect_learning", inspect_learning_cli())
-        # Dopo l'ispezione, cosi' lo snapshot contiene anche il file scritto
-        # sopra: uno snapshot di un archivio vuoto proverebbe meno.
+        # Il backup prima dell'ispezione, e non e' indifferente: il `restore`
+        # sostituisce la directory dello stato, e `inspect_learning.main()`
+        # gira qui dentro e lascia aperti i database che apre. Su Windows
+        # basta questo a far fallire il restore.
         ok("backup CLI", backup_cli(RADICE_PROVA))
+        ok("inspect_learning", inspect_learning_cli())
         ok("chat REPL", chat_repl())
         ok("aiuto puro", aiuto_senza_effetti())
     except Exception as errore:
