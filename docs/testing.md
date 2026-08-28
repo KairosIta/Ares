@@ -43,18 +43,25 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura è intorno al 71%. Ciò che resta scoperto
-non è distribuito: è quasi tutto lo strato a riga di comando. `preflight.py` e
-`inspect_learning.py` non vengono eseguiti da nessuna prova, e i `main()` con
-argparse di `backup.py`, `chat.py` ed `entity_maintenance.py` sono coperti
-sotto il 10%. Le librerie sotto stanno invece fra l'83% e il 100%:
-`pianifica_fusione`, la funzione più lunga del progetto, è al 95%.
+Con le sole prove offline la misura è intorno all'88%, e nessun modulo sta
+sotto il 79%.
 
-I processi che una prova avvia per conto suo — il sondaggio LanceDB isolato di
-`backup.py`, la rilettura da un secondo interprete in `e2e_test.py` — non
-vengono misurati: `coverage` misura il processo che lancia, non i suoi nipoti.
-Il codice che eseguono è comunque coperto dai percorsi diretti, ma il numero
-lo sottostima.
+La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
+le prove ne lanciano parecchi — la CLI di `entity_maintenance.py` sei volte,
+il sondaggio LanceDB isolato di `backup.py`, la rilettura da un secondo
+interprete in `e2e_test.py`. `coverage` misura il processo che avvia, non i
+suoi discendenti, e prima dell'aggancio `entity_maintenance.py` risultava al
+68% pur avendo la propria CLI provata da sei sottoprocessi: il rapporto
+mandava a scrivere prove per righe che ne avevano già una. L'aggancio è
+`tests/_copertura/sitecustomize.py`, che Python importa da sé all'avvio di
+ogni interprete e che il runner attiva con `COVERAGE_PROCESS_START` solo
+quando misura.
+
+Ciò che resta scoperto è quasi tutto composto da gestori d'errore e da rami
+di piattaforma: i percorsi Windows su una macchina Linux, i ripieghi per un
+disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare. Il
+turno conversazionale di `chat.py` è coperto dalle prove con Ollama, che qui
+non girano: `--tutte` alza il numero.
 
 ## Analisi statica
 
@@ -75,15 +82,22 @@ Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
 .venv/bin/python tests/run.py
 ```
 
-Queste prove controllano assemblaggio dell'agente, isolamento degli store,
-lock, snapshot, restore, fusione delle entita' e propagazione simulata del run
-completo alla macchina di apprendimento. Lo smoke test usa inoltre un terminale
-simulato per verificare streaming Rich, completamento, multilinea, Ctrl-C/D e
-cronologia senza richiedere interazione umana. Non generano risposte con il
-modello.
+Sono quattro. `smoke` controlla assemblaggio dell'agente, isolamento degli
+store, lock e propagazione simulata del run completo alla macchina di
+apprendimento, e usa un terminale simulato per verificare streaming Rich,
+completamento, multilinea, Ctrl-C/D e cronologia senza interazione umana.
+`backup` copre snapshot, checksum, restore e prune; `entita` l'audit e la
+fusione. `cli` prova i comandi con cui Ares si usa davvero: il preflight
+contro un server Ollama finto nei tre esiti, l'ispezione degli archivi, i
+sottocomandi di `backup.py` con i loro annullamenti, e la REPL intera in un
+processo separato con stdin da una pipe.
 
-La CI esegue smoke test, backup/restore e manutenzione delle entita' sia su
-Ubuntu sia su Windows. Sul runner Windows crea l'ambiente direttamente con
+Nessuna genera risposte con il modello. `cli_test.py` lo rende esplicito
+puntando `config.OLLAMA_HOST` a un porto chiuso: su una macchina di sviluppo
+Ollama è spesso acceso, e senza quella riga una prova potrebbe usarlo di
+nascosto e passare qui per fallire in CI.
+
+La CI esegue le stesse quattro prove sia su Ubuntu sia su Windows. Sul runner Windows crea l'ambiente direttamente con
 `setup.ps1 -SkipPreflight`, verificando il percorso d'installazione senza
 richiedere Ollama.
 

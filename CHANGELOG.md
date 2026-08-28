@@ -25,7 +25,21 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   ognuna scrive `ARES_TMP` e le altre variabili prima di importare `config`,
   che le legge una volta sola all'import, quindi due prove nello stesso
   interprete condividerebbero l'archivio della prima. L'elenco delle prove
-  vive ora in un posto solo e la CI legge quello.
+  vive ora in un posto solo e la CI legge quello;
+- `tests/cli_test.py`: i comandi con cui si usa Ares erano l'unica parte mai
+  eseguita da una prova. Copre il preflight contro un server Ollama finto nei
+  tre esiti (pronto, modello mancante, server spento), l'ispezione degli
+  archivi e la sua promessa di non scrivere, tutti i sottocomandi di
+  `backup.py` con i loro annullamenti e codici di uscita distinti, e la REPL
+  intera in un processo separato con stdin da una pipe. Niente modello:
+  `preflight.py` passa dallo 0% al 100%, `inspect_learning.py` dallo 0%
+  all'85%, la CLI di `backup.py` dall'1% e quella di `chat.py` dal 3%;
+- la misura di copertura segue i processi figli
+  (`tests/_copertura/sitecustomize.py`). Senza, `entity_maintenance.py`
+  risultava al 68% pur avendo la propria CLI provata da sei sottoprocessi:
+  un rapporto che sbaglia in difetto manda a scrivere prove dove ce ne sono
+  già. Con l'aggancio e le prove nuove il totale offline passa dal 71%
+  all'88%, e nessun modulo sta sotto il 79%.
 
 ### Changed
 
