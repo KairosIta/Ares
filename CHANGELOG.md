@@ -39,7 +39,17 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   risultava al 68% pur avendo la propria CLI provata da sei sottoprocessi:
   un rapporto che sbaglia in difetto manda a scrivere prove dove ce ne sono
   già. Con l'aggancio e le prove nuove il totale offline passa dal 71%
-  all'88%, e nessun modulo sta sotto il 79%.
+  all'88%, e nessun modulo sta sotto il 79%;
+- promemoria di backup all'avvio della chat: se l'ultimo snapshot ha più di
+  `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero spegne tutto —
+  la REPL lo dice e mostra il comando, altrimenti tace. Il backup resta
+  manuale di proposito: farlo partire da solo significherebbe una decina di
+  secondi e il lock esclusivo dello stato mentre qualcuno aspetta un prompt,
+  e un backup che parte da sé è anche un backup che può fallire da sé, in un
+  momento in cui nessuno sta guardando. All'avvio e non all'uscita perché lì
+  l'utente c'è ancora e può decidere. `promemoria_backup()` non crea la
+  directory dei backup nemmeno quando manca del tutto, e non solleva: un
+  avviso non deve poter impedire l'avvio.
 
 ### Changed
 

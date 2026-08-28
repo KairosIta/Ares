@@ -179,6 +179,13 @@ Gli snapshot vivono per default nella directory `ares-backup` accanto al
 clone, non nel repository. Database, indice vettoriale, cronologia e workspace
 restano esclusi da Git.
 
+Il backup resta un comando che dai tu. La chat però se ne accorge: se l'ultimo
+snapshot ha più di `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero
+spegne il promemoria — all'avvio te lo ricorda con la riga da eseguire, e tace
+in tutti gli altri casi. Non prova a fare il backup da sola: un archivio con
+LanceDB dentro richiede una decina di secondi e il lock esclusivo dello stato,
+cioè esattamente ciò che non si fa mentre qualcuno sta aspettando un prompt.
+
 ### Entità duplicate
 
 ```bash

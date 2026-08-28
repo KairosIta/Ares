@@ -48,7 +48,10 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
   nominati in `config.py` siano scaricati, senza accendere niente e senza
   lasciare niente su disco;
 - `inspect_learning.py` rilegge gli archivi a modello spento;
-- `backup.py` crea, verifica e ripristina snapshot locali dello stato;
+- `backup.py` crea, verifica e ripristina snapshot locali dello stato, e
+  offre a `chat.py` il promemoria di rifarne uno quando l'ultimo e'
+  vecchio: la lettura non crea la directory dei backup e non solleva,
+  perche' un avviso non deve poter impedire l'avvio;
 - `entity_maintenance.py` rileva e fonde entita' duplicate;
 - `setup.sh` e `setup.ps1` ricostruiscono lo stesso ambiente bloccato sui due
   sistemi verificati.
