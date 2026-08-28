@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from contextlib import closing
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -38,6 +39,7 @@ from backup import (  # noqa: E402
     crea_snapshot,
     elenco_snapshot,
     pota_snapshot,
+    promemoria_backup,
     ripristina_snapshot,
     valida_percorsi,
     verifica_snapshot,
@@ -323,6 +325,55 @@ def main() -> int:
         esigi(len(elenco_snapshot()) == min(prima, 2), "prune non ha conservato due snapshot")
         esigi(len(eliminati) == max(0, prima - 2), "prune ha eliminato il numero sbagliato")
         ok("prune", str(len(eliminati)) + " eliminati, 2 conservati")
+
+        # Il promemoria: e' l'unica parte automatica di un backup che resta
+        # manuale, quindi il controllo che conta e' quando tace.
+        esigi(promemoria_backup(soglia_giorni=0) == [], "promemoria acceso con la soglia a zero")
+        esigi(promemoria_backup(soglia_giorni=3650) == [], "promemoria acceso con uno snapshot di oggi")
+        vecchio_backup = config.BACKUP_DIR
+        config.BACKUP_DIR = RADICE_PROVA / "backup-mai-fatto"
+        try:
+            righe = promemoria_backup(soglia_giorni=7)
+            esigi(righe, "nessun promemoria pur non essendoci mai stato uno snapshot")
+            esigi("Nessuno snapshot" in righe[0], "il promemoria non dice che non ce n'e' nessuno")
+            esigi("backup.py create" in righe[-1], "il promemoria non dice come rimediare")
+            # Una domanda non deve lasciare una directory: chiedere "ho un
+            # backup?" e ottenere in cambio una cartella vuota e' esattamente
+            # il tipo di effetto che questo progetto ha appena tolto altrove.
+            esigi(
+                not config.BACKUP_DIR.exists(),
+                "il promemoria ha creato la directory dei backup: " + str(config.BACKUP_DIR),
+            )
+        finally:
+            config.BACKUP_DIR = vecchio_backup
+
+        # Invecchiati spostando indietro il manifest, non l'mtime: il
+        # promemoria legge `created_at`, come l'ordinamento. E tutti quelli
+        # rimasti, non solo l'ultimo: invecchiarne uno solo lo manda in fondo
+        # all'elenco e il piu' recente resterebbe quello di oggi.
+        rimasti = elenco_snapshot()
+        # I byte originali, non il dizionario riserializzato: il manifest e'
+        # un file dentro uno snapshot verificabile, e riscriverlo con un'altra
+        # indentazione lo lascerebbe diverso da com'era.
+        originali = {s: (s / "manifest.json").read_bytes() for s in rimasti}
+        for snapshot, byte in originali.items():
+            manifest = json.loads(byte.decode("utf-8"))
+            antica = datetime.fromisoformat(manifest["created_at"]) - timedelta(days=30)
+            manifest["created_at"] = antica.isoformat()
+            (snapshot / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        try:
+            atteso = elenco_snapshot()[-1]
+            righe = promemoria_backup(soglia_giorni=7)
+            esigi(righe, "nessun promemoria con l'ultimo snapshot di 30 giorni fa")
+            esigi("30 giorni fa" in righe[0], "il promemoria non dice quanti giorni: " + righe[0])
+            esigi(atteso.name in righe[0], "il promemoria non nomina lo snapshot piu' recente")
+            esigi(promemoria_backup(soglia_giorni=60) == [], "promemoria acceso sotto la propria soglia")
+        finally:
+            for snapshot, byte in originali.items():
+                (snapshot / "manifest.json").write_bytes(byte)
+        for snapshot in rimasti:
+            esigi(verifica_snapshot(snapshot.name)["snapshot_id"] == snapshot.name, "snapshot alterato dalla prova")
+        ok("promemoria", "tace se recente o spento, avvisa se manca o e' vecchio, non crea niente")
 
     except Exception as errore:
         print("FALLITO ", type(errore).__name__ + ":", errore)
