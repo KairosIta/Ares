@@ -4,8 +4,14 @@
 # motivo per cui c'e'. Tutto il resto (numpy, pyarrow, httpx, pydantic...)
 # arriva per transitivita' e vive solo in requirements.txt, compilato con:
 #
-#     uv pip compile --universal requirements.in -o requirements.txt
+#     uv pip compile --universal --generate-hashes requirements.in -o requirements.txt
 #
+# Gli hash non sono decorazione: senza, il lock dice quale versione installare,
+# non quale artefatto: se un account su PyPI viene compromesso e un file
+# ripubblicato, `agno==2.9.0` resta vero e il contenuto cambia. Con gli hash
+# l'installazione si ferma. Rigenera sempre sopra il file esistente, mai su un
+# percorso nuovo: uv legge il lock che sta per riscrivere come preferenza, ed
+# e' cosi' che aggiungere una dipendenza non aggiorna di nascosto le altre.
 
 # Il framework dell'agente. Pinnato alla versione su cui e' stato scritto e
 # verificato tutto: le API di agno.learn sono giovani e cambiano tra minor.

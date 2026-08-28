@@ -31,6 +31,9 @@ fi
 # sync e non install: il venv finisce esattamente com'e' scritto in
 # requirements.txt, senza i residui di installazioni manuali precedenti.
 # E' la differenza tra un ambiente riproducibile e uno che funziona qui.
+# Il lock porta gli hash degli artefatti, quindi qui uv non verifica solo che
+# la versione sia quella giusta ma che il file scaricato sia quello: se non
+# corrisponde l'installazione si ferma, invece di riuscire con altro dentro.
 echo "Installo le dipendenze bloccate."
 uv pip sync --python .venv/bin/python requirements.txt
 

@@ -7,7 +7,7 @@
 # finirebbe installato su ogni macchina che usa Ares, mentre uno messo qui
 # resta dove serve. Il lock si rigenera con:
 #
-#     uv pip compile --universal requirements-dev.in -o requirements-dev.txt
+#     uv pip compile --universal --generate-hashes requirements-dev.in -o requirements-dev.txt
 #
 
 # Linter e formattatore. Pinnato come tutto il resto: una minor nuova di ruff
