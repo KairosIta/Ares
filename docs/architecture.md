@@ -8,8 +8,9 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 
 ### Interfaccia
 
-- `chat.py` e' il client CLI: tabella dei comandi, rendering del turno e
-  richieste di conferma;
+- `chat.py` avvia e coordina la REPL; `chat_commands.py` contiene la tabella
+  dei comandi locali e il loro dispatch, mentre `chat_render.py` presenta
+  eventi, conferme e metriche del turno;
 - `cli_input.py` gestisce editor, completamento, input multilinea e cronologia
   privata della REPL;
 - `cli_ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i
