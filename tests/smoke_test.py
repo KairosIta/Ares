@@ -51,6 +51,7 @@ import os
 import shlex
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -1273,6 +1274,47 @@ def archivio_privato() -> str:
     return str(len(directory)) + " directory a 700 e " + str(len(database)) + " database a 600, anche se preesistenti"
 
 
+def import_senza_effetti() -> str:
+    """Importare `config` non tocca il disco.
+
+    Prima il modulo creava la directory dello stato nel proprio corpo, e
+    leggere una costante produceva un effetto: `preflight.py` importava
+    `config` per tre nomi di modello e si lasciava dietro un archivio, e ogni
+    prova ha dovuto imparare a scrivere `ARES_TMP` prima dell'import, con un
+    commento che spiega perche'. La creazione ora e' esplicita, e questa prova
+    e' cio' che impedisce che torni: un `mkdir` rimesso nel corpo del modulo
+    non romperebbe niente e non se ne accorgerebbe nessuno.
+
+    In un processo separato perche' qui `config` e' importato da un pezzo, e
+    un modulo si importa una volta sola.
+    """
+    prova = Path(tempfile.mkdtemp(prefix="ares-import-"))
+    ambiente = os.environ.copy()
+    ambiente["ARES_TMP"] = str(prova / "stato")
+    codice = (
+        "import os, config;"
+        "print('dopo-import', os.path.exists(config.TMP_DIR));"
+        "config.prepara_archivio();"
+        "print('dopo-prepara', os.path.exists(config.TMP_DIR))"
+    )
+    try:
+        figlio = subprocess.run(
+            [sys.executable, "-c", codice],
+            cwd=config.BASE_DIR,
+            env=ambiente,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        esigi(figlio.returncode == 0, "l'import di config e' fallito: " + figlio.stderr[-400:])
+        esigi("dopo-import False" in figlio.stdout, "importare config ha creato la directory dello stato")
+        esigi("dopo-prepara True" in figlio.stdout, "prepara_archivio() non ha creato la directory dello stato")
+    finally:
+        shutil.rmtree(prova, ignore_errors=True)
+    return "nessuna directory creata all'import, creata da prepara_archivio()"
+
+
 def conferme_leggibili() -> str:
     """Un comando lungo arriva intero e con i confini visibili alla conferma.
 
@@ -2136,6 +2178,7 @@ def main() -> int:
             ("file isolati        ", lambda: file_isolati(args.user)),
             ("indice vettoriale   ", lambda: indice_vettoriale(lm)),
             ("archivio privato    ", lambda: archivio_privato()),
+            ("import senza effetti", lambda: import_senza_effetti()),
             ("conferme leggibili  ", lambda: conferme_leggibili()),
             ("metriche del turno  ", lambda: metriche_del_turno()),
             ("esito strumenti     ", lambda: esito_strumenti()),

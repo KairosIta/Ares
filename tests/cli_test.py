@@ -334,6 +334,62 @@ def chat_repl() -> str:
     return "banner, comandi, riga vuota, comando ignoto e uscita"
 
 
+def aiuto_senza_effetti() -> str:
+    """`--help` non crea l'archivio, per nessuno dei cinque comandi.
+
+    Ogni comando chiama `config.prepara_archivio()` dopo `parse_args()` e non
+    prima, perche' `--help` esce li' in mezzo. Non e' un dettaglio estetico:
+    un archivio a 0700 creato da un comando che stampa l'aiuto e' comunque un
+    archivio che non c'era, e su una macchina condivisa e' la traccia che
+    qualcuno ha guardato. La differenza fra prima e dopo quella riga sono
+    due caratteri, e nessun'altra prova la vedrebbe.
+    """
+    comandi = ("chat.py", "backup.py", "entity_maintenance.py", "inspect_learning.py")
+    for comando in comandi:
+        pulita = Path(tempfile.mkdtemp(prefix="ares-aiuto-"))
+        stato = pulita / "stato"
+        ambiente = os.environ.copy()
+        ambiente["ARES_TMP"] = str(stato)
+        try:
+            figlio = subprocess.run(
+                [sys.executable, comando, "--help"],
+                cwd=config.BASE_DIR,
+                env=ambiente,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            esigi(figlio.returncode == 0, comando + " --help non e' uscito con 0: " + figlio.stderr[-300:])
+            esigi("usage" in figlio.stdout, comando + " --help non stampa l'uso")
+            esigi(not stato.exists(), comando + " --help ha creato l'archivio in " + str(stato))
+        finally:
+            shutil.rmtree(pulita, ignore_errors=True)
+
+    # `preflight.py` non ha argparse: non ha argomenti da leggere, e non e'
+    # una mancanza da colmare qui. Su di lui vale la stessa invariante presa
+    # dal verso giusto - un'esecuzione intera non deve lasciare l'archivio -
+    # e l'esito dipende da cosa gira sulla macchina, quindi non si controlla.
+    pulita = Path(tempfile.mkdtemp(prefix="ares-aiuto-"))
+    stato = pulita / "stato"
+    ambiente = os.environ.copy()
+    ambiente["ARES_TMP"] = str(stato)
+    try:
+        subprocess.run(
+            [sys.executable, "preflight.py"],
+            cwd=config.BASE_DIR,
+            env=ambiente,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        esigi(not stato.exists(), "preflight.py ha creato l'archivio in " + str(stato))
+    finally:
+        shutil.rmtree(pulita, ignore_errors=True)
+    return str(len(comandi)) + " aiuti e un preflight intero senza creare l'archivio"
+
+
 def main() -> int:
     avvio = time.monotonic()
     print("Archivio della prova:", RADICE_PROVA)
@@ -354,6 +410,7 @@ def main() -> int:
         # sopra: uno snapshot di un archivio vuoto proverebbe meno.
         ok("backup CLI", backup_cli(RADICE_PROVA))
         ok("chat REPL", chat_repl())
+        ok("aiuto puro", aiuto_senza_effetti())
     except Exception as errore:
         print()
         print("FALLITO ", type(errore).__name__ + ":", errore)
