@@ -986,6 +986,10 @@ def _esegui_audit(user_id: str, mostra_tutte: bool, tutte_le_coppie: bool) -> in
         print("Nessun archivio di Ares trovato in", percorso)
         return 0
 
+    # Dopo il controllo e non prima: se l'archivio non c'e' questo comando lo
+    # dice e basta, non lo crea. Se c'e', la directory esiste gia' e la
+    # chiamata serve a correggerne i permessi su un clone piu' vecchio.
+    config.prepara_archivio()
     namespace = namespace_entita(user_id)
     db = SqliteDb(db_file=str(percorso))
     esito = analizza(db=db, namespace=namespace, includi_tutte_le_coppie=tutte_le_coppie)
@@ -998,6 +1002,7 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
     if not percorso.is_file():
         raise ErroreManutenzione("nessun archivio di Ares trovato in " + str(percorso))
 
+    config.prepara_archivio()
     namespace = namespace_entita(user_id)
     db = SqliteDb(db_file=str(percorso))
     entita, ignorate = carica_entita(db=db, namespace=namespace)

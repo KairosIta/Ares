@@ -102,6 +102,7 @@ def _archivio_privato(percorso: str) -> str:
     crearlo qui non cambia niente per chi lo apre dopo. Sui cloni esistenti
     corregge anche il file gia' scritto con i permessi larghi.
     """
+    config.prepara_archivio()
     file_db = Path(percorso)
     file_db.parent.mkdir(parents=True, exist_ok=True)
     if not file_db.exists():
@@ -127,6 +128,7 @@ def build_knowledge() -> Knowledge:
     # del processo. Vale qui la stessa regola di tmp/: si rende privata la
     # directory, che e' cio' che si attraversa, e non i frammenti dentro, che
     # nascono e muoiono con le versioni della tabella.
+    config.prepara_archivio()
     indice = Path(config.LANCEDB_URI)
     indice.mkdir(parents=True, exist_ok=True)
     rendi_privato(indice)

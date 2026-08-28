@@ -3,6 +3,10 @@
 I valori predefiniti sono orientati a un host locale con circa 16 GiB di
 VRAM. Modello, contesto, percorsi e identita' possono essere adattati qui o,
 quando previsto, tramite variabili d'ambiente.
+
+Importare questo modulo non tocca il disco: legge `.env` e definisce nomi.
+La directory dello stato la crea `prepara_archivio()`, che chiama chi
+l'archivio lo apre davvero.
 """
 
 import os
@@ -212,10 +216,8 @@ ESITO_LARGHEZZA = 100
 # ---------------------------------------------------------------------------
 
 # Dove vive lo stato appreso. ARES_TMP lo sposta altrove, e serve alle prove
-# che devono girare su un archivio usa-e-getta: importare config crea la
-# directory, quindi senza questa leva un test lascerebbe comunque una tmp/
-# vuota accanto ai dati veri, e un turno di prova ci scriverebbe dentro.
-# Va letta qui e non nei singoli percorsi: e' una decisione sola.
+# che devono girare su un archivio usa-e-getta. Va letta qui e non nei singoli
+# percorsi: e' una decisione sola.
 TMP_DIR = Path(os.environ.get("ARES_TMP") or BASE_DIR / "tmp")
 # Il nome del file conserva quello che il progetto aveva prima del rilascio
 # pubblico, mentre le classi sono state rinominate. Non e' una svista: questo
@@ -228,16 +230,34 @@ DB_FILE = str(TMP_DIR / "kairos.db")
 FS_DB_FILE = str(TMP_DIR / "filesystem.db")
 LANCEDB_URI = str(TMP_DIR / "lancedb")
 
-TMP_DIR.mkdir(parents=True, exist_ok=True)
-# I permessi si applicano alla directory e non ai file che contiene, perche'
-# la directory e' il confine che regge davvero: senza il diritto di
-# attraversarla i modi dei singoli database non si raggiungono, e quei modi li
-# decide la umask di chi apre il file, non questo progetto. Qui dentro c'e'
-# tutto cio' che e' stato detto ad Ares: la cronologia accanto nasce gia' a
-# 0600 e gli snapshot a 0700/0600, questa riga toglie l'asimmetria per cui
-# la copia era privata e l'originale no. Su Windows non fa nulla, come
-# ovunque nel progetto: li' vale la DACL ereditata.
-rendi_privato(TMP_DIR)
+
+def prepara_archivio() -> Path:
+    """Crea la directory dello stato, privata, e restituisce il percorso.
+
+    Sta qui e non nel corpo del modulo perche' importare una configurazione
+    non deve produrre effetti: `preflight.py` importa `config` per tre nomi di
+    modello e non ha alcun motivo di lasciarsi dietro un archivio, e nemmeno
+    `--help`. Chi apre l'archivio la chiama, ed e' idempotente: i tre
+    costruttori di `assistant.py`, e il `main()` dei comandi che l'archivio lo
+    toccano - `backup.py` no, legge tmp/ e sa dire che non c'e'. Nei comandi
+    la chiamata va **dopo** `parse_args()`, perche' `--help` esce li' in
+    mezzo. Piu' punti dello stretto necessario, di proposito: il costo di una
+    chiamata in piu' e' zero, quello di una dimenticata e' un archivio
+    leggibile da chiunque.
+
+    I permessi si applicano alla directory e non ai file che contiene, perche'
+    la directory e' il confine che regge davvero: senza il diritto di
+    attraversarla i modi dei singoli database non si raggiungono, e quei modi
+    li decide la umask di chi apre il file, non questo progetto. Qui dentro
+    c'e' tutto cio' che e' stato detto ad Ares: la cronologia accanto nasce
+    gia' a 0600 e gli snapshot a 0700/0600, questa riga toglie l'asimmetria
+    per cui la copia era privata e l'originale no. Su Windows non fa nulla,
+    come ovunque nel progetto: li' vale la DACL ereditata.
+    """
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    rendi_privato(TMP_DIR)
+    return TMP_DIR
+
 
 # Snapshot locali dello stato appreso. Fuori da tmp/, perche' un backup dentro
 # cio' che deve salvare verrebbe copiato ricorsivamente e sparirebbe insieme

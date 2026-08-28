@@ -641,6 +641,12 @@ def _esegui_chat() -> None:
     )
     args = parser.parse_args()
 
+    # Dopo `parse_args` e non prima: `--help` esce qui, e un comando che
+    # stampa l'aiuto non deve lasciarsi dietro un archivio. La cronologia
+    # della REPL nasce dentro tmp/, che quindi deve esistere gia' privata
+    # quando `CliInput` ci scrive.
+    config.prepara_archivio()
+
     configura_log_agno(args.debug)
     agent = build_assistant(user_id=args.user, session_id=args.session, debug=args.debug)
 

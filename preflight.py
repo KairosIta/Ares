@@ -9,8 +9,14 @@ il server Ollama risponda e che i modelli nominati in `config.py` siano
 davvero scaricati. Sono i due modi in cui l'avvio fallisce, e il secondo
 non da' errore finche' non arriva il primo messaggio.
 
-Usa solo la libreria standard, quindi si puo' eseguire con qualsiasi
-interprete anche prima di aver installato le dipendenze.
+Non accende nessun modello e non lascia niente su disco: legge da `config`,
+il cui import non crea piu' nulla, e non chiama `prepara_archivio()`. Un
+comando che deve dire se l'ambiente funziona non e' il posto giusto per
+creare l'archivio.
+
+Va eseguito con l'interprete del venv. Il file usa solo la libreria
+standard, ma `config` carica `.env` con python-dotenv e importa
+`platform_files`, che usa portalocker: nessuna delle due e' stdlib.
 """
 
 import json

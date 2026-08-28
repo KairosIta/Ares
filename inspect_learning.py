@@ -35,6 +35,10 @@ def _ispeziona() -> None:
     parser.add_argument("--file", default=None, help="Stampa il contenuto di un file dell'agente")
     args = parser.parse_args()
 
+    # Dopo `parse_args`: `--help` esce prima di qui, e un comando che stampa
+    # l'aiuto non deve creare l'archivio che dice di ispezionare.
+    config.prepara_archivio()
+
     fs = build_filesystem(args.user)
 
     if args.file:
