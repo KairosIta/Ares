@@ -311,16 +311,19 @@ def chat_repl() -> str:
 
     Il figlio non eredita `config.OLLAMA_HOST` chiuso di questa prova - e' una
     costante e non una variabile d'ambiente, per una scelta che `config.py`
-    motiva. Resta offline per costruzione: `/entita` senza argomento chiama
-    `list_entities`, che e' una query SQL, `/file` elenca il filesystem, e
-    `/aiuto` stampa. L'unica lettura del progetto che accenderebbe un modello
-    e' `leggi_intuizioni`, che nessun comando qui attraversa.
+    motiva. Resta offline soltanto se ogni riga che gli si manda comincia con
+    `/`: quello che non comincia con `/` non e' un comando, e' un messaggio, e
+    la REPL lo manda al modello. Le righe qui sono comandi, la riga vuota e un
+    comando inesistente; l'ultima asserzione verifica che nessun turno sia
+    stato aperto, perche' e' un errore che passerebbe inosservato - in CI un
+    Ollama irraggiungibile diventa un evento di errore che la REPL stampa,
+    e la prova resterebbe verde per il motivo sbagliato.
     """
     figlio = subprocess.run(
         [sys.executable, "chat.py", "--user", UTENTE, "--session", SESSIONE],
         cwd=config.BASE_DIR,
         env=os.environ.copy(),
-        input="/aiuto\n\n/entita\n/file\nsconosciuto/comando\n/esci\n",
+        input="/aiuto\n\n/entita\n/file\n/sconosciuto comando\n/esci\n",
         capture_output=True,
         text=True,
         timeout=180,
@@ -331,6 +334,16 @@ def chat_repl() -> str:
     esigi("A presto" in testo, "la REPL non saluta all'uscita")
     esigi("/aiuto" in testo, "l'elenco dei comandi non compare")
     esigi("appunto.md" in testo, "/file non elenca il file scritto dall'agente")
+    esigi("Comando sconosciuto: /sconosciuto" in testo, "il comando ignoto non e' stato riconosciuto come tale")
+    # La riga che tiene in piedi la promessa del modulo. Una riga che non
+    # comincia con `/` non e' un comando: e' un messaggio, e la REPL lo manda
+    # al modello. Qui era gia' successo per un `/` messo in mezzo invece che
+    # in testa, e non se n'era accorto nessuno: la prova passava lo stesso,
+    # accendeva Ollama, e in CI sarebbe passata di nuovo perche' un modello
+    # irraggiungibile diventa un evento di errore che la REPL stampa e basta.
+    # `Ares` a schermo significa una cosa sola: l'intestazione che apre una
+    # risposta del modello. Il banner non la contiene, i comandi nemmeno.
+    esigi("Ares" not in testo, "la REPL ha aperto un turno col modello: " + testo[-400:])
     return "banner, comandi, riga vuota, comando ignoto e uscita"
 
 
