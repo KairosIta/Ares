@@ -274,6 +274,21 @@ STATE_LOCK_FILE = TMP_DIR.with_name(TMP_DIR.name + ".lock")
 # conferma, a meno di un --yes esplicito.
 BACKUP_KEEP = 20
 
+# Dopo quanti giorni la chat ricorda all'avvio che manca un backup. Zero
+# spegne il promemoria.
+#
+# Il backup resta manuale, ed e' una scelta. Farlo da solo all'uscita
+# significherebbe una decina di secondi fra il `/esci` e il ritorno alla
+# shell - i due SQLite copiati, LanceDB copiato, il sondaggio in un processo
+# isolato - pagati a ogni sessione, comprese quelle in cui non e' cambiato
+# niente. E un backup che parte da se' e' anche un backup che puo' fallire da
+# se', in un momento in cui nessuno sta guardando.
+#
+# Sette giorni perche' e' l'intervallo oltre il quale la domanda "quanto
+# perderei adesso?" comincia ad avere una risposta scomoda, e perche' un
+# avviso che compare troppo spesso smette di essere letto.
+BACKUP_PROMEMORIA_GIORNI = 7
+
 # ---------------------------------------------------------------------------
 # Cronologia della riga di comando
 # ---------------------------------------------------------------------------

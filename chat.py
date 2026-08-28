@@ -30,6 +30,7 @@ from agno.run.agent import RunOutput
 
 import config
 from assistant import build_assistant, build_filesystem
+from backup import promemoria_backup
 from cli_input import CliInput
 from cli_ui import UI
 from state_lock import StatoOccupato, lock_stato
@@ -667,6 +668,16 @@ def _esegui_chat() -> None:
         )
 
     UI.banner(modello=config.MAIN_MODEL, sessione=args.session, utente=args.user)
+
+    # All'avvio e non all'uscita: qui l'utente c'e' e puo' decidere, mentre
+    # chi scrive `/esci` ha gia' finito e legge un avviso che rimandera'.
+    # L'elenco e' vuoto quasi sempre - vedi `promemoria_backup`.
+    promemoria = promemoria_backup()
+    if promemoria:
+        UI.blank()
+        UI.line(promemoria[0], style="ares.warning")
+        for riga in promemoria[1:]:
+            UI.line(riga, style="ares.muted")
     UI.blank()
 
     while True:

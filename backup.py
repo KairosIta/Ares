@@ -405,8 +405,14 @@ def _ordine_snapshot(percorso: Path) -> tuple[float, str]:
         return percorso.stat().st_mtime, percorso.name
 
 
-def elenco_snapshot() -> list[Path]:
-    root = _root_backup()
+def _snapshot_dentro(root: Path) -> list[Path]:
+    """Gli snapshot validi in una directory che esiste gia'.
+
+    Separata da `elenco_snapshot` perche' quella passa da `_root_backup`, che
+    la directory dei backup la crea. Va bene per chi sta per scriverci; non va
+    bene per chi vuole soltanto sapere se ci sia qualcosa, e che altrimenti si
+    lascerebbe dietro una directory vuota per aver fatto una domanda.
+    """
     return sorted(
         (
             voce
@@ -415,6 +421,57 @@ def elenco_snapshot() -> list[Path]:
         ),
         key=_ordine_snapshot,
     )
+
+
+def elenco_snapshot() -> list[Path]:
+    return _snapshot_dentro(_root_backup())
+
+
+def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
+    """Le righe da mostrare all'avvio se e' ora di rifare un backup.
+
+    Elenco vuoto quando non c'e' niente da dire: nessuno stato da perdere,
+    promemoria spento in `config.py`, o uno snapshot abbastanza recente. Un
+    avviso che compare a ogni avvio smette di essere letto entro una
+    settimana, ed e' peggio di nessun avviso perche' occupa il posto di
+    quello vero.
+
+    Legge soltanto: non crea la directory dei backup, non verifica i
+    checksum, non apre i database. Costa una `iterdir` e la lettura di un
+    manifest per snapshot, ed e' sul percorso di avvio della chat.
+
+    Non solleva: un promemoria che impedisce di parlare con Ares ha invertito
+    il rapporto fra la cosa e il suo promemoria. Se qualcosa va storto qui,
+    tace - e il backup resta un comando esplicito, che e' come lo si e'
+    voluto.
+    """
+    soglia = config.BACKUP_PROMEMORIA_GIORNI if soglia_giorni is None else soglia_giorni
+    if soglia <= 0:
+        return []
+    try:
+        if not _stato_presente():
+            return []
+        valida_percorsi()
+        root = config.BACKUP_DIR
+        disponibili = _snapshot_dentro(root) if root.is_dir() else []
+        python_venv = r".venv\Scripts\python.exe" if os.name == "nt" else ".venv/bin/python"
+        comando = "    " + python_venv + " backup.py create"
+        if not disponibili:
+            return [
+                "Nessuno snapshot: profilo, memorie ed entita' esistono in una copia sola.",
+                comando,
+            ]
+        ultimo = disponibili[-1]
+        adesso = datetime.now(timezone.utc).timestamp()
+        giorni = (adesso - _ordine_snapshot(ultimo)[0]) / 86400
+        if giorni < soglia:
+            return []
+        return [
+            "Ultimo snapshot " + str(int(giorni)) + " giorni fa (" + ultimo.name + ").",
+            comando,
+        ]
+    except (ErroreBackup, OSError, ValueError):
+        return []
 
 
 def risolvi_snapshot(nome: str) -> Path:
