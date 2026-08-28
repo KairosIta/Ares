@@ -29,6 +29,7 @@ comprerebbe pochi secondi al prezzo di un output intrecciato.
 """
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,7 @@ PROVE = (
     ("smoke", "smoke_test.py", False, "assemblaggio, store, lock, REPL simulata"),
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
+    ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),
     ("affidabilita", "learning_reliability_test.py", True, "retry dell'estrazione del contesto"),
     ("intuizioni", "learned_knowledge_test.py", True, "salvataggio e riuso delle intuizioni"),
     ("e2e", "e2e_test.py", True, "un turno completo e la rilettura da un altro processo"),
@@ -120,6 +122,28 @@ def pulisci_dati_copertura() -> None:
         shutil.rmtree(htmlcov)
 
 
+def ambiente_figli() -> dict[str, str]:
+    """Variabili che estendono la misura ai processi avviati dalle prove.
+
+    Le prove non sono foglie: la CLI di `entity_maintenance.py` viene lanciata
+    sei volte come sottoprocesso, `backup.py` sonda LanceDB in un interprete
+    isolato, `e2e_test.py` rilegge l'archivio da un processo nuovo. Quel codice
+    e' provato, e senza queste due variabili risulta scoperto: un rapporto che
+    sbaglia in difetto manda a scrivere prove dove ce ne sono gia'.
+
+    `COVERAGE_PROCESS_START` dice a `coverage.process_startup()` quale
+    configurazione usare; `PYTHONPATH` mette a portata il `sitecustomize.py`
+    che quella funzione la chiama. Le prove copiano `os.environ` quando
+    lanciano un figlio, quindi la coppia si propaga anche ai nipoti.
+    """
+    aggiunta = str(RADICE / "tests" / "_copertura")
+    esistente = os.environ.get("PYTHONPATH", "")
+    return {
+        "COVERAGE_PROCESS_START": str(RADICE / ".coveragerc"),
+        "PYTHONPATH": aggiunta + os.pathsep + esistente if esistente else aggiunta,
+    }
+
+
 def coverage_disponibile() -> bool:
     return (
         subprocess.run(
@@ -140,14 +164,16 @@ def esegui(prova: tuple[str, str, bool, str], copertura: bool) -> tuple[int, flo
     """
     percorso = Path("tests") / prova[1]
     comando = [sys.executable]
+    ambiente = dict(os.environ)
     if copertura:
         # `-m coverage run` invece di un wrapper: la prova resta lo stesso
         # script con lo stesso argv, e cio' che si misura e' quello che gira
         # anche senza misura.
         comando += ["-m", "coverage", "run"]
+        ambiente.update(ambiente_figli())
     comando.append(str(percorso))
     avvio = time.monotonic()
-    esito = subprocess.run(comando, cwd=RADICE).returncode
+    esito = subprocess.run(comando, cwd=RADICE, env=ambiente).returncode
     return esito, time.monotonic() - avvio
 
 
