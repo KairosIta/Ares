@@ -21,7 +21,7 @@ dichiarati `List[str]` e riletti dal database come `str`. Chiedere l'elenco
 nella descrizione e' l'unico modo di ottenerne uno.
 
 **Il contesto di sessione non si estende.** Qui vivevano anche un
-`KairosSessionContext` con `blockers` e `decisions`, che il modello non ha
+`AresSessionContext` con `blockers` e `decisions`, che il modello non ha
 mai potuto scrivere: `save_session_context` ha una firma fissa - summary,
 goal, plan, progress - costruita a mano e non dallo schema
 (`agno/learn/stores/session_context.py`). Lo schema serve solo a rileggere
@@ -29,7 +29,7 @@ cio' che quella firma ha scritto. Erano due campi che nessun percorso poteva
 riempire, come l'embedder di ingestion prima di loro, e sono stati rimossi.
 
 **Uno schema serve anche a cambiare come una cosa viene resa**, non solo a
-aggiungere campi: `KairosMemories` non porta nessun campo nuovo, sovrascrive
+aggiungere campi: `AresMemories` non porta nessun campo nuovo, sovrascrive
 il metodo con cui le memorie diventano testo per il prompt.
 """
 
@@ -40,7 +40,7 @@ from agno.learn.schemas import Memories, UserProfile
 
 
 @dataclass
-class KairosProfile(UserProfile):
+class AresProfile(UserProfile):
     """Profilo utente esteso con i campi che contano per un assistente personale."""
 
     timezone: Optional[str] = field(
@@ -91,7 +91,7 @@ class KairosProfile(UserProfile):
 
 
 @dataclass
-class KairosMemories(Memories):
+class AresMemories(Memories):
     """Memorie che portano con se' la data, invece di arrivare senza tempo.
 
     Ogni memoria ha `created_at` e `updated_at` in archivio da sempre: e' il

@@ -217,6 +217,13 @@ ESITO_LARGHEZZA = 100
 # vuota accanto ai dati veri, e un turno di prova ci scriverebbe dentro.
 # Va letta qui e non nei singoli percorsi: e' una decisione sola.
 TMP_DIR = Path(os.environ.get("ARES_TMP") or BASE_DIR / "tmp")
+# Il nome del file conserva quello che il progetto aveva prima del rilascio
+# pubblico, mentre le classi sono state rinominate. Non e' una svista: questo
+# nome sta nella tupla `DATABASE` di backup.py e quindi nell'insieme di file
+# che `verifica_snapshot` pretende, cioe' dentro ogni snapshot gia' creato.
+# Cambiarlo e' una migrazione con bump di FORMATO_BACKUP e lettura di
+# entrambi i nomi al restore, non una rinomina - e il nome non arriva mai
+# all'utente.
 DB_FILE = str(TMP_DIR / "kairos.db")
 FS_DB_FILE = str(TMP_DIR / "filesystem.db")
 LANCEDB_URI = str(TMP_DIR / "lancedb")

@@ -44,7 +44,7 @@ from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 from agno.utils.log import log_warning
 from platform_files import rendi_privato
-from schemas import KairosMemories, KairosProfile
+from schemas import AresMemories, AresProfile
 from stores import namespace_entita, namespace_utente
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ def build_filesystem(user_id: str = config.DEFAULT_USER_ID) -> FileSystem:
 # ---------------------------------------------------------------------------
 
 
-class KairosWorkspace(Workspace):
+class AresWorkspace(Workspace):
     """Lo spazio di lavoro sul disco, con gli strumenti rinominati.
 
     Agno registra gli strumenti per nome e ne tiene uno solo: il FileSystem
@@ -212,7 +212,7 @@ class KairosWorkspace(Workspace):
         self.add_instructions = False
 
 
-def build_workspace() -> KairosWorkspace:
+def build_workspace() -> AresWorkspace:
     """La directory di lavoro dell'agente, creata se manca.
 
     Le due guardie non sono formalita': se lo spazio di lavoro contenesse il
@@ -231,7 +231,7 @@ def build_workspace() -> KairosWorkspace:
             )
 
     radice.mkdir(parents=True, exist_ok=True)
-    return KairosWorkspace(
+    return AresWorkspace(
         radice,
         prefisso=config.WORKSPACE_PREFIX,
         allowed=config.WORKSPACE_ALLOWED,
@@ -245,7 +245,7 @@ def build_workspace() -> KairosWorkspace:
 # ---------------------------------------------------------------------------
 
 
-class KairosLearningMachine(LearningMachine):
+class AresLearningMachine(LearningMachine):
     """Una LearningMachine che estrae solo quando il run e' davvero finito.
 
     Agno 2.9 avvia ``LearningMachine.process`` prima della chiamata al modello,
@@ -273,7 +273,7 @@ class KairosLearningMachine(LearningMachine):
         super().process(*args, **kwargs)
 
 
-class KairosSessionContextStore(SessionContextStore):
+class AresSessionContextStore(SessionContextStore):
     """Riprova soltanto una tool call di contesto che non ha scritto nulla.
 
     I retry del modello coprono gli errori del provider. Il JSON troncato di
@@ -342,9 +342,9 @@ class KairosSessionContextStore(SessionContextStore):
         return risultato
 
 
-def build_session_context_store(db: SqliteDb, model: Ollama) -> KairosSessionContextStore:
+def build_session_context_store(db: SqliteDb, model: Ollama) -> AresSessionContextStore:
     """Costruisce lo store robusto usato sia da Ares sia dalla prova mirata."""
-    return KairosSessionContextStore(
+    return AresSessionContextStore(
         config=SessionContextConfig(
             db=db,
             mode=LearningMode.ALWAYS,
@@ -399,7 +399,7 @@ def apprendi_a_run_completato(
     )
 
 
-def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> KairosLearningMachine:
+def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> AresLearningMachine:
     """Compone gli store attivi secondo i flag in config.
 
     Gli store ALWAYS estraggono dopo ogni risposta, uno per volta, ciascuno
@@ -413,7 +413,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> 
     if config.LEARN_USER_PROFILE:
         user_profile = UserProfileConfig(
             mode=LearningMode.ALWAYS,
-            schema=KairosProfile,
+            schema=AresProfile,
             model=learning_model,
             max_updates_per_run=config.MAX_UPDATES_PER_RUN,
             instructions=(
@@ -432,7 +432,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> 
             # Cambia solo come le memorie diventano testo nel prompt: ognuna
             # arriva con la data in cui e' stata appresa, che in archivio c'e'
             # gia' ma che il rendering di Agno butta via. Nessun campo nuovo.
-            schema=KairosMemories if config.DATE_MEMORIE else None,
+            schema=AresMemories if config.DATE_MEMORIE else None,
             max_updates_per_run=config.MAX_UPDATES_PER_RUN,
             # Espone `update_user_memory`, uno strumento solo: dice al modello
             # cosa fare in linguaggio naturale e la stessa estrazione della
@@ -479,7 +479,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> 
             namespace=namespace_utente(user_id),
         )
 
-    return KairosLearningMachine(
+    return AresLearningMachine(
         db=db,
         model=learning_model,
         knowledge=knowledge,

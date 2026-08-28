@@ -86,8 +86,8 @@ from agno.run.agent import RunOutput  # noqa: E402
 from agno.run.base import RunStatus  # noqa: E402
 from agno.tools.workspace import Workspace  # noqa: E402
 from assistant import (  # noqa: E402
-    KairosLearningMachine,
-    KairosSessionContextStore,
+    AresLearningMachine,
+    AresSessionContextStore,
     apprendi_a_run_completato,
     build_assistant,
     build_db,
@@ -119,7 +119,7 @@ from prompt_toolkit.completion import CompleteEvent  # noqa: E402
 from prompt_toolkit.document import Document  # noqa: E402
 from prompt_toolkit.input.defaults import create_pipe_input  # noqa: E402
 from prompt_toolkit.output import DummyOutput  # noqa: E402
-from schemas import KairosProfile  # noqa: E402
+from schemas import AresProfile  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.text import Text  # noqa: E402
 from stores import (  # noqa: E402
@@ -243,7 +243,7 @@ def semina(lm, fs, user_id: str, session_id: str) -> str:
     # per scontato che ci siano tutti farebbe fallire la prova per una
     # configurazione valida invece che per un difetto.
     if "user_profile" in lm.stores:
-        lm.user_profile_store.save(user_id=user_id, profile=KairosProfile(user_id=user_id, **PROFILO_SEMINATO))
+        lm.user_profile_store.save(user_id=user_id, profile=AresProfile(user_id=user_id, **PROFILO_SEMINATO))
         seminato.append("1 profilo")
     if "user_memory" in lm.stores:
         for memoria in MEMORIE_SEMINATE:
@@ -308,7 +308,7 @@ def apprendimento_post_run(agent) -> str:
         def process(self, **kwargs):
             chiamate.append(kwargs)
 
-    macchina = object.__new__(KairosLearningMachine)
+    macchina = object.__new__(AresLearningMachine)
     macchina._stores = {"prova": StoreFinto()}
     macchina.model = None
 
@@ -336,7 +336,7 @@ def apprendimento_post_run(agent) -> str:
 
     esigi(len(chiamate) == 1, "il post-hook ha eseguito " + str(len(chiamate)) + " estrazioni invece di una")
     esigi(chiamate[0]["messages"] == messaggi, "il post-hook non ha ricevuto tutti i messaggi del run")
-    esigi(isinstance(agent.learning_machine, KairosLearningMachine), "l'agente non usa KairosLearningMachine")
+    esigi(isinstance(agent.learning_machine, AresLearningMachine), "l'agente non usa AresLearningMachine")
     esigi(
         apprendi_a_run_completato in (agent.post_hooks or []),
         "il post-hook di apprendimento non e' collegato all'agente",
@@ -349,7 +349,7 @@ def retry_contesto(lm) -> str:
     import asyncio
     import assistant as modulo_assistant
 
-    class StoreFinto(KairosSessionContextStore):
+    class StoreFinto(AresSessionContextStore):
         def __init__(self, esiti):
             self.esiti = iter(esiti)
             self.chiamate = 0
@@ -402,8 +402,8 @@ def retry_contesto(lm) -> str:
 
     if config.LEARN_SESSION_CONTEXT:
         esigi(
-            isinstance(lm.session_context_store, KairosSessionContextStore),
-            "l'agente non usa KairosSessionContextStore",
+            isinstance(lm.session_context_store, AresSessionContextStore),
+            "l'agente non usa AresSessionContextStore",
         )
     else:
         esigi(lm.session_context_store is None, "il contesto e' costruito nonostante il flag spento")
