@@ -91,7 +91,7 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: |
           uv venv --python python .venv
-          uv pip sync --python "${{ matrix.python }}" requirements.txt
+          uv pip sync --python "${{ matrix.python }}" requirements.txt requirements-dev.txt
           uv pip check --python "${{ matrix.python }}"
 
       - name: Prepara l’ambiente Windows
@@ -101,14 +101,23 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: ./setup.ps1 -SkipPreflight
 
+      # L'elenco dei moduli era scritto a mano e si era gia' perso
+      # `turn_core.py`, aggiunto dopo. Qui l'esclusione e' esplicita e il
+      # resto e' automatico: un modulo nuovo entra da solo.
       - name: Compila il codice
-        run: ${{ matrix.python }} -m compileall -q assistant.py backup.py chat.py cli_input.py cli_ui.py config.py entity_maintenance.py inspect_learning.py platform_files.py preflight.py schemas.py state_lock.py stores.py tests
+        run: ${{ matrix.python }} -m compileall -q -x "([\\/])(\.venv|\.git|htmlcov)([\\/]|$)" .
 
-      - name: Smoke test
-        run: ${{ matrix.python }} tests/smoke_test.py
+      # Un passo solo, e la stessa riga che si scrive in locale: tre passi
+      # separati significavano che aggiungere una prova voleva dire
+      # ricordarsi di aggiungerla anche qui, e una prova dimenticata in CI
+      # e' una prova che non esiste.
+      - name: Prove offline
+        if: runner.os != 'Windows'
+        run: ${{ matrix.python }} tests/run.py --copertura
 
-      - name: Backup e restore
-        run: ${{ matrix.python }} tests/backup_test.py
-
-      - name: Manutenzione entità
-        run: ${{ matrix.python }} tests/entity_maintenance_test.py
+      # Su Windows la stessa suite senza misura: la copertura di un progetto
+      # non dipende dal sistema, e il runner Windows nasce da setup.ps1, che
+      # installa il solo requirements.txt.
+      - name: Prove offline
+        if: runner.os == 'Windows'
+        run: ${{ matrix.python }} tests/run.py
