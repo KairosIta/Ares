@@ -20,7 +20,7 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   l'intero albero delle dipendenze è tipizzato, e copre i moduli e non le
   prove; ruff copre tutto, con `PTH` escluso perché litigherebbe con la
   scelta motivata fra `os.rename` e `os.replace` in `backup.py`;
-- `tests/run.py`, runner unico delle sei prove, e misura di copertura con
+- `tests/run.py`, runner unico delle sette prove, e misura di copertura con
   `--copertura`. Il runner non importa le prove, le lancia una per processo:
   ognuna scrive `ARES_TMP` e le altre variabili prima di importare `config`,
   che le legge una volta sola all'import, quindi due prove nello stesso
@@ -38,8 +38,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   (`tests/_copertura/sitecustomize.py`). Senza, `entity_maintenance.py`
   risultava al 68% pur avendo la propria CLI provata da sei sottoprocessi:
   un rapporto che sbaglia in difetto manda a scrivere prove dove ce ne sono
-  già. Con l'aggancio e le prove nuove il totale offline passa dal 71%
-  all'88%, e nessun modulo sta sotto il 79%;
+  già. La misura è per ramo e non per sola riga, perché una `if` eseguita in
+  un verso solo è mezza provata: con l'aggancio e le prove nuove le sole
+  prove offline coprono l'83%, e il modulo più scoperto è `chat.py`, che
+  contiene il turno conversazionale, cioè ciò che senza Ollama non gira;
 - promemoria di backup all'avvio della chat: se l'ultimo snapshot ha più di
   `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero spegne tutto —
   la REPL lo dice e mostra il comando, altrimenti tace. Il backup resta

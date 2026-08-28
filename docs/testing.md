@@ -16,11 +16,11 @@ toccare i dati del clone in uso.
 `tests/run.py` non importa le prove: le lancia, una per processo. Non è una
 preferenza di stile. Ogni prova scrive `ARES_TMP`, `ARES_BACKUP_DIR` e
 `ARES_WORKSPACE` **prima** di importare `config`, che quelle variabili le
-legge una volta sola all'import e in base a quelle crea directory su disco.
-Due prove nello stesso interprete condividerebbero il primo `config`
-importato — cioè l'archivio della prima — e il giorno in cui una sbagliasse
-variabile scriverebbe nell'archivio vero senza che nessuno se ne accorga. Un
-processo per prova rende quell'errore impossibile invece che improbabile.
+legge una volta sola all'import e non le rilegge mai più. Due prove nello
+stesso interprete condividerebbero il primo `config` importato — cioè i
+percorsi della prima — e il giorno in cui una sbagliasse variabile
+scriverebbe nell'archivio vero senza che nessuno se ne accorga. Un processo
+per prova rende quell'errore impossibile invece che improbabile.
 
 Le prove restano eseguibili una per una, come prima. L'elenco però vive in un
 posto solo, la tabella `PROVE` in `tests/run.py`: la CI chiama il runner,
@@ -37,14 +37,17 @@ aggiungere un passo al workflow.
 La configurazione sta in `.coveragerc`, così il numero non dipende da come è
 stato invocato il comando. La modalità parallela è obbligatoria per lo stesso
 motivo per cui le prove sono processi separati: ognuna scrive il proprio file
-e `coverage combine` li unisce alla fine.
+e `coverage combine` li unisce alla fine. La misura è per ramo e non solo per
+riga: qui la sostanza sono i rami — i percorsi Windows, i gestori d'errore,
+i ripieghi — e una riga `if` eseguita in un verso solo è mezza provata.
 
 Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura è intorno all'88%, e nessun modulo sta
-sotto il 79%.
+Con le sole prove offline la misura è intorno all'83%, e il modulo più
+scoperto è `chat.py` al 74%: è il file che contiene il turno conversazionale,
+cioè proprio ciò che senza Ollama non gira.
 
 La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
 le prove ne lanciano parecchi — la CLI di `entity_maintenance.py` sei volte,
@@ -95,7 +98,10 @@ processo separato con stdin da una pipe.
 Nessuna genera risposte con il modello. `cli_test.py` lo rende esplicito
 puntando `config.OLLAMA_HOST` a un porto chiuso: su una macchina di sviluppo
 Ollama è spesso acceso, e senza quella riga una prova potrebbe usarlo di
-nascosto e passare qui per fallire in CI.
+nascosto e passare qui per fallire in CI. La leva non arriva però ai processi
+figli — `OLLAMA_HOST` è una costante, non una variabile d'ambiente — quindi
+la REPL provata in un processo separato riceve solo righe che cominciano con
+`/`, e una asserzione verifica che nessun turno col modello sia stato aperto.
 
 Due controlli sorvegliano un'invariante che nessun'altra prova vedrebbe:
 importare `config` non deve creare niente su disco (`smoke`), e `--help` di
@@ -105,9 +111,10 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse quattro prove sia su Ubuntu sia su Windows. Sul runner Windows crea l'ambiente direttamente con
-`setup.ps1 -SkipPreflight`, verificando il percorso d'installazione senza
-richiedere Ollama.
+La CI esegue le stesse quattro prove sia su Ubuntu sia su Windows. Sul
+runner Windows l'ambiente nasce direttamente da `setup.ps1 -SkipPreflight`,
+così la CI verifica anche il percorso d'installazione senza richiedere
+Ollama.
 
 ## Prove con Ollama
 
