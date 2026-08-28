@@ -55,6 +55,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- la REPL è divisa per responsabilità: `chat.py` conserva avvio e ciclo della
+  sessione, `chat_commands.py` contiene tabella e dispatch dei comandi locali,
+  `chat_render.py` presenta eventi, conferme e metriche. Gli import pubblici
+  precedenti restano disponibili dalla façade `chat.py`;
 - la manutenzione delle entità non vive più in un unico modulo da oltre mille
   righe: `entity_maintenance.py` conserva CLI e API compatibile,
   `entity_audit.py` contiene il rilevamento in sola lettura,
