@@ -6,6 +6,46 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- `turn_core.py`: il ciclo di un turno — eventi normalizzati e sequenza
+  `run → conferma → continue_run` — non dipende più dal terminale, e un
+  client diverso dalla CLI può riusarlo senza duplicarlo;
+- indicatore di attività nella REPL dopo due secondi di attesa, per i turni in
+  cui il modello non ha ancora emesso niente;
+- prova dedicata ai permessi dello stato appreso nello smoke test, che copre
+  anche la correzione di un archivio preesistente con permessi larghi.
+
+### Changed
+
+- `chat.py` traduce eventi neutri invece di consumare direttamente lo stream
+  di Agno: rendering e ciclo del turno sono separati;
+- il filtro dei controlli di terminale è un parser a stati che consuma i
+  frammenti mentre arrivano, invece di rifiltrare a ogni frammento la risposta
+  ricomposta. La garanzia non cambia — una sequenza spezzata a metà non passa
+  né prima né adesso — cambia il fatto che `Live` non deve più ridisegnare
+  tutto a ogni token;
+- i messaggi INFO interni di Agno non compaiono più durante la REPL; warning
+  ed errori restano sempre visibili e `--debug` riporta tutto;
+- classi interne rinominate da `Kairos*` ad `Ares*`, residuo del nome che il
+  progetto aveva prima del rilascio pubblico. Il file `kairos.db` resta e ora
+  lo dichiara: quel nome è nell'insieme di file che `verifica_snapshot`
+  pretende in ogni snapshot già creato, quindi cambiarlo è una migrazione del
+  formato di backup e non una rinomina;
+- `docs/architecture.md` elencava `learning.py`, che non esiste, e ometteva
+  cinque moduli; la voce su `stores.py` descriveva store che quel modulo non
+  legge.
+
+### Security
+
+- su POSIX lo stato appreso nasce privato: `tmp/` e la directory LanceDB a
+  `0700`, i due database a `0600`. Nascevano invece con la umask del processo,
+  cioè `0755` e `0644` su un'installazione tipica, mentre la cronologia
+  accanto e gli snapshot erano privati da sempre: era protetta la copia e non
+  l'originale. I database vengono creati vuoti e con i propri permessi prima
+  che li apra SQLite, così non esiste una finestra fra creazione e correzione,
+  e un archivio già scritto viene corretto alla costruzione successiva.
+
 ## [0.2.0] - 2026-08-26
 
 ### Added

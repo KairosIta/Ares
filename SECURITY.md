@@ -48,9 +48,12 @@ dell’utente che ha avviato il processo e può accedere alla rete. Il modello,
 i prompt e le conferme riducono il rischio operativo ma non costituiscono un
 confine di sicurezza.
 
-Chi può leggere i file dell’account del sistema operativo può potenzialmente
-leggere anche memorie e snapshot. Per scenari multiutente servono permessi,
-isolamento e cifratura gestiti dal sistema operativo.
+Su POSIX stato, cronologia e snapshot nascono privati (0700 sulle directory,
+0600 sui file); su Windows vale la DACL ereditata. Restano comunque leggibili
+da chiunque abbia accesso all’account che esegue Ares: i permessi separano gli
+utenti della macchina, non proteggono da chi è già dentro l’account. Per
+scenari multiutente servono isolamento e cifratura gestiti dal sistema
+operativo.
 
 I modelli Ollama sono artefatti esterni al repository: provenienza, licenza e
 limiti del modello scelto devono essere valutati separatamente.
