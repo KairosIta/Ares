@@ -71,7 +71,23 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   dichiarava `bool` e riceve da sempre anche tuple e liste;
 - la CI esegue le prove con un passo solo invece di tre, e compila il codice
   per esclusione invece che per elenco: l'elenco scritto a mano si era già
-  perso `turn_core.py`, aggiunto dopo.
+  perso `turn_core.py`, aggiunto dopo;
+- importare `config.py` non scrive più su disco. La directory dello stato la
+  crea `prepara_archivio()`, chiamata da chi l'archivio lo apre davvero: i
+  costruttori di `assistant.py`, e i comandi **dopo** la lettura degli
+  argomenti, così `--help` non lascia niente indietro. `backup.py` non la
+  chiama affatto — legge `tmp/` e sa dire che non c'è — e l'audit delle
+  entità la chiama dopo aver verificato che l'archivio esista. Prima leggere
+  una costante produceva un effetto: `preflight.py` importava `config` per
+  tre nomi di modello e si lasciava dietro un archivio. Le prove continuano a
+  scrivere `ARES_TMP` prima dell'import, che resta il modo giusto di
+  spostare i percorsi, ma non è più una precauzione contro una scrittura;
+- la docstring di `preflight.py` prometteva di usare «solo la libreria
+  standard, quindi si può eseguire con qualsiasi interprete anche prima di
+  aver installato le dipendenze». Era falsa — `config` importa dotenv, e
+  `platform_files` portalocker — e non serviva a nessuno: `setup.sh` e
+  `setup.ps1` chiamano il preflight dal venv, dopo aver installato. Ora dice
+  cosa vale davvero.
 
 ### Security
 

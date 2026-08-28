@@ -97,6 +97,14 @@ puntando `config.OLLAMA_HOST` a un porto chiuso: su una macchina di sviluppo
 Ollama è spesso acceso, e senza quella riga una prova potrebbe usarlo di
 nascosto e passare qui per fallire in CI.
 
+Due controlli sorvegliano un'invariante che nessun'altra prova vedrebbe:
+importare `config` non deve creare niente su disco (`smoke`), e `--help` di
+ognuno dei cinque comandi nemmeno (`cli`). Entrambi girano in processi nuovi,
+perché un modulo si importa una volta sola. Sono la rete sotto una riga
+spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
+invece che prima, che è tutta la differenza fra un `--help` che lascia un
+archivio e uno che non lascia niente.
+
 La CI esegue le stesse quattro prove sia su Ubuntu sia su Windows. Sul runner Windows crea l'ambiente direttamente con
 `setup.ps1 -SkipPreflight`, verificando il percorso d'installazione senza
 richiedere Ollama.

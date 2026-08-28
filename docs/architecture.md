@@ -26,7 +26,10 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt;
 - `config.py` raccoglie le impostazioni versionate e decide, in un punto solo,
-  i percorsi dello stato.
+  i percorsi dello stato. Importarlo non tocca il disco: la directory dello
+  stato la crea `prepara_archivio()`, che chiamano i costruttori di
+  `assistant.py` e il `main()` di ogni comando, dopo aver letto gli
+  argomenti.
 
 ### Stato
 
@@ -42,7 +45,8 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 ### Strumenti operativi
 
 - `preflight.py` verifica che il server Ollama risponda e che i modelli
-  nominati in `config.py` siano scaricati;
+  nominati in `config.py` siano scaricati, senza accendere niente e senza
+  lasciare niente su disco;
 - `inspect_learning.py` rilegge gli archivi a modello spento;
 - `backup.py` crea, verifica e ripristina snapshot locali dello stato;
 - `entity_maintenance.py` rileva e fonde entita' duplicate;
@@ -73,8 +77,11 @@ i due database e la cronologia a 0600, come gli snapshot. La directory e' il
 controllo che regge, perche' senza il diritto di attraversarla i modi dei file
 dentro non si raggiungono; i database vengono comunque creati vuoti e con i
 propri permessi prima che li apra SQLite, perche' altrimenti nascerebbero con
-la umask del processo. Su Windows vale la DACL ereditata dalla directory: un
-`chmod` renderebbe i file soltanto read-only senza limitarne la lettura.
+la umask del processo. I permessi della directory li applica
+`config.prepara_archivio()`, chiamata da chi apre l'archivio e non
+dall'import: un comando che stampa soltanto l'aiuto non lascia niente
+indietro. Su Windows vale la DACL ereditata dalla directory: un `chmod`
+renderebbe i file soltanto read-only senza limitarne la lettura.
 
 Su POSIX gli snapshot vengono pubblicati con una rinomina di directory. Su
 Windows, dove LanceDB può impedire quella rinomina anche dopo la chiusura dei
