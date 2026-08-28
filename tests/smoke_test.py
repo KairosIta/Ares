@@ -90,6 +90,7 @@ from assistant import (  # noqa: E402
     KairosSessionContextStore,
     apprendi_a_run_completato,
     build_assistant,
+    build_db,
     build_filesystem,
     build_workspace,
 )
@@ -1210,6 +1211,55 @@ def indice_vettoriale(lm) -> str:
     return "tabella " + vdb.table_name + " aperta, ricerca " + vdb.search_type.value
 
 
+def archivio_privato() -> str:
+    """Lo stato appreso non e' leggibile dagli altri utenti della macchina.
+
+    La cronologia accanto nasce a 0600 e gli snapshot a 0700/0600 da sempre;
+    i due database e l'indice vettoriale, che contengono le stesse
+    conversazioni, nascevano invece con la umask del processo - 0644 e 0755 su
+    un'installazione tipica. Si proteggeva la copia e non l'originale.
+
+    La directory e' il controllo che regge davvero, perche' senza il diritto di
+    attraversarla i modi dei file dentro non si raggiungono; i database sono
+    comunque verificati uno a uno, perche' un archivio esce da tmp/ ogni volta
+    che qualcuno lo copia altrove.
+
+    Su Windows non c'e' niente da verificare: `rendi_privato` non tocca la
+    DACL ereditata, e chmod renderebbe i file soltanto read-only.
+    """
+    if os.name != "posix":
+        return NON_CONCLUSIVO + "i permessi numerici sono una proprieta' POSIX"
+
+    def modo(percorso: Path) -> str:
+        return oct(percorso.stat().st_mode)[-3:]
+
+    directory = [("archivio", Path(config.TMP_DIR)), ("indice vettoriale", Path(config.LANCEDB_URI))]
+    for etichetta, percorso in directory:
+        esigi(percorso.is_dir(), etichetta + " assente: " + str(percorso))
+        esigi(modo(percorso) == "700", etichetta + " attraversabile da altri: " + modo(percorso))
+
+    database = [Path(config.DB_FILE), Path(config.FS_DB_FILE)]
+    for percorso in database:
+        esigi(percorso.is_file(), "database assente: " + str(percorso))
+        esigi(
+            modo(percorso) == "600",
+            "database leggibile da altri: " + percorso.name + " " + modo(percorso),
+        )
+
+    # Un file gia' scritto con i permessi larghi deve essere corretto alla
+    # costruzione successiva, altrimenti la protezione varrebbe solo per i
+    # cloni nuovi e lascerebbe scoperti proprio gli archivi con dentro
+    # qualcosa.
+    database[0].chmod(0o644)
+    build_db()
+    esigi(
+        modo(database[0]) == "600",
+        "archivio preesistente non corretto: " + modo(database[0]),
+    )
+
+    return str(len(directory)) + " directory a 700 e " + str(len(database)) + " database a 600, anche se preesistenti"
+
+
 def conferme_leggibili() -> str:
     """Un comando lungo arriva intero e con i confini visibili alla conferma.
 
@@ -2072,6 +2122,7 @@ def main() -> int:
             ("sessioni elencate   ", lambda: sessioni_elencate(agent, args.user, args.session)),
             ("file isolati        ", lambda: file_isolati(args.user)),
             ("indice vettoriale   ", lambda: indice_vettoriale(lm)),
+            ("archivio privato    ", lambda: archivio_privato()),
             ("conferme leggibili  ", lambda: conferme_leggibili()),
             ("metriche del turno  ", lambda: metriche_del_turno()),
             ("esito strumenti     ", lambda: esito_strumenti()),

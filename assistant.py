@@ -15,6 +15,8 @@ e' stato di sessione; se l'ha scritto qualcun altro e' conoscenza; se l'ha
 scritto l'agente per il proprio futuro e' FileSystem.
 """
 
+from pathlib import Path
+
 import config
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
@@ -41,6 +43,7 @@ from agno.tools.workspace import Workspace
 from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 from agno.utils.log import log_warning
+from platform_files import rendi_privato
 from schemas import KairosMemories, KairosProfile
 from stores import namespace_entita, namespace_utente
 
@@ -84,9 +87,30 @@ def build_learning_model() -> Ollama:
 # ---------------------------------------------------------------------------
 
 
+def _archivio_privato(percorso: str) -> str:
+    """Prepara un database prima che lo apra SQLite, gia' con i suoi permessi.
+
+    SQLAlchemy crea il file alla prima connessione con la umask del processo,
+    cioe' 0644 su un'installazione tipica: dentro ci sono le conversazioni, il
+    profilo e le memorie. Toccarlo dopo lascerebbe una finestra fra la
+    creazione e la correzione, e nessun punto del codice sa quando avviene la
+    prima connessione.
+
+    Un file di lunghezza zero e' un database SQLite vuoto valido, quindi
+    crearlo qui non cambia niente per chi lo apre dopo. Sui cloni esistenti
+    corregge anche il file gia' scritto con i permessi larghi.
+    """
+    file_db = Path(percorso)
+    file_db.parent.mkdir(parents=True, exist_ok=True)
+    if not file_db.exists():
+        file_db.touch()
+    rendi_privato(file_db)
+    return percorso
+
+
 def build_db() -> SqliteDb:
     """Stato dell'agente: sessioni, profilo, memorie, entita'."""
-    return SqliteDb(db_file=config.DB_FILE)
+    return SqliteDb(db_file=_archivio_privato(config.DB_FILE))
 
 
 def build_knowledge() -> Knowledge:
@@ -97,6 +121,13 @@ def build_knowledge() -> Knowledge:
     testuale, che su collezioni piccole conta piu' della sola distanza
     coseno, perche' con pochi documenti i vicini vettoriali sono rumorosi.
     """
+    # LanceDB crea la propria directory alla prima scrittura, con la umask
+    # del processo. Vale qui la stessa regola di tmp/: si rende privata la
+    # directory, che e' cio' che si attraversa, e non i frammenti dentro, che
+    # nascono e muoiono con le versioni della tabella.
+    indice = Path(config.LANCEDB_URI)
+    indice.mkdir(parents=True, exist_ok=True)
+    rendi_privato(indice)
     return Knowledge(
         vector_db=LanceDb(
             uri=config.LANCEDB_URI,
@@ -124,7 +155,10 @@ def build_filesystem(user_id: str = config.DEFAULT_USER_ID) -> FileSystem:
     templato (`user/{user_id}`): l'agente viene costruito per un utente
     preciso, quindi non c'e' niente da risolvere a runtime.
     """
-    return FileSystem(SqliteDb(db_file=config.FS_DB_FILE), namespace=namespace_utente(user_id))
+    return FileSystem(
+        SqliteDb(db_file=_archivio_privato(config.FS_DB_FILE)),
+        namespace=namespace_utente(user_id),
+    )
 
 
 # ---------------------------------------------------------------------------

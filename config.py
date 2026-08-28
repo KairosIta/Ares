@@ -10,6 +10,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from platform_files import rendi_privato
+
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
@@ -220,6 +222,15 @@ FS_DB_FILE = str(TMP_DIR / "filesystem.db")
 LANCEDB_URI = str(TMP_DIR / "lancedb")
 
 TMP_DIR.mkdir(parents=True, exist_ok=True)
+# I permessi si applicano alla directory e non ai file che contiene, perche'
+# la directory e' il confine che regge davvero: senza il diritto di
+# attraversarla i modi dei singoli database non si raggiungono, e quei modi li
+# decide la umask di chi apre il file, non questo progetto. Qui dentro c'e'
+# tutto cio' che e' stato detto ad Ares: la cronologia accanto nasce gia' a
+# 0600 e gli snapshot a 0700/0600, questa riga toglie l'asimmetria per cui
+# la copia era privata e l'originale no. Su Windows non fa nulla, come
+# ovunque nel progetto: li' vale la DACL ereditata.
+rendi_privato(TMP_DIR)
 
 # Snapshot locali dello stato appreso. Fuori da tmp/, perche' un backup dentro
 # cio' che deve salvare verrebbe copiato ricorsivamente e sparirebbe insieme
