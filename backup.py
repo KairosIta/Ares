@@ -26,16 +26,16 @@ import string
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterable
 from contextlib import closing, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any
 from uuid import uuid4
 
 import config
 from platform_files import rendi_privato
 from state_lock import StatoOccupato, lock_stato
-
 
 FORMATO_BACKUP = 1
 MANIFEST = "manifest.json"
@@ -164,11 +164,11 @@ def _scrivi_checksum(snapshot: Path) -> None:
     rendi_privato(destinazione)
 
 
-def _leggi_checksum(snapshot: Path) -> Dict[str, str]:
+def _leggi_checksum(snapshot: Path) -> dict[str, str]:
     percorso = snapshot / CHECKSUM
     if not percorso.is_file():
         raise ErroreBackup("manca " + CHECKSUM)
-    risultati: Dict[str, str] = {}
+    risultati: dict[str, str] = {}
     try:
         righe = percorso.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeError) as errore:
@@ -218,7 +218,7 @@ def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     _integrita_sqlite(destinazione)
 
 
-async def _sonda_lancedb_locale(percorso: Path) -> Dict[str, int]:
+async def _sonda_lancedb_locale(percorso: Path) -> dict[str, int]:
     """Conta le righe usando soltanto l'API pubblica che espone ``close``."""
     import lancedb
 
@@ -231,7 +231,7 @@ async def _sonda_lancedb_locale(percorso: Path) -> Dict[str, int]:
     return conteggi
 
 
-def _tabelle_lancedb(percorso: Path) -> Dict[str, int]:
+def _tabelle_lancedb(percorso: Path) -> dict[str, int]:
     """Verifica LanceDB in un processo isolato e ne conta le righe.
 
     Alcuni reader nativi possono conservare per poco tempo handle sui frammenti
@@ -267,8 +267,8 @@ def _stato_presente() -> bool:
     return lance.is_dir() and any(voce.is_file() for voce in lance.rglob("*"))
 
 
-def _git() -> Dict[str, Any]:
-    dati: Dict[str, Any] = {"commit": None, "dirty": None}
+def _git() -> dict[str, Any]:
+    dati: dict[str, Any] = {"commit": None, "dirty": None}
     try:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -292,7 +292,7 @@ def _git() -> Dict[str, Any]:
     return dati
 
 
-def _versione_agno() -> Optional[str]:
+def _versione_agno() -> str | None:
     try:
         import agno
 
@@ -323,7 +323,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
     identificativo = _id_snapshot(tipo)
     staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=root))
     rendi_privato(staging)
-    componenti: Dict[str, Any] = {}
+    componenti: dict[str, Any] = {}
 
     try:
         for nome in DATABASE:
@@ -431,7 +431,7 @@ def risolvi_snapshot(nome: str) -> Path:
     return candidato
 
 
-def verifica_snapshot(snapshot: Any, percorso_diretto: bool = False) -> Dict[str, Any]:
+def verifica_snapshot(snapshot: Any, percorso_diretto: bool = False) -> dict[str, Any]:
     """Verifica manifest, insieme dei file, checksum e formati dei database."""
     percorso = Path(snapshot) if percorso_diretto else risolvi_snapshot(str(snapshot))
     if percorso.is_symlink():
@@ -501,7 +501,7 @@ def _dimensione(percorso: Path) -> int:
     return sum(voce.stat().st_size for voce in percorso.rglob("*") if voce.is_file())
 
 
-def _prepara_restore(snapshot: Path, manifest: Dict[str, Any]) -> Path:
+def _prepara_restore(snapshot: Path, manifest: dict[str, Any]) -> Path:
     parent = config.TMP_DIR.resolve().parent
     parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="." + config.TMP_DIR.name + "-restore-", dir=parent))
@@ -580,7 +580,7 @@ def _installa_restore_per_copia(staging: Path, destinazione: Path, precedente: P
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Optional[Path]:
+def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Path | None:
     """Ripristina uno snapshot verificato e ritorna l'eventuale pre-restore."""
     with lock_stato(esclusivo=True):
         snapshot = risolvi_snapshot(nome)
@@ -704,10 +704,10 @@ def main() -> int:
         elif args.comando == "prune":
             if args.keep < 1:
                 raise ErroreBackup("--keep deve essere almeno 1")
-            snapshot = elenco_snapshot()
-            candidati = snapshot[: -args.keep] if len(snapshot) > args.keep else []
+            disponibili = elenco_snapshot()
+            candidati = disponibili[: -args.keep] if len(disponibili) > args.keep else []
             if not candidati:
-                print("Niente da eliminare; snapshot:", len(snapshot), " keep:", args.keep)
+                print("Niente da eliminare; snapshot:", len(disponibili), " keep:", args.keep)
                 return 0
             print("Snapshot da eliminare:")
             for percorso in candidati:

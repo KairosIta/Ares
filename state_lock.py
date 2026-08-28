@@ -11,9 +11,9 @@ progetto; uno script che scrive direttamente in tmp/ senza usarlo resta fuori
 dal contratto.
 """
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 import config
 from platform_files import FileOccupato, lock_file

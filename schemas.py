@@ -34,7 +34,6 @@ il metodo con cui le memorie diventano testo per il prompt.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from agno.learn.schemas import Memories, UserProfile
 
@@ -43,19 +42,19 @@ from agno.learn.schemas import Memories, UserProfile
 class AresProfile(UserProfile):
     """Profilo utente esteso con i campi che contano per un assistente personale."""
 
-    timezone: Optional[str] = field(
+    timezone: str | None = field(
         default=None,
         metadata={"description": "Fuso orario dell'utente, per esempio Europe/Rome"},
     )
-    language: Optional[str] = field(
+    language: str | None = field(
         default=None,
         metadata={"description": "Lingua in cui l'utente preferisce ricevere le risposte"},
     )
-    occupation: Optional[str] = field(
+    occupation: str | None = field(
         default=None,
         metadata={"description": "Lavoro o ruolo professionale dell'utente"},
     )
-    expertise: Optional[str] = field(
+    expertise: str | None = field(
         default=None,
         metadata={
             "description": (
@@ -65,7 +64,7 @@ class AresProfile(UserProfile):
             )
         },
     )
-    communication_style: Optional[str] = field(
+    communication_style: str | None = field(
         default=None,
         metadata={
             "description": (
@@ -73,7 +72,7 @@ class AresProfile(UserProfile):
             )
         },
     )
-    tools_and_stack: Optional[str] = field(
+    tools_and_stack: str | None = field(
         default=None,
         metadata={
             "description": (
@@ -83,7 +82,7 @@ class AresProfile(UserProfile):
             )
         },
     )
-    current_focus: Optional[str] = field(
+    current_focus: str | None = field(
         default=None,
         metadata={"description": "Su cosa l'utente sta lavorando in questo periodo"},
     )
@@ -136,4 +135,4 @@ class AresMemories(Memories):
 
         if not righe:
             return ""
-        return "\n".join(["(fra parentesi quadre, la data in cui hai saputo la cosa)"] + righe)
+        return "\n".join(["(fra parentesi quadre, la data in cui hai saputo la cosa)", *righe])

@@ -25,6 +25,15 @@ lock completo. Se cambia una dipendenza diretta, rigenera il lock con:
 uv pip compile --universal requirements.in -o requirements.txt
 ```
 
+Ruff e mypy stanno in `requirements-dev.in`, separati perché non si importano:
+si eseguono. Per averli nel venv insieme al resto — è quello che fa anche la
+CI, e `uv pip sync` rimuove ciò che non è nei file che gli passi:
+
+```bash
+uv pip sync --python .venv/bin/python requirements.txt requirements-dev.txt
+uv pip compile --universal requirements-dev.in -o requirements-dev.txt
+```
+
 ## Flusso consigliato
 
 1. Apri una issue o descrivi chiaramente il comportamento da cambiare.
@@ -39,10 +48,18 @@ I comandi mostrano il percorso Linux. Su Windows usa
 `.\.venv\Scripts\python.exe` al posto di `.venv/bin/python`.
 
 ```bash
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+.venv/bin/python -m mypy .
 .venv/bin/python tests/smoke_test.py
 .venv/bin/python tests/backup_test.py
 .venv/bin/python tests/entity_maintenance_test.py
 ```
+
+I primi tre sono gli stessi comandi del job `Analisi statica` della CI. Le
+regole attive e il motivo delle esclusioni stanno in `ruff.toml` e `mypy.ini`:
+se una regola ti sembra sbagliata per questo progetto, discutila lì invece di
+aggiungere `noqa` sparsi.
 
 Le modifiche al percorso conversazionale o di apprendimento richiedono anche
 le prove pertinenti con Ollama:

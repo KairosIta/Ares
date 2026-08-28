@@ -14,6 +14,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  qualita:
+    name: Analisi statica
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Installa uv
+        run: python -m pip install --disable-pip-version-check uv==0.11.29
+
+      # Un solo sistema, non la matrice: ruff e mypy danno lo stesso esito su
+      # Ubuntu e Windows, e pagarli due volte allunga la CI senza aggiungere
+      # informazione. Le differenze fra i due sistemi le trovano le prove.
+      - name: Sincronizza l'ambiente
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+        run: |
+          uv venv --python python .venv
+          uv pip sync --python ./.venv/bin/python requirements.txt requirements-dev.txt
+
+      - name: Lint
+        run: ./.venv/bin/python -m ruff check .
+
+      - name: Formattazione
+        run: ./.venv/bin/python -m ruff format --check .
+
+      # Senza `ignore_missing_imports`: l'albero delle dipendenze e' tipizzato,
+      # quindi mypy risolve tutto davvero. Serve percio' l'ambiente completo.
+      - name: Tipi
+        run: ./.venv/bin/python -m mypy .
+
   tests:
     name: Python 3.12 · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

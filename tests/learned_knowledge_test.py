@@ -30,7 +30,6 @@ import time
 import urllib.error
 from pathlib import Path
 
-
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
 # script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
 # Va prima di qualunque import del progetto.
@@ -102,7 +101,7 @@ print("ARES_RILETTURA=" + json.dumps(dati, ensure_ascii=False))
 """
 
 
-def esigi(condizione: bool, messaggio: str) -> None:
+def esigi(condizione: object, messaggio: str) -> None:
     if not condizione:
         raise AssertionError(messaggio)
 

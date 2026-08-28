@@ -11,7 +11,7 @@ Le funzioni qui dentro non avviano il modello e non scrivono nulla.
 """
 
 from datetime import datetime
-from typing import Any, List
+from typing import Any
 
 from agno.db.base import SessionType
 
@@ -78,7 +78,7 @@ def stampa_store(store: Any, etichetta: str, **filtri: Any) -> None:
 CONTABILITA = ("id", "created_at", "updated_at")
 
 
-def _senza_contabilita(voci: Any) -> List[Any]:
+def _senza_contabilita(voci: Any) -> list[Any]:
     """Fatti o eventi ridotti a cio' che ci ha scritto qualcuno."""
     ripulite = []
     for voce in voci or []:
@@ -111,7 +111,7 @@ def contenuto_entita(entita: Any) -> dict:
     }
 
 
-def leggi_entita(lm: Any, user_id: str, query: str = "", limit: int = 50) -> List[Any]:
+def leggi_entita(lm: Any, user_id: str, query: str = "", limit: int = 50) -> list[Any]:
     """Elenca le entita' registrate, filtrandole per query se ne arriva una.
 
     search() e' una ricerca testuale: con query vuota non matcha nulla e
@@ -137,7 +137,7 @@ def leggi_entita(lm: Any, user_id: str, query: str = "", limit: int = 50) -> Lis
     return store.list_entities(user_id=user_id, namespace=namespace, limit=limit)
 
 
-def righe_entita(entita: Any, max_fatti: int = 5) -> List[str]:
+def righe_entita(entita: Any, max_fatti: int = 5) -> list[str]:
     """Rende un'entita' in righe di testo gia' pronte per la stampa.
 
     I fatti sono dizionari con chiave `content`, non `fact`: leggere la
@@ -152,7 +152,7 @@ def righe_entita(entita: Any, max_fatti: int = 5) -> List[str]:
     return righe
 
 
-def leggi_intuizioni(lm: Any, user_id: str, query: str = "", limit: int = 20) -> List[Any]:
+def leggi_intuizioni(lm: Any, user_id: str, query: str = "", limit: int = 20) -> list[Any]:
     """Intuizioni apprese, cercate per somiglianza semantica.
 
     recall() e' ricerca semantica: senza query non esiste un elenco
@@ -169,7 +169,7 @@ def leggi_intuizioni(lm: Any, user_id: str, query: str = "", limit: int = 20) ->
     return store.recall(query=query or QUERY_DI_RIPIEGO, user_id=user_id, limit=limit) or []
 
 
-def leggi_sessioni(agent: Any, user_id: str, query: str = "") -> List[Any]:
+def leggi_sessioni(agent: Any, user_id: str, query: str = "") -> list[Any]:
     """Le sessioni di questo utente, dalla piu' toccata di recente.
 
     Non passa dagli store di apprendimento: le conversazioni stanno nella
@@ -239,7 +239,7 @@ def _testo_messaggio(messaggio: Any) -> str:
     return ""
 
 
-def righe_sessione(sessione: Any, corrente: bool = False) -> List[str]:
+def righe_sessione(sessione: Any, corrente: bool = False) -> list[str]:
     """Rende una sessione in righe di testo gia' pronte per la stampa."""
     nome = str(getattr(sessione, "session_id", "?"))
     scambi = len(getattr(sessione, "runs", None) or [])

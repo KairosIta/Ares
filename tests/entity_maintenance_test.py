@@ -9,7 +9,6 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
 # script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
 # Va prima di qualunque import del progetto.
@@ -20,10 +19,11 @@ RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-entity-maintenance-test-"))
 os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
 
-import config  # noqa: E402
 from agno.db.sqlite import SqliteDb  # noqa: E402
 from agno.learn.schemas import EntityMemory  # noqa: E402
 from agno.learn.utils import build_learning_id  # noqa: E402
+
+import config  # noqa: E402
 from backup import elenco_snapshot, verifica_snapshot  # noqa: E402
 from entity_maintenance import (  # noqa: E402
     ErroreManutenzione,
@@ -35,12 +35,11 @@ from entity_maintenance import (  # noqa: E402
 from state_lock import lock_stato  # noqa: E402
 from stores import namespace_entita  # noqa: E402
 
-
 UTENTE = "audit"
 NAMESPACE = namespace_entita(UTENTE)
 
 
-def esigi(condizione: bool, messaggio: str) -> None:
+def esigi(condizione: object, messaggio: str) -> None:
     if not condizione:
         raise AssertionError(messaggio)
 

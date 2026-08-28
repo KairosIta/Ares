@@ -1,0 +1,21 @@
+# Strumenti di sviluppo
+# =====================
+# Separati da requirements.in perche' quel file dichiara i pacchetti che il
+# progetto *importa*, e questi non si importano: si eseguono. La separazione
+# non e' formale, e' operativa - `uv pip sync requirements.txt` cancella dal
+# venv tutto cio' che non e' in quel lock, quindi un linter messo li' dentro
+# finirebbe installato su ogni macchina che usa Ares, mentre uno messo qui
+# resta dove serve. Il lock si rigenera con:
+#
+#     uv pip compile --universal requirements-dev.in -o requirements-dev.txt
+#
+
+# Linter e formattatore. Pinnato come tutto il resto: una minor nuova di ruff
+# puo' aggiungere regole al set selezionato, e una CI che diventa rossa da
+# sola il lunedi' mattina insegna a ignorarla.
+ruff==0.14.7
+
+# Controllo dei tipi. L'intero albero delle dipendenze e' tipizzato - agno ha
+# py.typed - quindi qui non serve `ignore_missing_imports`, che e' la
+# concessione con cui di solito un mypy nasce gia' mezzo spento.
+mypy==1.19.0

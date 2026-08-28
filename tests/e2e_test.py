@@ -58,9 +58,10 @@ os.environ["ARES_TMP"] = ARCHIVIO_PROVA
 SPAZIO_PROVA = tempfile.mkdtemp(prefix="ares-prova-lavoro-")
 os.environ["ARES_WORKSPACE"] = SPAZIO_PROVA
 
+from smoke_test import esigi  # noqa: E402
+
 import config  # noqa: E402
 from preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
-from smoke_test import esigi  # noqa: E402
 
 UTENTE = "prova-e2e"
 SESSIONE = "prova-e2e"
@@ -287,11 +288,9 @@ def main() -> int:
             figlio.returncode == 0,
             "la rilettura in un processo nuovo e' fallita: " + (figlio.stderr or "").strip()[-300:],
         )
-        riletti = dict(
-            (riga.split()[0], riga.split()[1] == "True")
-            for riga in figlio.stdout.splitlines()
-            if len(riga.split()) == 2
-        )
+        riletti = {
+            riga.split()[0]: riga.split()[1] == "True" for riga in figlio.stdout.splitlines() if len(riga.split()) == 2
+        }
         # Si pretende la rilettura di cio' che ha scritto, non di tutto: quali
         # store scrivano in un turno lo decide il modello, che rileggano cio'
         # che hanno scritto no.

@@ -25,11 +25,12 @@ import re
 import sys
 import time
 import unicodedata
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any
 
 from agno.db.sqlite import SqliteDb
 from agno.learn.schemas import EntityMemory
@@ -40,18 +41,66 @@ from backup import ErroreBackup, crea_snapshot
 from state_lock import StatoOccupato, lock_stato
 from stores import namespace_entita
 
-
 SOGLIA_NOMI_SIMILI = 0.88
 SOGLIA_CONTENUTO_SIMILE = 0.60
 
 # Parole troppo comuni per trasformare due entita' dello stesso tipo in un
 # candidato solo perche' entrambe sono, per esempio, un progetto di Ares.
 PAROLE_COMUNI = frozenset(
-    """
-    a ad al alla alle allo anche and are as che con da dal dalla delle dello
-    di del della dei degli e ed for from gli ha i il in is la le lo nel nella
-    of on o per project progetto sistema system the to un una uno uses usa
-    """.split()
+    [
+        "a",
+        "ad",
+        "al",
+        "alla",
+        "alle",
+        "allo",
+        "anche",
+        "and",
+        "are",
+        "as",
+        "che",
+        "con",
+        "da",
+        "dal",
+        "dalla",
+        "delle",
+        "dello",
+        "di",
+        "del",
+        "della",
+        "dei",
+        "degli",
+        "e",
+        "ed",
+        "for",
+        "from",
+        "gli",
+        "ha",
+        "i",
+        "il",
+        "in",
+        "is",
+        "la",
+        "le",
+        "lo",
+        "nel",
+        "nella",
+        "of",
+        "on",
+        "o",
+        "per",
+        "project",
+        "progetto",
+        "sistema",
+        "system",
+        "the",
+        "to",
+        "un",
+        "una",
+        "uno",
+        "uses",
+        "usa",
+    ]
 )
 
 
@@ -181,7 +230,7 @@ def _parole_significative(testo: str) -> set[str]:
     return {parola for parola in parole if parola not in PAROLE_COMUNI}
 
 
-def _somiglianza_contenuto(prima: EntityMemory, seconda: EntityMemory) -> Optional[float]:
+def _somiglianza_contenuto(prima: EntityMemory, seconda: EntityMemory) -> float | None:
     parole_prima = _parole_significative(_testo_descrittivo(prima))
     parole_seconda = _parole_significative(_testo_descrittivo(seconda))
     comuni = parole_prima & parole_seconda
@@ -426,9 +475,11 @@ def _unisci_ricordi(
     campo: str,
     conflitti: list[str],
 ) -> tuple[list[dict[str, Any]], int, int]:
-    risultato = []
-    per_identita = {}
-    per_id = {}
+    risultato: list[dict[str, Any]] = []
+    # Le due mappe non conservano record: `per_identita` porta all'indice in
+    # `risultato`, `per_id` all'identita' gia' vista per quell'id.
+    per_identita: dict[tuple[Any, ...], int] = {}
+    per_id: dict[str, tuple[Any, ...]] = {}
     aggiunti = 0
     unificati = 0
 
@@ -482,8 +533,8 @@ def _valida_relazione(relazione: Any, proprietario: str) -> dict[str, Any]:
 def _deduplica_relazioni(
     relazioni: list[dict[str, Any]], proprietario: str, conflitti: list[str]
 ) -> tuple[list[dict[str, Any]], int]:
-    risultato = []
-    per_chiave = {}
+    risultato: list[dict[str, Any]] = []
+    per_chiave: dict[tuple[str, str, str, str], int] = {}
     unificate = 0
     for relazione in relazioni:
         relazione = _valida_relazione(relazione, proprietario)
@@ -610,12 +661,12 @@ def pianifica_fusione(
         conflitti.append("descrizione diversa; conservata quella canonica")
 
     proprieta = copy.deepcopy(oggetto_canonico.properties or {})
-    for chiave, valore in (oggetto_sorgente.properties or {}).items():
-        if chiave not in proprieta:
-            proprieta[chiave] = copy.deepcopy(valore)
+    for nome, valore in (oggetto_sorgente.properties or {}).items():
+        if nome not in proprieta:
+            proprieta[nome] = copy.deepcopy(valore)
             contatori["proprieta"] += 1
-        elif proprieta[chiave] != valore:
-            conflitti.append("proprieta' " + str(chiave) + " diversa; conservato il valore canonico")
+        elif proprieta[nome] != valore:
+            conflitti.append("proprieta' " + str(nome) + " diversa; conservato il valore canonico")
     oggetto_canonico.properties = proprieta
 
     fatti_canonici = _valida_collezione(oggetto_canonico, "facts", canonica.riferimento)
@@ -995,7 +1046,7 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
     return 0
 
 
-def main(argv: Optional[Iterable[str]] = None) -> int:
+def main(argv: Iterable[str] | None = None) -> int:
     args = costruisci_parser().parse_args(list(argv) if argv is not None else None)
     try:
         if args.comando == "audit":

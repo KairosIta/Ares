@@ -19,7 +19,6 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
 # script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
 # Va prima di qualunque import del progetto.
@@ -45,7 +44,6 @@ from backup import (  # noqa: E402
 )
 from state_lock import StatoOccupato, lock_stato  # noqa: E402
 
-
 OPERAZIONE_LANCEDB = r"""
 import json
 import sys
@@ -70,7 +68,7 @@ else:
 """
 
 
-def esigi(condizione: bool, messaggio: str) -> None:
+def esigi(condizione: object, messaggio: str) -> None:
     if not condizione:
         raise AssertionError(messaggio)
 
@@ -81,16 +79,14 @@ def ok(nome: str, nota: str) -> None:
 
 def crea_sqlite(percorso: Path, valore: str) -> None:
     percorso.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(percorso)) as connessione:
-        with connessione:
-            connessione.execute("create table prova (valore text not null)")
-            connessione.execute("insert into prova values (?)", (valore,))
+    with closing(sqlite3.connect(percorso)) as connessione, connessione:
+        connessione.execute("create table prova (valore text not null)")
+        connessione.execute("insert into prova values (?)", (valore,))
 
 
 def aggiungi_sqlite(percorso: Path, valore: str) -> None:
-    with closing(sqlite3.connect(percorso)) as connessione:
-        with connessione:
-            connessione.execute("insert into prova values (?)", (valore,))
+    with closing(sqlite3.connect(percorso)) as connessione, connessione:
+        connessione.execute("insert into prova values (?)", (valore,))
 
 
 def valori_sqlite(percorso: Path) -> list[str]:

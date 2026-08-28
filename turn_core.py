@@ -8,9 +8,9 @@ core conserva la sequenza corretta ``run -> conferma -> continue_run``.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Iterable, Iterator, Optional
 
 from agno.run.agent import RunOutput
 
@@ -49,7 +49,7 @@ class TurnEvent:
     content: object = None
     tool: object = None
     error: object = None
-    output: Optional[RunOutput] = None
+    output: RunOutput | None = None
     source_name: str = ""
 
 
@@ -134,7 +134,7 @@ class TurnEngine:
 def consume_events(
     events: Iterable[TurnEvent],
     on_event: Callable[[TurnEvent], None],
-) -> Optional[RunOutput]:
+) -> RunOutput | None:
     """Consegna tutti gli eventi e restituisce l'ultimo output del run."""
     output = None
     for event in events:
@@ -150,7 +150,7 @@ def run_turn_cycle(
     *,
     on_event: Callable[[TurnEvent], None],
     resolve_pause: Callable[[RunOutput], int],
-) -> Optional[RunOutput]:
+) -> RunOutput | None:
     """Esegue un turno completo, comprese tutte le riprese dopo una pausa.
 
     ``resolve_pause`` modifica i requirement Agno chiamando ``confirm`` o

@@ -8,9 +8,9 @@ percorso di apprendimento.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
 from threading import Event, RLock, Thread
 from time import monotonic
-from typing import Callable, Iterable, Optional, Sequence
 
 from rich import box
 from rich.console import Console, Group, RenderableType
@@ -20,7 +20,6 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
-
 
 ACTIVITY_IDLE_SECONDS = 2.0
 ACTIVITY_REFRESH_SECONDS = 0.125
@@ -49,9 +48,9 @@ ARES_THEME = Theme(
 )
 
 
-def _testo(valore: object, style: Optional[str] = None) -> Text:
+def _testo(valore: object, style: str | None = None) -> Text:
     """Testo letterale: parentesi quadre e path non diventano markup Rich."""
-    return Text(str(valore), style=style)
+    return Text(str(valore), style=style or "")
 
 
 class _FiltroControlliTerminale:
@@ -90,9 +89,7 @@ class _FiltroControlliTerminale:
                     self.stato = self.OSC
                 elif carattere in "\x90\x98\x9e\x9f":
                     self.stato = self.STRINGA
-                elif carattere in "\n\t":
-                    uscita.append(carattere)
-                elif codice >= 0x20 and not 0x7F <= codice <= 0x9F:
+                elif carattere in "\n\t" or (codice >= 0x20 and not 0x7F <= codice <= 0x9F):
                     uscita.append(carattere)
 
             elif self.stato == self.ESC:
@@ -166,7 +163,7 @@ class RichRunStream:
 
     def __init__(
         self,
-        renderer: "CliRenderer",
+        renderer: CliRenderer,
         *,
         clock: Callable[[], float] = monotonic,
         auto_activity: bool = True,
@@ -181,15 +178,15 @@ class RichRunStream:
         self._activity_enabled = bool(self.console.is_terminal)
         self._auto_activity = auto_activity
         self._activity_done = Event()
-        self._activity_thread: Optional[Thread] = None
-        self._activity_live: Optional[Live] = None
+        self._activity_thread: Thread | None = None
+        self._activity_live: Live | None = None
         self._activity_waiting = False
-        self._activity_label: Optional[str] = None
+        self._activity_label: str | None = None
         self._last_visible_at = 0.0
-        self._last_preview_at: Optional[float] = None
+        self._last_preview_at: float | None = None
         self._activity_frame = 0
 
-    def __enter__(self) -> "RichRunStream":
+    def __enter__(self) -> RichRunStream:
         self.renderer.speaker("Ares", style="ares.title")
         if self._activity_enabled and self._auto_activity:
             self._activity_thread = Thread(target=self._activity_loop, daemon=True)
@@ -365,7 +362,7 @@ class RichRunStream:
 class CliRenderer:
     """Componenti visuali piccoli, riusabili e sicuri per la REPL."""
 
-    def __init__(self, console: Optional[Console] = None) -> None:
+    def __init__(self, console: Console | None = None) -> None:
         # ``file=None`` fa seguire a Console il sys.stdout corrente: i test
         # che usano redirect_stdout continuano cosi' a catturare l'output.
         if console is None:
@@ -377,13 +374,13 @@ class CliRenderer:
             # i componenti indipendenti da come viene creato l'output.
             self.console.push_theme(ARES_THEME)
 
-    def line(self, valore: object = "", *, style: Optional[str] = None) -> None:
+    def line(self, valore: object = "", *, style: str | None = None) -> None:
         self.console.print(_testo(valore, style))
 
     def blank(self) -> None:
         self.console.print()
 
-    def lines(self, righe: Iterable[object], *, style: Optional[str] = None) -> None:
+    def lines(self, righe: Iterable[object], *, style: str | None = None) -> None:
         for riga in righe:
             self.line(riga, style=style)
 

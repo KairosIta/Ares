@@ -17,7 +17,6 @@ scritto l'agente per il proprio futuro e' FileSystem.
 
 from pathlib import Path
 
-import config
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.fs import FileSystem
@@ -41,9 +40,11 @@ from agno.learn.stores import SessionContextStore
 # dipendenza e' necessaria anche in un progetto solo-Ollama.
 from agno.models.ollama import Ollama
 from agno.tools.workspace import Workspace
+from agno.utils.log import log_warning
 from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
-from agno.utils.log import log_warning
+
+import config
 from platform_files import rendi_privato
 from schemas import AresMemories, AresProfile
 from stores import namespace_entita, namespace_utente
@@ -390,7 +391,7 @@ def apprendi_a_run_completato(
     )
 
 
-def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> AresLearningMachine:
+def build_learning_machine(db: SqliteDb, knowledge: Knowledge | None, user_id: str) -> AresLearningMachine:
     """Compone gli store attivi secondo i flag in config.
 
     Gli store ALWAYS estraggono dopo ogni risposta, uno per volta, ciascuno
@@ -400,7 +401,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> 
     """
     learning_model = build_learning_model()
 
-    user_profile = False
+    user_profile: UserProfileConfig | bool = False
     if config.LEARN_USER_PROFILE:
         user_profile = UserProfileConfig(
             mode=LearningMode.ALWAYS,
@@ -415,7 +416,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> 
             ),
         )
 
-    user_memory = False
+    user_memory: UserMemoryConfig | bool = False
     if config.LEARN_USER_MEMORY:
         user_memory = UserMemoryConfig(
             mode=LearningMode.ALWAYS,
@@ -441,21 +442,21 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge, user_id: str) -> 
             ),
         )
 
-    session_context = False
+    session_context: AresSessionContextStore | bool = False
     if config.LEARN_SESSION_CONTEXT:
         # Nessuno schema custom: `save_session_context` ha una firma fissa
         # (summary, goal, plan, progress) scritta a mano e non derivata dallo
         # schema, quindi un campo aggiunto qui non arriverebbe mai al modello.
         session_context = build_session_context_store(db, learning_model)
 
-    entity_memory = False
+    entity_memory: EntityMemoryConfig | bool = False
     if config.LEARN_ENTITIES:
         entity_memory = EntityMemoryConfig(
             model=learning_model,
             namespace=namespace_entita(user_id),
         )
 
-    learned_knowledge = False
+    learned_knowledge: LearnedKnowledgeConfig | bool = False
     if config.LEARN_KNOWLEDGE:
         # Nessun `instructions` qui, a differenza degli altri store: la config
         # lo accetta ma LearnedKnowledgeStore non lo legge mai - ne' lui ne'
@@ -674,4 +675,6 @@ if __name__ == "__main__":
     agent = build_assistant()
     print("Assistente costruito.")
     print("Modello:", config.MAIN_MODEL)
-    print("Store attivi:", list(agent.learning_machine.stores.keys()))
+    macchina = agent.learning_machine
+    assert macchina is not None
+    print("Store attivi:", list(macchina.stores.keys()))

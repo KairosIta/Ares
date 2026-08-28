@@ -39,7 +39,10 @@ def stessa_etichetta(richiesto: str, presente: str) -> bool:
     quindi il confronto letterale darebbe un falso negativo su ogni modello
     scritto senza tag.
     """
-    normalizza = lambda n: n if ":" in n else n + ":latest"
+
+    def normalizza(nome: str) -> str:
+        return nome if ":" in nome else nome + ":latest"
+
     return normalizza(richiesto) == normalizza(presente)
 
 
@@ -60,7 +63,7 @@ def main() -> int:
     # I ruoli si accumulano invece di sovrascriversi: MAIN_MODEL e
     # LEARNING_MODEL sono lo stesso modello di proposito, e vanno mostrati
     # come tale, non come un modello con un ruolo solo.
-    richiesti = {}
+    richiesti: dict[str, list[str]] = {}
     for modello, ruolo in (
         (config.MAIN_MODEL, "conversazione"),
         (config.LEARNING_MODEL, "estrazione delle memorie"),

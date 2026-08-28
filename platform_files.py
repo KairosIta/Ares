@@ -10,9 +10,10 @@ file mantengono la DACL ereditata dalla directory che li contiene, perche'
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
 import portalocker
 

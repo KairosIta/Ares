@@ -47,6 +47,10 @@ def _ispeziona() -> None:
 
     agent = build_assistant(user_id=args.user, session_id=args.session)
     lm = agent.learning_machine
+    # `build_assistant` passa sempre `learning=`, quindi la macchina c'e'. I
+    # singoli store possono invece essere None se spenti in config.py, ed e'
+    # `stampa_store` a dirlo invece di sollevare AttributeError.
+    assert lm is not None
 
     separatore("PROFILO UTENTE   (per utente, sopravvive a ogni sessione)")
     stampa_store(lm.user_profile_store, "Profilo", user_id=args.user)

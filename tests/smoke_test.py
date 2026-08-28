@@ -56,6 +56,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import ClassVar
 
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
 # script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
@@ -74,9 +75,6 @@ os.environ["ARES_TMP"] = ARCHIVIO_PROVA
 SPAZIO_PROVA = tempfile.mkdtemp(prefix="ares-lavoro-")
 os.environ["ARES_WORKSPACE"] = SPAZIO_PROVA
 
-import config  # noqa: E402
-import platform_files  # noqa: E402
-
 # Normalizzatore privato di Agno, importato di proposito invece di
 # riscritto: una copia locale verificherebbe la copia, non il
 # comportamento del FileSystem su cui i namespace finiscono davvero.
@@ -86,6 +84,15 @@ from agno.models.response import ToolExecution  # noqa: E402
 from agno.run.agent import RunOutput  # noqa: E402
 from agno.run.base import RunStatus  # noqa: E402
 from agno.tools.workspace import Workspace  # noqa: E402
+from prompt_toolkit.completion import CompleteEvent  # noqa: E402
+from prompt_toolkit.document import Document  # noqa: E402
+from prompt_toolkit.input.defaults import create_pipe_input  # noqa: E402
+from prompt_toolkit.output import DummyOutput  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.text import Text  # noqa: E402
+
+import config  # noqa: E402
+import platform_files  # noqa: E402
 from assistant import (  # noqa: E402
     AresLearningMachine,
     AresSessionContextStore,
@@ -95,19 +102,12 @@ from assistant import (  # noqa: E402
     build_filesystem,
     build_workspace,
 )
-from cli_input import (  # noqa: E402
-    CRONOLOGIA_INTESTAZIONE,
-    CliInput,
-    CompletamentoComandi,
-    CronologiaSicura,
-)
-from cli_ui import CliRenderer, RichRunStream  # noqa: E402
 from chat import (  # noqa: E402
-    COMANDI,
     AGNO_LOGGER_NAMES,
+    COMANDI,
     configura_log_agno,
-    gestisci_comando,
     finestra_occupata,
+    gestisci_comando,
     mostra_flusso,
     righe_argomento,
     righe_esito,
@@ -116,13 +116,14 @@ from chat import (  # noqa: E402
     risolvi_comando,
     stampa_aiuto,
 )
-from prompt_toolkit.completion import CompleteEvent  # noqa: E402
-from prompt_toolkit.document import Document  # noqa: E402
-from prompt_toolkit.input.defaults import create_pipe_input  # noqa: E402
-from prompt_toolkit.output import DummyOutput  # noqa: E402
+from cli_input import (  # noqa: E402
+    CRONOLOGIA_INTESTAZIONE,
+    CliInput,
+    CompletamentoComandi,
+    CronologiaSicura,
+)
+from cli_ui import CliRenderer, RichRunStream  # noqa: E402
 from schemas import AresProfile  # noqa: E402
-from rich.console import Console  # noqa: E402
-from rich.text import Text  # noqa: E402
 from stores import (  # noqa: E402
     leggi_entita,
     leggi_intuizioni,
@@ -187,7 +188,7 @@ def campi_popolati(schema) -> list:
     return [c for c, valore in vars(schema).items() if valore and c not in CAMPI_DI_SERVIZIO]
 
 
-def esigi(condizione: bool, messaggio: str) -> None:
+def esigi(condizione: object, messaggio: str) -> None:
     """assert esplicito: `assert` sparisce con `python -O`, questo no."""
     if not condizione:
         raise AssertionError(messaggio)
@@ -351,6 +352,7 @@ def apprendimento_post_run(agent) -> str:
 def retry_contesto(lm) -> str:
     """Un fallimento senza tool ritenta una volta, un successo mai."""
     import asyncio
+
     import assistant as modulo_assistant
 
     class StoreFinto(AresSessionContextStore):
@@ -593,7 +595,7 @@ class _MacchinaSenzaStore:
     config.
     """
 
-    stores: dict = {}
+    stores: ClassVar[dict] = {}
     entity_memory_store = None
     learned_knowledge_store = None
 
@@ -1806,7 +1808,7 @@ def log_cli_puliti() -> str:
             logger_originale = logging.getLogger(nome)
             logger_originale.handlers = handlers
             logger_originale.setLevel(livello)
-            for handler, livello_handler in zip(handlers, livelli_handler):
+            for handler, livello_handler in zip(handlers, livelli_handler, strict=True):
                 handler.setLevel(livello_handler)
 
     return "INFO interni nascosti, warning preservati e --debug completo"

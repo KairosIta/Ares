@@ -20,7 +20,6 @@ import time
 import urllib.error
 from pathlib import Path
 
-
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
 # script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
 # Va prima di qualunque import del progetto.
@@ -156,8 +155,9 @@ if __name__ == "__main__":
     RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-learning-reliability-"))
     os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 
-    import config
     from agno.models.message import Message
+
+    import config
     from assistant import build_db, build_learning_model, build_session_context_store
     from preflight import modelli_disponibili, stessa_etichetta
 

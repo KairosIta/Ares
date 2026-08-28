@@ -25,7 +25,6 @@ import argparse
 import difflib
 import logging
 import shlex
-from typing import Optional
 
 from agno.run.agent import RunOutput
 
@@ -36,7 +35,6 @@ from cli_ui import UI
 from state_lock import StatoOccupato, lock_stato
 from stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
 from turn_core import TurnEvent, TurnEventKind, consume_events, run_turn_cycle
-
 
 AGNO_LOGGER_NAMES = ("agno", "agno-team", "agno-workflow")
 
@@ -297,7 +295,7 @@ def mostra_evento(flusso, evento: TurnEvent) -> None:
         flusso.flush()
 
 
-def mostra_flusso(eventi, *, ui=None) -> Optional[RunOutput]:
+def mostra_flusso(eventi, *, ui=None) -> RunOutput | None:
     """Mostra uno stream di eventi del core e restituisce il suo output.
 
     E' il piccolo adapter riusabile nei test. Il ciclo completo usa la stessa
@@ -356,7 +354,7 @@ def righe_esito(strumento, errore=None) -> list:
         righe_errore = testo.splitlines()
         if len(righe_errore) == 1 and len(righe_errore[0]) <= config.ESITO_LARGHEZZA:
             return ["   errore: " + righe_errore[0]]
-        return ["   errore:"] + anteprima_risultato(testo)
+        return ["   errore:", *anteprima_risultato(testo)]
 
     risultato = getattr(strumento, "result", None)
     testo = "" if risultato is None else str(risultato)
@@ -366,7 +364,7 @@ def righe_esito(strumento, errore=None) -> list:
         # Sotto il decimo di secondo l'arrotondamento a una cifra scriverebbe
         # "in 0.0 s", che sembra un guasto del cronometro.
         misura += " in " + ("<0.1" if durata < 0.1 else str(round(durata, 1))) + " s"
-    return ["   esito: " + misura] + anteprima_risultato(testo)
+    return ["   esito: " + misura, *anteprima_risultato(testo)]
 
 
 def righe_argomento(nome: str, valore) -> list:
@@ -503,7 +501,7 @@ def _token(quanti: int) -> str:
     return str(quanti)
 
 
-def finestra_occupata(risposta) -> Optional[int]:
+def finestra_occupata(risposta) -> int | None:
     """Token del prompt dell'ultima chiamata al modello principale.
 
     Non si usa `risposta.metrics.input_tokens`: quello e' la somma di **ogni**
@@ -572,7 +570,7 @@ def righe_metriche(risposta) -> list:
     return ["[" + "  ".join(pezzi) + "]"]
 
 
-def _turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
+def _turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     """Il turno vero, senza le difese: le pause per autorizzare uno strumento."""
     with UI.stream() as flusso:
         risposta = run_turn_cycle(
@@ -590,7 +588,7 @@ def _turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
     return risposta
 
 
-def esegui_turno(agent, testo: str, input_cli: CliInput) -> Optional[RunOutput]:
+def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     """Un turno intero, con una rete sotto per cio' che Agno non prende.
 
     Questa rete cattura molto meno di quanto sembri, e vale la pena dire cosa

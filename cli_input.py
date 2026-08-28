@@ -9,18 +9,18 @@ test non interattivi.
 from __future__ import annotations
 
 import builtins
+import contextlib
 import json
 import os
 import sys
 import tempfile
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Sequence
-
-from platform_files import lock_file, rendi_privato
+from typing import Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from prompt_toolkit.completion import Completer, CompleteEvent, Completion
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.history import History, InMemoryHistory
@@ -31,6 +31,7 @@ from prompt_toolkit.output import Output
 from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.styles import Style
 
+from platform_files import lock_file, rendi_privato
 
 CRONOLOGIA_INTESTAZIONE = "# Ares CLI history v2"
 
@@ -107,18 +108,13 @@ class CronologiaSicura(History):
         finally:
             if descrittore >= 0:
                 os.close(descrittore)
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporaneo)
-            except FileNotFoundError:
-                pass
 
     def load_history_strings(self) -> Iterable[str]:
         with self._lock():
             voci = self._leggi()
-        if self.limite:
-            voci = voci[-self.limite :]
-        else:
-            voci = []
+        voci = voci[-self.limite :] if self.limite else []
         return reversed(voci)
 
     def append_string(self, string: str) -> None:
@@ -259,7 +255,7 @@ def _tasti_chat(completer: CompletamentoComandi) -> KeyBindings:
 def _continuazione(
     larghezza: int,
     _numero: int,
-    _soft_wrap: bool,
+    _wrap_count: int,
 ) -> StyleAndTextTuples:
     prefisso = " " * max(0, larghezza - 2) + "· "
     return [("class:prompt.continuation", prefisso)]
@@ -274,16 +270,16 @@ class CliInput:
         comandi: Sequence[tuple[str, str]],
         cronologia_file: Path,
         cronologia_righe: int,
-        interactive: Optional[bool] = None,
-        input: Optional[Input] = None,
-        output: Optional[Output] = None,
+        interactive: bool | None = None,
+        input: Input | None = None,
+        output: Output | None = None,
         fallback_input: Callable[[str], str] = builtins.input,
     ) -> None:
         if interactive is None:
             interactive = bool(sys.stdin.isatty() and sys.stdout.isatty())
         self.interactive = interactive
         self.fallback_input = fallback_input
-        self.history_warning: Optional[str] = None
+        self.history_warning: str | None = None
         try:
             self.history: History = CronologiaSicura(cronologia_file, cronologia_righe)
         except OSError as errore:
@@ -294,11 +290,11 @@ class CliInput:
             self.history = InMemoryHistory()
             self.history_warning = str(errore)
         self.completer = CompletamentoComandi(comandi)
-        self._sessione: Optional[PromptSession[str]] = None
-        self._domande: Optional[PromptSession[str]] = None
+        self._sessione: PromptSession[str] | None = None
+        self._domande: PromptSession[str] | None = None
 
         if self.interactive:
-            comuni = {
+            comuni: dict[str, Any] = {
                 "style": ARES_INPUT_STYLE,
                 "input": input,
                 "output": output,

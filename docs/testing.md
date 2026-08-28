@@ -4,6 +4,19 @@ La suite separa le verifiche offline dalle prove che richiedono Ollama. Ogni
 test reindirizza stato, backup e workspace verso directory temporanee, senza
 toccare i dati del clone in uso.
 
+## Analisi statica
+
+```bash
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+.venv/bin/python -m mypy .
+```
+
+Non eseguono il codice e non toccano nessun archivio. Mypy copre i moduli e
+non le prove: quelle girano a ogni CI, quindi un errore di tipo lì diventa
+subito un fallimento visibile, mentre nei moduli restano rami — i percorsi
+Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
+
 ## Verifiche offline
 
 ```bash
@@ -43,6 +56,8 @@ I comandi mostrano il percorso Linux. Su Windows sostituisci
 
 ## CI
 
-GitHub Actions installa le dipendenze bloccate, verifica lo script di setup,
-compila il codice e lancia la suite offline. Le prove con Ollama restano
-intenzionalmente locali perché richiedono modelli e hardware dedicato.
+GitHub Actions esegue due job. `Analisi statica` gira una volta su Ubuntu con
+ruff e mypy; `tests` installa le dipendenze bloccate, verifica lo script di
+setup, compila il codice e lancia la suite offline su Ubuntu e Windows. Le
+prove con Ollama restano intenzionalmente locali perché richiedono modelli e
+hardware dedicato.
