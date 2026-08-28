@@ -19,3 +19,10 @@ ruff==0.14.7
 # py.typed - quindi qui non serve `ignore_missing_imports`, che e' la
 # concessione con cui di solito un mypy nasce gia' mezzo spento.
 mypy==1.19.0
+
+# Misura della copertura. Le sei prove sono processi separati - ognuna
+# prepara l'ambiente con variabili lette da `config.py` all'import, quindi
+# due suite nello stesso interprete condividerebbero il primo `config`
+# importato - percio' serve la modalita' parallela: un file per processo e
+# un `coverage combine` alla fine.
+coverage==7.13.3

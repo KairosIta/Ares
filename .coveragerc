@@ -1,0 +1,31 @@
+# Configurazione della misura di copertura
+# ========================================
+# La misura riguarda i moduli del progetto, non le prove: sapere che una prova
+# ha eseguito se stessa non dice niente. Il runner (`tests/run.py`) passa
+# comunque da qui, cosi' il numero non dipende da come e' stato invocato.
+
+[run]
+# La radice contiene solo i moduli del progetto: elencarli a mano vorrebbe
+# dire aggiornare questo file a ogni modulo nuovo, e dimenticarsene fa salire
+# la percentuale invece di farla scendere.
+source = .
+# Ogni prova e' un processo separato - prepara l'ambiente con variabili che
+# `config.py` legge all'import - quindi ognuna scrive il proprio file e
+# `coverage combine` li unisce.
+parallel = true
+omit =
+    tests/*
+    */tests/*
+    .venv/*
+
+[report]
+# Un ramo non preso e' scoperto quanto una riga non eseguita, e qui i rami
+# sono la sostanza: i percorsi Windows, i gestori d'errore, i ripieghi.
+show_missing = true
+skip_covered = false
+precision = 0
+exclude_also =
+    # Il blocco di avvio di uno script non e' codice da coprire.
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    raise NotImplementedError
