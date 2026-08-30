@@ -15,6 +15,13 @@ cd "$(dirname "$0")"
 
 VERSIONE_PYTHON=3.12
 
+# `.env` puo' contenere identita', percorsi e future impostazioni locali. Non
+# e' versionato e, come lo stato appreso, non deve nascere leggibile dagli
+# altri utenti della macchina. Su Windows vale invece la DACL ereditata.
+if [ -f .env ]; then
+    chmod 600 .env
+fi
+
 if ! command -v uv > /dev/null; then
     echo "Manca uv. Installalo con:"
     echo "    curl -LsSf https://astral.sh/uv/install.sh | sh"

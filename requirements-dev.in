@@ -20,7 +20,7 @@ ruff==0.14.7
 # concessione con cui di solito un mypy nasce gia' mezzo spento.
 mypy==1.19.0
 
-# Misura della copertura. Le sei prove sono processi separati - ognuna
+# Misura della copertura. Le prove girano in processi separati - ognuna
 # prepara l'ambiente con variabili lette da `config.py` all'import, quindi
 # due suite nello stesso interprete condividerebbero il primo `config`
 # importato - percio' serve la modalita' parallela: un file per processo e
