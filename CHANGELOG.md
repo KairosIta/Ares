@@ -40,7 +40,7 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   un rapporto che sbaglia in difetto manda a scrivere prove dove ce ne sono
   già. La misura è per ramo e non per sola riga, perché una `if` eseguita in
   un verso solo è mezza provata: con l'aggancio e le prove nuove le sole
-  prove offline coprono l'83%, e il modulo più scoperto è `chat.py`, che
+  prove offline coprono l'85%, e il modulo più scoperto è `chat.py`, che
   contiene il turno conversazionale, cioè ciò che senza Ollama non gira;
 - promemoria di backup all'avvio della chat: se l'ultimo snapshot ha più di
   `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero spegne tutto —
@@ -55,6 +55,18 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- formato, checksum e verifica degli snapshot vivono in
+  `backup_integrity.py`, mentre la sonda LanceDB usata da snapshot e restore
+  gira nel processo dedicato `backup_probe.py`; parser, conferme, output e
+  dispatch della riga di comando sono in `backup_cli.py`, preparazione,
+  installazione POSIX/Windows e rollback in `backup_restore.py`, mentre
+  `backup_files.py` contiene permessi ricorsivi e rinomina protetta condivisi
+  da creazione e restore. `backup.py` conserva API, helper testati ed entry
+  point compatibili e non contiene più un sottocomando interno nascosto oltre
+  alla propria CLI pubblica. Le prove mirate rifiutano manifest, checksum e
+  risposte della sonda malformati e
+  verificano il rollback sia dopo il guasto dell'installazione a copia sia
+  dopo il guasto della seconda rinomina atomica;
 - la REPL è divisa per responsabilità: `chat.py` conserva avvio e ciclo della
   sessione, `chat_commands.py` contiene tabella e dispatch dei comandi locali,
   `chat_render.py` presenta eventi, conferme e metriche. Gli import pubblici

@@ -15,9 +15,11 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import closing
+from collections.abc import Callable
+from contextlib import closing, nullcontext
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
@@ -31,6 +33,10 @@ os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
 os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
 
+import backup  # noqa: E402
+import backup_files  # noqa: E402
+import backup_integrity  # noqa: E402
+import backup_restore  # noqa: E402
 import config  # noqa: E402
 from backup import (  # noqa: E402
     ErroreBackup,
@@ -96,6 +102,326 @@ def valori_sqlite(percorso: Path) -> list[str]:
         return [riga[0] for riga in connessione.execute("select valore from prova order by rowid")]
 
 
+def esigi_errore(azione: Callable[[], object], frammento: str) -> None:
+    """Richiede un ErroreBackup leggibile, non una generica eccezione."""
+    try:
+        azione()
+    except ErroreBackup as errore:
+        esigi(frammento in str(errore), "errore inatteso: " + str(errore))
+    else:
+        esigi(False, "operazione accettata; atteso errore contenente " + repr(frammento))
+
+
+def manifest_minimo() -> dict[str, Any]:
+    return {
+        "format_version": backup_integrity.FORMATO_BACKUP,
+        "snapshot_id": "sintetico",
+        "models": {
+            "embedder": config.EMBEDDER_MODEL,
+            "embedder_dimensions": config.EMBEDDER_DIMENSIONS,
+        },
+        "components": {
+            "kairos.db": False,
+            "filesystem.db": False,
+            config.CRONOLOGIA_FILE.name: False,
+            "lancedb": {"present": False, "tables": {}},
+        },
+    }
+
+
+def snapshot_sintetico(radice: Path, nome: str, manifest: Any | None = None) -> Path:
+    snapshot = radice / nome
+    snapshot.mkdir(parents=True)
+    dati = manifest_minimo() if manifest is None else manifest
+    (snapshot / backup_integrity.MANIFEST).write_text(json.dumps(dati), encoding="utf-8")
+    backup_integrity.scrivi_checksum(snapshot)
+    return snapshot
+
+
+def verifica_integrita_sintetica(snapshot: Path) -> dict[str, Any]:
+    return backup_integrity.verifica_snapshot(
+        snapshot,
+        cronologia=config.CRONOLOGIA_FILE.name,
+        modello_embedder=config.EMBEDDER_MODEL,
+        dimensioni_embedder=config.EMBEDDER_DIMENSIONS,
+    )
+
+
+def prova_errori_integrita() -> None:
+    """Manifest e checksum ostili devono fallire prima di arrivare al restore."""
+    radice = RADICE_PROVA / "integrita-mirata"
+    radice.mkdir()
+
+    mancante = radice / "manifest-mancante"
+    mancante.mkdir()
+    esigi_errore(lambda: verifica_integrita_sintetica(mancante), "manca manifest.json")
+
+    illeggibile = radice / "manifest-illeggibile"
+    illeggibile.mkdir()
+    (illeggibile / backup_integrity.MANIFEST).write_text("{", encoding="utf-8")
+    esigi_errore(lambda: verifica_integrita_sintetica(illeggibile), "manifest illeggibile")
+
+    lista = snapshot_sintetico(radice, "manifest-lista", [])
+    esigi_errore(lambda: verifica_integrita_sintetica(lista), "radice deve essere un oggetto")
+
+    formato = manifest_minimo()
+    formato["format_version"] = 999
+    incompatibile = snapshot_sintetico(radice, "formato-incompatibile", formato)
+    esigi_errore(lambda: verifica_integrita_sintetica(incompatibile), "formato backup non supportato")
+
+    senza_id = manifest_minimo()
+    senza_id.pop("snapshot_id")
+    identificativo = snapshot_sintetico(radice, "identificativo-mancante", senza_id)
+    esigi_errore(lambda: verifica_integrita_sintetica(identificativo), "manca snapshot_id")
+
+    senza_checksum = snapshot_sintetico(radice, "checksum-mancante")
+    (senza_checksum / backup_integrity.CHECKSUM).unlink()
+    esigi_errore(lambda: verifica_integrita_sintetica(senza_checksum), "manca checksums.sha256")
+
+    checksum_rotto = snapshot_sintetico(radice, "checksum-malformato")
+    (checksum_rotto / backup_integrity.CHECKSUM).write_text("senza separatore\n", encoding="utf-8")
+    esigi_errore(lambda: verifica_integrita_sintetica(checksum_rotto), "riga checksum non valida")
+
+    checksum_insicuro = snapshot_sintetico(radice, "checksum-insicuro")
+    (checksum_insicuro / backup_integrity.CHECKSUM).write_text("0" * 64 + "  ../manifest.json\n", encoding="utf-8")
+    esigi_errore(lambda: verifica_integrita_sintetica(checksum_insicuro), "riga checksum non sicura")
+
+    file_inatteso = snapshot_sintetico(radice, "file-inatteso")
+    (file_inatteso / "intruso.bin").write_bytes(b"intruso")
+    esigi_errore(lambda: verifica_integrita_sintetica(file_inatteso), "insieme dei file diverso")
+
+    componenti_rotti = manifest_minimo()
+    componenti_rotti["components"] = []
+    componenti = snapshot_sintetico(radice, "componenti-malformati", componenti_rotti)
+    esigi_errore(lambda: verifica_integrita_sintetica(componenti), "components non e' un oggetto")
+
+    cronologia_mancante = manifest_minimo()
+    cronologia_mancante["components"][config.CRONOLOGIA_FILE.name] = True
+    cronologia = snapshot_sintetico(radice, "cronologia-mancante", cronologia_mancante)
+    esigi_errore(lambda: verifica_integrita_sintetica(cronologia), "che manca nello snapshot")
+
+    lancedb_malformato = manifest_minimo()
+    lancedb_malformato["components"]["lancedb"] = "presente"
+    lancedb = snapshot_sintetico(radice, "lancedb-malformato", lancedb_malformato)
+    esigi_errore(lambda: verifica_integrita_sintetica(lancedb), "lancedb non e' un oggetto")
+
+    database_mancante = manifest_minimo()
+    database_mancante["components"]["kairos.db"] = True
+    database = snapshot_sintetico(radice, "database-mancante", database_mancante)
+    esigi_errore(lambda: verifica_integrita_sintetica(database), "database mancante")
+
+    sqlite_rotto = radice / "sqlite-illeggibile.db"
+    sqlite_rotto.write_bytes(b"non e' sqlite")
+    esigi_errore(lambda: backup_integrity.verifica_sqlite(sqlite_rotto), "SQLite illeggibile")
+
+    tabelle_diverse = manifest_minimo()
+    tabelle_diverse["components"]["lancedb"] = {"present": True, "tables": {"attesa": 1}}
+    snapshot_tabelle = snapshot_sintetico(radice, "tabelle-diverse", tabelle_diverse)
+    with patch("backup_integrity.conta_tabelle_lancedb", return_value={"ottenuta": 1}):
+        esigi_errore(lambda: verifica_integrita_sintetica(snapshot_tabelle), "tabelle LanceDB diverse")
+
+    modelli_malformati = manifest_minimo()
+    modelli_malformati["components"]["lancedb"] = {"present": True, "tables": {}}
+    modelli_malformati["models"] = ["non-oggetto"]
+    snapshot_modelli = snapshot_sintetico(radice, "modelli-malformati", modelli_malformati)
+    with patch("backup_integrity.conta_tabelle_lancedb", return_value={}):
+        esigi_errore(lambda: verifica_integrita_sintetica(snapshot_modelli), "models non e' un oggetto")
+
+    dimensioni_errate = manifest_minimo()
+    dimensioni_errate["components"]["lancedb"] = {"present": True, "tables": {}}
+    dimensioni_errate["models"]["embedder_dimensions"] = config.EMBEDDER_DIMENSIONS + 1
+    snapshot_dimensioni = snapshot_sintetico(radice, "dimensioni-errate", dimensioni_errate)
+    with patch("backup_integrity.conta_tabelle_lancedb", return_value={}):
+        esigi_errore(lambda: verifica_integrita_sintetica(snapshot_dimensioni), "dimensione embedding incompatibile")
+
+    shutil.rmtree(radice)
+
+
+def prova_errori_sonda() -> None:
+    """Il confine JSON della sonda rifiuta processi e risposte ambigue."""
+    percorso = RADICE_PROVA / "lancedb-sintetico"
+    fallito = subprocess.CompletedProcess([], 1, stdout="", stderr="guasto nativo")
+    with patch("backup_integrity.subprocess.run", return_value=fallito):
+        esigi_errore(lambda: backup_integrity.conta_tabelle_lancedb(percorso), "guasto nativo")
+
+    non_json = subprocess.CompletedProcess([], 0, stdout="non-json", stderr="")
+    with patch("backup_integrity.subprocess.run", return_value=non_json):
+        esigi_errore(lambda: backup_integrity.conta_tabelle_lancedb(percorso), "LanceDB illeggibile")
+
+    forma_errata = subprocess.CompletedProcess([], 0, stdout='{"tabella": -1}', stderr="")
+    with patch("backup_integrity.subprocess.run", return_value=forma_errata):
+        esigi_errore(lambda: backup_integrity.conta_tabelle_lancedb(percorso), "risposta non valida")
+
+    valida = subprocess.CompletedProcess([], 0, stdout='{"zeta": 2, "alfa": 1}', stderr="")
+    with patch("backup_integrity.subprocess.run", return_value=valida):
+        esigi(
+            list(backup_integrity.conta_tabelle_lancedb(percorso)) == ["alfa", "zeta"],
+            "la risposta della sonda non e' stata normalizzata",
+        )
+
+
+def prova_rollback_copia() -> None:
+    """Il fallback a copia ripristina il vecchio stato, e segnala un doppio guasto."""
+    copia_vera = shutil.copytree
+
+    def scenario(nome: str, rollback_fallisce: bool) -> tuple[Path, Path, Path]:
+        radice = RADICE_PROVA / nome
+        staging = radice / "staging"
+        destinazione = radice / "destinazione"
+        precedente = radice / "precedente"
+        staging.mkdir(parents=True)
+        destinazione.mkdir()
+        (staging / "stato.txt").write_text("nuovo\n", encoding="utf-8")
+        (destinazione / "stato.txt").write_text("vecchio\n", encoding="utf-8")
+
+        def copia_con_guasto(sorgente, destinazione_copia, *argomenti, **opzioni):
+            if Path(sorgente) == staging:
+                raise OSError("installazione interrotta")
+            if rollback_fallisce and Path(sorgente) == precedente:
+                raise OSError("rollback interrotto")
+            return copia_vera(sorgente, destinazione_copia, *argomenti, **opzioni)
+
+        with patch("backup_restore.shutil.copytree", side_effect=copia_con_guasto):
+            if rollback_fallisce:
+                esigi_errore(
+                    lambda: backup_restore._installa_restore_per_copia(staging, destinazione, precedente),
+                    "rollback fallito",
+                )
+            else:
+                try:
+                    backup_restore._installa_restore_per_copia(staging, destinazione, precedente)
+                except OSError as errore:
+                    esigi("installazione interrotta" in str(errore), "errore originale perso: " + str(errore))
+                else:
+                    esigi(False, "il guasto di installazione non e' stato propagato")
+        return staging, destinazione, precedente
+
+    _, ripristinata, copia_precedente = scenario("rollback-copia-riuscito", False)
+    esigi(
+        (ripristinata / "stato.txt").read_text(encoding="utf-8") == "vecchio\n",
+        "il rollback a copia non ha ripristinato lo stato precedente",
+    )
+    esigi(copia_precedente.is_dir(), "la copia precedente e' stata rimossa dopo un'installazione fallita")
+
+    _, incompleta, copia_salvataggio = scenario("rollback-copia-fallito", True)
+    esigi(incompleta.is_dir(), "la destinazione del doppio guasto non e' rimasta diagnosticabile")
+    esigi(copia_salvataggio.is_dir(), "la copia precedente del doppio guasto e' stata persa")
+
+
+def prova_rollback_rinomina() -> None:
+    """Il percorso POSIX rimette al suo posto lo stato se il secondo rename fallisce."""
+    radice = RADICE_PROVA / "rollback-rinomina"
+    destinazione = radice / "stato-atomico"
+    staging = radice / "staging"
+    destinazione.mkdir(parents=True)
+    staging.mkdir()
+    (destinazione / "stato.txt").write_text("vecchio\n", encoding="utf-8")
+    (staging / "stato.txt").write_text("nuovo\n", encoding="utf-8")
+    tmp_vera = config.TMP_DIR
+    config.TMP_DIR = destinazione
+
+    operazioni = backup_restore.OperazioniRestore(
+        crea_snapshot_senza_lock=lambda _tipo: radice / "non-creato",
+        risolvi_snapshot=lambda _nome: radice / "snapshot",
+        stato_presente=lambda: False,
+        verifica_snapshot=lambda _snapshot, _diretto: {},
+    )
+
+    def rinomina_con_guasto(sorgente: Path, destinazione_rinomina: Path) -> None:
+        if sorgente == staging:
+            raise OSError("seconda rinomina interrotta")
+        os.rename(sorgente, destinazione_rinomina)
+
+    try:
+        with (
+            patch("backup_restore.lock_stato", return_value=nullcontext()),
+            patch("backup_restore._prepara_restore", return_value=staging),
+            patch("backup_restore._rinomina_directory", side_effect=rinomina_con_guasto),
+            patch("backup_restore.os.name", "posix"),
+        ):
+            try:
+                backup_restore.ripristina_snapshot("snapshot", False, operazioni)
+            except OSError as errore:
+                esigi("seconda rinomina interrotta" in str(errore), "errore rename perso: " + str(errore))
+            else:
+                esigi(False, "il fallimento del secondo rename non e' stato propagato")
+    finally:
+        config.TMP_DIR = tmp_vera
+
+    esigi(
+        (destinazione / "stato.txt").read_text(encoding="utf-8") == "vecchio\n",
+        "il rollback atomico non ha rimesso al suo posto lo stato precedente",
+    )
+    esigi(not staging.exists(), "lo staging fallito non e' stato eliminato")
+    esigi(
+        not list(radice.glob(".stato-atomico-precedente-*")),
+        "il rollback atomico ha lasciato una directory precedente",
+    )
+
+
+def prova_guardie_restore() -> None:
+    """Una preparazione incompleta non lascia staging e una rinomina non sovrascrive."""
+    esigi(backup._privato is backup_files.rendi_albero_privato, "la façade non espone la primitiva dei permessi")
+    esigi(
+        backup._rinomina_directory is backup_files.rinomina_directory_nuova,
+        "la façade non espone la primitiva di rinomina",
+    )
+    esigi(
+        backup_restore._privato is backup_files.rendi_albero_privato,
+        "il restore non usa la primitiva condivisa dei permessi",
+    )
+    esigi(
+        backup_restore._rinomina_directory is backup_files.rinomina_directory_nuova,
+        "il restore non usa la primitiva condivisa di rinomina",
+    )
+
+    file_privato = RADICE_PROVA / "file-privato"
+    file_privato.write_text("segreto\n", encoding="utf-8")
+    if os.name == "posix":
+        file_privato.chmod(0o666)
+    backup_files.rendi_albero_privato(file_privato)
+    if os.name == "posix":
+        esigi((file_privato.stat().st_mode & 0o777) == 0o600, "il file singolo non e' stato reso privato")
+    backup_files.rendi_albero_privato(RADICE_PROVA / "percorso-assente")
+
+    albero_privato = RADICE_PROVA / "albero-privato"
+    albero_privato.mkdir()
+    bersaglio = albero_privato / "bersaglio.txt"
+    collegamento = albero_privato / "collegamento.txt"
+    bersaglio.write_text("segreto\n", encoding="utf-8")
+    try:
+        collegamento.symlink_to(bersaglio)
+    except OSError as errore:
+        if os.name != "nt" or getattr(errore, "winerror", None) != 1314:
+            raise
+    backup_files.rendi_albero_privato(albero_privato)
+
+    snapshot = RADICE_PROVA / "restore-incompleto"
+    snapshot.mkdir()
+    manifest = manifest_minimo()
+    manifest["components"]["kairos.db"] = True
+    parent = config.TMP_DIR.resolve().parent
+    prima = set(parent.glob("." + config.TMP_DIR.name + "-restore-*"))
+    try:
+        backup_restore._prepara_restore(snapshot, manifest)
+    except FileNotFoundError:
+        pass
+    else:
+        esigi(False, "una preparazione senza il database dichiarato non e' fallita")
+    dopo = set(parent.glob("." + config.TMP_DIR.name + "-restore-*"))
+    esigi(dopo == prima, "la preparazione fallita ha lasciato uno staging: " + repr(sorted(dopo - prima)))
+
+    sorgente = RADICE_PROVA / "rinomina-sorgente"
+    destinazione = RADICE_PROVA / "rinomina-destinazione"
+    sorgente.mkdir()
+    destinazione.mkdir()
+    esigi_errore(
+        lambda: backup_files.rinomina_directory_nuova(sorgente, destinazione),
+        "destinazione della rinomina esiste gia'",
+    )
+    esigi(sorgente.is_dir() and destinazione.is_dir(), "la rinomina rifiutata ha modificato le directory")
+
+
 def _operazione_lancedb(azione: str) -> str:
     risultato = subprocess.run(
         [
@@ -151,6 +477,12 @@ def main() -> int:
             )
         ok("create + verify", primo.name)
 
+        prova_errori_integrita()
+        ok("integrita' ostile", "manifest, checksum, SQLite e metadati LanceDB rifiutati")
+
+        prova_errori_sonda()
+        ok("protocollo sonda", "exit code e JSON validati, ordine normalizzato")
+
         pubblicazione_staging = RADICE_PROVA / "pubblicazione-staging"
         pubblicazione_finale = RADICE_PROVA / "pubblicazione-finale"
         pubblicazione_staging.mkdir()
@@ -182,6 +514,15 @@ def main() -> int:
         esigi(not restore_staging.exists() and not restore_precedente.exists(), "residui dopo fallback restore")
         shutil.rmtree(restore_destinazione)
         ok("restore Windows", "copia di rollback rimossa dopo l'installazione")
+
+        prova_rollback_copia()
+        ok("rollback Windows", "stato precedente recuperato; doppio guasto diagnosticabile")
+
+        prova_rollback_rinomina()
+        ok("rollback POSIX", "prima rinomina annullata dopo il guasto della seconda")
+
+        prova_guardie_restore()
+        ok("guardie restore", "staging fallito ripulito e destinazione esistente preservata")
 
         aggiungi_sqlite(Path(config.DB_FILE), "profilo-modificato")
         aggiungi_sqlite(Path(config.FS_DB_FILE), "nota-modificata")
