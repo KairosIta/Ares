@@ -41,7 +41,7 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: |
           uv venv --python python .venv
-          uv pip sync --python ./.venv/bin/python requirements.txt requirements-dev.txt
+          uv pip sync --require-hashes --python ./.venv/bin/python requirements.txt requirements-dev.txt
 
       - name: Lint
         run: ./.venv/bin/python -m ruff check .
@@ -91,7 +91,7 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: |
           uv venv --python python .venv
-          uv pip sync --python "${{ matrix.python }}" requirements.txt requirements-dev.txt
+          uv pip sync --require-hashes --python "${{ matrix.python }}" requirements.txt requirements-dev.txt
           uv pip check --python "${{ matrix.python }}"
 
       - name: Prepara l’ambiente Windows

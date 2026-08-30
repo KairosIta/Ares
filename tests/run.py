@@ -203,7 +203,10 @@ def main(argomenti: list[str] | None = None) -> int:
     copertura = args.copertura
     if copertura and not coverage_disponibile():
         print("coverage non e' installato in questo interprete.")
-        print("Installalo con: uv pip sync --python .venv/bin/python requirements.txt requirements-dev.txt")
+        print(
+            "Installalo con: uv pip sync --require-hashes --python "
+            ".venv/bin/python requirements.txt requirements-dev.txt"
+        )
         return 1
     if args.html and not copertura:
         print("--html richiede --copertura.")

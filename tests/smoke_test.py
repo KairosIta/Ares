@@ -92,6 +92,7 @@ from prompt_toolkit.output import DummyOutput  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.text import Text  # noqa: E402
 
+import chat_render  # noqa: E402
 import config  # noqa: E402
 import platform_files  # noqa: E402
 from assistant import (  # noqa: E402
@@ -106,6 +107,7 @@ from assistant import (  # noqa: E402
 from chat import (  # noqa: E402
     AGNO_LOGGER_NAMES,
     COMANDI,
+    chiedi_conferme,
     configura_log_agno,
     finestra_occupata,
     gestisci_comando,
@@ -1421,6 +1423,86 @@ def conferme_leggibili() -> str:
     return str(len(comando)) + " elementi resi per intero, citati e con la directory"
 
 
+def conferme_applicate() -> str:
+    """Il consenso e il rifiuto risolvono davvero i requirement in pausa."""
+
+    class RequisitoFinto:
+        def __init__(self, nome: str, *, da_confermare: bool = True):
+            self.needs_confirmation = da_confermare
+            self.tool_execution = ToolExecution(tool_name=nome, tool_args={"path": "note.txt"})
+            self.confermato = False
+            self.rifiutato = "mai"
+
+        def confirm(self):
+            self.confermato = True
+
+        def reject(self, motivo=None):
+            self.rifiutato = motivo
+
+    class RispostaFinta:
+        def __init__(self, requisiti):
+            self.active_requirements = requisiti
+
+    class InputFinto:
+        def __init__(self, *risposte):
+            self.risposte = list(risposte)
+            self.chiamate = []
+
+        def ask(self, etichetta: str, *, muted: bool = False) -> str:
+            self.chiamate.append((etichetta, muted))
+            risposta = self.risposte.pop(0)
+            if isinstance(risposta, BaseException):
+                raise risposta
+            return risposta
+
+    class UiFinta:
+        def __init__(self):
+            self.richieste = []
+            self.righe_vuote = 0
+
+        def confirmation(self, righe):
+            self.richieste.append(righe)
+
+        def blank(self):
+            self.righe_vuote += 1
+
+    ui = UiFinta()
+    ui_originale = chat_render.UI
+    chat_render.UI = ui
+    try:
+        ignorato = RequisitoFinto("interno", da_confermare=False)
+        accettato = RequisitoFinto(config.WORKSPACE_PREFIX + "delete_file")
+        input_si = InputFinto("sì")
+        risolti = chiedi_conferme(RispostaFinta([ignorato, accettato]), input_si)
+        esigi(risolti == 1, "un requisito che non chiede conferma viene contato")
+        esigi(accettato.confermato and accettato.rifiutato == "mai", "il sì non conferma il requisito")
+        esigi(not ignorato.confermato and ignorato.rifiutato == "mai", "un requisito interno viene modificato")
+        esigi(len(ui.richieste) == 1, "la richiesta di autorizzazione non viene mostrata una volta sola")
+        esigi(str(config.WORKSPACE_DIR) in "\n".join(ui.richieste[0]), "la richiesta non mostra la radice")
+
+        rifiutato = RequisitoFinto(config.WORKSPACE_PREFIX + "run_command")
+        input_no = InputFinto("no", "comando troppo ampio")
+        risolti = chiedi_conferme(RispostaFinta([rifiutato]), input_no)
+        esigi(risolti == 1, "un rifiuto non risolve il requisito")
+        esigi(not rifiutato.confermato, "un no conferma comunque il requisito")
+        esigi(rifiutato.rifiutato == "comando troppo ampio", "il motivo del rifiuto non arriva al requirement")
+        esigi(input_no.chiamate[-1][1], "il motivo del rifiuto non usa l'input attenuato")
+
+        interrotto = RequisitoFinto(config.WORKSPACE_PREFIX + "move_file")
+        risolti = chiedi_conferme(
+            RispostaFinta([interrotto]),
+            InputFinto(KeyboardInterrupt(), EOFError()),
+        )
+        esigi(risolti == 1, "Ctrl-C lascia irrisolto il requisito")
+        esigi(interrotto.rifiutato is None, "Ctrl-C inventa un motivo di rifiuto")
+        esigi(ui.righe_vuote == 2, "Ctrl-C/EOF non chiudono pulitamente le due richieste")
+        esigi(chiedi_conferme(RispostaFinta([]), InputFinto()) == 0, "una pausa ignota risulta risolta")
+    finally:
+        chat_render.UI = ui_originale
+
+    return "sì, no con motivo, Ctrl-C/EOF e pausa ignota risolvono i requirement attesi"
+
+
 def metriche_del_turno() -> str:
     """La finestra mostrata e' il prompt vero, non la somma delle chiamate.
 
@@ -2236,6 +2318,7 @@ def main() -> int:
             ("archivio privato    ", lambda: archivio_privato()),
             ("import senza effetti", lambda: import_senza_effetti()),
             ("conferme leggibili  ", lambda: conferme_leggibili()),
+            ("conferme applicate  ", lambda: conferme_applicate()),
             ("metriche del turno  ", lambda: metriche_del_turno()),
             ("esito strumenti     ", lambda: esito_strumenti()),
             ("renderer Rich       ", lambda: renderer_rich()),
