@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/runtime-Ollama-white.svg)](https://ollama.com/)
-[![Agno 3.0](https://img.shields.io/badge/framework-Agno%203.0-6C5CE7.svg)](https://www.agno.com/)
+[![Agno 3.0.1](https://img.shields.io/badge/framework-Agno%203.0.1-6C5CE7.svg)](https://www.agno.com/)
 [![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4C8BF5.svg)](#requisiti)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/KairosIta/Ares/actions/workflows/ci.yml/badge.svg)](https://github.com/KairosIta/Ares/actions/workflows/ci.yml)
@@ -31,8 +31,8 @@ spazio controllato sul disco senza richiedere API cloud.
 - **Contesto protetto:** entro la quota Agno i risultati molto grandi restano
   lossless negli archivi locali e vengono riletti a pagine, mentre le tool
   call storiche nel prompt hanno un limite esplicito.
-- **Manutenzione esplicita:** audit e fusione delle entità duplicate con
-  anteprima, lock, backup e rollback.
+- **Manutenzione esplicita:** audit e fusione delle entità duplicate e
+  retention delle sessioni, con anteprima, lock, backup e rollback.
 - **Backup locale verificato:** snapshot atomici dello stato persistente,
   restore protetto e retention configurabile.
 - **Evidenza riproducibile:** prove isolate su archivi temporanei e test E2E
@@ -46,18 +46,24 @@ flowchart LR
     C --> A["Ares · Agno Agent"]
     A --> O["Ollama · LLM locale"]
     A --> T["Strumenti e workspace"]
+    A --> R["ResultStore · offloading"]
     A --> L["LearningMachine"]
-    L --> S["SQLite · sessioni e memorie"]
+    L --> S["kairos.db · sessioni, memorie e indice"]
     L --> V["LanceDB · conoscenza vettoriale"]
+    R --> S
+    R --> F["filesystem.db · quaderno e payload"]
     V --> E["Ollama · embedding locale"]
     S --> B["Snapshot locali verificati"]
+    F --> B
     V --> B
 ```
 
-Il modello principale risponde e usa gli strumenti. Dopo il turno, la
-macchina di apprendimento aggiorna gli store configurati; entità e intuizioni
-restano invece agentiche e vengono consultate o modificate solo quando Ares
-decide di chiamarne gli strumenti.
+Il modello principale risponde e usa gli strumenti. I risultati grandi
+vengono indicizzati nel database principale e conservati in
+`filesystem.db`, entrambi inclusi negli snapshot. Dopo il turno, la macchina
+di apprendimento aggiorna gli store configurati; entità e intuizioni restano
+invece agentiche e vengono consultate o modificate solo quando Ares decide di
+chiamarne gli strumenti.
 
 ## Requisiti
 

@@ -45,7 +45,7 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura è intorno all'85%, e il modulo più
+Con le sole prove offline la misura è intorno all'86%, e il modulo più
 scoperto è `chat.py` al 61%: è il file che contiene il turno conversazionale,
 cioè proprio ciò che senza Ollama non gira.
 

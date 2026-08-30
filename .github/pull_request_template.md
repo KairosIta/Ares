@@ -4,7 +4,7 @@ Descrivi il comportamento modificato e il motivo.
 
 ## Verifiche
 
-- [ ] `tests/smoke_test.py`
+- [ ] `.venv/bin/python tests/run.py`
 - [ ] test specifici del componente
 - [ ] E2E con Ollama, se cambia conversazione o apprendimento
 - [ ] stato reale non letto né modificato

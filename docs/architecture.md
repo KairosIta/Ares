@@ -34,9 +34,9 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 
 ### Stato
 
-- SQLite conserva sessioni, run normalizzati, profilo, memorie ed entita', su
-  un database distinto da quello del quaderno privato e dei payload dei
-  risultati tool troppo grandi per restare nel contesto;
+- `kairos.db` conserva sessioni, run normalizzati, profilo, memorie, entita'
+  e indice degli offload; `filesystem.db` conserva il quaderno privato e i
+  payload dei risultati tool troppo grandi per restare nel contesto;
 - LanceDB conserva la conoscenza vettoriale con embedding serviti da Ollama;
 - `stores.py` e' l'unico punto da cui si leggono entita', intuizioni e
   sessioni: non scrive mai, e non accende il modello salvo l'embedding della
