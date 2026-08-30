@@ -55,11 +55,11 @@ i prompt e le conferme riducono il rischio operativo ma non costituiscono un
 confine di sicurezza.
 
 Su POSIX stato, cronologia e snapshot nascono privati (0700 sulle directory,
-0600 sui file); su Windows vale la DACL ereditata. Restano comunque leggibili
-da chiunque abbia accesso all’account che esegue Ares: i permessi separano gli
-utenti della macchina, non proteggono da chi è già dentro l’account. Per
-scenari multiutente servono isolamento e cifratura gestiti dal sistema
-operativo.
+0600 sui file); `setup.sh` applica 0600 anche a `.env`, quando esiste. Su
+Windows vale la DACL ereditata. Restano comunque leggibili da chiunque abbia
+accesso all’account che esegue Ares: i permessi separano gli utenti della
+macchina, non proteggono da chi è già dentro l’account. Per scenari multiutente
+servono isolamento e cifratura gestiti dal sistema operativo.
 
 I modelli Ollama sono artefatti esterni al repository: provenienza, licenza e
 limiti del modello scelto devono essere valutati separatamente.

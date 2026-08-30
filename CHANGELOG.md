@@ -6,6 +6,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-30
+
 ### Added
 
 - lo smoke test attraversa consenso, rifiuto motivato, Ctrl-C/EOF e pause
@@ -13,6 +15,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- su POSIX `setup.sh` rende `.env` privato a 0600 quando esiste; il commento
+  sulla copertura non incorpora piu' un conteggio destinato a diventare
+  obsoleto;
+- la CI puo' essere avviata manualmente oltre a verificare pull request e
+  commit pubblicati su `main`;
 - setup Linux/Windows, CI e istruzioni di sviluppo usano
   `uv pip sync --require-hashes`, rendendo obbligatorio l'hash per ogni
   dipendenza oltre a verificare quelli gia' presenti;
@@ -224,7 +231,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/KairosIta/Ares/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/KairosIta/Ares/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/KairosIta/Ares/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/KairosIta/Ares/releases/tag/v0.1.0
