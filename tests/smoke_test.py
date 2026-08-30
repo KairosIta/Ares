@@ -354,7 +354,7 @@ def retry_contesto(lm) -> str:
     """Un fallimento senza tool ritenta una volta, un successo mai."""
     import asyncio
 
-    import assistant as modulo_assistant
+    import assistant_learning as modulo_apprendimento
 
     class StoreFinto(AresSessionContextStore):
         def __init__(self, esiti):
@@ -373,9 +373,9 @@ def retry_contesto(lm) -> str:
             return "prova"
 
     retry_originali = config.SESSION_CONTEXT_RETRIES
-    log_originale = modulo_assistant.log_warning
+    log_originale = modulo_apprendimento.log_warning
     avvisi = []
-    modulo_assistant.log_warning = avvisi.append
+    modulo_apprendimento.log_warning = avvisi.append
     try:
         config.SESSION_CONTEXT_RETRIES = 1
 
@@ -405,7 +405,7 @@ def retry_contesto(lm) -> str:
         esigi(asincrono.context_updated, "il retry asincrono riuscito non risulta aggiornato")
     finally:
         config.SESSION_CONTEXT_RETRIES = retry_originali
-        modulo_assistant.log_warning = log_originale
+        modulo_apprendimento.log_warning = log_originale
 
     if config.LEARN_SESSION_CONTEXT:
         esigi(
@@ -662,6 +662,9 @@ def strumenti(agent, user_id: str) -> str:
     # che resta None finche' nessuno la tocca, e senza quello `get_tools` salta
     # in blocco gli strumenti di apprendimento.
     assert agent.learning_machine is not None
+    # Come initialize_agent() all'inizio di un run: risolve il ResultStore e
+    # rende disponibili read_result/search_result prima di comporre i tool.
+    _ = agent.result_store
     sessione = AgentSession(session_id="prova-strumenti", user_id=user_id)
     voci = _tools.get_tools(
         agent=agent,
@@ -688,6 +691,9 @@ def strumenti(agent, user_id: str) -> str:
     if config.LEARN_KNOWLEDGE:
         attesi["search_learnings"] = "LEARN_KNOWLEDGE"
         attesi["save_learning"] = "LEARN_KNOWLEDGE"
+    if config.OFFLOAD_TOOL_RESULTS:
+        attesi["read_result"] = "OFFLOAD_TOOL_RESULTS"
+        attesi["search_result"] = "OFFLOAD_TOOL_RESULTS"
     # Il verso opposto, e va provato per primo: nessuna istruzione deve
     # nominare uno strumento non consegnato, o il modello legge un ordine di
     # chiamare qualcosa che non ha, e un 9B ci prova. Sta prima del ritorno
@@ -715,6 +721,53 @@ def strumenti(agent, user_id: str) -> str:
         esigi(nome in nomi, nome + " non arriva al modello benche' " + flag + " sia acceso")
 
     return str(len(attesi)) + " strumenti su " + str(len(nomi)) + " consegnati: " + ", ".join(sorted(attesi))
+
+
+def protezione_contesto(agent, user_id: str) -> str:
+    """I risultati grandi sono lossless, locali e non gonfiano il prompt."""
+    esigi(
+        agent.max_tool_calls_from_history == config.MAX_TOOL_CALLS_FROM_HISTORY,
+        "il limite delle tool call storiche non arriva all'agente",
+    )
+    if not config.OFFLOAD_TOOL_RESULTS:
+        esigi(agent.result_store is None, "l'offloading e' spento ma il ResultStore esiste")
+        return NON_CONCLUSIVO + "OFFLOAD_TOOL_RESULTS e' spento in config.py"
+
+    store = agent.result_store
+    esigi(store is not None, "OFFLOAD_TOOL_RESULTS e' acceso ma il ResultStore manca")
+    esigi(
+        store.threshold_chars == config.TOOL_RESULT_THRESHOLD_CHARS,
+        "soglia offload diversa dalla configurazione",
+    )
+    esigi(
+        Path(str(store.fs.backend.db_engine.url.database)).resolve() == Path(config.FS_DB_FILE).resolve(),
+        "i payload non usano filesystem.db gia' incluso nei backup",
+    )
+
+    payload = "\n".join("riga " + str(numero) + " " + "x" * 80 for numero in range(300))
+    esigi(len(payload) > config.TOOL_RESULT_THRESHOLD_CHARS, "il payload di prova non supera la soglia")
+    envelope = store.offload_for_model(
+        session_id="prova-offload",
+        run_id="run-offload",
+        tool_call_id="call-offload",
+        tool_name=config.WORKSPACE_PREFIX + "read_file",
+        tool_args={"file_path": "grande.txt"},
+        output=payload,
+        user_id=user_id,
+    )
+    riferimenti = store.live_ids("prova-offload")
+    esigi(len(riferimenti) == 1, "il risultato non e' indicizzato una volta sola")
+    esigi(store.payload(riferimenti[0].result_id) == payload, "il payload riletto non e' lossless")
+    esigi(riferimenti[0].result_id in envelope, "l'anteprima non punta al risultato salvato")
+    esigi(len(envelope) < len(payload) // 4, "l'anteprima resta troppo grande per proteggere il contesto")
+    return (
+        str(len(payload))
+        + " caratteri conservati lossless, envelope di "
+        + str(len(envelope))
+        + ", ultime "
+        + str(config.MAX_TOOL_CALLS_FROM_HISTORY)
+        + " tool call nel prompt"
+    )
 
 
 def spazio_di_lavoro(agent, user_id: str) -> str:
@@ -1072,7 +1125,9 @@ def semina_sessioni(agent, user_id: str) -> list:
         ("lavoro-delta", 1500, "domanda di delta"),
     ]
     for nome, creata, domanda in semi:
-        agent.db.upsert_session(_sessione_finta(nome, creata, domanda, user_id))
+        sessione = _sessione_finta(nome, creata, domanda, user_id)
+        agent.db.upsert_session(sessione)
+        agent.db.upsert_run(sessione.runs[0], session_id=nome, user_id=user_id, run_index=0)
     # Ri-scritta per ultima: la sua ultima modifica e' adesso, la sua
     # creazione resta la terza delle quattro.
     agent.db.upsert_session(_sessione_finta("lavoro-gamma", 2000, "domanda di gamma", user_id))
@@ -2166,6 +2221,7 @@ def main() -> int:
             ("lettori tolleranti  ", lambda: lettori_tolleranti(args.user)),
             ("identita            ", lambda: identita(agent)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
+            ("protezione contesto ", lambda: protezione_contesto(agent, args.user)),
             ("spazio di lavoro    ", lambda: spazio_di_lavoro(agent, args.user)),
             ("tempo               ", lambda: tempo(agent, lm, args.user)),
             ("profilo rileggibile ", lambda: profilo_rileggibile(lm, args.user)),

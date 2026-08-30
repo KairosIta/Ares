@@ -6,7 +6,24 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-30
+
 ### Added
+
+- `docs/agno.md` separa le capacita' Agno gia' usate da Ares da quelle
+  disponibili ma non abilitate, e documenta benefici e limiti dell'upgrade;
+- i risultati degli strumenti oltre 16.000 caratteri usano il `ResultStore`
+  di Agno 3: l'indice resta nel database principale, il payload resta lossless
+  nel FileSystem gia' coperto dai backup entro la quota del framework e il
+  modello riceve strumenti paginati per leggerlo o cercarlo. Il prompt
+  conserva al massimo le ultime dieci tool call storiche senza cancellarle
+  dall'archivio;
+- retention delle sessioni legata al loro ciclo di vita, senza TTL capaci di
+  spezzare i riferimenti agli offload. `session_maintenance.py` offre status,
+  prune per inattivita' e cancellazione esatta con anteprima, sessioni
+  protette, lock esclusivo, snapshot e verifica della cascata su run, contesto
+  appreso, indice e payload. Una prova offline attraversa un vero `Agent.run`,
+  il limite Agno di 8 MB e il restore con `kairos.db` e `filesystem.db`;
 
 - `turn_core.py`: il ciclo di un turno — eventi normalizzati e sequenza
   `run → conferma → continue_run` — non dipende più dal terminale, e un
@@ -20,7 +37,7 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   l'intero albero delle dipendenze è tipizzato, e copre i moduli e non le
   prove; ruff copre tutto, con `PTH` escluso perché litigherebbe con la
   scelta motivata fra `os.rename` e `os.replace` in `backup.py`;
-- `tests/run.py`, runner unico delle sette prove, e misura di copertura con
+- `tests/run.py`, runner unico delle otto prove, e misura di copertura con
   `--copertura`. Il runner non importa le prove, le lancia una per processo:
   ognuna scrive `ARES_TMP` e le altre variabili prima di importare `config`,
   che le legge una volta sola all'import, quindi due prove nello stesso
@@ -54,6 +71,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   avviso non deve poter impedire l'avvio.
 
 ### Changed
+
+- Agno aggiornato da 2.9.0 a 3.0.1 con lock universale rigenerato. I run
+  vivono nella tabella normalizzata `agno_runs`; lo smoke test usa l'API
+  `upsert_run` e continua a verificare elenco e anteprima delle sessioni;
+- `assistant.py` e' ora una facciata di composizione: modelli, archivi e
+  workspace vivono in `assistant_runtime.py`, store e workaround del ciclo di
+  apprendimento in `assistant_learning.py`, istruzioni condizionali in
+  `assistant_prompts.py`. Gli import pubblici precedenti restano compatibili;
+- le istruzioni distinguono esplicitamente un'intuizione dal quaderno: una
+  richiesta di conservarla usa `search_learnings` e `save_learning`, cosi'
+  resta ricercabile nelle sessioni future invece di finire in un file;
+- la prova E2E non importa piu' lo smoke test, che preparava un proprio
+  `ARES_TMP` all'import e faceva scrivere e rileggere due archivi differenti;
 
 - formato, checksum e verifica degli snapshot vivono in
   `backup_integrity.py`, mentre la sonda LanceDB usata da snapshot e restore
@@ -180,6 +210,7 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/KairosIta/Ares/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/KairosIta/Ares/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/KairosIta/Ares/releases/tag/v0.1.0

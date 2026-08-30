@@ -88,6 +88,7 @@ def ok(nome: str, nota: str) -> None:
 def crea_sqlite(percorso: Path, valore: str) -> None:
     percorso.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(percorso)) as connessione, connessione:
+        connessione.execute("pragma journal_mode=wal").fetchone()
         connessione.execute("create table prova (valore text not null)")
         connessione.execute("insert into prova values (?)", (valore,))
 
@@ -100,6 +101,11 @@ def aggiungi_sqlite(percorso: Path, valore: str) -> None:
 def valori_sqlite(percorso: Path) -> list[str]:
     with closing(sqlite3.connect(percorso)) as connessione:
         return [riga[0] for riga in connessione.execute("select valore from prova order by rowid")]
+
+
+def journal_mode(percorso: Path) -> str:
+    with closing(sqlite3.connect(percorso)) as connessione:
+        return str(connessione.execute("pragma journal_mode").fetchone()[0]).casefold()
 
 
 def esigi_errore(azione: Callable[[], object], frammento: str) -> None:
@@ -469,6 +475,8 @@ def main() -> int:
             (primo / config.CRONOLOGIA_FILE.name).read_text(encoding="utf-8") == "prima domanda\n",
             "cronologia non copiata nello snapshot",
         )
+        for nome in ("kairos.db", "filesystem.db"):
+            esigi(journal_mode(primo / nome) == "wal", "lo snapshot ha perso WAL per " + nome)
         if os.name == "posix":
             esigi((primo.stat().st_mode & 0o777) == 0o700, "directory snapshot non privata")
             esigi(

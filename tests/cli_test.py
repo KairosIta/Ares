@@ -411,7 +411,13 @@ def aiuto_senza_effetti() -> str:
     qualcuno ha guardato. La differenza fra prima e dopo quella riga sono
     due caratteri, e nessun'altra prova la vedrebbe.
     """
-    comandi = ("chat.py", "backup.py", "entity_maintenance.py", "inspect_learning.py")
+    comandi = (
+        "chat.py",
+        "backup.py",
+        "entity_maintenance.py",
+        "session_maintenance.py",
+        "inspect_learning.py",
+    )
     for comando in comandi:
         pulita = Path(tempfile.mkdtemp(prefix="ares-aiuto-"))
         stato = pulita / "stato"

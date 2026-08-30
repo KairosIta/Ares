@@ -37,7 +37,7 @@ fi
 echo "Installo le dipendenze bloccate."
 uv pip sync --python .venv/bin/python requirements.txt
 
-# uv pip sync considera `agno==2.9.0` gia' soddisfatto quando agno e'
+# uv pip sync considera `agno==3.0.1` gia' soddisfatto quando agno e'
 # installato in editable dal clone locale, perche' la versione coincide: il
 # venv continuerebbe a girare su ../agno mentre requirements.txt dice PyPI.
 # Due ambienti che si somigliano e divergono senza dirlo.

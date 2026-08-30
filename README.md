@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/runtime-Ollama-white.svg)](https://ollama.com/)
-[![Agno 2.9](https://img.shields.io/badge/framework-Agno%202.9-6C5CE7.svg)](https://www.agno.com/)
+[![Agno 3.0](https://img.shields.io/badge/framework-Agno%203.0-6C5CE7.svg)](https://www.agno.com/)
 [![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4C8BF5.svg)](#requisiti)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/KairosIta/Ares/actions/workflows/ci.yml/badge.svg)](https://github.com/KairosIta/Ares/actions/workflows/ci.yml)
@@ -28,6 +28,9 @@ spazio controllato sul disco senza richiedere API cloud.
   dopo una conferma e `continue_run`, con retry mirato sul contesto.
 - **Strumenti controllati:** cronologia, ricerca, quaderno privato e workspace
   su disco con conferma per le operazioni sensibili.
+- **Contesto protetto:** entro la quota Agno i risultati molto grandi restano
+  lossless negli archivi locali e vengono riletti a pagine, mentre le tool
+  call storiche nel prompt hanno un limite esplicito.
 - **Manutenzione esplicita:** audit e fusione delle entità duplicate con
   anteprima, lock, backup e rollback.
 - **Backup locale verificato:** snapshot atomici dello stato persistente,
@@ -145,7 +148,7 @@ I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
 `.venv/bin/python` con `.\.venv\Scripts\python.exe`.
 
 ```bash
-# Le prove offline: cablaggio, store, lock, backup/restore, entità
+# Le prove offline: cablaggio, retention, backup/restore, entità e CLI
 .venv/bin/python tests/run.py
 
 # Anche quelle che accendono Ollama, incluso un turno completo
@@ -199,6 +202,28 @@ cioè esattamente ciò che non si fa mentre qualcuno sta aspettando un prompt.
 La prima fusione è solo un’anteprima. `--apply` richiede la chat chiusa,
 acquisisce il lock esclusivo, crea un backup e domanda una conferma testuale.
 
+### Sessioni e risultati tool
+
+```bash
+.venv/bin/python session_maintenance.py status
+.venv/bin/python session_maintenance.py prune --older-than 180
+.venv/bin/python session_maintenance.py prune --older-than 180 --apply
+.venv/bin/python session_maintenance.py delete <session-id> --apply
+```
+
+I risultati offloaded non hanno un TTL indipendente: vivono quanto la loro
+conversazione, così una sessione conservata non contiene riferimenti scaduti.
+Il prune seleziona invece intere sessioni per ultimo utilizzo, esclude quelle
+protette in `SESSIONI_PROTETTE` e senza `--apply` mostra soltanto l'anteprima.
+L'applicazione richiede la chat chiusa, il lock esclusivo, una conferma e uno
+snapshot verificato; Agno rimuove a cascata run, indice e payload, mentre Ares
+elimina anche il contesto appreso della sessione e verifica l'esito.
+
+Agno limita ogni singolo payload a 8.000.000 byte e ogni sessione a
+200.000.000 byte. Se una quota viene superata, il run continua con un
+fallback dichiarato contenente testa e coda, ma il risultato completo non
+viene conservato.
+
 ## Località e sicurezza
 
 Nell’uso ordinario inferenza e stato restano locali; non sono richieste
@@ -213,6 +238,7 @@ un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).
 ## Documentazione
 
 - [Architettura](docs/architecture.md)
+- [Agno in Ares](docs/agno.md)
 - [Strategia di test](docs/testing.md)
 - [Roadmap](ROADMAP.md)
 - [Istruzioni per contribuire](CONTRIBUTING.md)

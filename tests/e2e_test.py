@@ -47,9 +47,8 @@ from pathlib import Path
 RADICE_PROGETTO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RADICE_PROGETTO))
 
-# L'archivio della prova va scelto prima di importare config, perche' config
-# crea TMP_DIR all'import: importarlo e correggere i percorsi dopo lascerebbe
-# comunque una tmp/ vuota accanto ai dati veri.
+# L'archivio della prova va scelto prima di importare config, che legge i
+# percorsi una volta sola: correggere l'ambiente dopo non sposterebbe lo stato.
 ARCHIVIO_PROVA = tempfile.mkdtemp(prefix="ares-prova-")
 os.environ["ARES_TMP"] = ARCHIVIO_PROVA
 # Anche lo spazio di lavoro: `build_workspace` crea la directory al momento
@@ -57,8 +56,6 @@ os.environ["ARES_TMP"] = ARCHIVIO_PROVA
 # comparire una vera accanto al progetto.
 SPAZIO_PROVA = tempfile.mkdtemp(prefix="ares-prova-lavoro-")
 os.environ["ARES_WORKSPACE"] = SPAZIO_PROVA
-
-from smoke_test import esigi  # noqa: E402
 
 import config  # noqa: E402
 from preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
@@ -73,6 +70,13 @@ SESSIONE = "prova-e2e"
 # "In una riga" tiene corto il turno: qui si misura che il giro si chiuda, non
 # quanto bene scriva il modello.
 DOMANDA = "Mi chiamo Prova e uso Linux. In una riga: a cosa serve un file di lock delle dipendenze?"
+
+
+def esigi(condizione: object, messaggio: str) -> None:
+    """Asserzione locale: importare lo smoke test ne cambierebbe ARES_TMP."""
+    if not condizione:
+        raise AssertionError(messaggio)
+
 
 # Il processo figlio rilegge l'archivio da zero. Vive come stringa e non come
 # funzione importata perche' il punto e' proprio che sia un interprete diverso,

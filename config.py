@@ -146,6 +146,35 @@ ENTITA_FINESTRA_RICERCA = 200
 # Quanti turni di questa sessione restano nel contesto senza chiedere nulla.
 NUM_HISTORY_RUNS = 5
 
+# I messaggi utente e assistente dei cinque turni restano tutti; degli
+# strumenti si reiniettano invece soltanto le dieci chiamate piu' recenti.
+# Un turno che legge molti file non deve trascinare ogni risultato nei turni
+# successivi. Il filtro riguarda il prompt, non l'archivio: Agno continua a
+# conservare la cronologia completa in SQLite.
+MAX_TOOL_CALLS_FROM_HISTORY = 10
+
+# Un file del workspace puo' arrivare a 10 MB e get_chat_history puo'
+# restituire una sessione intera. Agno 3 sposta i risultati oltre questa
+# soglia nel FileSystem, entro le proprie quote, e lascia al modello
+# un'anteprima con due strumenti paginati, read_result e search_result. Il
+# payload usa filesystem.db e l'indice kairos.db: entrambi sono gia' inclusi
+# negli snapshot di Ares. Il superamento quota e' un fallback esplicito con
+# testa e coda, non una conservazione lossless.
+OFFLOAD_TOOL_RESULTS = True
+TOOL_RESULT_THRESHOLD_CHARS = 16_000
+
+# Gli offload seguono la vita della conversazione: nessun TTL puo' lasciare
+# in una sessione conservata un result_id ormai illeggibile. La manutenzione
+# offline propone invece le sessioni inattive da eliminare per intero; non
+# parte mai da sola e usa questo valore soltanto come default della CLI.
+SESSION_RETENTION_DAYS = 180
+
+# Il prune per eta' non tocca le conversazioni nominate qui. Una cancellazione
+# puntuale resta possibile, con anteprima, backup e conferma, perche' una
+# protezione esplicita deve impedire gli automatismi, non rendere il dato
+# incancellabile. La sessione predefinita e' il solo valore protetto di serie.
+SESSIONI_PROTETTE = ("principale",)
+
 # ---------------------------------------------------------------------------
 # Tempo
 # ---------------------------------------------------------------------------

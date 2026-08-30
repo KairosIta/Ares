@@ -8,14 +8,14 @@
 #
 # Gli hash non sono decorazione: senza, il lock dice quale versione installare,
 # non quale artefatto: se un account su PyPI viene compromesso e un file
-# ripubblicato, `agno==2.9.0` resta vero e il contenuto cambia. Con gli hash
+# ripubblicato, `agno==3.0.1` resta vero e il contenuto cambia. Con gli hash
 # l'installazione si ferma. Rigenera sempre sopra il file esistente, mai su un
 # percorso nuovo: uv legge il lock che sta per riscrivere come preferenza, ed
 # e' cosi' che aggiungere una dipendenza non aggiorna di nascosto le altre.
 
 # Il framework dell'agente. Pinnato alla versione su cui e' stato scritto e
 # verificato tutto: le API di agno.learn sono giovani e cambiano tra minor.
-agno==2.9.0
+agno==3.0.1
 
 # Client del server Ollama su localhost:11434. Serve sia al modello
 # conversazionale sia a OllamaEmbedder.
@@ -37,7 +37,7 @@ sqlalchemy
 # Non lo usiamo: e' l'__init__ di agno.models.ollama a pretenderlo, perche'
 # importa OllamaResponses insieme a Ollama. Importare il sottomodulo `.chat`
 # non lo evita, perche' Python esegue comunque l'__init__ del package: in
-# agno 2.9.0 un progetto solo-Ollama installa lo stesso un client cloud.
+# agno 3.0.1 un progetto solo-Ollama installa lo stesso un client cloud.
 openai
 
 # Carica le personalizzazioni locali da un file .env ignorato da Git.

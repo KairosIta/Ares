@@ -31,7 +31,7 @@ nascosto tutte le altre. Compilare su un percorso nuovo perde quel vincolo.
 
 Gli hash valgono per il motivo per cui esiste un lock. Un pin dice quale
 versione installare; un hash dice quale artefatto. Se un account su PyPI viene
-compromesso e un file ripubblicato, `agno==2.9.0` resta vero e il contenuto
+compromesso e un file ripubblicato, `agno==3.0.1` resta vero e il contenuto
 cambia: con gli hash l'installazione si ferma invece di riuscire. Vale su ogni
 macchina che esegue `setup.sh` e su ogni PR di Dependabot, che di aggiornamenti
 automatici ne apre uno a settimana.
