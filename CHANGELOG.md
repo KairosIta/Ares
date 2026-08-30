@@ -6,8 +6,16 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- lo smoke test attraversa consenso, rifiuto motivato, Ctrl-C/EOF e pause
+  sconosciute del flusso di conferma degli strumenti sensibili.
+
 ### Changed
 
+- setup Linux/Windows, CI e istruzioni di sviluppo usano
+  `uv pip sync --require-hashes`, rendendo obbligatorio l'hash per ogni
+  dipendenza oltre a verificare quelli gia' presenti;
 - documentazione post-release allineata alla linea supportata 0.3.x, ad Agno
   3.0.1, al ResultStore nel diagramma architetturale e alla suite offline
   unificata; roadmap e misura di copertura riflettono lo stato verificato.

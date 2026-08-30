@@ -41,7 +41,7 @@ si eseguono. Per averli nel venv insieme al resto — è quello che fa anche la
 CI, e `uv pip sync` rimuove ciò che non è nei file che gli passi:
 
 ```bash
-uv pip sync --python .venv/bin/python requirements.txt requirements-dev.txt
+uv pip sync --require-hashes --python .venv/bin/python requirements.txt requirements-dev.txt
 uv pip compile --universal --generate-hashes requirements-dev.in -o requirements-dev.txt
 ```
 

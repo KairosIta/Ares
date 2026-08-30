@@ -35,7 +35,7 @@ fi
 # la versione sia quella giusta ma che il file scaricato sia quello: se non
 # corrisponde l'installazione si ferma, invece di riuscire con altro dentro.
 echo "Installo le dipendenze bloccate."
-uv pip sync --python .venv/bin/python requirements.txt
+uv pip sync --require-hashes --python .venv/bin/python requirements.txt
 
 # uv pip sync considera `agno==3.0.1` gia' soddisfatto quando agno e'
 # installato in editable dal clone locale, perche' la versione coincide: il
@@ -53,7 +53,7 @@ PY
 then
     echo
     echo "agno veniva da fuori dal venv (installazione editable): lo reinstallo."
-    uv pip install --python .venv/bin/python --reinstall-package agno -r requirements.txt
+    uv pip install --require-hashes --python .venv/bin/python --reinstall-package agno -r requirements.txt
 fi
 
 # `sync` allinea cio' che e' installato al lock; `check` verifica anche che i

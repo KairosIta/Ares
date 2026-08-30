@@ -67,7 +67,7 @@ try {
 
     Write-Host "Installo le dipendenze bloccate."
     Invoke-External {
-        & $Uv.Source pip sync --python $VenvPython requirements.txt
+        & $Uv.Source pip sync --require-hashes --python $VenvPython requirements.txt
     } "sincronizzazione delle dipendenze fallita"
     $AgnoNelVenv = @'
 import pathlib
@@ -83,7 +83,7 @@ sys.exit(0 if pathlib.Path(agno.__file__).resolve().is_relative_to(venv) else 1)
         Write-Host
         Write-Host "Agno veniva da fuori dal venv (installazione editable): lo reinstallo."
         Invoke-External {
-            & $Uv.Source pip install --python $VenvPython --reinstall-package agno -r requirements.txt
+            & $Uv.Source pip install --require-hashes --python $VenvPython --reinstall-package agno -r requirements.txt
         } "reinstallazione di Agno fallita"
     }
 
