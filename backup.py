@@ -128,7 +128,15 @@ def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     origine = sqlite3.connect(str(sorgente))
     copia = sqlite3.connect(str(destinazione))
     try:
+        journal_mode = str(origine.execute("pragma journal_mode").fetchone()[0]).casefold()
         origine.backup(copia)
+        # L'API backup copia pagine e dati ma il database di destinazione
+        # nasce in DELETE mode. Agno 3 usa WAL: perderlo nello snapshot
+        # costringerebbe la prima lettura dopo un restore a riscrivere
+        # l'header del database. La copia deve conservare anche questa
+        # proprieta' persistente, non soltanto tabelle e righe.
+        if journal_mode == "wal":
+            copia.execute("pragma journal_mode=wal").fetchone()
     finally:
         copia.close()
         origine.close()
@@ -178,7 +186,7 @@ def _versione_agno() -> str | None:
 
 
 def _id_snapshot(tipo: str) -> str:
-    if tipo not in {"manuale", "pre-merge", "pre-restore"}:
+    if tipo not in {"manuale", "pre-merge", "pre-restore", "pre-session-prune"}:
         raise ErroreBackup("tipo di snapshot non valido: " + repr(tipo))
     base = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     suffisso = "" if tipo == "manuale" else "-" + tipo

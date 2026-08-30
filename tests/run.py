@@ -24,8 +24,8 @@ sta in `.coveragerc`, cosi' il numero non dipende da come si e' invocato il
 comando.
 
 Le prove girano una alla volta. Quelle con Ollama si contendono la stessa
-GPU, e le offline durano in tutto una quindicina di secondi: parallelizzarle
-comprerebbe pochi secondi al prezzo di un output intrecciato.
+GPU, e le offline durano in tutto meno di un minuto: parallelizzarle
+comprerebbe poco al prezzo di un output intrecciato.
 """
 
 import argparse
@@ -43,6 +43,7 @@ RADICE = Path(__file__).resolve().parent.parent
 # rumore.
 PROVE = (
     ("smoke", "smoke_test.py", False, "assemblaggio, store, lock, REPL simulata"),
+    ("sessioni", "session_retention_test.py", False, "offload, retention, cascata e restore"),
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
     ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),

@@ -20,10 +20,10 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 
 - `turn_core.py` normalizza gli eventi Agno e coordina `run/continue_run`
   senza dipendere dall'interfaccia;
-- `assistant.py` assembla modello, istruzioni, strumenti e store; contiene
-  anche la `AresLearningMachine` e il post-hook che spostano l'apprendimento
-  sul run completo, perche' sono decisioni di cablaggio dell'agente e non un
-  sottosistema a se';
+- `assistant.py` e' la facciata che assembla l'agente e conserva gli import
+  pubblici; `assistant_runtime.py` costruisce modelli, archivi e strumenti,
+  `assistant_learning.py` configura gli store e il post-hook sul run completo,
+  `assistant_prompts.py` compone soltanto le istruzioni coerenti con i flag;
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt;
 - `config.py` raccoglie le impostazioni versionate e decide, in un punto solo,
@@ -34,8 +34,9 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 
 ### Stato
 
-- SQLite conserva sessioni, profilo, memorie ed entita', su un database
-  distinto da quello del quaderno privato dell'agente;
+- SQLite conserva sessioni, run normalizzati, profilo, memorie ed entita', su
+  un database distinto da quello del quaderno privato e dei payload dei
+  risultati tool troppo grandi per restare nel contesto;
 - LanceDB conserva la conoscenza vettoriale con embedding serviti da Ollama;
 - `stores.py` e' l'unico punto da cui si leggono entita', intuizioni e
   sessioni: non scrive mai, e non accende il modello salvo l'embedding della
@@ -62,6 +63,10 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
 - `entity_maintenance.py` espone la CLI e coordina lock e backup; l'audit in
   sola lettura vive in `entity_audit.py`, il piano e la transazione di fusione
   in `entity_merge.py`, i contratti condivisi in `entity_models.py`;
+- `session_maintenance.py` coordina anteprima, conferma, lock e snapshot della
+  retention; `session_retention.py` apre entrambi i backend, registra su Agno
+  il filesystem dei payload e verifica la cancellazione congiunta di
+  sessione, run, contesto appreso, indice e risultato offloaded;
 - `setup.sh` e `setup.ps1` ricostruiscono lo stesso ambiente bloccato sui due
   sistemi verificati.
 
@@ -99,6 +104,14 @@ Su POSIX gli snapshot vengono pubblicati con una rinomina di directory. Su
 Windows, dove LanceDB può impedire quella rinomina anche dopo la chiusura dei
 reader nativi, il manifest viene pubblicato per ultimo come commit marker e
 il restore conserva stabile la directory radice con una copia di rollback.
+
+La retention segue la sessione invece di una scadenza dei singoli risultati:
+finché la conversazione esiste i suoi `result_id` restano risolvibili. La
+manutenzione offline seleziona sessioni inattive ma non cancella niente
+automaticamente; applicare una selezione richiede lock esclusivo e snapshot.
+Il database principale deve conoscere il backend separato `filesystem.db`
+prima di chiamare la cascata Agno, altrimenti il payload diventerebbe orfano:
+questa registrazione è un'invariante verificata dalla prova dedicata.
 
 ## Configurazione
 
