@@ -6,6 +6,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Changed
+
+- documentazione post-release allineata alla linea supportata 0.3.x, ad Agno
+  3.0.1, al ResultStore nel diagramma architetturale e alla suite offline
+  unificata; roadmap e misura di copertura riflettono lo stato verificato.
+
 ## [0.3.0] - 2026-08-30
 
 ### Added
