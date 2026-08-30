@@ -14,7 +14,7 @@ exclude = [".venv", "__pycache__"]
 [lint]
 # Esclusi di proposito:
 #
-#   PTH  vorrebbe Path.rename al posto di os.rename in backup.py, dove la
+#   PTH  vorrebbe Path.rename al posto di os.rename in backup_files.py, dove la
 #        scelta fra rename e replace ha un commento che spiega perche' su
 #        Windows la semantica di sostituzione e' quella sbagliata. Una regola
 #        che litiga con una decisione motivata insegna a mettere noqa.

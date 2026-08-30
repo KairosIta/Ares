@@ -49,9 +49,15 @@ strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
   nominati in `config.py` siano scaricati, senza accendere niente e senza
   lasciare niente su disco;
 - `inspect_learning.py` rilegge gli archivi a modello spento;
-- `backup.py` crea, verifica e ripristina snapshot locali dello stato, e
-  offre a `chat.py` il promemoria di rifarne uno quando l'ultimo e'
-  vecchio: la lettura non crea la directory dei backup e non solleva,
+- `backup.py` coordina creazione, catalogo e restore degli snapshot locali;
+  parser, conferme e output vivono in `backup_cli.py`, formato, checksum e
+  verifica in `backup_integrity.py`, staging e rollback in
+  `backup_restore.py`; `backup_files.py` raccoglie permessi ricorsivi e
+  rinomina protetta condivisi dai due flussi, mentre `backup_probe.py` isola
+  in un processo dedicato la lettura di LanceDB, così gli handle nativi sono
+  chiusi prima delle rinomine. La façade `backup.py` offre anche a `chat.py` il
+  promemoria di rifarne uno quando l'ultimo e' vecchio: la lettura non crea la
+  directory dei backup e non solleva,
   perche' un avviso non deve poter impedire l'avvio;
 - `entity_maintenance.py` espone la CLI e coordina lock e backup; l'audit in
   sola lettura vive in `entity_audit.py`, il piano e la transazione di fusione

@@ -45,13 +45,13 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura è intorno all'83%, e il modulo più
-scoperto è `chat.py` al 74%: è il file che contiene il turno conversazionale,
+Con le sole prove offline la misura è intorno all'85%, e il modulo più
+scoperto è `chat.py` al 61%: è il file che contiene il turno conversazionale,
 cioè proprio ciò che senza Ollama non gira.
 
 La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
 le prove ne lanciano parecchi — la CLI di `entity_maintenance.py` sei volte,
-il sondaggio LanceDB isolato di `backup.py`, la rilettura da un secondo
+il sondaggio LanceDB isolato di `backup_probe.py`, la rilettura da un secondo
 interprete in `e2e_test.py`. `coverage` misura il processo che avvia, non i
 suoi discendenti, e prima dell'aggancio `entity_maintenance.py` risultava al
 68% pur avendo la propria CLI provata da sei sottoprocessi: il rapporto
