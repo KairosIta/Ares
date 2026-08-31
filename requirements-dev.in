@@ -13,7 +13,7 @@
 # Linter e formattatore. Pinnato come tutto il resto: una minor nuova di ruff
 # puo' aggiungere regole al set selezionato, e una CI che diventa rossa da
 # sola il lunedi' mattina insegna a ignorarla.
-ruff==0.14.7
+ruff==0.16.5
 
 # Controllo dei tipi. L'intero albero delle dipendenze e' tipizzato - agno ha
 # py.typed - quindi qui non serve `ignore_missing_imports`, che e' la
