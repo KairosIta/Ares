@@ -18,7 +18,7 @@ ruff==0.14.7
 # Controllo dei tipi. L'intero albero delle dipendenze e' tipizzato - agno ha
 # py.typed - quindi qui non serve `ignore_missing_imports`, che e' la
 # concessione con cui di solito un mypy nasce gia' mezzo spento.
-mypy==1.19.0
+mypy==2.3.1
 
 # Misura della copertura. Le prove girano in processi separati - ognuna
 # prepara l'ambiente con variabili lette da `config.py` all'import, quindi
