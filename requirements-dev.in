@@ -25,4 +25,4 @@ mypy==1.19.0
 # due suite nello stesso interprete condividerebbero il primo `config`
 # importato - percio' serve la modalita' parallela: un file per processo e
 # un `coverage combine` alla fine.
-coverage==7.13.3
+coverage==7.15.4
