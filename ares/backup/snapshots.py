@@ -338,7 +338,7 @@ def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
         root = config.BACKUP_DIR
         disponibili = _snapshot_dentro(root) if root.is_dir() else []
         comando = (
-            "    " + (r".venv\Scripts\ares-backup.exe" if os.name == "nt" else ".venv/bin/ares-backup") + " create"
+            "    " + (r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup") + " create"
         )
         if not disponibili:
             return [

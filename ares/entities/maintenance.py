@@ -271,7 +271,7 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
         )
         raise
     print("Fusione completata e verificata:", piano.sorgente.riferimento, "->", piano.canonica.riferimento)
-    comando = r".venv\Scripts\ares-backup.exe" if sys.platform == "win32" else ".venv/bin/ares-backup"
+    comando = r".venv\Scripts\ares-backup" if sys.platform == "win32" else ".venv/bin/ares-backup"
     print("Per tornare indietro:", comando, "restore", snapshot.name)
     return 0
 

@@ -139,7 +139,7 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
     db, store = apri_archivio(user_id)
     eliminate = elimina_sessioni(db, store, sessioni, user_id)
     print("Sessioni eliminate e verificate:", eliminate)
-    comando = r".venv\Scripts\ares-backup.exe" if os.name == "nt" else ".venv/bin/ares-backup"
+    comando = r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup"
     print("Per tornare indietro:", comando, "restore", snapshot.name)
     return 0
 

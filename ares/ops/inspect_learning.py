@@ -90,7 +90,7 @@ def _ispeziona() -> None:
     for f in elenco:
         print("-", f.path, "  ", f.size_bytes, "byte")
     print()
-    comando = r".venv\Scripts\ares-inspect.exe" if sys.platform == "win32" else ".venv/bin/ares-inspect"
+    comando = r".venv\Scripts\ares-inspect" if sys.platform == "win32" else ".venv/bin/ares-inspect"
     print("Per leggerne uno:", comando, "--file <percorso>")
 
 
