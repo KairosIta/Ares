@@ -47,8 +47,11 @@ os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
 os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
 
 from ares import config  # noqa: E402
+from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
+from ares.cli import chat  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
+from ares.state.lock import StatoOccupato  # noqa: E402
 
 UTENTE = "prova-cli"
 SESSIONE = "cli"
@@ -413,6 +416,236 @@ def chat_repl() -> str:
     return "banner, comandi, riga vuota, comando ignoto e uscita"
 
 
+# ---------------------------------------------------------------------------
+# Il ciclo della REPL, in questo processo
+# ---------------------------------------------------------------------------
+# `chat_repl` prova la REPL da fuori, con stdin da una pipe, e per restare
+# offline puo' mandarle soltanto comandi: tutto cio' che non comincia con `/`
+# e' un messaggio e vorrebbe il modello. Restava percio' scoperta proprio la
+# meta' che conta - il turno, i suoi due gestori d'errore, le metriche, gli
+# avvisi d'avvio - cioe' le righe che un utente attraversa a ogni frase che
+# scrive.
+#
+# Qui il modello non serve: al suo posto c'e' una `run_turn_cycle` finta.
+# Quello che si prova non e' cosa risponde Ares, che dipende dal modello, ma
+# cio' che la REPL fa intorno alla risposta e che dal modello non dipende:
+# che un'eccezione non chiuda la sessione, che un Ctrl-C sia distinto da un
+# guasto, che una pausa irrisolta venga detta invece di restare appesa.
+
+
+def _piatto(testo: str) -> str:
+    """Il testo a schermo senza gli a-capo che ci mette la larghezza del terminale.
+
+    Rich manda a capo sulla colonna della console, che in una prova non e' un
+    terminale e vale 80. Una frase cercata per intero cadrebbe percio' a
+    seconda di dove si spezza, e la prova fallirebbe per la larghezza invece
+    che per il contenuto.
+    """
+    return " ".join(testo.split())
+
+
+class FintoInput:
+    """`CliInput` ridotto a cio' che il ciclo usa: una coda di righe.
+
+    Ogni elemento e' una riga da restituire oppure un'eccezione da sollevare,
+    perche' le due uscite del prompt - EOF e Ctrl-C - sono esattamente ciò
+    che chiude la REPL e vanno provate dalla stessa coda.
+    """
+
+    def __init__(self, righe, history_warning=None):
+        self.righe = list(righe)
+        self.history_warning = history_warning
+        self.domande: list[str] = []
+
+    def prompt(self) -> str:
+        if not self.righe:
+            raise EOFError
+        voce = self.righe.pop(0)
+        if isinstance(voce, BaseException) or (isinstance(voce, type) and issubclass(voce, BaseException)):
+            raise voce
+        return voce
+
+    def ask(self, etichetta: str, *, muted: bool = False) -> str:
+        self.domande.append(etichetta)
+        return ""
+
+
+class FintaChiamata:
+    """Una chiamata al modello come la legge `_conta_chiamate`: per attributi.
+
+    Non un dict: `_conta_chiamate` usa `getattr`, quindi un dizionario passa
+    senza errori e conta zero, e la prova resterebbe verde su una riga di
+    metriche vuota.
+    """
+
+    input_tokens = 4000
+    output_tokens = 120
+    provider_metrics: ClassVar[dict] = {"total_duration": 1_500_000_000}
+
+
+class FinteMetriche:
+    """Il minimo che `righe_metriche` legge: la durata e le chiamate per ruolo."""
+
+    duration = 2.0
+    details: ClassVar[dict] = {"model": [FintaChiamata()]}
+
+
+class FintaRisposta:
+    def __init__(self, is_paused=False, metriche=None):
+        self.is_paused = is_paused
+        self.metrics = metriche
+        self.active_requirements: list = []
+
+
+def chat_turno() -> str:
+    """I quattro esiti di `esegui_turno`, che e' la rete sotto ogni frase.
+
+    Un turno normale, uno che resta in pausa per un motivo che la CLI non sa
+    chiedere, un Ctrl-C e un guasto. Gli ultimi due sono rami separati nel
+    codice per una ragione dichiarata nel docstring - una decisione non e' un
+    imprevisto - e qui si verifica che restino distinti: se un giorno
+    l'`except Exception` inghiottisse anche il `KeyboardInterrupt`, un Ctrl-C
+    comincerebbe a somigliare a un errore e nessun'altra prova lo direbbe.
+    """
+    input_cli = FintoInput([])
+
+    # Turno normale. La finta `run_turn_cycle` chiama entrambe le callback
+    # che il ciclo le passa: senza, `mostra_evento` e `chiedi_conferme` non
+    # verrebbero attraversate mai e le due lambda resterebbero non provate.
+    def ciclo_ok(agent, testo, *, on_event, resolve_pause):
+        esigi(testo == "ciao", "il testo non arriva al ciclo del turno")
+        on_event(TurnEvent(kind=TurnEventKind.CONTENT, content="risposta"))
+        on_event(TurnEvent(kind=TurnEventKind.RUN_COMPLETED))
+        esigi(resolve_pause(FintaRisposta()) == 0, "una pausa senza requisiti non deve risolversi")
+        return FintaRisposta()
+
+    uscita = io.StringIO()
+    with patch.object(chat, "run_turn_cycle", ciclo_ok), redirect_stdout(uscita):
+        risposta = chat.esegui_turno(object(), "ciao", input_cli)
+    esigi(risposta is not None, "un turno riuscito non restituisce la risposta")
+
+    # Pausa che il client non sa risolvere: il ciclo si ferma e lo dice.
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "run_turn_cycle", lambda *a, **k: FintaRisposta(is_paused=True)),
+        redirect_stdout(uscita),
+    ):
+        chat.esegui_turno(object(), "ciao", input_cli)
+    esigi("in pausa" in _piatto(uscita.getvalue()), "una pausa irrisolta resta muta")
+
+    # Ctrl-C fuori dal turno: nessun apprendimento, e non e' un errore.
+    def ciclo_interrotto(*a, **k):
+        raise KeyboardInterrupt
+
+    uscita = io.StringIO()
+    with patch.object(chat, "run_turn_cycle", ciclo_interrotto), redirect_stdout(uscita):
+        esigi(chat.esegui_turno(object(), "ciao", input_cli) is None, "un'interruzione non restituisce None")
+    testo = _piatto(uscita.getvalue())
+    esigi("Interrotto" in testo, "l'interruzione non viene detta")
+    esigi("fallito" not in testo, "un Ctrl-C viene presentato come un guasto")
+
+    # Guasto: il tipo dell'eccezione a schermo, e la sessione resta aperta.
+    def ciclo_rotto(*a, **k):
+        raise RuntimeError("archivio irraggiungibile")
+
+    uscita = io.StringIO()
+    with patch.object(chat, "run_turn_cycle", ciclo_rotto), redirect_stdout(uscita):
+        esigi(chat.esegui_turno(object(), "ciao", input_cli) is None, "un guasto non restituisce None")
+    testo = _piatto(uscita.getvalue())
+    esigi("RuntimeError" in testo, "il tipo dell'errore non compare")
+    esigi("archivio irraggiungibile" in testo, "il messaggio dell'errore non compare")
+    esigi("sessione resta aperta" in testo, "non viene detto che la sessione sopravvive")
+    return "turno, pausa irrisolta, Ctrl-C e guasto restano quattro esiti distinti"
+
+
+def chat_ciclo() -> str:
+    """Il giro completo di `_esegui_chat` con un modello finto.
+
+    Copre cio' che `chat_repl` non puo' raggiungere da fuori: la riga vuota
+    che non apre un turno, il messaggio che lo apre, la riga delle metriche
+    chiesta con `--metriche`, l'avviso sulla cronologia degradata, l'avviso
+    del modello cloud, il promemoria di backup e le due uscite dal prompt.
+    """
+    turni: list[str] = []
+
+    def ciclo(agent, testo, *, on_event, resolve_pause):
+        turni.append(testo)
+        return FintaRisposta(metriche=FinteMetriche())
+
+    input_cli = FintoInput(["", "  ", "ciao Ares", KeyboardInterrupt], history_warning="disco in sola lettura")
+
+    uscita = io.StringIO()
+    with (
+        patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE, "--metriche"]),
+        patch.object(chat, "build_assistant", lambda **k: object()),
+        patch.object(chat, "CliInput", lambda **k: input_cli),
+        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(chat, "promemoria_backup", lambda: ["Ultimo backup: mai", "Esegui ares-backup create"]),
+        patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"),
+        redirect_stdout(uscita),
+    ):
+        chat._esegui_chat()
+
+    testo = _piatto(uscita.getvalue())
+    esigi(turni == ["ciao Ares"], "le righe vuote hanno aperto un turno: " + repr(turni))
+    esigi("Cronologia non disponibile" in testo, "la cronologia degradata non viene segnalata")
+    esigi("sola lettura" in testo, "il motivo della cronologia degradata non compare")
+    esigi("escono dalla macchina" in testo, "l'avviso del modello cloud non compare")
+    esigi("Ultimo backup: mai" in testo, "il promemoria di backup non compare")
+    esigi("tok" in testo and "turno" in testo, "le metriche non compaiono con --metriche")
+    esigi("A presto" in testo, "la REPL non saluta dopo un Ctrl-C al prompt")
+
+    # Senza `--metriche` e con un modello locale la riga del costo non c'e' e
+    # l'avviso del cloud nemmeno: sono le due condizioni che li accendono, e
+    # provarle solo accese non direbbe che dipendono da qualcosa.
+    input_cli = FintoInput(["ciao Ares"])
+    uscita = io.StringIO()
+    with (
+        patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE]),
+        patch.object(chat, "build_assistant", lambda **k: object()),
+        patch.object(chat, "CliInput", lambda **k: input_cli),
+        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(chat, "promemoria_backup", list),
+        patch.object(config, "MAIN_MODEL", "qwen3:9b"),
+        patch.object(config, "MOSTRA_METRICHE", False),
+        redirect_stdout(uscita),
+    ):
+        chat._esegui_chat()
+    testo = _piatto(uscita.getvalue())
+    esigi("escono dalla macchina" not in testo, "un modello locale mostra l'avviso del cloud")
+    esigi("tok" not in testo, "le metriche compaiono senza che siano state chieste")
+    return "riga vuota, turno, metriche, avvisi d'avvio e le due uscite dal prompt"
+
+
+def chat_avvio() -> str:
+    """`main()`: il lock condiviso, l'archivio occupato e il Ctrl-C all'avvio.
+
+    Sono le righe che si attraversano prima che la REPL esista. Un backup in
+    corso deve produrre un messaggio e non un traceback, e un Ctrl-C mentre
+    Ares apre database e indice pure: e' la finestra in cui la costruzione
+    dell'agente non e' ancora protetta da nulla.
+    """
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "lock_stato", lambda esclusivo: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
+        redirect_stdout(uscita),
+    ):
+        chat.main()
+    testo = _piatto(uscita.getvalue())
+    esigi("Impossibile avviare Ares" in testo, "l'archivio occupato non viene detto")
+    esigi("backup in corso" in testo, "il motivo dell'occupazione non compare")
+    esigi("riprova" in testo, "non viene suggerito di riprovare")
+
+    def avvio_interrotto() -> None:
+        raise KeyboardInterrupt
+
+    uscita = io.StringIO()
+    with patch.object(chat, "_esegui_chat", avvio_interrotto), redirect_stdout(uscita):
+        chat.main()
+    esigi("Avvio interrotto" in _piatto(uscita.getvalue()), "un Ctrl-C durante l'avvio non viene detto")
+    return "lock condiviso, archivio occupato e Ctrl-C prima della REPL"
+
+
 def aiuto_senza_effetti() -> str:
     """`--help` non crea l'archivio, per nessuno dei cinque comandi.
 
@@ -497,6 +730,9 @@ def main() -> int:
         ok("backup CLI", backup_cli(RADICE_PROVA))
         ok("inspect_learning", inspect_learning_cli())
         ok("chat REPL", chat_repl())
+        ok("chat turno", chat_turno())
+        ok("chat ciclo", chat_ciclo())
+        ok("chat avvio", chat_avvio())
         ok("aiuto puro", aiuto_senza_effetti())
     except Exception as errore:
         print()

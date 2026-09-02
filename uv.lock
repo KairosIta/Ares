@@ -4,7 +4,7 @@ requires-python = "==3.12.*"
 
 [[package]]
 name = "agno"
-version = "3.0.1"
+version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agnoctl" },
@@ -18,9 +18,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/be/4f/e694f4a76076e69f0f68e428a028fc84de05d66ace80cfe85926e09432f3/agno-3.0.1.tar.gz", hash = "sha256:1ff07520449d57f823f9475b55547ce58f47581224ad5f5c581796bd5569dfa0", size = 3295709, upload-time = "2026-08-26T10:20:23.647Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/00/6b6980c71a9136edb3ea92f637fd39286de55141bc86d56fea83b9e59aad/agno-3.0.2.tar.gz", hash = "sha256:ee415393aeaa48fe217cb218e53af6e6ba7e27c96c28c3403ecd5002ea4cae90", size = 3359287, upload-time = "2026-08-30T08:02:32.526Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/bb/cbc641f76e351607a5587d8d95af2cad06319162ca185f9e8501a6f67bc8/agno-3.0.1-py3-none-any.whl", hash = "sha256:d617748623d6af8d5861b316c792f9661dfaf16c75848e86bf1ec977c1394418", size = 3755814, upload-time = "2026-08-26T10:20:20.724Z" },
+    { url = "https://files.pythonhosted.org/packages/91/24/be1fe0c50e5988c379240b75400e071b06a7eb66fc4a154d9fedc25c1a02/agno-3.0.2-py3-none-any.whl", hash = "sha256:9fb2d79bd5754ae0a32e6621c1109a24da060bdc0d967dea81db9bce4df47bee", size = 3826827, upload-time = "2026-08-30T08:02:29.934Z" },
 ]
 
 [[package]]
@@ -95,7 +95,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agno", specifier = "==3.0.1" },
+    { name = "agno", specifier = "==3.0.2" },
     { name = "lancedb" },
     { name = "ollama" },
     { name = "openai" },
