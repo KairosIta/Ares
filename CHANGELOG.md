@@ -29,7 +29,17 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   Q8_0 scende da 14 a 9,3 GB di VRAM. Con lo stesso modello nei due ruoli il
   contesto resta `NUM_CTX`, e lo smoke test `contesto esteso` lo verifica;
 - README, architettura, nota Agno e SECURITY descrivono cosa esce dalla
-  macchina con un modello cloud e cosa dichiara la privacy policy di Ollama.
+  macchina con un modello cloud e cosa dichiara la privacy policy di Ollama;
+- i moduli lasciano la radice ed entrano nel package `ares/`, diviso per
+  responsabilita': `agent`, `cli`, `state`, `backup`, `entities`,
+  `sessions`, `ops`. I comandi si lanciano con `python -m`: `-m ares` avvia
+  la chat, `-m ares.backup`, `-m ares.entities` e `-m ares.sessions`
+  sostituiscono i vecchi script, `-m ares.ops.preflight` e
+  `-m ares.ops.inspect_learning` gli strumenti a modello spento. Nessun
+  percorso dello stato cambia: `tmp/`, `.env`, backup e workspace restano
+  dove erano;
+- gli `__init__.py` dei sottopackage descrivono in poche righe cosa contiene
+  ciascuno, e `docs/architecture.md` apre con la mappa del package.
 
 ## [0.3.1] - 2026-08-30
 

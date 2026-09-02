@@ -5,7 +5,7 @@ Ricostruisce l'ambiente Windows di Ares.
 .DESCRIPTION
 Crea il virtualenv Python 3.12, sincronizza requirements.txt, elimina il
 rischio di usare Agno da un checkout editable esterno e verifica Ollama con
-preflight.py. Non modifica tmp/, workspace o backup.
+`python -m ares.ops.preflight`. Non modifica tmp/, workspace o backup.
 
 .PARAMETER SkipPreflight
 Salta soltanto il controllo di Ollama e dei modelli. Serve alla CI e a chi
@@ -97,7 +97,7 @@ sys.exit(0 if pathlib.Path(agno.__file__).resolve().is_relative_to(venv) else 1)
     }
     else {
         Write-Host
-        & $VenvPython preflight.py
+        & $VenvPython -m ares.ops.preflight
         if ($LASTEXITCODE -ne 0) {
             throw "le dipendenze sono a posto, ma il preflight Ollama non e' passato"
         }

@@ -7,35 +7,57 @@ conversazionale puo' essere un modello cloud di Ollama, che il daemon locale
 inoltra a `ollama.com`, mentre estrazione delle memorie ed embedding restano
 locali per costruzione.
 
+## Struttura del codice
+
+Il codice vive nel package `ares/`, diviso per responsabilita'. Ogni
+sottopackage con un `__main__.py` e' un comando che si lancia con
+`python -m`; gli altri sono librerie interne.
+
+```text
+ares/
+├── config.py       impostazioni versionate e percorsi dello stato
+├── agent/          composizione dell'agente, turno, apprendimento, schemi
+├── cli/            la REPL: chat, comandi locali, rendering, editor   (python -m ares)
+├── state/          lettura degli archivi, lock, primitive di piattaforma
+├── backup/         snapshot locali: creazione, verifica, restore      (python -m ares.backup)
+├── entities/       audit e fusione delle entita'                      (python -m ares.entities)
+├── sessions/       retention di sessioni e risultati tool             (python -m ares.sessions)
+└── ops/            preflight e ispezione a modello spento             (python -m ares.ops.<nome>)
+```
+
+`tests/` contiene le prove e il loro runner, `docs/` questa documentazione,
+la radice i file di configurazione degli strumenti e gli script di setup. Lo
+stato appreso sta in `tmp/`, fuori dal controllo versione.
+
 ## Componenti
 
-### Interfaccia
+### Interfaccia (`ares/cli/`)
 
-- `chat.py` avvia e coordina la REPL; `chat_commands.py` contiene la tabella
-  dei comandi locali e il loro dispatch, mentre `chat_render.py` presenta
-  eventi, conferme e metriche del turno;
-- `cli_input.py` gestisce editor, completamento, input multilinea e cronologia
+- `chat.py` avvia e coordina la REPL; `commands.py` contiene la tabella dei
+  comandi locali e il loro dispatch, mentre `render.py` presenta eventi,
+  conferme e metriche del turno;
+- `editor.py` gestisce editor, completamento, input multilinea e cronologia
   privata della REPL;
-- `cli_ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i
-  controlli di terminale contenuti nelle risposte del modello.
+- `ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i controlli
+  di terminale contenuti nelle risposte del modello.
 
-### Nucleo del turno
+### Nucleo del turno (`ares/agent/`)
 
 - `turn_core.py` normalizza gli eventi Agno e coordina `run/continue_run`
   senza dipendere dall'interfaccia;
 - `assistant.py` e' la facciata che assembla l'agente e conserva gli import
-  pubblici; `assistant_runtime.py` costruisce modelli, archivi e strumenti,
-  `assistant_learning.py` configura gli store e il post-hook sul run completo,
-  `assistant_prompts.py` compone soltanto le istruzioni coerenti con i flag;
+  pubblici; `runtime.py` costruisce modelli, archivi e strumenti,
+  `learning.py` configura gli store e il post-hook sul run completo,
+  `prompts.py` compone soltanto le istruzioni coerenti con i flag;
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt;
-- `config.py` raccoglie le impostazioni versionate e decide, in un punto solo,
-  i percorsi dello stato. Importarlo non tocca il disco: la directory dello
-  stato la crea `prepara_archivio()`, che chiamano i costruttori di
+- `ares/config.py` raccoglie le impostazioni versionate e decide, in un punto
+  solo, i percorsi dello stato. Importarlo non tocca il disco: la directory
+  dello stato la crea `prepara_archivio()`, che chiamano i costruttori di
   `assistant.py` e il `main()` di ogni comando, dopo aver letto gli
   argomenti.
 
-### Stato
+### Stato (`ares/state/`)
 
 - `kairos.db` conserva sessioni, run normalizzati, profilo, memorie, entita'
   e indice degli offload; `filesystem.db` conserva il quaderno privato e i
@@ -44,31 +66,32 @@ locali per costruzione.
 - `stores.py` e' l'unico punto da cui si leggono entita', intuizioni e
   sessioni: non scrive mai, e non accende il modello salvo l'embedding della
   query sulle intuizioni;
-- `state_lock.py` espone il lock cooperativo condiviso/esclusivo dello stato,
-  su cui `platform_files.py` uniforma le primitive fra POSIX e Windows.
+- `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato, su
+  cui `platform_files.py` uniforma le primitive fra POSIX e Windows.
 
 ### Strumenti operativi
 
-- `preflight.py` verifica che il server Ollama risponda e che i modelli
+- `ops/preflight.py` verifica che il server Ollama risponda e che i modelli
   nominati in `config.py` siano scaricati, senza accendere niente e senza
   lasciare niente su disco;
-- `inspect_learning.py` rilegge gli archivi a modello spento;
-- `backup.py` coordina creazione, catalogo e restore degli snapshot locali;
-  parser, conferme e output vivono in `backup_cli.py`, formato, checksum e
-  verifica in `backup_integrity.py`, staging e rollback in
-  `backup_restore.py`; `backup_files.py` raccoglie permessi ricorsivi e
-  rinomina protetta condivisi dai due flussi, mentre `backup_probe.py` isola
+- `ops/inspect_learning.py` rilegge gli archivi a modello spento;
+- `backup/snapshots.py` coordina creazione, catalogo e restore degli snapshot
+  locali; parser, conferme e output vivono in `backup/cli.py`, formato,
+  checksum e verifica in `backup/integrity.py`, staging e rollback in
+  `backup/restore.py`; `backup/files.py` raccoglie permessi ricorsivi e
+  rinomina protetta condivisi dai due flussi, mentre `backup/probe.py` isola
   in un processo dedicato la lettura di LanceDB, così gli handle nativi sono
-  chiusi prima delle rinomine. La façade `backup.py` offre anche a `chat.py` il
-  promemoria di rifarne uno quando l'ultimo e' vecchio: la lettura non crea la
-  directory dei backup e non solleva,
-  perche' un avviso non deve poter impedire l'avvio;
-- `entity_maintenance.py` espone la CLI e coordina lock e backup; l'audit in
-  sola lettura vive in `entity_audit.py`, il piano e la transazione di fusione
-  in `entity_merge.py`, i contratti condivisi in `entity_models.py`;
-- `session_maintenance.py` coordina anteprima, conferma, lock e snapshot della
-  retention; `session_retention.py` apre entrambi i backend, registra su Agno
-  il filesystem dei payload e verifica la cancellazione congiunta di
+  chiusi prima delle rinomine. La façade offre anche alla chat il promemoria
+  di rifare uno snapshot quando l'ultimo e' vecchio: la lettura non crea la
+  directory dei backup e non solleva, perche' un avviso non deve poter
+  impedire l'avvio;
+- `entities/maintenance.py` espone la CLI e coordina lock e backup; l'audit
+  in sola lettura vive in `entities/audit.py`, il piano e la transazione di
+  fusione in `entities/merge.py`, i contratti condivisi in
+  `entities/models.py`;
+- `sessions/maintenance.py` coordina anteprima, conferma, lock e snapshot
+  della retention; `sessions/retention.py` apre entrambi i backend, registra
+  su Agno il filesystem dei payload e verifica la cancellazione congiunta di
   sessione, run, contesto appreso, indice e risultato offloaded;
 - `setup.sh` e `setup.ps1` ricostruiscono lo stesso ambiente bloccato sui due
   sistemi verificati.
@@ -118,6 +141,6 @@ questa registrazione è un'invariante verificata dalla prova dedicata.
 
 ## Configurazione
 
-Le impostazioni versionate sono in `config.py`. Identita' e percorsi locali
+Le impostazioni versionate sono in `ares/config.py`. Identita' e percorsi locali
 possono essere sovrascritti con le variabili mostrate in `.env.example`; il
 file `.env` del clone non viene pubblicato.

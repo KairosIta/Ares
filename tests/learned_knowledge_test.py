@@ -71,7 +71,7 @@ RILETTURA = """
 import json
 import sys
 
-import config
+from ares import config
 
 config.LEARN_USER_PROFILE = False
 config.LEARN_USER_MEMORY = False
@@ -82,8 +82,8 @@ config.SEARCH_PAST_SESSIONS = False
 config.READ_CHAT_HISTORY = False
 config.WORKSPACE = False
 
-from assistant import build_assistant
-from stores import leggi_intuizioni
+from ares.agent.assistant import build_assistant
+from ares.state.stores import leggi_intuizioni
 
 utente, sessione, query = sys.argv[1:4]
 lm = build_assistant(user_id=utente, session_id=sessione).learning_machine
@@ -134,7 +134,7 @@ def strumenti_learning(lm, user_id: str, session_id: str) -> dict:
 
 
 def cerca(lm, user_id: str, query: str) -> list:
-    from stores import leggi_intuizioni
+    from ares.state.stores import leggi_intuizioni
 
     return leggi_intuizioni(lm, user_id=user_id, query=query, limit=20)
 
@@ -164,7 +164,7 @@ def rileggi_in_processo_nuovo(user_id: str, session_id: str, query: str) -> list
 
 
 def modelli_pronti() -> tuple[bool, str]:
-    from preflight import modelli_disponibili, stessa_etichetta
+    from ares.ops.preflight import modelli_disponibili, stessa_etichetta
 
     presenti = [modello.get("name", "") for modello in modelli_disponibili(config.OLLAMA_HOST)]
     richiesti = (config.MAIN_MODEL, config.LEARNING_MODEL, config.EMBEDDER_MODEL)
@@ -275,7 +275,7 @@ def prova_agente() -> None:
 
 
 def prova_backup() -> None:
-    from backup import crea_snapshot, ripristina_snapshot, verifica_snapshot
+    from ares.backup.snapshots import crea_snapshot, ripristina_snapshot, verifica_snapshot
 
     snapshot = crea_snapshot()
     manifest = verifica_snapshot(snapshot, percorso_diretto=True)
@@ -353,7 +353,7 @@ if __name__ == "__main__":
     os.environ["ARES_WORKSPACE"] = str(RADICE_WORKSPACE)
     os.environ["ARES_BACKUP_DIR"] = str(RADICE_BACKUP)
 
-    import config
+    from ares import config
 
     # Isoliamo learned_knowledge: nessuna estrazione ALWAYS, nessun altro
     # strumento agentico e nessun workspace durante i due turni reali.
@@ -366,6 +366,6 @@ if __name__ == "__main__":
     config.READ_CHAT_HISTORY = False
     config.WORKSPACE = False
 
-    from assistant import build_assistant
+    from ares.agent.assistant import build_assistant
 
     sys.exit(main(argomenti))

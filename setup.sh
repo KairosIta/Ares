@@ -70,7 +70,7 @@ fi
 uv pip check --python .venv/bin/python
 
 echo
-if ! .venv/bin/python preflight.py; then
+if ! .venv/bin/python -m ares.ops.preflight; then
     echo
     echo "Le dipendenze sono a posto: manca qualcosa sul lato Ollama."
     exit 1

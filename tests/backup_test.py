@@ -33,12 +33,9 @@ os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
 os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
 
-import backup  # noqa: E402
-import backup_files  # noqa: E402
-import backup_integrity  # noqa: E402
-import backup_restore  # noqa: E402
-import config  # noqa: E402
-from backup import (  # noqa: E402
+from ares import config  # noqa: E402
+from ares.backup import files, integrity, restore, snapshots  # noqa: E402
+from ares.backup.snapshots import (  # noqa: E402
     ErroreBackup,
     _installa_restore_per_copia,
     _pubblica_snapshot,
@@ -50,7 +47,7 @@ from backup import (  # noqa: E402
     valida_percorsi,
     verifica_snapshot,
 )
-from state_lock import StatoOccupato, lock_stato  # noqa: E402
+from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
 
 OPERAZIONE_LANCEDB = r"""
 import json
@@ -120,7 +117,7 @@ def esigi_errore(azione: Callable[[], object], frammento: str) -> None:
 
 def manifest_minimo() -> dict[str, Any]:
     return {
-        "format_version": backup_integrity.FORMATO_BACKUP,
+        "format_version": integrity.FORMATO_BACKUP,
         "snapshot_id": "sintetico",
         "models": {
             "embedder": config.EMBEDDER_MODEL,
@@ -139,13 +136,13 @@ def snapshot_sintetico(radice: Path, nome: str, manifest: Any | None = None) -> 
     snapshot = radice / nome
     snapshot.mkdir(parents=True)
     dati = manifest_minimo() if manifest is None else manifest
-    (snapshot / backup_integrity.MANIFEST).write_text(json.dumps(dati), encoding="utf-8")
-    backup_integrity.scrivi_checksum(snapshot)
+    (snapshot / integrity.MANIFEST).write_text(json.dumps(dati), encoding="utf-8")
+    integrity.scrivi_checksum(snapshot)
     return snapshot
 
 
 def verifica_integrita_sintetica(snapshot: Path) -> dict[str, Any]:
-    return backup_integrity.verifica_snapshot(
+    return integrity.verifica_snapshot(
         snapshot,
         cronologia=config.CRONOLOGIA_FILE.name,
         modello_embedder=config.EMBEDDER_MODEL,
@@ -164,7 +161,7 @@ def prova_errori_integrita() -> None:
 
     illeggibile = radice / "manifest-illeggibile"
     illeggibile.mkdir()
-    (illeggibile / backup_integrity.MANIFEST).write_text("{", encoding="utf-8")
+    (illeggibile / integrity.MANIFEST).write_text("{", encoding="utf-8")
     esigi_errore(lambda: verifica_integrita_sintetica(illeggibile), "manifest illeggibile")
 
     lista = snapshot_sintetico(radice, "manifest-lista", [])
@@ -181,15 +178,15 @@ def prova_errori_integrita() -> None:
     esigi_errore(lambda: verifica_integrita_sintetica(identificativo), "manca snapshot_id")
 
     senza_checksum = snapshot_sintetico(radice, "checksum-mancante")
-    (senza_checksum / backup_integrity.CHECKSUM).unlink()
+    (senza_checksum / integrity.CHECKSUM).unlink()
     esigi_errore(lambda: verifica_integrita_sintetica(senza_checksum), "manca checksums.sha256")
 
     checksum_rotto = snapshot_sintetico(radice, "checksum-malformato")
-    (checksum_rotto / backup_integrity.CHECKSUM).write_text("senza separatore\n", encoding="utf-8")
+    (checksum_rotto / integrity.CHECKSUM).write_text("senza separatore\n", encoding="utf-8")
     esigi_errore(lambda: verifica_integrita_sintetica(checksum_rotto), "riga checksum non valida")
 
     checksum_insicuro = snapshot_sintetico(radice, "checksum-insicuro")
-    (checksum_insicuro / backup_integrity.CHECKSUM).write_text("0" * 64 + "  ../manifest.json\n", encoding="utf-8")
+    (checksum_insicuro / integrity.CHECKSUM).write_text("0" * 64 + "  ../manifest.json\n", encoding="utf-8")
     esigi_errore(lambda: verifica_integrita_sintetica(checksum_insicuro), "riga checksum non sicura")
 
     file_inatteso = snapshot_sintetico(radice, "file-inatteso")
@@ -218,26 +215,26 @@ def prova_errori_integrita() -> None:
 
     sqlite_rotto = radice / "sqlite-illeggibile.db"
     sqlite_rotto.write_bytes(b"non e' sqlite")
-    esigi_errore(lambda: backup_integrity.verifica_sqlite(sqlite_rotto), "SQLite illeggibile")
+    esigi_errore(lambda: integrity.verifica_sqlite(sqlite_rotto), "SQLite illeggibile")
 
     tabelle_diverse = manifest_minimo()
     tabelle_diverse["components"]["lancedb"] = {"present": True, "tables": {"attesa": 1}}
     snapshot_tabelle = snapshot_sintetico(radice, "tabelle-diverse", tabelle_diverse)
-    with patch("backup_integrity.conta_tabelle_lancedb", return_value={"ottenuta": 1}):
+    with patch("ares.backup.integrity.conta_tabelle_lancedb", return_value={"ottenuta": 1}):
         esigi_errore(lambda: verifica_integrita_sintetica(snapshot_tabelle), "tabelle LanceDB diverse")
 
     modelli_malformati = manifest_minimo()
     modelli_malformati["components"]["lancedb"] = {"present": True, "tables": {}}
     modelli_malformati["models"] = ["non-oggetto"]
     snapshot_modelli = snapshot_sintetico(radice, "modelli-malformati", modelli_malformati)
-    with patch("backup_integrity.conta_tabelle_lancedb", return_value={}):
+    with patch("ares.backup.integrity.conta_tabelle_lancedb", return_value={}):
         esigi_errore(lambda: verifica_integrita_sintetica(snapshot_modelli), "models non e' un oggetto")
 
     dimensioni_errate = manifest_minimo()
     dimensioni_errate["components"]["lancedb"] = {"present": True, "tables": {}}
     dimensioni_errate["models"]["embedder_dimensions"] = config.EMBEDDER_DIMENSIONS + 1
     snapshot_dimensioni = snapshot_sintetico(radice, "dimensioni-errate", dimensioni_errate)
-    with patch("backup_integrity.conta_tabelle_lancedb", return_value={}):
+    with patch("ares.backup.integrity.conta_tabelle_lancedb", return_value={}):
         esigi_errore(lambda: verifica_integrita_sintetica(snapshot_dimensioni), "dimensione embedding incompatibile")
 
     shutil.rmtree(radice)
@@ -247,21 +244,21 @@ def prova_errori_sonda() -> None:
     """Il confine JSON della sonda rifiuta processi e risposte ambigue."""
     percorso = RADICE_PROVA / "lancedb-sintetico"
     fallito = subprocess.CompletedProcess([], 1, stdout="", stderr="guasto nativo")
-    with patch("backup_integrity.subprocess.run", return_value=fallito):
-        esigi_errore(lambda: backup_integrity.conta_tabelle_lancedb(percorso), "guasto nativo")
+    with patch("ares.backup.integrity.subprocess.run", return_value=fallito):
+        esigi_errore(lambda: integrity.conta_tabelle_lancedb(percorso), "guasto nativo")
 
     non_json = subprocess.CompletedProcess([], 0, stdout="non-json", stderr="")
-    with patch("backup_integrity.subprocess.run", return_value=non_json):
-        esigi_errore(lambda: backup_integrity.conta_tabelle_lancedb(percorso), "LanceDB illeggibile")
+    with patch("ares.backup.integrity.subprocess.run", return_value=non_json):
+        esigi_errore(lambda: integrity.conta_tabelle_lancedb(percorso), "LanceDB illeggibile")
 
     forma_errata = subprocess.CompletedProcess([], 0, stdout='{"tabella": -1}', stderr="")
-    with patch("backup_integrity.subprocess.run", return_value=forma_errata):
-        esigi_errore(lambda: backup_integrity.conta_tabelle_lancedb(percorso), "risposta non valida")
+    with patch("ares.backup.integrity.subprocess.run", return_value=forma_errata):
+        esigi_errore(lambda: integrity.conta_tabelle_lancedb(percorso), "risposta non valida")
 
     valida = subprocess.CompletedProcess([], 0, stdout='{"zeta": 2, "alfa": 1}', stderr="")
-    with patch("backup_integrity.subprocess.run", return_value=valida):
+    with patch("ares.backup.integrity.subprocess.run", return_value=valida):
         esigi(
-            list(backup_integrity.conta_tabelle_lancedb(percorso)) == ["alfa", "zeta"],
+            list(integrity.conta_tabelle_lancedb(percorso)) == ["alfa", "zeta"],
             "la risposta della sonda non e' stata normalizzata",
         )
 
@@ -287,15 +284,15 @@ def prova_rollback_copia() -> None:
                 raise OSError("rollback interrotto")
             return copia_vera(sorgente, destinazione_copia, *argomenti, **opzioni)
 
-        with patch("backup_restore.shutil.copytree", side_effect=copia_con_guasto):
+        with patch("ares.backup.restore.shutil.copytree", side_effect=copia_con_guasto):
             if rollback_fallisce:
                 esigi_errore(
-                    lambda: backup_restore._installa_restore_per_copia(staging, destinazione, precedente),
+                    lambda: restore._installa_restore_per_copia(staging, destinazione, precedente),
                     "rollback fallito",
                 )
             else:
                 try:
-                    backup_restore._installa_restore_per_copia(staging, destinazione, precedente)
+                    restore._installa_restore_per_copia(staging, destinazione, precedente)
                 except OSError as errore:
                     esigi("installazione interrotta" in str(errore), "errore originale perso: " + str(errore))
                 else:
@@ -326,7 +323,7 @@ def prova_rollback_rinomina() -> None:
     tmp_vera = config.TMP_DIR
     config.TMP_DIR = destinazione
 
-    operazioni = backup_restore.OperazioniRestore(
+    operazioni = restore.OperazioniRestore(
         crea_snapshot_senza_lock=lambda _tipo: radice / "non-creato",
         risolvi_snapshot=lambda _nome: radice / "snapshot",
         stato_presente=lambda: False,
@@ -340,13 +337,13 @@ def prova_rollback_rinomina() -> None:
 
     try:
         with (
-            patch("backup_restore.lock_stato", return_value=nullcontext()),
-            patch("backup_restore._prepara_restore", return_value=staging),
-            patch("backup_restore._rinomina_directory", side_effect=rinomina_con_guasto),
-            patch("backup_restore.os.name", "posix"),
+            patch("ares.backup.restore.lock_stato", return_value=nullcontext()),
+            patch("ares.backup.restore._prepara_restore", return_value=staging),
+            patch("ares.backup.restore._rinomina_directory", side_effect=rinomina_con_guasto),
+            patch("ares.backup.restore.os.name", "posix"),
         ):
             try:
-                backup_restore.ripristina_snapshot("snapshot", False, operazioni)
+                restore.ripristina_snapshot("snapshot", False, operazioni)
             except OSError as errore:
                 esigi("seconda rinomina interrotta" in str(errore), "errore rename perso: " + str(errore))
             else:
@@ -367,17 +364,17 @@ def prova_rollback_rinomina() -> None:
 
 def prova_guardie_restore() -> None:
     """Una preparazione incompleta non lascia staging e una rinomina non sovrascrive."""
-    esigi(backup._privato is backup_files.rendi_albero_privato, "la façade non espone la primitiva dei permessi")
+    esigi(snapshots._privato is files.rendi_albero_privato, "la façade non espone la primitiva dei permessi")
     esigi(
-        backup._rinomina_directory is backup_files.rinomina_directory_nuova,
+        snapshots._rinomina_directory is files.rinomina_directory_nuova,
         "la façade non espone la primitiva di rinomina",
     )
     esigi(
-        backup_restore._privato is backup_files.rendi_albero_privato,
+        restore._privato is files.rendi_albero_privato,
         "il restore non usa la primitiva condivisa dei permessi",
     )
     esigi(
-        backup_restore._rinomina_directory is backup_files.rinomina_directory_nuova,
+        restore._rinomina_directory is files.rinomina_directory_nuova,
         "il restore non usa la primitiva condivisa di rinomina",
     )
 
@@ -385,10 +382,10 @@ def prova_guardie_restore() -> None:
     file_privato.write_text("segreto\n", encoding="utf-8")
     if os.name == "posix":
         file_privato.chmod(0o666)
-    backup_files.rendi_albero_privato(file_privato)
+    files.rendi_albero_privato(file_privato)
     if os.name == "posix":
         esigi((file_privato.stat().st_mode & 0o777) == 0o600, "il file singolo non e' stato reso privato")
-    backup_files.rendi_albero_privato(RADICE_PROVA / "percorso-assente")
+    files.rendi_albero_privato(RADICE_PROVA / "percorso-assente")
 
     albero_privato = RADICE_PROVA / "albero-privato"
     albero_privato.mkdir()
@@ -400,7 +397,7 @@ def prova_guardie_restore() -> None:
     except OSError as errore:
         if os.name != "nt" or getattr(errore, "winerror", None) != 1314:
             raise
-    backup_files.rendi_albero_privato(albero_privato)
+    files.rendi_albero_privato(albero_privato)
 
     snapshot = RADICE_PROVA / "restore-incompleto"
     snapshot.mkdir()
@@ -409,7 +406,7 @@ def prova_guardie_restore() -> None:
     parent = config.TMP_DIR.resolve().parent
     prima = set(parent.glob("." + config.TMP_DIR.name + "-restore-*"))
     try:
-        backup_restore._prepara_restore(snapshot, manifest)
+        restore._prepara_restore(snapshot, manifest)
     except FileNotFoundError:
         pass
     else:
@@ -422,7 +419,7 @@ def prova_guardie_restore() -> None:
     sorgente.mkdir()
     destinazione.mkdir()
     esigi_errore(
-        lambda: backup_files.rinomina_directory_nuova(sorgente, destinazione),
+        lambda: files.rinomina_directory_nuova(sorgente, destinazione),
         "destinazione della rinomina esiste gia'",
     )
     esigi(sorgente.is_dir() and destinazione.is_dir(), "la rinomina rifiutata ha modificato le directory")
@@ -497,7 +494,7 @@ def main() -> int:
         (pubblicazione_staging / "dato.bin").write_bytes(b"completo")
         (pubblicazione_staging / "checksums.sha256").write_text("checksum\n", encoding="utf-8")
         (pubblicazione_staging / "manifest.json").write_text("{}\n", encoding="utf-8")
-        with patch("backup._rinomina_directory", side_effect=PermissionError("rename negata")):
+        with patch("ares.backup.snapshots._rinomina_directory", side_effect=PermissionError("rename negata")):
             _pubblica_snapshot(pubblicazione_staging, pubblicazione_finale)
         esigi(not pubblicazione_staging.exists(), "staging non eliminato dopo il fallback")
         esigi((pubblicazione_finale / "dato.bin").read_bytes() == b"completo", "dati fallback incompleti")
@@ -685,7 +682,7 @@ def main() -> int:
             righe = promemoria_backup(soglia_giorni=7)
             esigi(righe, "nessun promemoria pur non essendoci mai stato uno snapshot")
             esigi("Nessuno snapshot" in righe[0], "il promemoria non dice che non ce n'e' nessuno")
-            esigi("backup.py create" in righe[-1], "il promemoria non dice come rimediare")
+            esigi("-m ares.backup create" in righe[-1], "il promemoria non dice come rimediare")
             # Una domanda non deve lasciare una directory: chiedere "ho un
             # backup?" e ottenere in cambio una cartella vuota e' esattamente
             # il tipo di effetto che questo progetto ha appena tolto altrove.

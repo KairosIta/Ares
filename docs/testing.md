@@ -46,14 +46,14 @@ scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
 Con le sole prove offline la misura è intorno all'86%, e il modulo più
-scoperto è `chat.py` al 61%: è il file che contiene il turno conversazionale,
+scoperto è `cli/chat.py` al 61%: è il file che contiene il turno conversazionale,
 cioè proprio ciò che senza Ollama non gira.
 
 La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
-le prove ne lanciano parecchi — la CLI di `entity_maintenance.py` sei volte,
-il sondaggio LanceDB isolato di `backup_probe.py`, la rilettura da un secondo
+le prove ne lanciano parecchi — la CLI di `ares.entities` sei volte,
+il sondaggio LanceDB isolato di `backup/probe.py`, la rilettura da un secondo
 interprete in `e2e_test.py`. `coverage` misura il processo che avvia, non i
-suoi discendenti, e prima dell'aggancio `entity_maintenance.py` risultava al
+suoi discendenti, e prima dell'aggancio `entities/maintenance.py` risultava al
 68% pur avendo la propria CLI provata da sei sottoprocessi: il rapporto
 mandava a scrivere prove per righe che ne avevano già una. L'aggancio è
 `tests/_copertura/sitecustomize.py`, che Python importa da sé all'avvio di
@@ -63,7 +63,7 @@ quando misura.
 Ciò che resta scoperto è quasi tutto composto da gestori d'errore e da rami
 di piattaforma: i percorsi Windows su una macchina Linux, i ripieghi per un
 disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare. Il
-turno conversazionale di `chat.py` è coperto dalle prove con Ollama, che qui
+turno conversazionale di `cli/chat.py` è coperto dalle prove con Ollama, che qui
 non girano: `--tutte` alza il numero.
 
 ## Analisi statica
@@ -94,7 +94,7 @@ verifica offload, quota, retention, cascata e restore dei due SQLite.
 `backup` copre snapshot, checksum, restore e prune; `entita` l'audit e la
 fusione. `cli` prova i comandi con cui Ares si usa davvero: il preflight
 contro un server Ollama finto nei tre esiti, l'ispezione degli archivi, i
-sottocomandi di `backup.py` con i loro annullamenti, e la REPL intera in un
+sottocomandi di `ares.backup` con i loro annullamenti, e la REPL intera in un
 processo separato con stdin da una pipe.
 
 Nessuna genera risposte con il modello. `cli_test.py` lo rende esplicito
@@ -129,7 +129,7 @@ Ollama.
 .venv/bin/python tests/run.py --tutte
 ```
 
-Queste prove richiedono Ollama e i modelli dichiarati in `config.py`:
+Queste prove richiedono Ollama e i modelli dichiarati in `ares/config.py`:
 `learning_reliability_test.py` misura l'estrazione del contesto e i retry,
 `learned_knowledge_test.py` accende embedder e modello principale per provare
 salvataggio e riuso delle intuizioni, mentre `e2e_test.py` esegue un turno

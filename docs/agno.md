@@ -13,7 +13,7 @@ capacita' Agno che qui non e' stata configurata e verificata.
 
 | Capacita' Agno | Uso concreto in Ares | Decisione del progetto |
 | --- | --- | --- |
-| `Agent`, run ed eventi streaming | ciclo `run → pausa → continue_run`, output e metriche | `turn_core.py` traduce gli eventi in un contratto indipendente dalla CLI |
+| `Agent`, run ed eventi streaming | ciclo `run → pausa → continue_run`, output e metriche | `agent/turn_core.py` traduce gli eventi in un contratto indipendente dalla CLI |
 | modello Ollama ed embedder Ollama | estrazione strutturata ed embedding restano locali; la conversazione puo' usare un modello cloud di Ollama inoltrato dal daemon | nessun provider diverso da Ollama, nessuna chiave API nell'ambiente: `assistant_runtime` rifiuta un nome cloud fuori da `MAIN_MODEL` |
 | `SqliteDb` | sessioni, run, profilo, memorie, contesto ed entita' | file privati, lock cooperativo e snapshot verificati |
 | Learning Machine | profilo, memoria utente, contesto di sessione, entita' e conoscenza appresa | schema italiano, namespace per utente e post-hook sul run completo |
@@ -62,7 +62,7 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   con testa e coda dichiara che il testo completo non e' stato salvato.
 - **Retention coerente:** Ares non assegna un TTL ai singoli risultati,
   perche' lascerebbe riferimenti non risolvibili nelle sessioni conservate.
-  `session_maintenance.py` seleziona invece intere conversazioni inattive con
+  `sessions/maintenance.py` seleziona invece intere conversazioni inattive con
   anteprima, protezioni esplicite, lock e backup. La cancellazione Agno porta
   con se' run, indice e payload; Ares elimina anche il relativo contesto della
   Learning Machine e verifica entrambi i database.

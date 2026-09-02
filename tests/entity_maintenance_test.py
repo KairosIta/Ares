@@ -23,17 +23,17 @@ from agno.db.sqlite import SqliteDb  # noqa: E402
 from agno.learn.schemas import EntityMemory  # noqa: E402
 from agno.learn.utils import build_learning_id  # noqa: E402
 
-import config  # noqa: E402
-from backup import elenco_snapshot, verifica_snapshot  # noqa: E402
-from entity_maintenance import (  # noqa: E402
+from ares import config  # noqa: E402
+from ares.backup.snapshots import elenco_snapshot, verifica_snapshot  # noqa: E402
+from ares.entities.maintenance import (  # noqa: E402
     ErroreManutenzione,
     analizza,
     applica_piano,
     carica_entita,
     pianifica_fusione,
 )
-from state_lock import lock_stato  # noqa: E402
-from stores import namespace_entita  # noqa: E402
+from ares.state.lock import lock_stato  # noqa: E402
+from ares.state.stores import namespace_entita  # noqa: E402
 
 UTENTE = "audit"
 NAMESPACE = namespace_entita(UTENTE)
@@ -172,7 +172,7 @@ def main() -> int:
 
         ambiente = os.environ.copy()
         comando = subprocess.run(
-            [sys.executable, "entity_maintenance.py", "audit", "--user", UTENTE, "--all"],
+            [sys.executable, "-m", "ares.entities", "audit", "--user", UTENTE, "--all"],
             cwd=config.BASE_DIR,
             env=ambiente,
             capture_output=True,
@@ -190,7 +190,7 @@ def main() -> int:
 
         with lock_stato(esclusivo=True):
             bloccato = subprocess.run(
-                [sys.executable, "entity_maintenance.py", "audit", "--user", UTENTE],
+                [sys.executable, "-m", "ares.entities", "audit", "--user", UTENTE],
                 cwd=config.BASE_DIR,
                 env=ambiente,
                 capture_output=True,
@@ -369,7 +369,8 @@ def main() -> int:
         ambiente = os.environ.copy()
         base_merge = [
             sys.executable,
-            "entity_maintenance.py",
+            "-m",
+            "ares.entities",
             "merge",
             "--user",
             UTENTE,
