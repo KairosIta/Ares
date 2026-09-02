@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from agno.run.agent import RunOutput
 
 
-class TurnEventKind(str, Enum):
+class TurnEventKind(StrEnum):
     PROCESSING_STARTED = "processing_started"
     RUN_STARTED = "run_started"
     MODEL_STARTED = "model_started"
