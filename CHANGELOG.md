@@ -6,6 +6,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-02
+
 ### Added
 
 - il modello conversazionale puo' essere un modello cloud di Ollama
@@ -281,7 +283,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/KairosIta/Ares/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/KairosIta/Ares/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/KairosIta/Ares/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/KairosIta/Ares/compare/v0.1.0...v0.2.0
