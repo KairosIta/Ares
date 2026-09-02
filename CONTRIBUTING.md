@@ -34,10 +34,23 @@ successo per sbaglio.
 
 Gli hash valgono per il motivo per cui esiste un lock. Un pin dice quale
 versione installare; un hash dice quale artefatto. Se un account su PyPI viene
-compromesso e un file ripubblicato, `agno==3.0.1` resta vero e il contenuto
+compromesso e un file ripubblicato, `agno 3.0.2` resta vero e il contenuto
 cambia: con gli hash l'installazione si ferma invece di riuscire. Vale su ogni
 macchina che esegue `setup.sh` e su ogni PR di Dependabot, che di aggiornamenti
 automatici ne apre uno a settimana.
+
+I vincoli nel `pyproject.toml` sono invece larghi, e la divisione dei compiti è
+quella che separa un'applicazione da una libreria. Ares è un'applicazione:
+`uv.lock` è committato, porta la versione esatta e il suo hash, e setup e CI
+installano con `uv sync --locked`. La riproducibilità sta lì per intero, e un
+`==` ripetuto nel pyproject non ne aggiunge: aggiunge una seconda copia della
+stessa versione da tenere allineata a mano.
+
+Quando aggiungi una dipendenza scrivila quindi senza versione, con accanto il
+motivo per cui c'è. Un `<` si mette solo dove c'è un'incompatibilità nota, e
+accanto va scritta quale: nel file oggi ce n'è uno solo, `agno>=3.0.2,<3.1`,
+perché le API di `agno.learn` cambiano tra minor. Le versioni non si muovono da
+sole: cambiano quando esegui `uv lock`, cioè quando lo decidi.
 
 Ruff, mypy e coverage stanno nel gruppo `dev` del pyproject, separati perché
 non si importano: si eseguono. `setup.sh` li lascia fuori con `--no-dev`; per

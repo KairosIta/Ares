@@ -20,12 +20,26 @@ requires-python = ">=3.12,<3.13"
 # transitivita' e vive solo in uv.lock, che si rigenera con `uv lock`. Il lock
 # porta gli hash degli artefatti e `uv sync --locked` li verifica: un pin dice
 # quale versione installare, un hash quale file. Se un account su PyPI viene
-# compromesso e un file ripubblicato, `agno==3.0.1` resta vero e il contenuto
+# compromesso e un file ripubblicato, `agno 3.0.2` resta vero e il contenuto
 # cambia; con gli hash l'installazione si ferma.
+#
+# I vincoli qui sono percio' larghi, e la divisione dei compiti e' quella che
+# separa un'applicazione da una libreria. Ares e' un'applicazione: uv.lock e'
+# committato, porta la versione esatta e il suo hash, e setup e CI installano
+# con `uv sync --locked`. La riproducibilita' e' gia' totale li' dentro. Un
+# `==` ripetuto qui non ne aggiunge: aggiunge una seconda copia della stessa
+# versione, che va tenuta allineata a mano - il commento qui sopra ne citava
+# una terza, e diceva 3.0.1 quando il lock diceva gia' 3.0.2.
+#
+# Un `<` compare quindi solo dove c'e' un'incompatibilita' nota, e accanto sta
+# scritta quale. Le versioni non si muovono da sole nemmeno cosi': cambiano
+# quando si esegue `uv lock`, cioe' quando lo si decide.
 dependencies = [
-    # Il framework dell'agente. Pinnato alla versione su cui e' stato scritto e
-    # verificato tutto: le API di agno.learn sono giovani e cambiano tra minor.
-    "agno==3.0.1",
+    # Il framework dell'agente. L'unico vincolo stretto del file, e non e' una
+    # precauzione generica: le API di agno.learn sono giovani e cambiano tra
+    # minor, quindi 3.1 va provata prima di essere adottata. Le patch della
+    # 3.0 entrano invece dal lock, dove si vedono e si provano una per una.
+    "agno>=3.0.2,<3.1",
     # Client del server Ollama su localhost:11434. Serve sia al modello
     # conversazionale sia a OllamaEmbedder.
     "ollama",
@@ -40,7 +54,7 @@ dependencies = [
     # il filesystem privato dell'agente. Non e' una dipendenza di agno base.
     "sqlalchemy",
     # Non lo usiamo: e' l'__init__ di agno.models.ollama a pretenderlo, perche'
-    # importa OllamaResponses insieme a Ollama. In agno 3.0.1 un progetto
+    # importa OllamaResponses insieme a Ollama. In agno 3.0.2 un progetto
     # solo-Ollama installa lo stesso un client cloud.
     "openai",
     # Carica le personalizzazioni locali da un file .env ignorato da Git.
@@ -48,14 +62,14 @@ dependencies = [
     # Renderer della CLI: Markdown, streaming Live, pannelli, tabelle e tema.
     # Dipendenza diretta perche' la importiamo in cli/ui.py; non ci affidiamo
     # alla copia che oggi arriva transitivamente da Agno.
-    "rich==15.0.0",
+    "rich",
     # Editor della REPL: completamento visuale, cronologia, suggerimenti e
     # input multilinea. Separato da Rich, che si occupa solo dell'output.
-    "prompt-toolkit==3.0.53",
+    "prompt-toolkit",
     # Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
     # aggiunge pywin32 solo su Windows, dove serve per conservare i lock
     # condivisi usati dalle chat concorrenti.
-    "portalocker[win32]==4.3.0",
+    "portalocker[win32]",
 ]
 
 # I comandi installati nel venv. `main()` di ogni modulo e' gia' il punto
@@ -73,14 +87,19 @@ Repository = "https://github.com/KairosIta/Ares"
 
 # Strumenti di sviluppo, separati dalle dipendenze perche' non si importano:
 # si eseguono. `uv sync` li installa; `setup.sh` passa `--no-dev` e su una
-# macchina che usa soltanto Ares un linter non arriva. Pinnati come tutto il
-# resto: una minor nuova di ruff puo' aggiungere regole al set selezionato,
-# e una CI che diventa rossa da sola il lunedi' mattina insegna a ignorarla.
+# macchina che usa soltanto Ares un linter non arriva.
+#
+# Larghi come le dipendenze, e il timore che aveva messo i pin qui era mal
+# riposto: una minor nuova di ruff puo' aggiungere regole al set selezionato,
+# ma non arriva mai da sola. La CI installa con `uv sync --locked`, che rifiuta
+# un lock non allineato invece di risolvere altro; ruff cambia quando si
+# esegue `uv lock`, e li' la CI che diventa rossa e' una risposta a qualcosa
+# che si e' appena fatto - non il lunedi' mattina che insegna a ignorarla.
 [dependency-groups]
 dev = [
-    "ruff==0.16.5",
-    "mypy==2.3.1",
-    "coverage==7.15.4",
+    "ruff",
+    "mypy",
+    "coverage",
 ]
 
 # Il backend di uv: nessuna dipendenza in piu', e finche' la versione e'

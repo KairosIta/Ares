@@ -6,6 +6,36 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Changed
+
+- Agno passa da 3.0.1 a 3.0.2; il pin resta esatto e `uv.lock` ne porta gli
+  hash. La suite offline e' verde sulla nuova versione;
+- `SECURITY.md` dichiara supportata la linea 0.4.x: diceva ancora 0.3.x, e un
+  segnalatore ci leggeva che la versione corrente non e' coperta;
+- i vincoli delle dipendenze nel `pyproject.toml` diventano larghi e uniformi.
+  Erano meta' con `==` e meta' senza, senza che la differenza fosse scritta da
+  nessuna parte. Ares e' un'applicazione: `uv.lock` e' committato con le
+  versioni esatte e i loro hash, e setup e CI installano con
+  `uv sync --locked` - la riproducibilita' stava gia' li' per intero, e il
+  `==` nel pyproject ne era una seconda copia da tenere allineata a mano.
+  Resta un solo vincolo stretto, `agno>=3.0.2,<3.1`, con accanto
+  l'incompatibilita' nota che lo motiva. Nessuna versione risolta si e' mossa:
+  il diff di `uv.lock` tocca i soli metadati. `CONTRIBUTING.md` dice cosa
+  scrivere quando si aggiunge una dipendenza.
+
+### Added
+
+- prove del ciclo della REPL in questo processo (`chat turno`, `chat ciclo`,
+  `chat avvio` in `tests/cli_test.py`). `chat_repl` prova la REPL da fuori e
+  per restare offline puo' mandarle solo comandi: restava scoperta la meta'
+  che un utente attraversa a ogni frase. Con una `run_turn_cycle` finta al
+  posto del modello sono ora provati i quattro esiti di `esegui_turno`
+  (turno, pausa irrisolta, Ctrl-C, guasto), la riga vuota che non apre un
+  turno, la riga delle metriche, gli avvisi d'avvio - cronologia degradata,
+  modello cloud, promemoria di backup - e i due modi di uscire dal prompt.
+  `ares/cli/chat.py` passa dal 61% al 100% di righe e rami, il totale
+  dall'86% all'88%.
+
 ## [0.4.0] - 2026-09-02
 
 ### Added
