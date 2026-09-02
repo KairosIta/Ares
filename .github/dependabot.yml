@@ -11,6 +11,21 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    # Il backend di build e' l'unica dipendenza esclusa, e per un motivo che
+    # dependabot non puo' vedere. `uv_build` non compare nel lock: sta solo
+    # nel `requires` di [build-system], e il pavimento >=0.12.2 e' scelto per
+    # coincidere con la copia che uv 0.12.2 - la versione che la CI installa -
+    # si porta dietro. Finche' il vincolo la comprende, il package editable si
+    # costruisce senza scaricare niente.
+    #
+    # Alzare quel pavimento non aggiorna percio' nulla di installato: rende
+    # insufficiente la copia integrata e aggiunge un download a ogni build.
+    # Le due versioni vanno mosse insieme, e muoverle e' un aggiornamento
+    # dello strumento: tocca `ci.yml` e `pyproject.toml` nello stesso commit,
+    # deciso leggendo il changelog di uv. Un `<0.13` incompatibile resta
+    # visibile lo stesso, perche' e' il vincolo a fermarlo e non questa riga.
+    ignore:
+      - dependency-name: uv-build
 
   - package-ecosystem: github-actions
     directory: /
