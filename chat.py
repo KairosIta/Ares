@@ -183,6 +183,20 @@ def _esegui_chat() -> None:
 
     UI.banner(modello=config.MAIN_MODEL, sessione=args.session, utente=args.user)
 
+    # Un modello cloud si vede dal nome, ma il nome non dice cosa comporta.
+    # Ogni sessione, non solo la prima: e' la stessa logica del promemoria
+    # di backup, e un avviso che riguarda dove finiscono le parole non e'
+    # una preferenza da ricordare.
+    if config.e_modello_cloud(config.MAIN_MODEL):
+        UI.line(
+            "Modello cloud: i messaggi di questa sessione escono dalla macchina verso ollama.com.",
+            style="ares.warning",
+        )
+        UI.line(
+            "Ollama dichiara nessuna conservazione e nessun addestramento; memorie ed embedding restano locali.",
+            style="ares.muted",
+        )
+
     # All'avvio e non all'uscita: qui l'utente c'e' e puo' decidere, mentre
     # chi scrive `/esci` ha gia' finito e legge un avviso che rimandera'.
     # L'elenco e' vuoto quasi sempre - vedi `promemoria_backup`.

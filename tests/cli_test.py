@@ -227,6 +227,13 @@ def preflight_pronto() -> str:
     # mostrati su una riga sola.
     if config.MAIN_MODEL == config.LEARNING_MODEL:
         esigi(" + " in testo, "i due ruoli dello stesso modello non sono stati uniti")
+    # Un "ok" su un modello cloud deve dire che quel ruolo esce dalla
+    # macchina, sulla riga del modello e in coda, dove si legge l'esito.
+    if config.e_modello_cloud(config.MAIN_MODEL):
+        esigi("(cloud, via ollama.com)" in testo, "il modello cloud non e' marcato come tale")
+        esigi("escono dalla macchina" in testo, "manca l'avviso sul modello conversazionale cloud")
+    else:
+        esigi("cloud" not in testo, "il preflight parla di cloud con soli modelli locali")
     return "tag :latest riconosciuto, ruoli accumulati"
 
 
@@ -238,7 +245,21 @@ def preflight_modello_mancante() -> str:
     esigi("MANCANTE" in testo, "il modello mancante non e' segnalato")
     esigi("ollama pull" in testo, "manca il comando per scaricare il modello")
     esigi("Ambiente pronto" not in testo, "l'ambiente e' dichiarato pronto senza l'embedder")
+    # L'embedder e' locale: il rimedio non deve chiedere un accesso a
+    # ollama.com che non serve.
+    esigi("ollama signin" not in testo, "signin suggerito per un modello locale mancante")
     return "segnalato con il comando per rimediare"
+
+
+def preflight_cloud_mancante() -> str:
+    # Il pull di un modello cloud riesce anche senza accesso, ma la prima
+    # richiesta no: il rimedio deve nominare `ollama signin` prima del pull.
+    with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"):
+        esito, testo = esegui_preflight([config.LEARNING_MODEL, config.EMBEDDER_MODEL])
+    esigi(esito == 1, "un modello cloud mancante non ha prodotto uscita 1")
+    esigi("MANCANTE  glm-5.3-flash:cloud" in testo, "il modello cloud mancante non e' segnalato")
+    esigi(testo.index("ollama signin") < testo.index("ollama pull"), "signin non precede il pull")
+    return "signin suggerito prima del pull"
 
 
 def preflight_server_spento() -> str:
@@ -473,6 +494,7 @@ def main() -> int:
         for nome, prova in (
             ("preflight pronto", preflight_pronto),
             ("preflight mancante", preflight_modello_mancante),
+            ("preflight cloud mancante", preflight_cloud_mancante),
             ("preflight spento", preflight_server_spento),
         ):
             ok(nome, prova())

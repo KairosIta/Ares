@@ -62,4 +62,7 @@ macchina, non proteggono da chi è già dentro l’account. Per scenari multiute
 servono isolamento e cifratura gestiti dal sistema operativo.
 
 I modelli Ollama sono artefatti esterni al repository: provenienza, licenza e
-limiti del modello scelto devono essere valutati separatamente.
+limiti del modello scelto devono essere valutati separatamente. Se
+`MAIN_MODEL` è un modello cloud di Ollama, prompt e risposte della
+conversazione attraversano `ollama.com` sotto la sua privacy policy; le
+memorie estratte e gli embedding non lo fanno mai.

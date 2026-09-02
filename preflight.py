@@ -9,6 +9,12 @@ il server Ollama risponda e che i modelli nominati in `config.py` siano
 davvero scaricati. Sono i due modi in cui l'avvio fallisce, e il secondo
 non da' errore finche' non arriva il primo messaggio.
 
+Un modello cloud compare nell'elenco del daemon come gli altri, dopo un
+`ollama pull` che scarica solo il manifesto; qui viene marcato come tale,
+perche' chi legge "ok" deve sapere che quel ruolo esce dalla macchina. Se
+manca, il comando per rimediare include `ollama signin`: senza l'accesso il
+pull riesce ma la prima richiesta no.
+
 Non accende nessun modello e non lascia niente su disco: legge da `config`,
 il cui import non crea piu' nulla, e non chiama `prepara_archivio()`. Un
 comando che deve dire se l'ambiente funziona non e' il posto giusto per
@@ -66,9 +72,9 @@ def main() -> int:
 
     # I modelli davvero usati a ogni turno, che da quando l'embedder di
     # ingestion e' stato rimosso sono tutti quelli nominati in config.py.
-    # I ruoli si accumulano invece di sovrascriversi: MAIN_MODEL e
-    # LEARNING_MODEL sono lo stesso modello di proposito, e vanno mostrati
-    # come tale, non come un modello con un ruolo solo.
+    # I ruoli si accumulano invece di sovrascriversi: con MAIN_MODEL locale
+    # conviene che LEARNING_MODEL sia lo stesso modello, e allora va mostrato
+    # con entrambi i ruoli, non come un modello con un ruolo solo.
     richiesti: dict[str, list[str]] = {}
     for modello, ruolo in (
         (config.MAIN_MODEL, "conversazione"),
@@ -81,6 +87,8 @@ def main() -> int:
     mancanti = []
     for modello, ruoli in richiesti.items():
         ruolo = " + ".join(ruoli)
+        if config.e_modello_cloud(modello):
+            ruolo += " (cloud, via ollama.com)"
         if any(stessa_etichetta(modello, n) for n in nomi):
             print("ok       ", modello, " -", ruolo)
         else:
@@ -90,11 +98,17 @@ def main() -> int:
     if mancanti:
         print()
         print("Scaricali con:")
+        if any(config.e_modello_cloud(m) for m in mancanti):
+            print("    ollama signin")
         for modello in mancanti:
             print("    ollama pull", modello)
         return 1
 
     print()
+    if config.e_modello_cloud(config.MAIN_MODEL):
+        print("Il modello conversazionale e' cloud: prompt e risposte escono dalla macchina")
+        print("verso ollama.com. Estrazione delle memorie ed embedding restano locali.")
+        print()
     python_venv = r".venv\Scripts\python.exe" if sys.platform == "win32" else ".venv/bin/python"
     print("Ambiente pronto:", python_venv, "chat.py")
     return 0

@@ -23,15 +23,54 @@ load_dotenv(BASE_DIR / ".env")
 # Modelli
 # ---------------------------------------------------------------------------
 
-# Agente principale: 9B Q8_0 con supporto per tools, thinking e vision.
-MAIN_MODEL = "hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q8_0"
+# Modello locale: 9B Q8_0 con supporto per tools, thinking e vision. Gira
+# in scheda e non esce mai dalla macchina.
+MODELLO_LOCALE = "hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0"
 
-# Modello per l'estrazione delle memorie. Tenerlo uguale a MAIN_MODEL evita
-# lo swap dei pesi tra la risposta e la fase di apprendimento.
-LEARNING_MODEL = MAIN_MODEL
+# Modello cloud di Ollama, con tools, thinking e vision. Il nome finisce in
+# `:cloud` (o `-cloud`, secondo la famiglia): e' il daemon locale a
+# riconoscerlo e a inoltrare la richiesta a https://ollama.com, dopo un
+# `ollama signin` fatto una volta sola. Ares continua a parlare con
+# localhost, nessuna chiave API entra nell'ambiente o nel `.env`, e il
+# footgun di OLLAMA_API_KEY descritto sotto resta chiuso.
+#
+# Cio' che cambia e' la promessa: prompt e risposte del modello
+# conversazionale attraversano un server remoto. Ollama dichiara di
+# elaborarli "transiently", di non conservarli oltre il tempo della
+# richiesta e di non usarli per addestrare (privacy policy, marzo 2026). E'
+# un impegno contrattuale, non una garanzia tecnica, e va scelto sapendolo.
+MODELLO_CLOUD = "glm-5.3-flash:cloud"
+
+# Agente principale. Il solo ruolo a cui e' consentito un modello cloud:
+# `assistant_runtime` rifiuta di costruire estrazione ed embedding su un
+# nome cloud, cosi' il confine sta nel codice e non in un commento.
+MAIN_MODEL = MODELLO_CLOUD
+
+# Modello per l'estrazione delle memorie. Resta locale sempre: il profilo e
+# le memorie sono la parte piu' sensibile di cio' che Ares sa di te.
+#
+# Con MAIN_MODEL in cloud la scheda e' libera e il 9B resta caldo fra un
+# turno e l'altro. Con MAIN_MODEL locale conviene invece MAIN_MODEL anche
+# qui, per evitare lo swap dei pesi fra la risposta e l'apprendimento.
+LEARNING_MODEL = MODELLO_LOCALE
+
+
+def e_modello_cloud(nome: str) -> bool:
+    """Vero se il nome designa un modello cloud di Ollama.
+
+    Ollama scrive il tag in due forme, `glm-5.3-flash:cloud` e
+    `gpt-oss:120b-cloud`, e le usa entrambe nella libreria. Il confronto e'
+    sul solo tag, dopo i due punti, cosi' un modello locale il cui nome di
+    repository contenesse "cloud" non verrebbe scambiato per remoto; e un
+    nome senza tag e' `:latest` per Ollama, quindi mai cloud.
+    """
+    _, separatore, tag = nome.rpartition(":")
+    return bool(separatore) and (tag == "cloud" or tag.endswith("-cloud"))
+
 
 # Embedder unico per le collezioni LanceDB. Indici e query devono usare lo
-# stesso modello e la stessa dimensionalita'.
+# stesso modello e la stessa dimensionalita'. Locale sempre, come
+# LEARNING_MODEL: cambiare embedder invaliderebbe l'indice gia' scritto.
 EMBEDDER_MODEL = "nomic-embed-text-v2-moe"
 EMBEDDER_DIMENSIONS = 768
 
@@ -42,8 +81,9 @@ EMBEDDER_DIMENSIONS = 768
 # Server Ollama. Va passato esplicitamente e non lasciato al default: se
 # OLLAMA_API_KEY e' presente nell'ambiente e host non e' impostato, Agno
 # dirotta le chiamate su https://ollama.com. Un progetto che promette che
-# nessun dato esce dalla macchina non puo' dipendere da una variabile
-# d'ambiente per mantenere la promessa.
+# nessun dato esce dalla macchina se non per il modello scelto apposta non
+# puo' dipendere da una variabile d'ambiente per mantenere la promessa.
+# Anche i modelli cloud passano da qui: e' il daemon a inoltrarli.
 OLLAMA_HOST = "http://localhost:11434"
 
 # Ollama usa 4096 token di contesto se non gli dici altro. Un agente con
@@ -52,10 +92,14 @@ OLLAMA_HOST = "http://localhost:11434"
 #
 # Il valore predefinito sfrutta il contesto esteso del modello. Su hardware
 # con meno memoria va ridotto insieme alla taglia o alla quantizzazione.
+#
+# Per un modello cloud il valore viene inoltrato ma non costa VRAM locale:
+# il tetto vero lo decide il servizio (glm-5.3-flash dichiara 1M).
 NUM_CTX = 262144
 
 # Mantiene i pesi in VRAM tra un turno e l'altro. Senza questo Ollama
 # scarica il modello dopo 5 minuti e il turno successivo paga il ricaricamento.
+# Per un modello cloud non c'e' nulla da tenere in scheda: innocuo.
 KEEP_ALIVE = "30m"
 
 TEMPERATURE = 0.7
@@ -71,13 +115,25 @@ OLLAMA_OPTIONS = {
 MAIN_THINK = True
 LEARNING_THINK = False
 
+# Contesto dell'estrazione. Ogni store riceve il solo testo utente e
+# assistente del turno, senza tool call, piu' le memorie gia' salvate: le
+# richieste osservate stanno fra 1k e 2k token. 32k lascia oltre dieci
+# volte di margine e costa un ottavo della cache KV di NUM_CTX: sul 9B Q8_0
+# sono circa 4,7 GB di VRAM in meno, da 14 a 9,3 GB in scheda. Il margine
+# non e' un lusso: Ollama tronca un prompt oltre num_ctx senza errore, e
+# un'estrazione troncata scrive memorie parziali in silenzio.
+#
+# Il risparmio ha senso solo con due modelli diversi. Con lo stesso modello
+# locale in entrambi i ruoli un `num_ctx` diverso costringe Ollama a
+# riavviare il runner a ogni passaggio fra risposta ed estrazione, e col
+# runner se ne va la cache del prompt: il turno dopo rielabora da capo
+# tutta la conversazione. In quel caso l'estrazione usa NUM_CTX.
+LEARNING_NUM_CTX = 32768 if LEARNING_MODEL != MAIN_MODEL else NUM_CTX
+
 # Estrazione memorie: temperatura bassa, perche' e' un compito di
 # trascrizione strutturata e non di conversazione.
-#
-# Il contesto resta identico a quello dell'agente: con lo stesso modello un
-# `num_ctx` diverso puo' costringere Ollama a ricaricare l'istanza.
 LEARNING_OPTIONS = {
-    "num_ctx": NUM_CTX,
+    "num_ctx": LEARNING_NUM_CTX,
     "temperature": 0.2,
 }
 
@@ -96,7 +152,7 @@ SESSION_CONTEXT_RETRIES = 1
 # risposta, eseguita in sequenza. Con tre store attivi paghi tre inferenze
 # extra per turno. Sul 9B in scheda e col pensiero spento (LEARNING_THINK)
 # sono rapide, ma la latenza percepita cresce comunque: disattiva quello
-# che non ti serve.
+# che non ti serve. Sono sempre locali, qualunque sia MAIN_MODEL.
 LEARN_USER_PROFILE = True  # ALWAYS - chi sei, come preferisci le risposte
 LEARN_USER_MEMORY = True  # ALWAYS - osservazioni non strutturate su di te
 LEARN_SESSION_CONTEXT = True  # ALWAYS - obiettivo, piano, avanzamento

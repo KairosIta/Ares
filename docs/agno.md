@@ -14,7 +14,7 @@ capacita' Agno che qui non e' stata configurata e verificata.
 | Capacita' Agno | Uso concreto in Ares | Decisione del progetto |
 | --- | --- | --- |
 | `Agent`, run ed eventi streaming | ciclo `run → pausa → continue_run`, output e metriche | `turn_core.py` traduce gli eventi in un contratto indipendente dalla CLI |
-| modello Ollama ed embedder Ollama | conversazione, estrazione strutturata ed embedding restano locali | nessun provider cloud configurato |
+| modello Ollama ed embedder Ollama | estrazione strutturata ed embedding restano locali; la conversazione puo' usare un modello cloud di Ollama inoltrato dal daemon | nessun provider diverso da Ollama, nessuna chiave API nell'ambiente: `assistant_runtime` rifiuta un nome cloud fuori da `MAIN_MODEL` |
 | `SqliteDb` | sessioni, run, profilo, memorie, contesto ed entita' | file privati, lock cooperativo e snapshot verificati |
 | Learning Machine | profilo, memoria utente, contesto di sessione, entita' e conoscenza appresa | schema italiano, namespace per utente e post-hook sul run completo |
 | `Knowledge` + LanceDB | ricerca ibrida nelle intuizioni riutilizzabili | indice incorporato, embedding locale e nessun servizio vettoriale remoto |
@@ -110,5 +110,7 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   Ares oggi e' una CLI personale su un solo host: abilitarli allargherebbe il
   modello di sicurezza e non e' parte di questo upgrade.
 - **Context Providers e integrazioni remote:** Agno offre connettori e
-  accesso live a fonti esterne. Ares resta deliberatamente Ollama-only e
-  senza account cloud nell'uso ordinario.
+  accesso live a fonti esterne. Ares resta deliberatamente Ollama-only:
+  l'unico servizio remoto ammesso e' il cloud di Ollama, raggiunto dal
+  daemon locale e solo per il modello conversazionale. Il percorso diretto
+  di Agno verso `https://ollama.com` con `api_key` non viene usato.
