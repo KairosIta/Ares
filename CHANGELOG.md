@@ -51,6 +51,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   disponibile;
 - il banner della chat e il manifest degli snapshot riportano la versione del
   package (`ares.__version__`).
+- dipendenze aggiornate con i PR di Dependabot rimasti aperti sui vecchi
+  requirements: portalocker 4.3.0, openai 3.7.0, ruff 0.16.5, mypy 2.3.1,
+  coverage 7.15.4. `TurnEventKind` diventa uno `StrEnum`, come chiede il
+  nuovo ruff per Python 3.12.
 
 ## [0.3.1] - 2026-08-30
 

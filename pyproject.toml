@@ -55,7 +55,7 @@ dependencies = [
     # Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
     # aggiunge pywin32 solo su Windows, dove serve per conservare i lock
     # condivisi usati dalle chat concorrenti.
-    "portalocker[win32]==4.0.0",
+    "portalocker[win32]==4.3.0",
 ]
 
 # I comandi installati nel venv. `main()` di ogni modulo e' gia' il punto
@@ -78,9 +78,9 @@ Repository = "https://github.com/KairosIta/Ares"
 # e una CI che diventa rossa da sola il lunedi' mattina insegna a ignorarla.
 [dependency-groups]
 dev = [
-    "ruff==0.14.7",
-    "mypy==1.19.0",
-    "coverage==7.13.3",
+    "ruff==0.16.5",
+    "mypy==2.3.1",
+    "coverage==7.15.4",
 ]
 
 # Il backend di uv: nessuna dipendenza in piu', e finche' la versione e'
