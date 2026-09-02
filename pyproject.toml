@@ -106,7 +106,7 @@ dev = [
 # compatibile uv usa la copia che porta con se' senza scaricare niente.
 # Serve solo all'installazione editable del package nel venv.
 [build-system]
-requires = ["uv_build>=0.12.2,<0.13"]
+requires = ["uv_build>=0.12.7,<0.13"]
 build-backend = "uv_build"
 
 # Il package sta nella radice del progetto, non sotto src/.
