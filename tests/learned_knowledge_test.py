@@ -167,7 +167,7 @@ def modelli_pronti() -> tuple[bool, str]:
     from preflight import modelli_disponibili, stessa_etichetta
 
     presenti = [modello.get("name", "") for modello in modelli_disponibili(config.OLLAMA_HOST)]
-    richiesti = (config.MAIN_MODEL, config.EMBEDDER_MODEL)
+    richiesti = (config.MAIN_MODEL, config.LEARNING_MODEL, config.EMBEDDER_MODEL)
     mancanti = [
         richiesto for richiesto in richiesti if not any(stessa_etichetta(richiesto, presente) for presente in presenti)
     ]

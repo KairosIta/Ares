@@ -2,7 +2,10 @@
 
 Ares e' un'applicazione Python local-first. La CLI costruisce un agente Agno
 collegato a Ollama, agli store persistenti e a un insieme limitato di
-strumenti. Nessun servizio cloud e' necessario durante l'uso ordinario.
+strumenti. Nessun servizio cloud e' necessario; su scelta, il modello
+conversazionale puo' essere un modello cloud di Ollama, che il daemon locale
+inoltra a `ollama.com`, mentre estrazione delle memorie ed embedding restano
+locali per costruzione.
 
 ## Componenti
 

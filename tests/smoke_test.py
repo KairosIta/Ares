@@ -58,6 +58,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import ClassVar
+from unittest.mock import patch
 
 # Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
 # script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
@@ -460,13 +461,18 @@ def namespace_stabili(user_id: str) -> str:
 
 
 def chiamate_locali(agent, lm) -> str:
-    """Niente di cio' che gira per un turno puo' uscire dalla macchina.
+    """Niente esce dalla macchina, salvo il modello conversazionale se e' cloud.
 
     Se OLLAMA_API_KEY e' nell'ambiente e host non e' impostato, Agno manda
     le conversazioni a https://ollama.com. Qui si controlla che ogni
     modello e l'embedder abbiano l'host esplicito, e che quell'host sia
     locale: un progetto che promette che niente esce non puo' dipendere da
     una variabile d'ambiente per mantenere la promessa.
+
+    Un modello cloud di Ollama passa comunque dal daemon locale, quindi
+    l'host non lo distingue: lo distingue il nome. L'unico ruolo a cui e'
+    concesso e' l'agente; gli store di apprendimento e l'embedder ricevono
+    profilo, memorie e intuizioni e devono restare locali per nome.
     """
     componenti = [("agente", agent.model)]
     for nome, store in lm.stores.items():
@@ -479,10 +485,20 @@ def chiamate_locali(agent, lm) -> str:
     for nome, componente in componenti:
         host = getattr(componente, "host", None)
         esigi(host == config.OLLAMA_HOST, nome + " ha host " + repr(host) + " invece di " + repr(config.OLLAMA_HOST))
+        if nome != "agente":
+            esigi(
+                not config.e_modello_cloud(componente.id),
+                nome + " usa un modello cloud: " + componente.id,
+            )
     esigi(
         "localhost" in config.OLLAMA_HOST or "127.0.0.1" in config.OLLAMA_HOST,
         "config.OLLAMA_HOST non e' locale: " + config.OLLAMA_HOST,
     )
+    # La chiave non serve: e' il daemon, dopo `ollama signin`, a inoltrare i
+    # modelli cloud. Nell'ambiente di Ares farebbe solo aggiungere un header
+    # a ogni chiamata locale, e resta il segno di una configurazione che
+    # questo progetto non vuole.
+    esigi("OLLAMA_API_KEY" not in os.environ, "OLLAMA_API_KEY e' nell'ambiente: non serve e non deve esserci")
     # L'host giusto non basta: Agno manda un evento di telemetria a
     # os-api.agno.com alla fine di ogni run, e il default e' acceso.
     esigi(agent.telemetry is False, "la telemetria di Agno e' attiva: ogni turno esce dalla macchina")
@@ -494,7 +510,38 @@ def chiamate_locali(agent, lm) -> str:
         os.environ.get("AGNO_TELEMETRY", "").lower() != "true",
         "AGNO_TELEMETRY=true nell'ambiente riaccende la telemetria nonostante telemetry=False",
     )
-    return str(len(componenti)) + " componenti su " + config.OLLAMA_HOST + ", telemetria spenta"
+    esito = str(len(componenti)) + " componenti su " + config.OLLAMA_HOST + ", telemetria spenta"
+    if config.e_modello_cloud(agent.model.id):
+        esito += ", agente cloud"
+    return esito
+
+
+def ruoli_locali() -> str:
+    """Il confine fra locale e cloud e' nel nome, e il codice lo fa rispettare.
+
+    Ollama scrive il tag cloud in due forme e le usa entrambe; un nome di
+    repository che contiene "cloud" non basta. E un modello cloud dato a
+    estrazione o embedding deve fermare la costruzione, non un turno.
+    """
+    import assistant_runtime
+
+    for nome in ("glm-5.3-flash:cloud", "gpt-oss:120b-cloud"):
+        esigi(config.e_modello_cloud(nome), nome + " non e' riconosciuto come cloud")
+    for nome in ("qwen3.5:latest", "hf.co/cloud-lab/modello:Q8_0", "nomic-embed-text-v2-moe", "cloud"):
+        esigi(not config.e_modello_cloud(nome), nome + " e' scambiato per cloud")
+
+    for attributo, costruttore in (
+        ("LEARNING_MODEL", assistant_runtime.build_learning_model),
+        ("EMBEDDER_MODEL", assistant_runtime.build_knowledge),
+    ):
+        with patch.object(config, attributo, "glm-5.3-flash:cloud"):
+            try:
+                costruttore()
+            except ValueError as errore:
+                esigi(attributo in str(errore), "l'errore non nomina " + attributo + ": " + str(errore))
+            else:
+                raise AssertionError(attributo + " cloud non ha fermato la costruzione")
+    return "due forme di tag riconosciute, estrazione ed embedding rifiutano il cloud"
 
 
 def contesto_esteso(agent, lm) -> str:
@@ -515,6 +562,13 @@ def contesto_esteso(agent, lm) -> str:
         esigi(num_ctx is not None, nome + " non passa num_ctx: Ollama userebbe 4096 in silenzio")
         esigi(num_ctx > 4096, nome + " passa num_ctx=" + str(num_ctx) + ", sotto o pari al default di Ollama")
         valori.append(num_ctx)
+    # Stesso modello nei due ruoli, stesso num_ctx: altrimenti Ollama riavvia
+    # il runner a ogni passaggio fra risposta ed estrazione e perde la cache
+    # del prompt. Con modelli diversi l'estrazione puo' stare sotto NUM_CTX,
+    # mai sopra: il tetto lo decide comunque il modello conversazionale.
+    if config.MAIN_MODEL == config.LEARNING_MODEL:
+        esigi(len(set(valori)) == 1, "stesso modello con num_ctx diversi: " + str(sorted(set(valori))))
+    esigi(max(valori) == config.NUM_CTX, "un num_ctx supera NUM_CTX: " + str(sorted(set(valori))))
     return "num_ctx da " + str(min(valori)) + " a " + str(max(valori)) + " su " + str(len(modelli)) + " modelli"
 
 
@@ -2297,6 +2351,7 @@ def main() -> int:
             ("namespace coerenti  ", lambda: namespace_coerenti(lm, fs, args.user)),
             ("namespace stabili   ", lambda: namespace_stabili(args.user)),
             ("chiamate locali     ", lambda: chiamate_locali(agent, lm)),
+            ("ruoli locali        ", ruoli_locali),
             ("contesto esteso     ", lambda: contesto_esteso(agent, lm)),
             ("ragionamento modelli", lambda: ragionamento_modelli(agent, lm)),
             ("schemi importabili  ", lambda: schemi_importabili(lm)),

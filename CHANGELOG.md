@@ -6,6 +6,31 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- il modello conversazionale puo' essere un modello cloud di Ollama
+  (`MODELLO_CLOUD`, predefinito `glm-5.3-flash:cloud`), inoltrato dal daemon
+  locale dopo `ollama signin`: nessuna chiave API nell'ambiente e host
+  invariato. Estrazione delle memorie ed embedding restano locali e
+  `assistant_runtime` rifiuta un nome cloud per quei ruoli; preflight e
+  banner della chat segnalano quando la conversazione esce dalla macchina;
+- prove offline sul riconoscimento del tag cloud, sul rifiuto dei ruoli
+  locali e sul rimedio suggerito dal preflight per un modello cloud mancante.
+
+### Changed
+
+- `MAIN_MODEL` e `LEARNING_MODEL` non coincidono piu' di default: la
+  conversazione usa il modello cloud, l'estrazione il 9B locale
+  (`MODELLO_LOCALE`, ora Qwen3.8-9B-Distill Q8_0);
+- lo smoke test `chiamate locali` verifica il confine per nome oltre che per
+  host, e pretende che `OLLAMA_API_KEY` non sia nell'ambiente;
+- l'estrazione delle memorie usa un contesto proprio (`LEARNING_NUM_CTX`,
+  32k) quando `LEARNING_MODEL` e' un modello diverso da `MAIN_MODEL`: il 9B
+  Q8_0 scende da 14 a 9,3 GB di VRAM. Con lo stesso modello nei due ruoli il
+  contesto resta `NUM_CTX`, e lo smoke test `contesto esteso` lo verifica;
+- README, architettura, nota Agno e SECURITY descrivono cosa esce dalla
+  macchina con un modello cloud e cosa dichiara la privacy policy di Ollama.
+
 ## [0.3.1] - 2026-08-30
 
 ### Added

@@ -17,8 +17,25 @@ from platform_files import rendi_privato
 from stores import namespace_utente
 
 
+def _esigi_locale(nome: str, ruolo: str) -> str:
+    """Rifiuta un modello cloud per un ruolo che deve restare sulla macchina.
+
+    Il solo ruolo a cui `config.py` consente un modello cloud e' la
+    conversazione. Estrazione delle memorie ed embedding ricevono il profilo,
+    le osservazioni e le intuizioni dell'utente: un errore all'avvio e' meglio
+    di un turno che li spedisce fuori in silenzio.
+    """
+    if config.e_modello_cloud(nome):
+        raise ValueError(ruolo + " non puo' usare un modello cloud (" + nome + "): solo MAIN_MODEL puo'.")
+    return nome
+
+
 def build_chat_model() -> Ollama:
-    """Modello conversazionale, con il contesto esteso oltre il default di Ollama."""
+    """Modello conversazionale, con il contesto esteso oltre il default di Ollama.
+
+    Locale o cloud secondo `config.MAIN_MODEL`; l'host resta comunque
+    `config.OLLAMA_HOST`, perche' e' il daemon a inoltrare i modelli cloud.
+    """
     return Ollama(
         id=config.MAIN_MODEL,
         host=config.OLLAMA_HOST,
@@ -32,9 +49,9 @@ def build_chat_model() -> Ollama:
 
 
 def build_learning_model() -> Ollama:
-    """Modello a bassa temperatura usato per l'estrazione strutturata."""
+    """Modello a bassa temperatura usato per l'estrazione strutturata. Locale sempre."""
     return Ollama(
-        id=config.LEARNING_MODEL,
+        id=_esigi_locale(config.LEARNING_MODEL, "LEARNING_MODEL"),
         host=config.OLLAMA_HOST,
         options=config.LEARNING_OPTIONS,
         keep_alive=config.KEEP_ALIVE,
@@ -81,7 +98,7 @@ def build_knowledge() -> Knowledge:
             table_name="learned_knowledge",
             search_type=SearchType.hybrid,
             embedder=OllamaEmbedder(
-                id=config.EMBEDDER_MODEL,
+                id=_esigi_locale(config.EMBEDDER_MODEL, "EMBEDDER_MODEL"),
                 host=config.OLLAMA_HOST,
                 dimensions=config.EMBEDDER_DIMENSIONS,
             ),
