@@ -337,9 +337,7 @@ def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
         valida_percorsi()
         root = config.BACKUP_DIR
         disponibili = _snapshot_dentro(root) if root.is_dir() else []
-        comando = (
-            "    " + (r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup") + " create"
-        )
+        comando = "    " + (r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup") + " create"
         if not disponibili:
             return [
                 "Nessuno snapshot: profilo, memorie ed entita' esistono in una copia sola.",

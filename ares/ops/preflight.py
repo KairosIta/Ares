@@ -109,7 +109,7 @@ def main() -> int:
         print("Il modello conversazionale e' cloud: prompt e risposte escono dalla macchina")
         print("verso ollama.com. Estrazione delle memorie ed embedding restano locali.")
         print()
-    print("Ambiente pronto:", r".venv\Scripts\ares.exe" if sys.platform == "win32" else ".venv/bin/ares")
+    print("Ambiente pronto:", r".venv\Scripts\ares" if sys.platform == "win32" else ".venv/bin/ares")
     return 0
 
 
