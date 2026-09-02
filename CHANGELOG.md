@@ -11,7 +11,17 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - Agno passa da 3.0.1 a 3.0.2; il pin resta esatto e `uv.lock` ne porta gli
   hash. La suite offline e' verde sulla nuova versione;
 - `SECURITY.md` dichiara supportata la linea 0.4.x: diceva ancora 0.3.x, e un
-  segnalatore ci leggeva che la versione corrente non e' coperta.
+  segnalatore ci leggeva che la versione corrente non e' coperta;
+- i vincoli delle dipendenze nel `pyproject.toml` diventano larghi e uniformi.
+  Erano meta' con `==` e meta' senza, senza che la differenza fosse scritta da
+  nessuna parte. Ares e' un'applicazione: `uv.lock` e' committato con le
+  versioni esatte e i loro hash, e setup e CI installano con
+  `uv sync --locked` - la riproducibilita' stava gia' li' per intero, e il
+  `==` nel pyproject ne era una seconda copia da tenere allineata a mano.
+  Resta un solo vincolo stretto, `agno>=3.0.2,<3.1`, con accanto
+  l'incompatibilita' nota che lo motiva. Nessuna versione risolta si e' mossa:
+  il diff di `uv.lock` tocca i soli metadati. `CONTRIBUTING.md` dice cosa
+  scrivere quando si aggiunge una dipendenza.
 
 ### Added
 
