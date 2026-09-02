@@ -25,7 +25,7 @@ class OperazioniBackup:
 
 
 def costruisci_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m ares.backup", description="Snapshot locali dello stato di Ares")
+    parser = argparse.ArgumentParser(prog="ares-backup", description="Snapshot locali dello stato di Ares")
     sottocomandi = parser.add_subparsers(dest="comando", required=True)
     sottocomandi.add_parser("create", help="crea e verifica uno snapshot")
     sottocomandi.add_parser("list", help="elenca gli snapshot")

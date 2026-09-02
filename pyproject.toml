@@ -1,0 +1,184 @@
+# Il progetto in un file solo
+# ===========================
+# Metadati, dipendenze, comandi e configurazione degli strumenti. Prima erano
+# sette file (requirements*.in, requirements*.txt, ruff.toml, mypy.ini,
+# .coveragerc), tenuti fuori da un pyproject per non "dire che Ares e' un
+# pacchetto". Un pyproject dice che e' un progetto Python: la distribuzione
+# resta un non obiettivo e niente qui la richiede. Cio' che si guadagna e' un
+# lock solo, gestito da uv, e i comandi `ares`, `ares-backup`... nel venv.
+
+[project]
+name = "ares"
+version = "0.3.1"
+description = "Assistente personale locale su Agno e Ollama"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12,<3.13"
+
+# Ogni riga e' un pacchetto che questo progetto importa davvero, con il motivo
+# per cui c'e'. Tutto il resto (numpy, pyarrow, httpx, pydantic...) arriva per
+# transitivita' e vive solo in uv.lock, che si rigenera con `uv lock`. Il lock
+# porta gli hash degli artefatti e `uv sync --locked` li verifica: un pin dice
+# quale versione installare, un hash quale file. Se un account su PyPI viene
+# compromesso e un file ripubblicato, `agno==3.0.1` resta vero e il contenuto
+# cambia; con gli hash l'installazione si ferma.
+dependencies = [
+    # Il framework dell'agente. Pinnato alla versione su cui e' stato scritto e
+    # verificato tutto: le API di agno.learn sono giovani e cambiano tra minor.
+    "agno==3.0.1",
+    # Client del server Ollama su localhost:11434. Serve sia al modello
+    # conversazionale sia a OllamaEmbedder.
+    "ollama",
+    # Indice vettoriale delle intuizioni apprese, incorporato nel processo:
+    # nessun servizio da avviare, nessun container.
+    "lancedb",
+    # Motore di ricerca full-text di LanceDB. Senza, SearchType.hybrid non ha
+    # la meta' testuale e resta la sola distanza coseno, che su una collezione
+    # piccola e' rumorosa.
+    "tantivy",
+    # Backend SQLite di Agno (SqliteDb): profilo, memorie, entita', sessioni e
+    # il filesystem privato dell'agente. Non e' una dipendenza di agno base.
+    "sqlalchemy",
+    # Non lo usiamo: e' l'__init__ di agno.models.ollama a pretenderlo, perche'
+    # importa OllamaResponses insieme a Ollama. In agno 3.0.1 un progetto
+    # solo-Ollama installa lo stesso un client cloud.
+    "openai",
+    # Carica le personalizzazioni locali da un file .env ignorato da Git.
+    "python-dotenv",
+    # Renderer della CLI: Markdown, streaming Live, pannelli, tabelle e tema.
+    # Dipendenza diretta perche' la importiamo in cli/ui.py; non ci affidiamo
+    # alla copia che oggi arriva transitivamente da Agno.
+    "rich==15.0.0",
+    # Editor della REPL: completamento visuale, cronologia, suggerimenti e
+    # input multilinea. Separato da Rich, che si occupa solo dell'output.
+    "prompt-toolkit==3.0.53",
+    # Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
+    # aggiunge pywin32 solo su Windows, dove serve per conservare i lock
+    # condivisi usati dalle chat concorrenti.
+    "portalocker[win32]==4.0.0",
+]
+
+# I comandi installati nel venv. `main()` di ogni modulo e' gia' il punto
+# d'ingresso che `python -m` usava; qui prende un nome.
+[project.scripts]
+ares = "ares.cli.chat:main"
+ares-backup = "ares.backup.snapshots:main"
+ares-entities = "ares.entities.maintenance:main"
+ares-sessions = "ares.sessions.maintenance:main"
+ares-preflight = "ares.ops.preflight:main"
+ares-inspect = "ares.ops.inspect_learning:main"
+
+[project.urls]
+Repository = "https://github.com/KairosIta/Ares"
+
+# Strumenti di sviluppo, separati dalle dipendenze perche' non si importano:
+# si eseguono. `uv sync` li installa; `setup.sh` passa `--no-dev` e su una
+# macchina che usa soltanto Ares un linter non arriva. Pinnati come tutto il
+# resto: una minor nuova di ruff puo' aggiungere regole al set selezionato,
+# e una CI che diventa rossa da sola il lunedi' mattina insegna a ignorarla.
+[dependency-groups]
+dev = [
+    "ruff==0.14.7",
+    "mypy==1.19.0",
+    "coverage==7.13.3",
+]
+
+# Il backend di uv: nessuna dipendenza in piu', e finche' la versione e'
+# compatibile uv usa la copia che porta con se' senza scaricare niente.
+# Serve solo all'installazione editable del package nel venv.
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13"]
+build-backend = "uv_build"
+
+# Il package sta nella radice del progetto, non sotto src/.
+[tool.uv.build-backend]
+module-root = ""
+
+# ---------------------------------------------------------------------------
+# Linter e formattatore
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+# I default di ruff sono 88, ereditati da Black. Qui lo stile prevalente e'
+# piu' largo: la riga piu' lunga scritta a mano era 130 e solo due superavano
+# 120, quindi il limite descrive il codice invece di riscriverlo.
+line-length = 120
+
+[tool.ruff.lint]
+# Esclusi di proposito:
+#
+#   PTH  vorrebbe Path.rename al posto di os.rename in backup/files.py, dove
+#        la scelta fra rename e replace ha un commento che spiega perche' su
+#        Windows la semantica di sostituzione e' quella sbagliata. Una regola
+#        che litiga con una decisione motivata insegna a mettere noqa.
+#   D    docstring: qui ci sono gia' e sono piu' lunghe di quanto qualunque
+#        regola chieda; imporne la forma non aggiungerebbe niente.
+select = ["E", "W", "F", "I", "B", "C4", "PIE", "SIM", "RUF", "UP"]
+
+# Il carattere ambiguo che RUF001 trova e' il `›` del prompt della REPL,
+# scelto perche' e' un prompt e non un maggiore-di. La regola e' pensata per
+# gli omoglifi copiati per sbaglio, non per un simbolo scelto apposta.
+ignore = ["RUF001"]
+
+# ---------------------------------------------------------------------------
+# Controllo dei tipi
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+
+# Nessun `ignore_missing_imports`. L'intero albero delle dipendenze e'
+# tipizzato - agno, prompt_toolkit, rich e portalocker hanno py.typed - quindi
+# mypy risolve tutto davvero, e la scappatoia con cui di solito questi
+# controlli nascono gia' mezzi spenti qui non serve. Se un giorno una
+# dipendenza nuova non fosse tipizzata, va silenziata quella e non tutte.
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+
+# I test restano fuori, ed e' una scelta motivata e non una resa. Frugano di
+# proposito negli interni del framework - `Live._live_render`, il `content` di
+# un Message che e' un'unione, un Function che puo' arrivare come dict - e su
+# quegli accessi mypy ha ragione: non sono sicuri. E' pero' cio' che il test
+# deve fare per verificare il cablaggio, e anteporgli un assert per ogni riga
+# afferma quello che la riga dopo gia' afferma.
+#
+# Soprattutto: i test girano a ogni CI, quindi li' un errore di tipo diventa
+# subito un fallimento visibile. Il codice di produzione ha invece rami che
+# nessun test attraversa - i percorsi Windows, i gestori d'errore - ed e' li'
+# che un controllo statico guadagna il proprio posto. Ruff continua a
+# coprirli tutti.
+exclude = ['^\.venv/', '^tests/']
+
+# ---------------------------------------------------------------------------
+# Misura di copertura
+# ---------------------------------------------------------------------------
+# La misura riguarda i moduli del progetto, non le prove: sapere che una prova
+# ha eseguito se stessa non dice niente. Il runner (`tests/run.py`) passa
+# comunque da qui, cosi' il numero non dipende da come e' stato invocato.
+
+[tool.coverage.run]
+# Il package intero, non un elenco di moduli: elencarli a mano vorrebbe dire
+# aggiornare questo file a ogni modulo nuovo, e dimenticarsene fa salire la
+# percentuale invece di farla scendere.
+source = ["ares"]
+# Ogni prova e' un processo separato - prepara l'ambiente con variabili che
+# `config.py` legge all'import - quindi ognuna scrive il proprio file e
+# `coverage combine` li unisce.
+parallel = true
+# I rami contano quanto le righe, e vanno chiesti.
+branch = true
+omit = ["tests/*", ".venv/*"]
+
+[tool.coverage.report]
+# Un ramo non preso e' scoperto quanto una riga non eseguita, e qui i rami
+# sono la sostanza: i percorsi Windows, i gestori d'errore, i ripieghi.
+show_missing = true
+skip_covered = false
+precision = 0
+exclude_also = [
+    # Il blocco di avvio di uno script non e' codice da coprire.
+    'if __name__ == .__main__.:',
+    'if TYPE_CHECKING:',
+    'raise NotImplementedError',
+]

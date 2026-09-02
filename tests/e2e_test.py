@@ -39,13 +39,6 @@ import tempfile
 import time
 import urllib.error
 from contextlib import closing
-from pathlib import Path
-
-# Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
-# script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
-# Va prima di qualunque import del progetto.
-RADICE_PROGETTO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RADICE_PROGETTO))
 
 # L'archivio della prova va scelto prima di importare config, che legge i
 # percorsi una volta sola: correggere l'ambiente dopo non sposterebbe lo stato.

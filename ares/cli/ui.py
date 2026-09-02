@@ -21,6 +21,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
+import ares
+
 ACTIVITY_IDLE_SECONDS = 2.0
 ACTIVITY_REFRESH_SECONDS = 0.125
 PREVIEW_REFRESH_SECONDS = 0.125
@@ -398,7 +400,7 @@ class CliRenderer:
         dati.add_row(_testo("sessione", "ares.muted"), _testo(sessione, "ares.text"))
         dati.add_row(_testo("utente", "ares.muted"), _testo(utente, "ares.text"))
         corpo = Group(
-            Text.assemble(("ARES", "ares.title"), ("  local-first AI agent", "ares.muted")),
+            Text.assemble(("ARES", "ares.title"), ("  " + ares.__version__ + "  local-first AI agent", "ares.muted")),
             Text(""),
             dati,
             Text(""),

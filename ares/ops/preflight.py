@@ -2,7 +2,7 @@
 Verifica dell'ambiente prima di avviare l'agente
 ================================================
 Uso:
-    .venv/bin/python -m ares.ops.preflight
+    .venv/bin/ares-preflight
 
 Risponde a una domanda sola: se avvio la chat adesso, parte? Controlla che
 il server Ollama risponda e che i modelli nominati in `config.py` siano
@@ -109,8 +109,7 @@ def main() -> int:
         print("Il modello conversazionale e' cloud: prompt e risposte escono dalla macchina")
         print("verso ollama.com. Estrazione delle memorie ed embedding restano locali.")
         print()
-    python_venv = r".venv\Scripts\python.exe" if sys.platform == "win32" else ".venv/bin/python"
-    print("Ambiente pronto:", python_venv, "-m ares")
+    print("Ambiente pronto:", r".venv\Scripts\ares" if sys.platform == "win32" else ".venv/bin/ares")
     return 0
 
 

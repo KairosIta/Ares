@@ -3,9 +3,9 @@
 Ricostruisce l'ambiente Windows di Ares.
 
 .DESCRIPTION
-Crea il virtualenv Python 3.12, sincronizza requirements.txt, elimina il
-rischio di usare Agno da un checkout editable esterno e verifica Ollama con
-`python -m ares.ops.preflight`. Non modifica tmp/, workspace o backup.
+Crea il virtualenv Python 3.12, installa le dipendenze bloccate in uv.lock e
+Ares stesso nel venv, poi verifica Ollama con `ares-preflight`. Non modifica
+tmp/, workspace o backup.
 
 .PARAMETER SkipPreflight
 Salta soltanto il controllo di Ollama e dei modelli. Serve alla CI e a chi
@@ -60,32 +60,17 @@ try {
     }
     else {
         Write-Host "Creo il virtualenv su Python $PythonVersion."
-        Invoke-External {
-            & $Uv.Source venv --python $PythonVersion .venv
-        } "creazione del virtualenv fallita"
     }
 
+    # `sync` porta il venv esattamente com'e' scritto in uv.lock, creandolo se
+    # manca, e installa Ares in editable: i comandi `ares`, `ares-backup`...
+    # compaiono in .venv\Scripts. `--locked` rifiuta un lock non allineato al
+    # pyproject; `--no-dev` lascia fuori gli strumenti di sviluppo, come fa
+    # setup.sh. Gli hash del lock vengono verificati a ogni download.
     Write-Host "Installo le dipendenze bloccate."
     Invoke-External {
-        & $Uv.Source pip sync --require-hashes --python $VenvPython requirements.txt
+        & $Uv.Source sync --locked --no-dev --python $PythonVersion
     } "sincronizzazione delle dipendenze fallita"
-    $AgnoNelVenv = @'
-import pathlib
-import sys
-
-import agno
-
-venv = pathlib.Path(".venv").resolve()
-sys.exit(0 if pathlib.Path(agno.__file__).resolve().is_relative_to(venv) else 1)
-'@
-    $AgnoNelVenv | & $VenvPython -
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host
-        Write-Host "Agno veniva da fuori dal venv (installazione editable): lo reinstallo."
-        Invoke-External {
-            & $Uv.Source pip install --require-hashes --python $VenvPython --reinstall-package agno -r requirements.txt
-        } "reinstallazione di Agno fallita"
-    }
 
     Invoke-External {
         & $Uv.Source pip check --python $VenvPython
@@ -97,7 +82,7 @@ sys.exit(0 if pathlib.Path(agno.__file__).resolve().is_relative_to(venv) else 1)
     }
     else {
         Write-Host
-        & $VenvPython -m ares.ops.preflight
+        & ".venv\Scripts\ares-preflight.exe"
         if ($LASTEXITCODE -ne 0) {
             throw "le dipendenze sono a posto, ma il preflight Ollama non e' passato"
         }

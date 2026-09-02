@@ -9,20 +9,20 @@ locali per costruzione.
 
 ## Struttura del codice
 
-Il codice vive nel package `ares/`, diviso per responsabilita'. Ogni
-sottopackage con un `__main__.py` e' un comando che si lancia con
-`python -m`; gli altri sono librerie interne.
+Il codice vive nel package `ares/`, diviso per responsabilita'. I comandi
+fra parentesi sono quelli che `uv sync` installa nel venv; ogni sottopackage
+con un `__main__.py` risponde anche a `python -m`.
 
 ```text
 ares/
 ├── config.py       impostazioni versionate e percorsi dello stato
 ├── agent/          composizione dell'agente, turno, apprendimento, schemi
-├── cli/            la REPL: chat, comandi locali, rendering, editor   (python -m ares)
+├── cli/            la REPL: chat, comandi locali, rendering, editor   (ares)
 ├── state/          lettura degli archivi, lock, primitive di piattaforma
-├── backup/         snapshot locali: creazione, verifica, restore      (python -m ares.backup)
-├── entities/       audit e fusione delle entita'                      (python -m ares.entities)
-├── sessions/       retention di sessioni e risultati tool             (python -m ares.sessions)
-└── ops/            preflight e ispezione a modello spento             (python -m ares.ops.<nome>)
+├── backup/         snapshot locali: creazione, verifica, restore      (ares-backup)
+├── entities/       audit e fusione delle entita'                      (ares-entities)
+├── sessions/       retention di sessioni e risultati tool             (ares-sessions)
+└── ops/            preflight e ispezione a modello spento             (ares-preflight, ares-inspect)
 ```
 
 `tests/` contiene le prove e il loro runner, `docs/` questa documentazione,

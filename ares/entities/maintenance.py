@@ -3,11 +3,11 @@ Manutenzione delle entita' di Ares
 ==================================
 
 Uso:
-    .venv/bin/python -m ares.entities audit
-    .venv/bin/python -m ares.entities audit --all
-    .venv/bin/python -m ares.entities audit --all-pairs
-    .venv/bin/python -m ares.entities merge --source project/doppione --into project/canonico
-    .venv/bin/python -m ares.entities merge --source project/doppione --into project/canonico --apply
+    .venv/bin/ares-entities audit
+    .venv/bin/ares-entities audit --all
+    .venv/bin/ares-entities audit --all-pairs
+    .venv/bin/ares-entities merge --source project/doppione --into project/canonico
+    .venv/bin/ares-entities merge --source project/doppione --into project/canonico --apply
 
 La CLI coordina audit, anteprima, lock, backup e applicazione. La logica pura
 vive nei moduli `entity_audit` ed `entity_merge`; gli import pubblici storici
@@ -177,9 +177,7 @@ def stampa_piano(piano: PianoFusione) -> None:
 
 
 def costruisci_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python -m ares.entities", description="Manutenzione offline delle entita' di Ares"
-    )
+    parser = argparse.ArgumentParser(prog="ares-entities", description="Manutenzione offline delle entita' di Ares")
     sottocomandi = parser.add_subparsers(dest="comando", required=True)
     audit = sottocomandi.add_parser("audit", help="trova possibili duplicati senza modificare lo stato")
     audit.add_argument("--user", default=config.DEFAULT_USER_ID, help="utente di cui analizzare le entita'")
@@ -273,8 +271,8 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
         )
         raise
     print("Fusione completata e verificata:", piano.sorgente.riferimento, "->", piano.canonica.riferimento)
-    python_venv = r".venv\Scripts\python.exe" if sys.platform == "win32" else ".venv/bin/python"
-    print("Per tornare indietro:", python_venv, "-m ares.backup restore", snapshot.name)
+    comando = r".venv\Scripts\ares-backup" if sys.platform == "win32" else ".venv/bin/ares-backup"
+    print("Per tornare indietro:", comando, "restore", snapshot.name)
     return 0
 
 

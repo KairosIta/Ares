@@ -55,16 +55,10 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
-
-# Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
-# script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
-# Va prima di qualunque import del progetto.
-RADICE_PROGETTO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RADICE_PROGETTO))
 
 # L'archivio della prova va scelto prima di importare config, perche' config
 # crea TMP_DIR all'import: importarlo e correggere i percorsi dopo lascerebbe
@@ -956,7 +950,7 @@ def tempo(agent, lm, user_id: str) -> str:
         return NON_CONCLUSIVO + "DATE_MEMORIE e' spento: le memorie arrivano senza data, come di serie"
 
     blocco = prompt.split("<user_memory>", 1)[-1].split("</user_memory>", 1)[0]
-    oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    oggi = datetime.now(UTC).strftime("%Y-%m-%d")
     esigi(
         blocco.count("[" + oggi + "]") == len(MEMORIE_SEMINATE),
         "le memorie arrivano senza la data di oggi: lo schema non e' quello di schemas.py",

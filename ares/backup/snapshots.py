@@ -3,11 +3,11 @@ Backup locale dello stato di Ares
 =================================
 
 Uso:
-    .venv/bin/python -m ares.backup create
-    .venv/bin/python -m ares.backup list
-    .venv/bin/python -m ares.backup verify latest
-    .venv/bin/python -m ares.backup restore <snapshot>
-    .venv/bin/python -m ares.backup prune --keep 20
+    .venv/bin/ares-backup create
+    .venv/bin/ares-backup list
+    .venv/bin/ares-backup verify latest
+    .venv/bin/ares-backup restore <snapshot>
+    .venv/bin/ares-backup prune --keep 20
 
 Salva il cervello di Ares - i due SQLite e LanceDB - non il workspace. Ogni
 snapshot e' una directory trasparente con manifest e checksum. Creazione e
@@ -23,10 +23,11 @@ import subprocess
 import sys
 import tempfile
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import ares
 from ares import config
 from ares.backup import cli, files, integrity, restore
 from ares.state.lock import lock_stato
@@ -185,7 +186,7 @@ def _versione_agno() -> str | None:
 def _id_snapshot(tipo: str) -> str:
     if tipo not in {"manuale", "pre-merge", "pre-restore", "pre-session-prune"}:
         raise ErroreBackup("tipo di snapshot non valido: " + repr(tipo))
-    base = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    base = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     suffisso = "" if tipo == "manuale" else "-" + tipo
     candidato = base + suffisso
     root = config.BACKUP_DIR.resolve()
@@ -236,10 +237,11 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
             "format_version": FORMATO_BACKUP,
             "snapshot_id": identificativo,
             "type": tipo,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "source_state_dir": str(config.TMP_DIR.resolve()),
             "python_version": platform.python_version(),
             "agno_version": _versione_agno(),
+            "ares_version": ares.__version__,
             "git": _git(),
             "models": {
                 "main": config.MAIN_MODEL,
@@ -335,15 +337,14 @@ def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
         valida_percorsi()
         root = config.BACKUP_DIR
         disponibili = _snapshot_dentro(root) if root.is_dir() else []
-        python_venv = r".venv\Scripts\python.exe" if os.name == "nt" else ".venv/bin/python"
-        comando = "    " + python_venv + " -m ares.backup create"
+        comando = "    " + (r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup") + " create"
         if not disponibili:
             return [
                 "Nessuno snapshot: profilo, memorie ed entita' esistono in una copia sola.",
                 comando,
             ]
         ultimo = disponibili[-1]
-        adesso = datetime.now(timezone.utc).timestamp()
+        adesso = datetime.now(UTC).timestamp()
         giorni = (adesso - _ordine_snapshot(ultimo)[0]) / 86400
         if giorni < soglia:
             return []

@@ -34,7 +34,7 @@ aggiungere un passo al workflow.
 .venv/bin/python tests/run.py --copertura --html   # rapporto navigabile
 ```
 
-La configurazione sta in `.coveragerc`, così il numero non dipende da come è
+La configurazione sta in `pyproject.toml`, così il numero non dipende da come è
 stato invocato il comando. La modalità parallela è obbligatoria per lo stesso
 motivo per cui le prove sono processi separati: ognuna scrive il proprio file
 e `coverage combine` li unisce alla fine. La misura è per ramo e non solo per
