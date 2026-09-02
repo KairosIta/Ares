@@ -4,7 +4,7 @@ import copy
 import hashlib
 import time
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from agno.db.sqlite import SqliteDb
@@ -22,7 +22,7 @@ from ares.entities.models import (
 
 
 def _ora_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _chiave_entita(entita: EntityMemory) -> tuple[str, str]:

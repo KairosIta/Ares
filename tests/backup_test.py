@@ -22,12 +22,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-# Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
-# script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
-# Va prima di qualunque import del progetto.
-RADICE_PROGETTO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RADICE_PROGETTO))
-
 RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-backup-test-"))
 os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
@@ -682,7 +676,7 @@ def main() -> int:
             righe = promemoria_backup(soglia_giorni=7)
             esigi(righe, "nessun promemoria pur non essendoci mai stato uno snapshot")
             esigi("Nessuno snapshot" in righe[0], "il promemoria non dice che non ce n'e' nessuno")
-            esigi("-m ares.backup create" in righe[-1], "il promemoria non dice come rimediare")
+            esigi("ares-backup create" in righe[-1], "il promemoria non dice come rimediare")
             # Una domanda non deve lasciare una directory: chiedere "ho un
             # backup?" e ottenere in cambio una cartella vuota e' esattamente
             # il tipo di effetto che questo progetto ha appena tolto altrove.

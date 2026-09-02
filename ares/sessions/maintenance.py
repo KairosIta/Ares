@@ -1,10 +1,10 @@
 """Manutenzione offline del ciclo di vita delle sessioni di Ares.
 
 Uso:
-    .venv/bin/python -m ares.sessions status
-    .venv/bin/python -m ares.sessions prune --older-than 180
-    .venv/bin/python -m ares.sessions prune --older-than 180 --apply
-    .venv/bin/python -m ares.sessions delete <session-id> --apply
+    .venv/bin/ares-sessions status
+    .venv/bin/ares-sessions prune --older-than 180
+    .venv/bin/ares-sessions prune --older-than 180 --apply
+    .venv/bin/ares-sessions delete <session-id> --apply
 
 Senza ``--apply`` i comandi distruttivi sono soltanto un'anteprima. Quando si
 applicano richiedono il lock esclusivo, creano uno snapshot verificato e
@@ -45,7 +45,7 @@ def _giorni(valore: str) -> int:
 
 def costruisci_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m ares.sessions", description="Retention delle sessioni e dei risultati tool di Ares"
+        prog="ares-sessions", description="Retention delle sessioni e dei risultati tool di Ares"
     )
     sottocomandi = parser.add_subparsers(dest="comando", required=True)
 
@@ -139,8 +139,8 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
     db, store = apri_archivio(user_id)
     eliminate = elimina_sessioni(db, store, sessioni, user_id)
     print("Sessioni eliminate e verificate:", eliminate)
-    python = r".venv\Scripts\python.exe" if os.name == "nt" else ".venv/bin/python"
-    print("Per tornare indietro:", python, "-m ares.backup restore", snapshot.name)
+    comando = r".venv\Scripts\ares-backup.exe" if os.name == "nt" else ".venv/bin/ares-backup"
+    print("Per tornare indietro:", comando, "restore", snapshot.name)
     return 0
 
 

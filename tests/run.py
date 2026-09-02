@@ -20,7 +20,7 @@ improbabile.
 
 Per lo stesso motivo la misura di copertura gira in modalita' parallela: un
 file per processo, uniti da `coverage combine` alla fine. La configurazione
-sta in `.coveragerc`, cosi' il numero non dipende da come si e' invocato il
+sta in `pyproject.toml`, cosi' il numero non dipende da come si e' invocato il
 comando.
 
 Le prove girano una alla volta. Quelle con Ollama si contendono la stessa
@@ -114,11 +114,11 @@ def pulisci_dati_copertura() -> None:
     `coverage combine` unisce tutto cio' che trova: un file rimasto da un giro
     con `--solo` gonfierebbe in silenzio il rapporto di questo.
 
-    I nomi sono elencati e non presi con un glob `.coverage*`, che raccoglie
-    anche `.coveragerc`. Cancellarlo non rompe niente in modo visibile: la
-    misura prosegue con le impostazioni predefinite, senza modalita'
-    parallela, e i processi si sovrascrivono a vicenda lasciando il rapporto
-    dell'ultima prova al posto di quello di tutte.
+    I nomi sono elencati - `.coverage` e i file `.coverage.*` dei processi -
+    e non presi con un glob piu' largo: quando la configurazione stava in
+    `.coveragerc` un `.coverage*` la cancellava, e la misura proseguiva con le
+    impostazioni predefinite, senza modalita' parallela, con i processi che
+    si sovrascrivevano a vicenda. Oggi sta nel pyproject, ma la lezione resta.
     """
     dati = RADICE / ".coverage"
     if dati.exists():
@@ -147,7 +147,7 @@ def ambiente_figli() -> dict[str, str]:
     aggiunta = str(RADICE / "tests" / "_copertura")
     esistente = os.environ.get("PYTHONPATH", "")
     return {
-        "COVERAGE_PROCESS_START": str(RADICE / ".coveragerc"),
+        "COVERAGE_PROCESS_START": str(RADICE / "pyproject.toml"),
         "PYTHONPATH": aggiunta + os.pathsep + esistente if esistente else aggiunta,
     }
 
@@ -203,10 +203,7 @@ def main(argomenti: list[str] | None = None) -> int:
     copertura = args.copertura
     if copertura and not coverage_disponibile():
         print("coverage non e' installato in questo interprete.")
-        print(
-            "Installalo con: uv pip sync --require-hashes --python "
-            ".venv/bin/python requirements.txt requirements-dev.txt"
-        )
+        print("Installalo con: uv sync --locked")
         return 1
     if args.html and not copertura:
         print("--html richiede --copertura.")
@@ -237,7 +234,7 @@ def main(argomenti: list[str] | None = None) -> int:
 
     if copertura:
         print()
-        # Gli esiti si guardano. Senza `fail_under` in `.coveragerc` un codice
+        # Gli esiti si guardano. Senza `fail_under` nel pyproject un codice
         # diverso da zero qui significa che la misura non c'e' - nessun dato
         # raccolto, configurazione illeggibile - e una misura mancante che
         # stampa "Nessun fallimento" e' il modo esatto in cui questo runner ha

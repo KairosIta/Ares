@@ -2,9 +2,9 @@
 Ispezione di cio' che l'agente ha imparato
 ==========================================
 Uso:
-    .venv/bin/python -m ares.ops.inspect_learning
-    .venv/bin/python -m ares.ops.inspect_learning --session test_1
-    .venv/bin/python -m ares.ops.inspect_learning --file notes/setup.md
+    .venv/bin/ares-inspect
+    .venv/bin/ares-inspect --session test_1
+    .venv/bin/ares-inspect --file notes/setup.md
 
 Legge gli archivi senza avviare il modello, quindi non consuma VRAM e non
 scrive nulla. Serve a rispondere alla domanda che conta quando un agente
@@ -28,9 +28,7 @@ def separatore(titolo: str) -> None:
 
 
 def _ispeziona() -> None:
-    parser = argparse.ArgumentParser(
-        prog="python -m ares.ops.inspect_learning", description="Ispeziona gli archivi di apprendimento"
-    )
+    parser = argparse.ArgumentParser(prog="ares-inspect", description="Ispeziona gli archivi di apprendimento")
     parser.add_argument("--user", default=config.DEFAULT_USER_ID)
     parser.add_argument("--session", default="principale")
     parser.add_argument("--query", default="", help="Query per entita' e intuizioni")
@@ -92,8 +90,8 @@ def _ispeziona() -> None:
     for f in elenco:
         print("-", f.path, "  ", f.size_bytes, "byte")
     print()
-    python_venv = r".venv\Scripts\python.exe" if sys.platform == "win32" else ".venv/bin/python"
-    print("Per leggerne uno:", python_venv, "-m ares.ops.inspect_learning --file <percorso>")
+    comando = r".venv\Scripts\ares-inspect.exe" if sys.platform == "win32" else ".venv/bin/ares-inspect"
+    print("Per leggerne uno:", comando, "--file <percorso>")
 
 
 def main() -> None:

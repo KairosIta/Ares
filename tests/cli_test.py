@@ -38,12 +38,6 @@ from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
 
-# Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
-# script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
-# Va prima di qualunque import del progetto.
-RADICE_PROGETTO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RADICE_PROGETTO))
-
 # I percorsi vanno scelti prima di importare config, che crea TMP_DIR
 # all'import: importarlo e correggere dopo lascerebbe comunque una tmp/ vuota
 # accanto ai dati veri.
@@ -152,8 +146,6 @@ def esegui_preflight(modelli: list[str] | None) -> tuple[int, str]:
 COSTRUZIONE = """
 import sys
 
-sys.path.insert(0, {radice!r})
-
 from ares.agent.assistant import build_assistant, build_filesystem
 
 build_assistant(user_id=sys.argv[1], session_id=sys.argv[2])
@@ -183,7 +175,7 @@ def costruisci_archivio() -> str:
         [
             sys.executable,
             "-c",
-            COSTRUZIONE.format(radice=str(config.BASE_DIR)),
+            COSTRUZIONE,
             UTENTE,
             SESSIONE,
             FILE_AGENTE,
@@ -280,7 +272,7 @@ def backup_cli(_archivio: Path) -> str:
     def comando(*argomenti: str, risposta: str | None = None) -> tuple[int, str]:
         uscita = io.StringIO()
         with ExitStack() as pila:
-            pila.enter_context(patch.object(sys, "argv", ["ares.backup", *argomenti]))
+            pila.enter_context(patch.object(sys, "argv", ["ares-backup", *argomenti]))
             pila.enter_context(redirect_stdout(uscita))
             if risposta is not None:
                 # `input` viene sostituito solo dove la conferma serve: nei
@@ -349,7 +341,7 @@ def inspect_learning_cli() -> str:
     prima = file_db.stat().st_mtime_ns, file_db.stat().st_size
 
     uscita = io.StringIO()
-    argv = ["ares.ops.inspect_learning", "--user", UTENTE, "--session", SESSIONE]
+    argv = ["ares-inspect", "--user", UTENTE, "--session", SESSIONE]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
     testo = uscita.getvalue()
@@ -363,13 +355,13 @@ def inspect_learning_cli() -> str:
     # Il ramo --file esce prima di costruire l'agente: e' l'unica lettura che
     # non accende nemmeno gli store.
     uscita = io.StringIO()
-    argv = ["ares.ops.inspect_learning", "--user", UTENTE, "--file", "non/esiste.md"]
+    argv = ["ares-inspect", "--user", UTENTE, "--file", "non/esiste.md"]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
     esigi("Nessun file a questo percorso" in uscita.getvalue(), "un file assente non viene segnalato")
 
     uscita = io.StringIO()
-    argv = ["ares.ops.inspect_learning", "--user", UTENTE, "--file", FILE_AGENTE]
+    argv = ["ares-inspect", "--user", UTENTE, "--file", FILE_AGENTE]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
     esigi(CONTENUTO_FILE in uscita.getvalue(), "il contenuto del file non viene stampato")

@@ -2,8 +2,8 @@
 #
 # Ricostruzione dell'ambiente
 # ===========================
-# Crea il virtualenv, installa le dipendenze bloccate in requirements.txt e
-# verifica che Ollama sia in piedi con i modelli giusti.
+# Crea il virtualenv, installa le dipendenze bloccate in uv.lock, installa
+# Ares nel venv e verifica che Ollama sia in piedi con i modelli giusti.
 #
 #     ./setup.sh
 #
@@ -12,8 +12,6 @@
 
 set -euo pipefail
 cd "$(dirname "$0")"
-
-VERSIONE_PYTHON=3.12
 
 # `.env` puo' contenere identita', percorsi e future impostazioni locali. Non
 # e' versionato e, come lo stato appreso, non deve nascere leggibile dagli
@@ -28,40 +26,19 @@ if ! command -v uv > /dev/null; then
     exit 1
 fi
 
-if [ -d .venv ]; then
-    echo "Virtualenv gia' presente, lo allineo."
-else
-    echo "Creo il virtualenv su Python ${VERSIONE_PYTHON}."
-    uv venv --python "${VERSIONE_PYTHON}" .venv
-fi
-
-# sync e non install: il venv finisce esattamente com'e' scritto in
-# requirements.txt, senza i residui di installazioni manuali precedenti.
-# E' la differenza tra un ambiente riproducibile e uno che funziona qui.
-# Il lock porta gli hash degli artefatti, quindi qui uv non verifica solo che
-# la versione sia quella giusta ma che il file scaricato sia quello: se non
-# corrisponde l'installazione si ferma, invece di riuscire con altro dentro.
+# `sync` porta il venv esattamente com'e' scritto in uv.lock: crea `.venv`
+# se manca, sulla versione di Python in `.python-version`, rimuove i residui
+# di installazioni manuali e installa Ares in editable, cosi' i comandi
+# `ares`, `ares-backup`... compaiono in `.venv/bin`. Il lock porta gli hash
+# degli artefatti e uv li verifica: se un file scaricato non corrisponde
+# l'installazione si ferma, invece di riuscire con altro dentro.
+#
+# `--locked` rifiuta un lock non allineato al pyproject invece di
+# riscriverlo in silenzio; `--no-dev` lascia fuori ruff, mypy e coverage, che
+# su una macchina che usa soltanto Ares non servono (CONTRIBUTING spiega come
+# averli).
 echo "Installo le dipendenze bloccate."
-uv pip sync --require-hashes --python .venv/bin/python requirements.txt
-
-# uv pip sync considera `agno==3.0.1` gia' soddisfatto quando agno e'
-# installato in editable dal clone locale, perche' la versione coincide: il
-# venv continuerebbe a girare su ../agno mentre requirements.txt dice PyPI.
-# Due ambienti che si somigliano e divergono senza dirlo.
-if ! .venv/bin/python - <<'PY'
-import pathlib
-import sys
-
-import agno
-
-venv = pathlib.Path(".venv").resolve()
-sys.exit(0 if pathlib.Path(agno.__file__).is_relative_to(venv) else 1)
-PY
-then
-    echo
-    echo "agno veniva da fuori dal venv (installazione editable): lo reinstallo."
-    uv pip install --require-hashes --python .venv/bin/python --reinstall-package agno -r requirements.txt
-fi
+uv sync --locked --no-dev
 
 # `sync` allinea cio' che e' installato al lock; `check` verifica anche che i
 # requisiti dichiarati dai pacchetti installati siano compatibili fra loro.
@@ -70,7 +47,7 @@ fi
 uv pip check --python .venv/bin/python
 
 echo
-if ! .venv/bin/python -m ares.ops.preflight; then
+if ! .venv/bin/ares-preflight; then
     echo
     echo "Le dipendenze sono a posto: manca qualcosa sul lato Ollama."
     exit 1

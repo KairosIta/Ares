@@ -9,12 +9,6 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-# Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
-# script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
-# Va prima di qualunque import del progetto.
-RADICE_PROGETTO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RADICE_PROGETTO))
-
 RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-entity-maintenance-test-"))
 os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")

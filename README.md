@@ -140,35 +140,37 @@ Su Linux:
 
 ```bash
 ./setup.sh
-.venv/bin/python -m ares
+.venv/bin/ares
 ```
 
 Su Windows, da PowerShell:
 
 ```powershell
 .\setup.ps1
-.\.venv\Scripts\python.exe -m ares
+.\.venv\Scripts\ares.exe
 ```
 
 Se la policy di PowerShell impedisce l’avvio dello script locale, usa una
 sola volta `powershell -ExecutionPolicy Bypass -File .\setup.ps1`.
 
 Se Ollama non è già attivo, avvialo prima con `ollama serve`. Entrambi gli
-script di setup creano il virtualenv, sincronizzano esattamente le versioni
-di [`requirements.txt`](requirements.txt) ed eseguono il preflight. Su
+script di setup creano il virtualenv, installano esattamente le versioni di
+[`uv.lock`](uv.lock) e Ares stesso, ed eseguono il preflight. I comandi
+`ares`, `ares-backup`, `ares-entities`, `ares-sessions`, `ares-preflight` e
+`ares-inspect` compaiono nel venv; `python -m ares` continua a funzionare. Su
 Windows `setup.ps1 -SkipPreflight` prepara soltanto le dipendenze e viene
 usato dalla CI, dove Ollama non è disponibile.
 
 Per aprire una sessione separata:
 
 ```bash
-.venv/bin/python -m ares --session progetto-demo
+.venv/bin/ares --session progetto-demo
 ```
 
 Su Windows il comando equivalente è:
 
 ```powershell
-.\.venv\Scripts\python.exe -m ares --session progetto-demo
+.\.venv\Scripts\ares.exe --session progetto-demo
 ```
 
 Durante la chat `/` apre il menu dei comandi e TAB completa la voce
@@ -207,11 +209,11 @@ La distinzione fra test offline ed E2E è descritta nella
 ### Backup
 
 ```bash
-.venv/bin/python -m ares.backup create
-.venv/bin/python -m ares.backup list
-.venv/bin/python -m ares.backup verify latest
-.venv/bin/python -m ares.backup restore <snapshot>
-.venv/bin/python -m ares.backup prune --keep 20
+.venv/bin/ares-backup create
+.venv/bin/ares-backup list
+.venv/bin/ares-backup verify latest
+.venv/bin/ares-backup restore <snapshot>
+.venv/bin/ares-backup prune --keep 20
 ```
 
 Gli snapshot vivono per default nella directory `ares-backup` accanto al
@@ -228,10 +230,10 @@ cioè esattamente ciò che non si fa mentre qualcuno sta aspettando un prompt.
 ### Entità duplicate
 
 ```bash
-.venv/bin/python -m ares.entities audit --all
-.venv/bin/python -m ares.entities merge \
+.venv/bin/ares-entities audit --all
+.venv/bin/ares-entities merge \
   --source project/doppione --into project/canonico
-.venv/bin/python -m ares.entities merge \
+.venv/bin/ares-entities merge \
   --source project/doppione --into project/canonico --apply
 ```
 
@@ -241,10 +243,10 @@ acquisisce il lock esclusivo, crea un backup e domanda una conferma testuale.
 ### Sessioni e risultati tool
 
 ```bash
-.venv/bin/python -m ares.sessions status
-.venv/bin/python -m ares.sessions prune --older-than 180
-.venv/bin/python -m ares.sessions prune --older-than 180 --apply
-.venv/bin/python -m ares.sessions delete <session-id> --apply
+.venv/bin/ares-sessions status
+.venv/bin/ares-sessions prune --older-than 180
+.venv/bin/ares-sessions prune --older-than 180 --apply
+.venv/bin/ares-sessions delete <session-id> --apply
 ```
 
 I risultati offloaded non hanno un TTL indipendente: vivono quanto la loro

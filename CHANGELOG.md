@@ -40,6 +40,17 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   dove erano;
 - gli `__init__.py` dei sottopackage descrivono in poche righe cosa contiene
   ciascuno, e `docs/architecture.md` apre con la mappa del package.
+- Ares e' un progetto Python con `pyproject.toml` e `uv.lock`: sette file
+  (`requirements*.in`, `requirements*.txt`, `ruff.toml`, `mypy.ini`,
+  `.coveragerc`) diventano due, con gli stessi pin, gli stessi hash e gli
+  stessi commenti. `setup.sh`, `setup.ps1` e la CI installano con
+  `uv sync --locked`; Dependabot segue `uv.lock`;
+- il venv contiene i comandi `ares`, `ares-backup`, `ares-entities`,
+  `ares-sessions`, `ares-preflight` e `ares-inspect`, e Ares stesso in
+  editable: le prove non toccano piu' `sys.path`. `python -m ares` resta
+  disponibile;
+- il banner della chat e il manifest degli snapshot riportano la versione del
+  package (`ares.__version__`).
 
 ## [0.3.1] - 2026-08-30
 

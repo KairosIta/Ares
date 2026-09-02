@@ -30,12 +30,6 @@ import time
 import urllib.error
 from pathlib import Path
 
-# Le prove stanno in tests/, i moduli del progetto in radice: lanciata come
-# script, `sys.path[0]` e' tests/ e `import config` non troverebbe niente.
-# Va prima di qualunque import del progetto.
-RADICE_PROGETTO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RADICE_PROGETTO))
-
 UTENTE_STORE = "prova-intuizioni-store"
 UTENTE_ALTRO = "prova-intuizioni-altro"
 UTENTE_AGENTE = "prova-intuizioni-agente"

@@ -18,16 +18,19 @@ oppure su Windows PowerShell con:
 .\setup.ps1
 ```
 
-Le dipendenze dirette vivono in `requirements.in`; `requirements.txt` è il
-lock completo. Se cambia una dipendenza diretta, rigenera il lock con:
+Le dipendenze dirette, con il motivo di ciascuna, stanno in `pyproject.toml`;
+`uv.lock` è il lock completo, con gli hash di ogni artefatto. Se cambia una
+dipendenza diretta, rigenera il lock con:
 
 ```bash
-uv pip compile --universal --generate-hashes requirements.in -o requirements.txt
+uv lock
 ```
 
-Rigenera sempre **sopra** il file esistente: uv legge il lock che sta per
-riscrivere come preferenza, quindi aggiungere una dipendenza non aggiorna di
-nascosto tutte le altre. Compilare su un percorso nuovo perde quel vincolo.
+`uv lock` è conservativo: aggiunge o toglie ciò che il pyproject chiede e
+lascia le altre versioni dove sono. Per aggiornare una dipendenza di proposito
+c'è `uv lock --upgrade-package <nome>`; senza il nome aggiorna tutto, e un
+lock che cambia in cinquanta righe per un pacchetto solo è il segno che è
+successo per sbaglio.
 
 Gli hash valgono per il motivo per cui esiste un lock. Un pin dice quale
 versione installare; un hash dice quale artefatto. Se un account su PyPI viene
@@ -36,14 +39,17 @@ cambia: con gli hash l'installazione si ferma invece di riuscire. Vale su ogni
 macchina che esegue `setup.sh` e su ogni PR di Dependabot, che di aggiornamenti
 automatici ne apre uno a settimana.
 
-Ruff e mypy stanno in `requirements-dev.in`, separati perché non si importano:
-si eseguono. Per averli nel venv insieme al resto — è quello che fa anche la
-CI, e `uv pip sync` rimuove ciò che non è nei file che gli passi:
+Ruff, mypy e coverage stanno nel gruppo `dev` del pyproject, separati perché
+non si importano: si eseguono. `setup.sh` li lascia fuori con `--no-dev`; per
+averli nel venv insieme al resto — è quello che fa anche la CI — basta:
 
 ```bash
-uv pip sync --require-hashes --python .venv/bin/python requirements.txt requirements-dev.txt
-uv pip compile --universal --generate-hashes requirements-dev.in -o requirements-dev.txt
+uv sync --locked
 ```
+
+Il venv contiene anche Ares stesso, installato in editable: i comandi `ares`,
+`ares-backup`, `ares-entities`, `ares-sessions`, `ares-preflight` e
+`ares-inspect` seguono le modifiche ai sorgenti senza reinstallare niente.
 
 ## Flusso consigliato
 
@@ -66,8 +72,8 @@ I comandi mostrano il percorso Linux. Su Windows usa
 ```
 
 I primi tre sono gli stessi comandi del job `Analisi statica` della CI. Le
-regole attive e il motivo delle esclusioni stanno in `ruff.toml` e `mypy.ini`:
-se una regola ti sembra sbagliata per questo progetto, discutila lì invece di
+regole attive e il motivo delle esclusioni stanno in `pyproject.toml`: se una
+regola ti sembra sbagliata per questo progetto, discutila lì invece di
 aggiungere `noqa` sparsi.
 
 Le modifiche al percorso conversazionale o di apprendimento richiedono anche

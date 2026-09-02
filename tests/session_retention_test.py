@@ -18,9 +18,6 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
-RADICE_PROGETTO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RADICE_PROGETTO))
-
 RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-session-retention-test-"))
 os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")

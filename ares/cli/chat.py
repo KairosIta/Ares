@@ -2,10 +2,10 @@
 REPL interattivo
 ================
 Uso:
-    .venv/bin/python -m ares                       sessione predefinita
-    .venv/bin/python -m ares --session progetto-x  sessione separata
-    .venv/bin/python -m ares --debug               mostra le chiamate al modello
-    .venv/bin/python -m ares --metriche            costo di ogni turno
+    .venv/bin/ares                       sessione predefinita
+    .venv/bin/ares --session progetto-x  sessione separata
+    .venv/bin/ares --debug               mostra le chiamate al modello
+    .venv/bin/ares --metriche            costo di ogni turno
 
 Ogni sessione ha il proprio contesto: obiettivo, piano, avanzamento. Il
 profilo e le memorie invece sono per utente, quindi attraversano tutte le
@@ -145,7 +145,7 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
 
 
 def _esegui_chat() -> None:
-    parser = argparse.ArgumentParser(prog="python -m ares", description="Assistente personale locale")
+    parser = argparse.ArgumentParser(prog="ares", description="Assistente personale locale")
     parser.add_argument("--session", default="principale", help="Identificativo della sessione")
     parser.add_argument("--user", default=config.DEFAULT_USER_ID, help="Identificativo dell'utente")
     parser.add_argument("--debug", action="store_true", help="Mostra le chiamate al modello")
