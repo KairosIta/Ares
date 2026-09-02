@@ -5,10 +5,10 @@
 # comunque da qui, cosi' il numero non dipende da come e' stato invocato.
 
 [run]
-# La radice contiene solo i moduli del progetto: elencarli a mano vorrebbe
-# dire aggiornare questo file a ogni modulo nuovo, e dimenticarsene fa salire
-# la percentuale invece di farla scendere.
-source = .
+# Il package intero, non un elenco di moduli: elencarli a mano vorrebbe dire
+# aggiornare questo file a ogni modulo nuovo, e dimenticarsene fa salire la
+# percentuale invece di farla scendere.
+source = ares
 # Ogni prova e' un processo separato - prepara l'ambiente con variabili che
 # `config.py` legge all'import - quindi ognuna scrive il proprio file e
 # `coverage combine` li unisce.

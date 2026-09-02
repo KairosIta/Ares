@@ -1,8 +1,8 @@
 """Aggancia la misura di copertura ai processi figli delle prove.
 
 `coverage` misura il processo che avvia, non i suoi discendenti. Le prove pero'
-lanciano parecchio: la CLI di `entity_maintenance.py` sei volte, il sondaggio
-LanceDB isolato di `backup.py`, la rilettura da un secondo interprete in
+lanciano parecchio: la CLI di `ares.entities` sei volte, il sondaggio
+LanceDB isolato di `ares.backup`, la rilettura da un secondo interprete in
 `e2e_test.py`. Senza questo file quel codice risulta scoperto pur essendo
 provato, e un rapporto che mente in difetto e' peggio di nessun rapporto: manda
 a scrivere prove per righe che ne hanno gia' una.

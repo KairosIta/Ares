@@ -157,9 +157,9 @@ if __name__ == "__main__":
 
     from agno.models.message import Message
 
-    import config
-    from assistant import build_db, build_learning_model, build_session_context_store
-    from preflight import modelli_disponibili, stessa_etichetta
+    from ares import config
+    from ares.agent.assistant import build_db, build_learning_model, build_session_context_store
+    from ares.ops.preflight import modelli_disponibili, stessa_etichetta
 
     MESSAGGI = [
         Message(

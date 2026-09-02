@@ -5,8 +5,8 @@ Uso:
     .venv/bin/python tests/cli_test.py
 
 I moduli di Ares erano provati; i comandi con cui si usano, no. La misura di
-copertura lo diceva senza ambiguita': `preflight.py` e `inspect_learning.py`
-allo 0%, il `main()` di `backup.py` all'1%. Sono le righe che un utente
+copertura lo diceva senza ambiguita': `preflight` e `inspect_learning`
+allo 0%, il `main()` di `backup/snapshots.py` all'1%. Sono le righe che un utente
 attraversa per prime - il preflight e' letteralmente il primo comando che si
 esegue su un clone nuovo - ed erano le uniche mai eseguite da nessuno tranne
 che a mano.
@@ -52,10 +52,9 @@ os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
 os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
 os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
 
-import backup  # noqa: E402
-import config  # noqa: E402
-import inspect_learning  # noqa: E402
-import preflight  # noqa: E402
+from ares import config  # noqa: E402
+from ares.backup import snapshots  # noqa: E402
+from ares.ops import inspect_learning, preflight  # noqa: E402
 
 UTENTE = "prova-cli"
 SESSIONE = "cli"
@@ -155,7 +154,7 @@ import sys
 
 sys.path.insert(0, {radice!r})
 
-from assistant import build_assistant, build_filesystem
+from ares.agent.assistant import build_assistant, build_filesystem
 
 build_assistant(user_id=sys.argv[1], session_id=sys.argv[2])
 build_filesystem(sys.argv[1]).write(sys.argv[3], sys.argv[4])
@@ -271,7 +270,7 @@ def preflight_server_spento() -> str:
 
 
 def backup_cli(_archivio: Path) -> str:
-    """Il `main()` di backup.py, sottocomando per sottocomando.
+    """Il `main()` di `ares.backup`, sottocomando per sottocomando.
 
     Le funzioni sotto sono gia' provate da `backup_test.py`. Qui si prova lo
     strato che le sceglie: l'analisi degli argomenti, le conferme testuali e i
@@ -281,20 +280,20 @@ def backup_cli(_archivio: Path) -> str:
     def comando(*argomenti: str, risposta: str | None = None) -> tuple[int, str]:
         uscita = io.StringIO()
         with ExitStack() as pila:
-            pila.enter_context(patch.object(sys, "argv", ["backup.py", *argomenti]))
+            pila.enter_context(patch.object(sys, "argv", ["ares.backup", *argomenti]))
             pila.enter_context(redirect_stdout(uscita))
             if risposta is not None:
                 # `input` viene sostituito solo dove la conferma serve: nei
                 # comandi che non la chiedono, una risposta pronta
                 # nasconderebbe una richiesta comparsa per errore.
                 pila.enter_context(patch("builtins.input", lambda _prompt="": risposta))
-            esito = backup.main()
+            esito = snapshots.main()
         return esito, uscita.getvalue()
 
     esito, testo = comando("create")
     esigi(esito == 0, "create non riuscito: " + testo)
     esigi("Snapshot creato e verificato" in testo, "create non nomina lo snapshot")
-    primo = backup.elenco_snapshot()[-1].name
+    primo = snapshots.elenco_snapshot()[-1].name
 
     esito, testo = comando("list")
     esigi(esito == 0, "list non riuscito: " + testo)
@@ -331,10 +330,10 @@ def backup_cli(_archivio: Path) -> str:
     esigi(esito == 2, "un prune annullato non e' uscito con 2")
     esigi("Prune annullato" in testo, "il prune annullato non lo dice")
 
-    prima = len(backup.elenco_snapshot())
+    prima = len(snapshots.elenco_snapshot())
     esito, testo = comando("prune", "--keep", "1", "--yes")
     esigi(esito == 0, "prune non riuscito: " + testo)
-    esigi(len(backup.elenco_snapshot()) == 1, "prune non ha conservato esattamente uno snapshot")
+    esigi(len(snapshots.elenco_snapshot()) == 1, "prune non ha conservato esattamente uno snapshot")
     esigi("Eliminati " + str(prima - 1) in testo, "prune non riporta quanti ne ha eliminati")
     return "create, list, verify, restore, prune con annullamenti e codici distinti"
 
@@ -350,7 +349,7 @@ def inspect_learning_cli() -> str:
     prima = file_db.stat().st_mtime_ns, file_db.stat().st_size
 
     uscita = io.StringIO()
-    argv = ["inspect_learning.py", "--user", UTENTE, "--session", SESSIONE]
+    argv = ["ares.ops.inspect_learning", "--user", UTENTE, "--session", SESSIONE]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
     testo = uscita.getvalue()
@@ -364,13 +363,13 @@ def inspect_learning_cli() -> str:
     # Il ramo --file esce prima di costruire l'agente: e' l'unica lettura che
     # non accende nemmeno gli store.
     uscita = io.StringIO()
-    argv = ["inspect_learning.py", "--user", UTENTE, "--file", "non/esiste.md"]
+    argv = ["ares.ops.inspect_learning", "--user", UTENTE, "--file", "non/esiste.md"]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
     esigi("Nessun file a questo percorso" in uscita.getvalue(), "un file assente non viene segnalato")
 
     uscita = io.StringIO()
-    argv = ["inspect_learning.py", "--user", UTENTE, "--file", FILE_AGENTE]
+    argv = ["ares.ops.inspect_learning", "--user", UTENTE, "--file", FILE_AGENTE]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
     esigi(CONTENUTO_FILE in uscita.getvalue(), "il contenuto del file non viene stampato")
@@ -395,7 +394,7 @@ def chat_repl() -> str:
     e la prova resterebbe verde per il motivo sbagliato.
     """
     figlio = subprocess.run(
-        [sys.executable, "chat.py", "--user", UTENTE, "--session", SESSIONE],
+        [sys.executable, "-m", "ares", "--user", UTENTE, "--session", SESSIONE],
         cwd=config.BASE_DIR,
         env=os.environ.copy(),
         input="/aiuto\n\n/entita\n/file\n/sconosciuto comando\n/esci\n",
@@ -433,11 +432,11 @@ def aiuto_senza_effetti() -> str:
     due caratteri, e nessun'altra prova la vedrebbe.
     """
     comandi = (
-        "chat.py",
-        "backup.py",
-        "entity_maintenance.py",
-        "session_maintenance.py",
-        "inspect_learning.py",
+        "ares",
+        "ares.backup",
+        "ares.entities",
+        "ares.sessions",
+        "ares.ops.inspect_learning",
     )
     for comando in comandi:
         pulita = Path(tempfile.mkdtemp(prefix="ares-aiuto-"))
@@ -446,7 +445,7 @@ def aiuto_senza_effetti() -> str:
         ambiente["ARES_TMP"] = str(stato)
         try:
             figlio = subprocess.run(
-                [sys.executable, comando, "--help"],
+                [sys.executable, "-m", comando, "--help"],
                 cwd=config.BASE_DIR,
                 env=ambiente,
                 capture_output=True,
@@ -460,7 +459,7 @@ def aiuto_senza_effetti() -> str:
         finally:
             shutil.rmtree(pulita, ignore_errors=True)
 
-    # `preflight.py` non ha argparse: non ha argomenti da leggere, e non e'
+    # `preflight` non ha argparse: non ha argomenti da leggere, e non e'
     # una mancanza da colmare qui. Su di lui vale la stessa invariante presa
     # dal verso giusto - un'esecuzione intera non deve lasciare l'archivio -
     # e l'esito dipende da cosa gira sulla macchina, quindi non si controlla.
@@ -470,7 +469,7 @@ def aiuto_senza_effetti() -> str:
     ambiente["ARES_TMP"] = str(stato)
     try:
         subprocess.run(
-            [sys.executable, "preflight.py"],
+            [sys.executable, "-m", "ares.ops.preflight"],
             cwd=config.BASE_DIR,
             env=ambiente,
             capture_output=True,
@@ -478,7 +477,7 @@ def aiuto_senza_effetti() -> str:
             timeout=60,
             check=False,
         )
-        esigi(not stato.exists(), "preflight.py ha creato l'archivio in " + str(stato))
+        esigi(not stato.exists(), "preflight ha creato l'archivio in " + str(stato))
     finally:
         shutil.rmtree(pulita, ignore_errors=True)
     return str(len(comandi)) + " aiuti e un preflight intero senza creare l'archivio"

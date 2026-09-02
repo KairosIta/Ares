@@ -86,7 +86,7 @@ contesto quando è lui a conversare, e circa 9 GB quando fa solo l'estrazione
 delle memorie accanto a un modello cloud: in quel caso `LEARNING_NUM_CTX`
 riduce la sua finestra a 32k, perché un'estrazione riceve solo il testo del
 turno. Su hardware diverso è possibile scegliere un modello più piccolo e
-ridurre `NUM_CTX` in [`config.py`](config.py).
+ridurre `NUM_CTX` in [`ares/config.py`](ares/config.py).
 
 I modelli sono artefatti esterni, non inclusi nel repository: consulta la
 [model card di Qwen3.8-9B-Distill](https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF)
@@ -140,14 +140,14 @@ Su Linux:
 
 ```bash
 ./setup.sh
-.venv/bin/python chat.py
+.venv/bin/python -m ares
 ```
 
 Su Windows, da PowerShell:
 
 ```powershell
 .\setup.ps1
-.\.venv\Scripts\python.exe chat.py
+.\.venv\Scripts\python.exe -m ares
 ```
 
 Se la policy di PowerShell impedisce l’avvio dello script locale, usa una
@@ -162,13 +162,13 @@ usato dalla CI, dove Ollama non è disponibile.
 Per aprire una sessione separata:
 
 ```bash
-.venv/bin/python chat.py --session progetto-demo
+.venv/bin/python -m ares --session progetto-demo
 ```
 
 Su Windows il comando equivalente è:
 
 ```powershell
-.\.venv\Scripts\python.exe chat.py --session progetto-demo
+.\.venv\Scripts\python.exe -m ares --session progetto-demo
 ```
 
 Durante la chat `/` apre il menu dei comandi e TAB completa la voce
@@ -207,11 +207,11 @@ La distinzione fra test offline ed E2E è descritta nella
 ### Backup
 
 ```bash
-.venv/bin/python backup.py create
-.venv/bin/python backup.py list
-.venv/bin/python backup.py verify latest
-.venv/bin/python backup.py restore <snapshot>
-.venv/bin/python backup.py prune --keep 20
+.venv/bin/python -m ares.backup create
+.venv/bin/python -m ares.backup list
+.venv/bin/python -m ares.backup verify latest
+.venv/bin/python -m ares.backup restore <snapshot>
+.venv/bin/python -m ares.backup prune --keep 20
 ```
 
 Gli snapshot vivono per default nella directory `ares-backup` accanto al
@@ -228,10 +228,10 @@ cioè esattamente ciò che non si fa mentre qualcuno sta aspettando un prompt.
 ### Entità duplicate
 
 ```bash
-.venv/bin/python entity_maintenance.py audit --all
-.venv/bin/python entity_maintenance.py merge \
+.venv/bin/python -m ares.entities audit --all
+.venv/bin/python -m ares.entities merge \
   --source project/doppione --into project/canonico
-.venv/bin/python entity_maintenance.py merge \
+.venv/bin/python -m ares.entities merge \
   --source project/doppione --into project/canonico --apply
 ```
 
@@ -241,10 +241,10 @@ acquisisce il lock esclusivo, crea un backup e domanda una conferma testuale.
 ### Sessioni e risultati tool
 
 ```bash
-.venv/bin/python session_maintenance.py status
-.venv/bin/python session_maintenance.py prune --older-than 180
-.venv/bin/python session_maintenance.py prune --older-than 180 --apply
-.venv/bin/python session_maintenance.py delete <session-id> --apply
+.venv/bin/python -m ares.sessions status
+.venv/bin/python -m ares.sessions prune --older-than 180
+.venv/bin/python -m ares.sessions prune --older-than 180 --apply
+.venv/bin/python -m ares.sessions delete <session-id> --apply
 ```
 
 I risultati offloaded non hanno un TTL indipendente: vivono quanto la loro

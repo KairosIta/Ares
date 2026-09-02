@@ -133,8 +133,8 @@ def pulisci_dati_copertura() -> None:
 def ambiente_figli() -> dict[str, str]:
     """Variabili che estendono la misura ai processi avviati dalle prove.
 
-    Le prove non sono foglie: la CLI di `entity_maintenance.py` viene lanciata
-    sei volte come sottoprocesso, `backup_probe.py` sonda LanceDB in un interprete
+    Le prove non sono foglie: la CLI di `ares.entities` viene lanciata
+    sei volte come sottoprocesso, `backup/probe.py` sonda LanceDB in un interprete
     isolato, `e2e_test.py` rilegge l'archivio da un processo nuovo. Quel codice
     e' provato, e senza queste due variabili risulta scoperto: un rapporto che
     sbaglia in difetto manda a scrivere prove dove ce ne sono gia'.

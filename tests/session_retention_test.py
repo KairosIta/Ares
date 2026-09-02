@@ -32,11 +32,11 @@ from agno.models.message import MessageMetrics  # noqa: E402
 from agno.models.response import ModelResponse  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-import config  # noqa: E402
-from assistant import build_assistant, build_db  # noqa: E402
-from backup import elenco_snapshot, verifica_snapshot  # noqa: E402
-from session_retention import apri_archivio  # noqa: E402
-from state_lock import lock_stato  # noqa: E402
+from ares import config  # noqa: E402
+from ares.agent.assistant import build_assistant, build_db  # noqa: E402
+from ares.backup.snapshots import elenco_snapshot, verifica_snapshot  # noqa: E402
+from ares.sessions.retention import apri_archivio  # noqa: E402
+from ares.state.lock import lock_stato  # noqa: E402
 
 UTENTE = "prova-retention"
 ALTRO_UTENTE = "prova-retention-altro"
@@ -137,7 +137,7 @@ def imposta_ultimo_uso(db, session_id: str, timestamp: int) -> None:
 
 def esegui_cli(*argomenti: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "session_maintenance.py", *argomenti],
+        [sys.executable, "-m", "ares.sessions", *argomenti],
         cwd=config.BASE_DIR,
         env=os.environ.copy(),
         capture_output=True,
@@ -309,7 +309,7 @@ def main() -> int:
         del principale, altrui, store, fs_vecchio
         gc.collect()
         ripristino = subprocess.run(
-            [sys.executable, "backup.py", "restore", snapshot[0].name, "--yes", "--skip-safety"],
+            [sys.executable, "-m", "ares.backup", "restore", snapshot[0].name, "--yes", "--skip-safety"],
             cwd=config.BASE_DIR,
             env=os.environ.copy(),
             capture_output=True,

@@ -57,8 +57,8 @@ os.environ["ARES_TMP"] = ARCHIVIO_PROVA
 SPAZIO_PROVA = tempfile.mkdtemp(prefix="ares-prova-lavoro-")
 os.environ["ARES_WORKSPACE"] = SPAZIO_PROVA
 
-import config  # noqa: E402
-from preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
+from ares import config  # noqa: E402
+from ares.ops.preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
 
 UTENTE = "prova-e2e"
 SESSIONE = "prova-e2e"
@@ -83,8 +83,8 @@ def esigi(condizione: object, messaggio: str) -> None:
 # con gli stessi percorsi e nessun oggetto ereditato.
 RILETTURA = """
 import sys
-from assistant import build_assistant
-from stores import leggi_entita
+from ares.agent.assistant import build_assistant
+from ares.state.stores import leggi_entita
 
 utente, sessione = sys.argv[1], sys.argv[2]
 lm = build_assistant(user_id=utente, session_id=sessione).learning_machine
@@ -216,7 +216,7 @@ def main() -> int:
         )
         ok("modello presente    ", config.MAIN_MODEL + " su " + config.OLLAMA_HOST)
 
-        from assistant import build_assistant
+        from ares.agent.assistant import build_assistant
 
         costruzione = time.monotonic()
         agent = build_assistant(user_id=UTENTE, session_id=SESSIONE)

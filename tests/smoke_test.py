@@ -93,10 +93,8 @@ from prompt_toolkit.output import DummyOutput  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.text import Text  # noqa: E402
 
-import chat_render  # noqa: E402
-import config  # noqa: E402
-import platform_files  # noqa: E402
-from assistant import (  # noqa: E402
+from ares import config  # noqa: E402
+from ares.agent.assistant import (  # noqa: E402
     AresLearningMachine,
     AresSessionContextStore,
     apprendi_a_run_completato,
@@ -105,7 +103,15 @@ from assistant import (  # noqa: E402
     build_filesystem,
     build_workspace,
 )
-from chat import (  # noqa: E402
+from ares.agent.schemas import AresProfile  # noqa: E402
+from ares.agent.turn_core import (  # noqa: E402
+    TurnEngine,
+    TurnEventKind,
+    normalize_events,
+    run_turn_cycle,
+)
+from ares.cli import render  # noqa: E402
+from ares.cli.chat import (  # noqa: E402
     AGNO_LOGGER_NAMES,
     COMANDI,
     chiedi_conferme,
@@ -120,15 +126,15 @@ from chat import (  # noqa: E402
     risolvi_comando,
     stampa_aiuto,
 )
-from cli_input import (  # noqa: E402
+from ares.cli.editor import (  # noqa: E402
     CRONOLOGIA_INTESTAZIONE,
     CliInput,
     CompletamentoComandi,
     CronologiaSicura,
 )
-from cli_ui import CliRenderer, RichRunStream  # noqa: E402
-from schemas import AresProfile  # noqa: E402
-from stores import (  # noqa: E402
+from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
+from ares.state import platform_files  # noqa: E402
+from ares.state.stores import (  # noqa: E402
     leggi_entita,
     leggi_intuizioni,
     leggi_sessioni,
@@ -137,12 +143,6 @@ from stores import (  # noqa: E402
     righe_entita,
     righe_sessione,
     stampa_store,
-)
-from turn_core import (  # noqa: E402
-    TurnEngine,
-    TurnEventKind,
-    normalize_events,
-    run_turn_cycle,
 )
 
 # Utente che non esiste in nessun archivio: serve solo a controllare che i
@@ -357,7 +357,7 @@ def retry_contesto(lm) -> str:
     """Un fallimento senza tool ritenta una volta, un successo mai."""
     import asyncio
 
-    import assistant_learning as modulo_apprendimento
+    from ares.agent import learning as modulo_apprendimento
 
     class StoreFinto(AresSessionContextStore):
         def __init__(self, esiti):
@@ -523,7 +523,7 @@ def ruoli_locali() -> str:
     repository che contiene "cloud" non basta. E un modello cloud dato a
     estrazione o embedding deve fermare la costruzione, non un turno.
     """
-    import assistant_runtime
+    from ares.agent import runtime
 
     for nome in ("glm-5.3-flash:cloud", "gpt-oss:120b-cloud"):
         esigi(config.e_modello_cloud(nome), nome + " non e' riconosciuto come cloud")
@@ -531,8 +531,8 @@ def ruoli_locali() -> str:
         esigi(not config.e_modello_cloud(nome), nome + " e' scambiato per cloud")
 
     for attributo, costruttore in (
-        ("LEARNING_MODEL", assistant_runtime.build_learning_model),
-        ("EMBEDDER_MODEL", assistant_runtime.build_knowledge),
+        ("LEARNING_MODEL", runtime.build_learning_model),
+        ("EMBEDDER_MODEL", runtime.build_knowledge),
     ):
         with patch.object(config, attributo, "glm-5.3-flash:cloud"):
             try:
@@ -1389,7 +1389,7 @@ def import_senza_effetti() -> str:
     """Importare `config` non tocca il disco.
 
     Prima il modulo creava la directory dello stato nel proprio corpo, e
-    leggere una costante produceva un effetto: `preflight.py` importava
+    leggere una costante produceva un effetto: `preflight` importava
     `config` per tre nomi di modello e si lasciava dietro un archivio, e ogni
     prova ha dovuto imparare a scrivere `ARES_TMP` prima dell'import, con un
     commento che spiega perche'. La creazione ora e' esplicita, e questa prova
@@ -1403,7 +1403,7 @@ def import_senza_effetti() -> str:
     ambiente = os.environ.copy()
     ambiente["ARES_TMP"] = str(prova / "stato")
     codice = (
-        "import os, config;"
+        "import os; from ares import config;"
         "print('dopo-import', os.path.exists(config.TMP_DIR));"
         "config.prepara_archivio();"
         "print('dopo-prepara', os.path.exists(config.TMP_DIR))"
@@ -1521,8 +1521,8 @@ def conferme_applicate() -> str:
             self.righe_vuote += 1
 
     ui = UiFinta()
-    ui_originale = chat_render.UI
-    chat_render.UI = ui
+    ui_originale = render.UI
+    render.UI = ui
     try:
         ignorato = RequisitoFinto("interno", da_confermare=False)
         accettato = RequisitoFinto(config.WORKSPACE_PREFIX + "delete_file")
@@ -1552,7 +1552,7 @@ def conferme_applicate() -> str:
         esigi(ui.righe_vuote == 2, "Ctrl-C/EOF non chiudono pulitamente le due richieste")
         esigi(chiedi_conferme(RispostaFinta([]), InputFinto()) == 0, "una pausa ignota risulta risolta")
     finally:
-        chat_render.UI = ui_originale
+        render.UI = ui_originale
 
     return "sì, no con motivo, Ctrl-C/EOF e pausa ignota risolvono i requirement attesi"
 
