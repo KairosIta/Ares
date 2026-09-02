@@ -25,7 +25,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     # Il framework dell'agente. Pinnato alla versione su cui e' stato scritto e
     # verificato tutto: le API di agno.learn sono giovani e cambiano tra minor.
-    "agno==3.0.1",
+    "agno==3.0.2",
     # Client del server Ollama su localhost:11434. Serve sia al modello
     # conversazionale sia a OllamaEmbedder.
     "ollama",
