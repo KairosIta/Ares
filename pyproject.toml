@@ -39,7 +39,7 @@ dependencies = [
     # precauzione generica: le API di agno.learn sono giovani e cambiano tra
     # minor, quindi 3.1 va provata prima di essere adottata. Le patch della
     # 3.0 entrano invece dal lock, dove si vedono e si provano una per una.
-    "agno>=3.0.2,<3.1",
+    "agno>=3.0.4,<3.1",
     # Client del server Ollama su localhost:11434. Serve sia al modello
     # conversazionale sia a OllamaEmbedder.
     "ollama",
