@@ -85,12 +85,19 @@ Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
 .venv/bin/python tests/run.py
 ```
 
-Sono cinque. `smoke` controlla assemblaggio dell'agente, isolamento degli
+Sono sei. `smoke` controlla assemblaggio dell'agente, isolamento degli
 store, lock e propagazione simulata del run completo alla macchina di
 apprendimento, e usa un terminale simulato per verificare streaming Rich,
 completamento, multilinea, Ctrl-C/D e cronologia senza interazione umana.
 `sessioni` attraversa un vero `Agent.run()` con modello deterministico e
 verifica offload, quota, retention, cascata e restore dei due SQLite.
+`contratto` chiede ad Agno le due cose che Ares dà per vere del framework:
+che un turno con pausa per conferma produca una sola estrazione, quella del
+post-hook sul run completo, e che `run → pausa → continue_run` riprenda lo
+stesso run, eseguendo lo strumento dopo la conferma e non prima, e
+conservando il file dopo un rifiuto. Il modello è lo stesso copione
+deterministico, e gli store di apprendimento sono spenti: si conta il
+passaggio, non ciò che scriverebbe.
 `backup` copre snapshot, checksum, restore e prune; `entita` l'audit e la
 fusione. `cli` prova i comandi con cui Ares si usa davvero: il preflight
 contro un server Ollama finto nei tre esiti, l'ispezione degli archivi, i
@@ -118,7 +125,7 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse cinque prove sia su Ubuntu sia su Windows. Sul
+La CI esegue le stesse sei prove sia su Ubuntu sia su Windows. Sul
 runner Windows l'ambiente nasce direttamente da `setup.ps1 -SkipPreflight`,
 così la CI verifica anche il percorso d'installazione senza richiedere
 Ollama.

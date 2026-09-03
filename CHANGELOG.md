@@ -49,7 +49,22 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   turno, la riga delle metriche, gli avvisi d'avvio - cronologia degradata,
   modello cloud, promemoria di backup - e i due modi di uscire dal prompt.
   `ares/cli/chat.py` passa dal 61% al 100% di righe e rami, il totale
-  dall'86% all'88%.
+  dall'86% all'88%;
+- due prove di contratto con Agno, offline, in `tests/agno_contract_test.py`
+  (`contratto` nel runner). Ares da' per vere due cose del framework che
+  nessuna prova gli chiedeva: che l'estrazione avvenga una volta per turno,
+  sul run completo - Agno avvia `LearningMachine.process` prima della
+  chiamata al modello, Ares la azzera e la rifa' nel post-hook, che Agno
+  esegue solo a run non in pausa - e che `run → pausa → continue_run` di
+  `turn_core` combaci con la firma e il comportamento di Agno. La prima
+  conta le estrazioni vere su un turno con pausa per conferma e verifica
+  che l'unica riceva il run finale, esito dello strumento e risposta
+  compresi, mentre il run in pausa non lo conteneva. La seconda attraversa
+  il ciclo vero con `workspace_delete_file`: il file sparisce dopo la
+  conferma e non prima, resta dopo un rifiuto con il motivo consegnato al
+  modello, e in entrambi i casi il run riprende con lo stesso `run_id` e
+  finisce. `smoke` provava il post-hook con un run costruito a mano e
+  `chat turno` il ciclo con un `run_turn_cycle` finto: mancava Agno.
 
 ### Fixed
 

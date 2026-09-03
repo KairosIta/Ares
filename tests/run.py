@@ -44,6 +44,7 @@ RADICE = Path(__file__).resolve().parent.parent
 PROVE = (
     ("smoke", "smoke_test.py", False, "assemblaggio, store, lock, REPL simulata"),
     ("sessioni", "session_retention_test.py", False, "offload, retention, cascata e restore"),
+    ("contratto", "agno_contract_test.py", False, "una estrazione per turno e il ciclo di conferma con Agno"),
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
     ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),
