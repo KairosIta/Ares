@@ -22,6 +22,15 @@ percorsi della prima — e il giorno in cui una sbagliasse variabile
 scriverebbe nell'archivio vero senza che nessuno se ne accorga. Un processo
 per prova rende quell'errore impossibile invece che improbabile.
 
+Quel gesto, e le poche righe che ogni prova ripeteva uguali, stanno in
+`tests/_comune.py`: `prepara_ambiente` sceglie i percorsi usa-e-getta e
+rifiuta di farlo se `config` è già in memoria; `esigi` è l'asserzione che
+`python -O` non toglie; `esegui` e `fallimento` stampano una riga per
+controllo e, quando un controllo fallisce, la riga da cui viene — con il
+traceback intero se non è un'asserzione ma un guasto che la prova non
+prevedeva. Il modulo non importa niente di `ares`, ed è l'unica garanzia
+che i percorsi vengano decisi prima che `config` li legga.
+
 Le prove restano eseguibili una per una, come prima. L'elenco però vive in un
 posto solo, la tabella `PROVE` in `tests/run.py`: la CI chiama il runner,
 quindi una prova nuova entra in CI registrandola lì e non ricordandosi di
@@ -85,10 +94,15 @@ Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
 .venv/bin/python tests/run.py
 ```
 
-Sono sei. `smoke` controlla assemblaggio dell'agente, isolamento degli
-store, lock e propagazione simulata del run completo alla macchina di
-apprendimento, e usa un terminale simulato per verificare streaming Rich,
-completamento, multilinea, Ctrl-C/D e cronologia senza interazione umana.
+Sono sette. `smoke` costruisce l'agente e semina gli store, e controlla
+assemblaggio, isolamento, lock, propagazione simulata del run completo alla
+macchina di apprendimento e l'eco di ciò che entra in memoria. `repl` prova
+ciò che della chat gira senza l'agente: conferme lette e applicate, esito e
+metriche degli strumenti, rendering Rich su pipe e su un terminale simulato
+con i controlli filtrati, core del turno con eventi fabbricati, log di Agno,
+cronologia privata, editor con completamento e multilinea, Ctrl-C/D e
+comandi locali. Stava nello smoke, che era diventato il posto dove finiva
+ogni prova offline; la divisione segue ciò che serve per girare.
 `sessioni` attraversa un vero `Agent.run()` con modello deterministico e
 verifica offload, quota, retention, cascata e restore dei due SQLite.
 `contratto` chiede ad Agno le due cose che Ares dà per vere del framework:
@@ -125,7 +139,7 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse sei prove sia su Ubuntu sia su Windows. Sul
+La CI esegue le stesse sette prove sia su Ubuntu sia su Windows. Sul
 runner Windows l'ambiente nasce direttamente da `setup.ps1 -SkipPreflight`,
 così la CI verifica anche il percorso d'installazione senza richiedere
 Ollama.

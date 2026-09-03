@@ -41,10 +41,9 @@ from unittest.mock import patch
 # I percorsi vanno scelti prima di importare config, che crea TMP_DIR
 # all'import: importarlo e correggere dopo lascerebbe comunque una tmp/ vuota
 # accanto ai dati veri.
-RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-cli-test-"))
-os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
-os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
-os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
+from _comune import esigi, fallimento, ok, prepara_ambiente
+
+RADICE_PROVA = prepara_ambiente("cli-test")
 
 from ares import config  # noqa: E402
 from ares.agent.echo import Fotografia  # noqa: E402
@@ -68,15 +67,6 @@ CONTENUTO_FILE = "riga di prova"
 # proposito, cosi' un tentativo di embedding si vede subito invece di
 # funzionare.
 config.OLLAMA_HOST = "http://127.0.0.1:1"
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    if not condizione:
-        raise AssertionError(messaggio)
-
-
-def ok(nome: str, nota: str) -> None:
-    print("ok      ", nome.ljust(20), "-", nota)
 
 
 # ---------------------------------------------------------------------------
@@ -876,7 +866,7 @@ def main() -> int:
         ok("aiuto puro", aiuto_senza_effetti())
     except Exception as errore:
         print()
-        print("FALLITO ", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
 

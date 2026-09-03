@@ -31,20 +31,17 @@ sugli store, ma e' il passaggio che si conta, non cio' che scriverebbe.
 """
 
 import json
-import os
 import shutil
-import tempfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from _comune import esigi, fallimento, ok, prepara_ambiente
+
 # I percorsi vanno scelti prima di importare config, che li legge una volta
 # sola all'import.
-RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-agno-contract-test-"))
-os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
-os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
-os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
+RADICE_PROVA = prepara_ambiente("agno-contract-test")
 
 from agno.learn import LearningMachine  # noqa: E402
 from agno.models.base import Model  # noqa: E402
@@ -58,15 +55,6 @@ from ares.agent.turn_core import TurnEventKind, run_turn_cycle  # noqa: E402
 UTENTE = "prova-contratto"
 SESSIONE = "contratto"
 NOME_FILE = "da-cancellare.txt"
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    if not condizione:
-        raise AssertionError(messaggio)
-
-
-def ok(nome: str, nota: str) -> None:
-    print("ok      ", nome.ljust(22), "-", nota)
 
 
 def tool_call(nome: str, **argomenti: Any) -> dict[str, Any]:
@@ -325,7 +313,7 @@ def main() -> int:
         riuscita = True
         return 0
     except Exception as errore:
-        print("FALLITO ", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         return 1
     finally:
         if riuscita:

@@ -42,7 +42,8 @@ RADICE = Path(__file__).resolve().parent.parent
 # conviene leggere un fallimento: se il cablaggio e' rotto, il resto e'
 # rumore.
 PROVE = (
-    ("smoke", "smoke_test.py", False, "assemblaggio, store, lock, REPL simulata"),
+    ("smoke", "smoke_test.py", False, "assemblaggio, store, lock e apprendimento simulato"),
+    ("repl", "repl_test.py", False, "conferme, rendering, editor e comandi, senza l'agente"),
     ("sessioni", "session_retention_test.py", False, "offload, retention, cascata e restore"),
     ("contratto", "agno_contract_test.py", False, "una estrazione per turno e il ciclo di conferma con Agno"),
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),

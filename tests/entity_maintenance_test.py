@@ -5,13 +5,11 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from dataclasses import replace
-from pathlib import Path
 
-RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-entity-maintenance-test-"))
-os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
-os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
+from _comune import esigi, fallimento, prepara_ambiente
+
+RADICE_PROVA = prepara_ambiente("entity-maintenance-test")
 
 from agno.db.sqlite import SqliteDb  # noqa: E402
 from agno.learn.schemas import EntityMemory  # noqa: E402
@@ -31,11 +29,6 @@ from ares.state.stores import namespace_entita  # noqa: E402
 
 UTENTE = "audit"
 NAMESPACE = namespace_entita(UTENTE)
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    if not condizione:
-        raise AssertionError(messaggio)
 
 
 def salva(db: SqliteDb, entita: EntityMemory) -> None:
@@ -530,7 +523,7 @@ def main() -> int:
         print("ok       backup pre-merge     - snapshot valido con la sorgente originale")
         return 0
     except Exception as errore:
-        print("FALLITO -", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         return 1
     finally:
         shutil.rmtree(RADICE_PROVA, ignore_errors=True)

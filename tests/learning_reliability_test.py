@@ -12,13 +12,12 @@ successi immediati, retry recuperati e fallimenti. Tutto lo stato e' temporaneo.
 """
 
 import argparse
-import os
 import shutil
 import sys
-import tempfile
 import time
 import urllib.error
-from pathlib import Path
+
+from _comune import fallimento, prepara_ambiente
 
 
 def costruisci_parser() -> argparse.ArgumentParser:
@@ -121,7 +120,7 @@ def main(args) -> int:
             )
             print()
     except Exception as errore:
-        print("FALLITO", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
 
@@ -146,8 +145,7 @@ if __name__ == "__main__":
 
     # Le opzioni vengono elaborate prima di creare lo stato: anche --help e
     # un parametro non valido escono senza lasciare directory in /tmp.
-    RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-learning-reliability-"))
-    os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
+    RADICE_PROVA = prepara_ambiente("learning-reliability", workspace=False, backup=False)
 
     from agno.models.message import Message
 

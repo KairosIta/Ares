@@ -14,7 +14,6 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable
 from contextlib import closing, nullcontext, redirect_stdout
@@ -23,10 +22,9 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-backup-test-"))
-os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
-os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
-os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
+from _comune import esigi, fallimento, ok, prepara_ambiente
+
+RADICE_PROVA = prepara_ambiente("backup-test")
 
 from ares import config  # noqa: E402
 from ares.backup import files, integrity, restore, snapshots  # noqa: E402
@@ -69,15 +67,6 @@ elif azione == "count":
 else:
     raise ValueError("operazione LanceDB sconosciuta: " + azione)
 """
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    if not condizione:
-        raise AssertionError(messaggio)
-
-
-def ok(nome: str, nota: str) -> None:
-    print("ok      ", nome.ljust(24), "-", nota)
 
 
 def crea_sqlite(percorso: Path, valore: str) -> None:
@@ -804,7 +793,7 @@ def main() -> int:
         ok("residui restore", "tace senza residui, li nomina senza toccarli, list li dice prima del catalogo")
 
     except Exception as errore:
-        print("FALLITO ", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         print("Dati della prova conservati:", RADICE_PROVA)
         return 1
 

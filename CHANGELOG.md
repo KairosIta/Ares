@@ -21,7 +21,22 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   Resta un solo vincolo stretto, `agno>=3.0.2,<3.1`, con accanto
   l'incompatibilita' nota che lo motiva. Nessuna versione risolta si e' mossa:
   il diff di `uv.lock` tocca i soli metadati. `CONTRIBUTING.md` dice cosa
-  scrivere quando si aggiunge una dipendenza.
+  scrivere quando si aggiunge una dipendenza.;
+- le prove condividono `tests/_comune.py`: `prepara_ambiente`, che sceglie i
+  percorsi usa-e-getta e rifiuta di farlo se `config` e' gia' importato,
+  `esigi`, `ok`, `esegui` e `fallimento`. Erano otto copie che divergevano un
+  poco per volta; il modulo non importa niente di `ares`, ed e' la sola
+  garanzia che i percorsi vengano decisi prima che `config` li legga. Un
+  fallimento mostra ora la riga da cui viene, e un'eccezione che non e'
+  un'asserzione porta il traceback: `KeyError: 'id'` senza la riga che l'ha
+  sollevato era un fallimento da riprodurre a mano invece che da leggere;
+- `tests/smoke_test.py` si divide: cio' che della REPL si prova senza
+  costruire l'agente - conferme, rendering Rich e TTY, indicatore di
+  attivita', core del turno, log, cronologia, editor, comandi - sta in
+  `tests/repl_test.py` (`repl` nel runner). Lo smoke era diventato il posto
+  dove finiva ogni prova offline, duemilacinquecento righe in cui
+  l'assemblaggio dell'agente e il comportamento di un widget stavano nello
+  stesso elenco; la divisione segue cio' che serve per girare..
 
 ### Added
 
