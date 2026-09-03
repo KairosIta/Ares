@@ -30,7 +30,7 @@ from ares import config
 from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, variazioni
 from ares.agent.turn_core import run_turn_cycle
-from ares.backup.snapshots import promemoria_backup
+from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli.commands import COMANDI, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
 from ares.cli.editor import CliInput
 from ares.cli.render import (
@@ -220,6 +220,15 @@ def _esegui_chat() -> None:
         UI.blank()
         UI.line(promemoria[0], style="ares.warning")
         for riga in promemoria[1:]:
+            UI.line(riga, style="ares.muted")
+    # Un restore interrotto lascia lo stato di prima accanto a uno stato
+    # ricreato vuoto: Ares risponderebbe come al primo giorno, e senza questo
+    # avviso l'utente lo scoprirebbe da una risposta che non ricorda niente.
+    residui = avviso_residui_restore()
+    if residui:
+        UI.blank()
+        UI.line(residui[0], style="ares.error")
+        for riga in residui[1:]:
             UI.line(riga, style="ares.muted")
     UI.blank()
 

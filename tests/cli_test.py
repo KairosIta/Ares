@@ -32,7 +32,7 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import ExitStack, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -52,6 +52,7 @@ from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
 from ares.cli import chat  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
+from ares.sessions import maintenance  # noqa: E402
 from ares.state.lock import StatoOccupato  # noqa: E402
 
 UTENTE = "prova-cli"
@@ -661,6 +662,97 @@ def chat_ciclo() -> str:
     return "riga vuota, turno, metriche, avvisi d'avvio e le due uscite dal prompt"
 
 
+def chat_residui() -> str:
+    """Un restore rimasto a meta' viene detto all'avvio, e solo allora.
+
+    Il residuo e' una directory vera accanto allo stato, con il nome che il
+    restore usa: e' la funzione di lettura a trovarlo, non una finta. Si
+    prova prima con il residuo e poi senza, perche' un avviso che compare
+    sempre e' quello che smette di essere letto.
+    """
+    stato = config.TMP_DIR.resolve()
+    residuo = stato.with_name("." + stato.name + "-precedente-deadbeef")
+
+    def avvia() -> str:
+        uscita = io.StringIO()
+        with (
+            patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE]),
+            patch.object(chat, "build_assistant", lambda **k: object()),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([])),
+            patch.object(chat, "promemoria_backup", list),
+            redirect_stdout(uscita),
+        ):
+            chat._esegui_chat()
+        return _piatto(uscita.getvalue())
+
+    residuo.mkdir()
+    try:
+        testo = avvia()
+    finally:
+        shutil.rmtree(residuo, ignore_errors=True)
+    esigi("restore non e' stato completato" in testo, "il residuo del restore non viene detto: " + testo)
+    # Il percorso e' una parola sola piu' larga delle 80 colonne della console
+    # di prova su Windows, e Rich la spezza dove capita: si confronta senza
+    # spazi, perche' l'a-capo non e' cio' che si prova.
+    esigi(residuo.name in "".join(testo.split()), "l'avviso non nomina il residuo: " + testo)
+    esigi("Ares non tocca" in testo, "l'avviso non dice che il residuo resta all'utente")
+    esigi("restore non e' stato completato" not in avvia(), "l'avviso compare senza residui")
+    return "con il residuo l'avviso nomina la directory, senza residui tace"
+
+
+def sessioni_parziale() -> str:
+    """`ares-sessions` con un guasto a meta': il rendiconto dice cosa e' rimasto.
+
+    La cancellazione non e' atomica - Agno elimina sessioni e run in una
+    transazione, ma payload, contesti e verifiche vengono dopo, un passo
+    alla volta - e un guasto li' non e' un rifiuto: qualcosa e' gia' sparito.
+    Due guasti iniettati, uno prima della cancellazione e uno dopo, perche'
+    il conteggio deve venire dall'archivio e non da dove ci si e' fermati:
+    nel primo caso le sessioni ci sono ancora tutte, nel secondo nessuna.
+    """
+    from agno.session.agent import AgentSession
+
+    db = maintenance.build_db()
+    antico = int(time.time()) - 100 * 86_400
+    sessioni = ["cli-inattiva-a", "cli-inattiva-b"]
+    for session_id in sessioni:
+        db.upsert_session(AgentSession(session_id=session_id, user_id=UTENTE, created_at=antico, updated_at=antico))
+
+    def prune(*patches) -> tuple[int, str, str]:
+        uscita, errori = io.StringIO(), io.StringIO()
+        with ExitStack() as pila:
+            for p in patches:
+                pila.enter_context(p)
+            pila.enter_context(redirect_stdout(uscita))
+            pila.enter_context(redirect_stderr(errori))
+            esito = maintenance.main(["prune", "--user", UTENTE, "--older-than", "30", "--apply", "--yes"])
+        return esito, _piatto(uscita.getvalue()), _piatto(errori.getvalue())
+
+    guasto = patch("agno.db.sqlite.SqliteDb.delete_sessions", side_effect=RuntimeError("disco pieno"))
+    esito, testo, errori = prune(guasto)
+    esigi(esito == 1, "un guasto a meta' non esce con 1: " + str(esito) + " " + errori)
+    esigi("Backup verificato" in testo, "lo snapshot pre-manutenzione non e' stato fatto prima del guasto")
+    esigi("Cancellazione interrotta: disco pieno" in errori, "la causa del guasto non compare: " + errori)
+    esigi("Stato parziale: eliminate 0 sessioni su 2, ancora presenti 2." in errori, "conteggio sbagliato: " + errori)
+    esigi("Ancora presenti: cli-inattiva-a, cli-inattiva-b" in errori, "le sessioni rimaste non sono nominate")
+    esigi("Eliminate senza verifica" not in errori, "dichiarate eliminate sessioni che ci sono ancora")
+    esigi("pre-session-prune" in errori and "ares-backup restore" in errori, "lo snapshot da cui tornare non compare")
+    esigi("Manutenzione rifiutata" not in errori, "un guasto a meta' presentato come rifiuto")
+
+    guasto = patch("ares.sessions.retention._contesto_sessione_presente", return_value=True)
+    esito, testo, errori = prune(guasto)
+    esigi(esito == 1, "un guasto nella verifica non esce con 1: " + str(esito) + " " + errori)
+    esigi("contesto di sessione non eliminato" in errori, "la causa del guasto non compare: " + errori)
+    esigi("Stato parziale: eliminate 2 sessioni su 2, ancora presenti 0." in errori, "conteggio sbagliato: " + errori)
+    esigi("Eliminate senza verifica: cli-inattiva-a, cli-inattiva-b" in errori, "le eliminate non sono nominate")
+    esigi("orfani" in errori, "non viene detto che possono restare contesti o payload orfani")
+    esigi("Ancora presenti:" not in errori, "dichiarate presenti sessioni che non ci sono piu'")
+    for session_id in sessioni:
+        rimasta = db.get_session(session_id=session_id, user_id=UTENTE)
+        esigi(rimasta is None, "sessione ancora nell'archivio: " + session_id)
+    return "guasto prima e dopo la cancellazione: conteggio letto dall'archivio e snapshot da cui tornare"
+
+
 def chat_avvio() -> str:
     """`main()`: il lock condiviso, l'archivio occupato e il Ctrl-C all'avvio.
 
@@ -777,6 +869,10 @@ def main() -> int:
         ok("chat turno", chat_turno())
         ok("chat ciclo", chat_ciclo())
         ok("chat avvio", chat_avvio())
+        ok("chat residui", chat_residui())
+        # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
+        # apre i database in questo processo.
+        ok("sessioni parziale", sessioni_parziale())
         ok("aiuto puro", aiuto_senza_effetti())
     except Exception as errore:
         print()

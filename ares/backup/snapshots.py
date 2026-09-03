@@ -356,6 +356,95 @@ def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
         return []
 
 
+def residui_restore() -> list[Path]:
+    """Le directory che un restore interrotto puo' lasciare accanto allo stato.
+
+    Su POSIX il restore e' due rinomine: lo stato corrente diventa
+    `.tmp-precedente-<hex>` e la preparazione `.tmp-restore-<hex>` prende il
+    suo posto. Un processo ucciso fra le due lascia il residuo e nessuna
+    `tmp/`: al riavvio Ares ricrea uno stato vuoto e, senza questa lettura,
+    riparte da zero senza dirlo. Un residuo resta anche dopo un restore
+    riuscito, quando la copia precedente non si lascia rimuovere, e su
+    Windows quando il rollback per copia fallisce a sua volta.
+
+    Il residuo `-precedente-` e' lo stato che c'era prima del restore, e se
+    il restore e' partito con `--skip-safety` ne e' l'unica copia; quello
+    `-restore-` e' una preparazione che non e' mai stata installata. Nessuno
+    dei due viene rimosso da qui: e' una decisione che spetta a chi puo'
+    guardarci dentro.
+
+    Legge soltanto e non solleva, per la ragione di `promemoria_backup`: e'
+    sul percorso di avvio della chat.
+    """
+    try:
+        stato = config.TMP_DIR.resolve()
+        radice = stato.parent
+        if not radice.is_dir():
+            return []
+        prefissi = ("." + stato.name + "-precedente-", "." + stato.name + "-restore-")
+        return sorted(
+            voce
+            for voce in radice.iterdir()
+            if voce.is_dir() and not voce.is_symlink() and voce.name.startswith(prefissi)
+        )
+    except OSError:
+        return []
+
+
+def _ultimo_snapshot_di_tipo(tipo: str) -> Path | None:
+    """Lo snapshot piu' recente di un tipo, senza creare ne' verificare niente."""
+    root = config.BACKUP_DIR
+    if not root.is_dir():
+        return None
+    for percorso in reversed(_snapshot_dentro(root)):
+        try:
+            manifest = json.loads((percorso / MANIFEST).read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if isinstance(manifest, dict) and manifest.get("type") == tipo:
+            return percorso
+    return None
+
+
+def avviso_residui_restore() -> list[str]:
+    """Le righe con cui dire che un restore e' rimasto a meta', o nessuna.
+
+    La prima riga dice cosa e' successo, le altre dove sta il residuo e da
+    dove si torna indietro. Lo snapshot pre-restore, se c'e', e' il rimedio
+    che non richiede di capire il residuo: si nomina per intero, con il
+    comando, perche' chi legge questo avviso ha appena scoperto che il suo
+    archivio potrebbe essere vuoto e non ha voglia di cercare.
+    """
+    residui = residui_restore()
+    if not residui:
+        return []
+    try:
+        stato = config.TMP_DIR.resolve()
+        precedenti = [r for r in residui if r.name.startswith("." + stato.name + "-precedente-")]
+        sicurezza = _ultimo_snapshot_di_tipo("pre-restore") if precedenti else None
+    except OSError:
+        precedenti, sicurezza = residui, None
+    comando = r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup"
+    righe = ["Un restore non e' stato completato: accanto allo stato sono rimasti dei residui."]
+    for residuo in residui:
+        if residuo in precedenti:
+            righe.append("    " + str(residuo) + "  (lo stato che c'era prima del restore)")
+        else:
+            righe.append("    " + str(residuo) + "  (preparazione mai installata: lo stato non e' stato toccato)")
+    if precedenti:
+        if sicurezza is not None:
+            righe.append(
+                "Se lo stato attuale e' incompleto, ripristina lo snapshot di sicurezza: "
+                + comando
+                + " restore "
+                + sicurezza.name
+            )
+        else:
+            righe.append("Nessuno snapshot pre-restore: quel residuo e' l'unica copia dello stato precedente.")
+    righe.append("Ares non tocca i residui: controlla cosa contengono, poi eliminali o rimettili a posto a mano.")
+    return righe
+
+
 def risolvi_snapshot(nome: str) -> Path:
     disponibili = elenco_snapshot()
     if nome == "latest":
@@ -409,6 +498,7 @@ def pota_snapshot(da_tenere: int, acquisisci_lock: bool = True) -> list[Path]:
 def main() -> int:
     return cli.main(
         cli.OperazioniBackup(
+            avviso_residui=avviso_residui_restore,
             crea_snapshot=crea_snapshot,
             elenco_snapshot=elenco_snapshot,
             pota_snapshot=pota_snapshot,

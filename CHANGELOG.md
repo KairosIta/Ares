@@ -78,7 +78,20 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `cli/ui.py`, la via di ogni testo letterale, toglie sequenze e caratteri
   di controllo con lo stesso parser dello stream; `tool_started` e
   `run_error`, che non passavano di li', lo fanno esplicitamente. La prova
-  `renderer Rich` passa un controllo in ognuna di queste vie.
+  `renderer Rich` passa un controllo in ognuna di queste vie;
+- un restore interrotto viene detto. Su POSIX il restore e' due rinomine, e
+  un processo ucciso fra le due lascia accanto allo stato la copia
+  `.tmp-precedente-<hex>` e nessuna `tmp/`: al riavvio Ares ricreava uno
+  stato vuoto e rispondeva come al primo giorno, senza dirlo. Ora la chat
+  all'avvio e `ares-backup list` elencano i residui - la copia precedente e
+  una preparazione mai installata sono distinte - e nominano lo snapshot
+  pre-restore con cui tornare indietro, o dicono che il residuo e' l'unica
+  copia. Nessun residuo viene rimosso da Ares. Nello stesso spirito
+  `ares-sessions` dichiara lo stato parziale quando una cancellazione
+  fallisce a meta': quante sessioni sono sparite e quali, lette
+  dall'archivio a guasto avvenuto, quali restano, e lo snapshot
+  pre-manutenzione da cui tornare. Prove `residui restore` in `backup`,
+  `chat residui` e `sessioni parziale` in `cli`.
 
 ## [0.4.0] - 2026-09-02
 

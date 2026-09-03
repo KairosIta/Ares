@@ -24,6 +24,7 @@ from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.sessions.retention import (
     ErroreRetention,
     SessioneRetention,
+    StatoParziale,
     apri_archivio,
     elimina_sessioni,
     inventario,
@@ -136,10 +137,31 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
         return 2
     snapshot = crea_snapshot(tipo="pre-session-prune", acquisisci_lock=False)
     print("Backup verificato:", snapshot.name)
-    db, store = apri_archivio(user_id)
-    eliminate = elimina_sessioni(db, store, sessioni, user_id)
-    print("Sessioni eliminate e verificate:", eliminate)
     comando = r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup"
+    db, store = apri_archivio(user_id)
+    try:
+        eliminate = elimina_sessioni(db, store, sessioni, user_id)
+    except StatoParziale as errore:
+        # Non e' un rifiuto: qualcosa e' gia' stato cancellato. Il rendiconto
+        # dice cosa, e lo snapshot appena fatto e' il punto da cui si torna
+        # allo stato di prima senza dover capire il guasto.
+        print("Cancellazione interrotta:", errore, file=sys.stderr)
+        print(
+            "Stato parziale: eliminate",
+            len(errore.eliminate),
+            "sessioni su",
+            str(len(sessioni)) + ", ancora presenti",
+            str(len(errore.rimaste)) + ".",
+            file=sys.stderr,
+        )
+        if errore.eliminate:
+            print("Eliminate senza verifica:", ", ".join(errore.eliminate), file=sys.stderr)
+            print("Contesto appreso o payload di queste possono essere rimasti orfani.", file=sys.stderr)
+        if errore.rimaste:
+            print("Ancora presenti:", ", ".join(errore.rimaste), file=sys.stderr)
+        print("Per tornare allo stato di prima della manutenzione:", comando, "restore", snapshot.name, file=sys.stderr)
+        return 1
+    print("Sessioni eliminate e verificate:", eliminate)
     print("Per tornare indietro:", comando, "restore", snapshot.name)
     return 0
 

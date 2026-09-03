@@ -7,6 +7,7 @@ li modifica e ripristina lo snapshot. Prova anche checksum, lock, guardie sui
 percorsi e pruning. Non legge ne' scrive tmp/ o ares-backup reali.
 """
 
+import io
 import json
 import os
 import shutil
@@ -16,7 +17,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from contextlib import closing, nullcontext
+from contextlib import closing, nullcontext, redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -33,10 +34,13 @@ from ares.backup.snapshots import (  # noqa: E402
     ErroreBackup,
     _installa_restore_per_copia,
     _pubblica_snapshot,
+    _ultimo_snapshot_di_tipo,
+    avviso_residui_restore,
     crea_snapshot,
     elenco_snapshot,
     pota_snapshot,
     promemoria_backup,
+    residui_restore,
     ripristina_snapshot,
     valida_percorsi,
     verifica_snapshot,
@@ -419,6 +423,87 @@ def prova_guardie_restore() -> None:
     esigi(sorgente.is_dir() and destinazione.is_dir(), "la rinomina rifiutata ha modificato le directory")
 
 
+def prova_residui_restore() -> None:
+    """Un restore interrotto lascia lo stato di prima accanto a tmp/, e va detto.
+
+    I residui sono creati a mano con i nomi che `ripristina_snapshot` usa:
+    `.<stato>-precedente-<hex>` per lo stato che c'era, `.<stato>-restore-<hex>`
+    per la preparazione. Una directory con un altro suffisso e un link
+    simbolico non lo sono: il primo perche' non e' roba del restore, il
+    secondo perche' un link accanto allo stato non e' una copia dello stato.
+
+    Lo snapshot pre-restore e' sintetico, con una data nel futuro, cosi' e'
+    l'ultimo del catalogo qualunque cosa abbiano lasciato le prove prima.
+    """
+    esigi(residui_restore() == [], "residui segnalati senza che ce ne siano: " + repr(residui_restore()))
+    esigi(avviso_residui_restore() == [], "avviso sui residui senza residui")
+
+    stato = config.TMP_DIR.resolve()
+    precedente = stato.with_name("." + stato.name + "-precedente-deadbeef")
+    preparazione = stato.with_name("." + stato.name + "-restore-cafe")
+    estraneo = stato.with_name("." + stato.name + "-altro")
+    collegamento = stato.with_name("." + stato.name + "-precedente-link")
+    sicurezza = None
+    for percorso in (precedente, preparazione, estraneo):
+        percorso.mkdir()
+    (precedente / "kairos.db").write_bytes(b"stato di prima")
+    try:
+        if os.name == "posix":
+            collegamento.symlink_to(precedente)
+        esigi(residui_restore() == [precedente, preparazione], "residui non riconosciuti: " + repr(residui_restore()))
+
+        righe = avviso_residui_restore()
+        unite = "\n".join(righe)
+        esigi("non e' stato completato" in righe[0], "l'avviso non dice cosa e' successo: " + righe[0])
+        esigi(str(precedente) in unite and str(preparazione) in unite, "l'avviso non nomina i residui: " + unite)
+        esigi("prima del restore" in unite and "mai installata" in unite, "l'avviso non distingue i residui")
+        # Le prove precedenti possono aver lasciato un pre-restore vero nel
+        # catalogo: l'avviso deve nominare quello, o dire che non ce n'e'.
+        esistente = _ultimo_snapshot_di_tipo("pre-restore")
+        if esistente is None:
+            esigi("unica copia" in unite, "senza pre-restore l'avviso non dice che il residuo e' l'unica copia")
+        else:
+            esigi("restore " + esistente.name in unite, "l'avviso non nomina il pre-restore esistente: " + unite)
+        esigi("Ares non tocca" in righe[-1], "l'avviso non dice che il residuo resta all'utente")
+
+        manifest = manifest_minimo()
+        manifest["snapshot_id"] = "20990101T000000Z-pre-restore"
+        manifest["type"] = "pre-restore"
+        manifest["created_at"] = "2099-01-01T00:00:00+00:00"
+        sicurezza = snapshot_sintetico(config.BACKUP_DIR, manifest["snapshot_id"], manifest)
+        righe = avviso_residui_restore()
+        unite = "\n".join(righe)
+        esigi("ares-backup restore " + sicurezza.name in unite, "l'avviso non nomina lo snapshot pre-restore: " + unite)
+        esigi("unica copia" not in unite, "l'avviso dice 'unica copia' con uno snapshot pre-restore a disposizione")
+        esigi(precedente.is_dir() and (precedente / "kairos.db").is_file(), "la lettura ha toccato un residuo")
+
+        catturato = io.StringIO()
+        with patch.object(sys, "argv", ["ares-backup", "list"]), redirect_stdout(catturato):
+            esigi(snapshots.main() == 0, "list fallito con un residuo")
+        testo = catturato.getvalue()
+        esigi("non e' stato completato" in testo, "list non dichiara i residui: " + testo)
+        esigi(testo.index(str(precedente)) < testo.index(sicurezza.name), "list non mette i residui prima del catalogo")
+
+        # Solo la preparazione: lo stato non e' stato toccato e non c'e' niente
+        # da ripristinare, quindi nessun comando di restore da suggerire.
+        shutil.rmtree(precedente)
+        if collegamento.is_symlink():
+            collegamento.unlink()
+        righe = avviso_residui_restore()
+        unite = "\n".join(righe)
+        esigi(residui_restore() == [preparazione], "la preparazione da sola non viene riconosciuta")
+        esigi("mai installata" in unite, "la preparazione non viene descritta")
+        esigi("restore " + sicurezza.name not in unite, "un restore suggerito senza motivo")
+    finally:
+        for percorso in (precedente, preparazione, estraneo):
+            shutil.rmtree(percorso, ignore_errors=True)
+        if collegamento.is_symlink():
+            collegamento.unlink()
+        if sicurezza is not None:
+            shutil.rmtree(sicurezza, ignore_errors=True)
+    esigi(avviso_residui_restore() == [], "avviso rimasto dopo la pulizia")
+
+
 def _operazione_lancedb(azione: str) -> str:
     risultato = subprocess.run(
         [
@@ -714,6 +799,9 @@ def main() -> int:
         for snapshot in rimasti:
             esigi(verifica_snapshot(snapshot.name)["snapshot_id"] == snapshot.name, "snapshot alterato dalla prova")
         ok("promemoria", "tace se recente o spento, avvisa se manca o e' vecchio, non crea niente")
+
+        prova_residui_restore()
+        ok("residui restore", "tace senza residui, li nomina senza toccarli, list li dice prima del catalogo")
 
     except Exception as errore:
         print("FALLITO ", type(errore).__name__ + ":", errore)

@@ -143,6 +143,10 @@ Su POSIX gli snapshot vengono pubblicati con una rinomina di directory. Su
 Windows, dove LanceDB può impedire quella rinomina anche dopo la chiusura dei
 reader nativi, il manifest viene pubblicato per ultimo come commit marker e
 il restore conserva stabile la directory radice con una copia di rollback.
+Un restore ucciso fra le rinomine puo' lasciare accanto allo stato la copia
+`.tmp-precedente-*` e nessuna `tmp/`: la chat all'avvio e `ares-backup list`
+lo dicono, nominando il residuo e lo snapshot pre-restore da cui tornare,
+senza toccare niente.
 
 La retention segue la sessione invece di una scadenza dei singoli risultati:
 finché la conversazione esiste i suoi `result_id` restano risolvibili. La
@@ -150,7 +154,10 @@ manutenzione offline seleziona sessioni inattive ma non cancella niente
 automaticamente; applicare una selezione richiede lock esclusivo e snapshot.
 Il database principale deve conoscere il backend separato `filesystem.db`
 prima di chiamare la cascata Agno, altrimenti il payload diventerebbe orfano:
-questa registrazione è un'invariante verificata dalla prova dedicata.
+questa registrazione è un'invariante verificata dalla prova dedicata. La
+cancellazione di piu' sessioni non e' atomica: un guasto a meta' esce come
+stato parziale, con l'elenco di cio' che e' sparito letto dall'archivio e lo
+snapshot pre-manutenzione da cui tornare.
 
 ## Configurazione
 
