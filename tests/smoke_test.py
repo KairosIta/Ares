@@ -97,9 +97,11 @@ from ares.agent.assistant import (  # noqa: E402
     build_filesystem,
     build_workspace,
 )
+from ares.agent.echo import Fotografia, fotografa, variazioni  # noqa: E402
 from ares.agent.schemas import AresProfile  # noqa: E402
 from ares.agent.turn_core import (  # noqa: E402
     TurnEngine,
+    TurnEvent,
     TurnEventKind,
     normalize_events,
     run_turn_cycle,
@@ -117,6 +119,7 @@ from ares.cli.chat import (  # noqa: E402
     righe_esito,
     righe_metriche,
     righe_richiesta,
+    righe_scrittura,
     risolvi_comando,
     stampa_aiuto,
 )
@@ -1041,6 +1044,129 @@ def contesto_rileggibile(lm, session_id: str) -> str:
         ottenuto = getattr(contesto, campo, None)
         esigi(ottenuto == atteso, campo + " e' tornato " + repr(ottenuto) + " invece di " + repr(atteso))
     return type(contesto).__name__ + ", " + str(len(campi_popolati(contesto))) + " campi come seminati"
+
+
+def eco_apprendimenti(agent, lm, user_id: str) -> str:
+    """La fotografia legge cio' che e' in archivio e la differenza dice cosa e' cambiato.
+
+    Due meta'. La prima usa l'archivio seminato: la fotografia deve
+    contenere esattamente i campi e le memorie del seme, e una memoria
+    aggiunta con la stessa API che usa l'estrazione deve comparire come
+    nuova, con il suo testo intero. La seconda e' la differenza da sola, su
+    fotografie costruite a mano, perche' i rami che contano - una memoria
+    riscritta, una tolta, un campo del profilo svuotato, niente da dire -
+    non si producono seminando.
+    """
+    if "user_profile" not in lm.stores or "user_memory" not in lm.stores:
+        return NON_CONCLUSIVO + "profilo o memorie spenti in config: la fotografia non ha niente da leggere"
+
+    prima = fotografa(agent)
+    esigi(
+        prima.profilo == PROFILO_SEMINATO,
+        "la fotografia del profilo non e' il seme: " + repr(prima.profilo),
+    )
+    esigi(
+        sorted(prima.memorie.values()) == sorted(MEMORIE_SEMINATE),
+        "la fotografia delle memorie non e' il seme: " + repr(prima.memorie),
+    )
+    esigi(variazioni(prima, fotografa(agent)) == [], "due fotografie uguali producono righe")
+
+    # Una scrittura vera, poi l'archivio torna com'era: le prove dopo questa
+    # contano le memorie seminate.
+    contenitore_prima = lm.user_memory_store.get(user_id=user_id)
+    lm.user_memory_store.add_memory(user_id=user_id, memory="Memoria  aggiunta\ndall'eco.")
+    try:
+        righe = variazioni(prima, fotografa(agent))
+    finally:
+        lm.user_memory_store.save(user_id=user_id, memories=contenitore_prima)
+    esigi(righe[:1] == ["   appreso: memorie +1"], "la sintesi di una memoria nuova e' " + repr(righe[:1]))
+    esigi(righe[1:] == ["   | + Memoria aggiunta dall'eco."], "la memoria nuova non e' resa intera: " + repr(righe[1:]))
+    esigi(variazioni(prima, fotografa(agent)) == [], "l'archivio non e' tornato com'era dopo la prova")
+
+    # Un agente senza macchina di apprendimento - `object()` nelle prove
+    # della CLI - deve dare una fotografia vuota, non un AttributeError.
+    esigi(fotografa(object()) == Fotografia(), "un agente senza apprendimento non da' una fotografia vuota")
+
+    vecchia = Fotografia(
+        profilo={"name": "Prova", "occupation": "collaudo", "timezone": "Europe/Rome"},
+        memorie={"a": "resta", "b": "viene riscritta", "c": "viene tolta"},
+    )
+    nuova = Fotografia(
+        profilo={"name": "Prova", "occupation": "collaudatore", "language": "it"},
+        memorie={"a": "resta", "b": "riscritta", "d": "nuova"},
+    )
+    righe = variazioni(vecchia, nuova)
+    esigi(righe[0] == "   appreso: profilo 3 campi, memorie +1 ~1 -1", "la sintesi e' " + repr(righe[0]))
+    attese = [
+        "   | profilo language: it",
+        "   | profilo occupation: collaudatore",
+        "   | profilo timezone: (tolto)",
+        "   | ~ riscritta",
+        "   | + nuova",
+        "   | - viene tolta",
+    ]
+    esigi(righe[1:] == attese, "le righe della differenza sono " + repr(righe[1:]))
+    esigi("resta" not in " ".join(righe), "una memoria invariata compare fra le variazioni")
+    solo_profilo = variazioni(Fotografia(), Fotografia(profilo={"name": "Prova"}))
+    esigi(solo_profilo[0] == "   appreso: profilo 1 campo", "un campo solo e' al plurale: " + repr(solo_profilo[0]))
+    return "seme letto, una memoria vera vista intera, e i sei rami della differenza"
+
+
+def scritture_in_memoria() -> str:
+    """Gli strumenti di memoria mostrano cosa hanno ricevuto; gli altri no.
+
+    L'esito di `save_learning` e' "Learning saved: <titolo>": il testo
+    dell'intuizione, che e' cio' che entra nel prompt di ogni sessione
+    futura, sta solo negli argomenti. Un `read_file` non deve invece
+    produrre niente qui, altrimenti l'eco raddoppia l'esito di ogni
+    strumento.
+    """
+    salvataggio = ToolExecution(
+        tool_name="save_learning",
+        tool_args={
+            "title": "Config prima dei flag",
+            "learning": "Le impostazioni  durature vanno\nin config.py.",
+            "context": None,
+            "tags": ["configurazione", "stile"],
+        },
+        result="Learning saved: Config prima dei flag (namespace: user/prova)",
+    )
+    righe = righe_scrittura(salvataggio)
+    esigi(righe[0] == "   in memoria: save_learning", "la prima riga e' " + repr(righe[0]))
+    esigi("   | title: Config prima dei flag" in righe, "il titolo non compare: " + repr(righe))
+    esigi(
+        "   | learning: Le impostazioni durature vanno in config.py." in righe,
+        "il testo dell'intuizione non e' reso su una riga: " + repr(righe),
+    )
+    esigi("   | tags: configurazione, stile" in righe, "la lista dei tag non e' resa: " + repr(righe))
+    esigi(not any("context" in r for r in righe), "un argomento assente occupa una riga: " + repr(righe))
+
+    lettura = ToolExecution(tool_name=config.WORKSPACE_PREFIX + "read_file", tool_args={"path": "x"}, result="ok")
+    esigi(righe_scrittura(lettura) == [], "uno strumento che non scrive in memoria produce righe")
+    esigi(righe_scrittura(ToolExecution()) == [], "uno strumento senza nome produce righe")
+
+    # Nel flusso: con l'eco acceso le righe seguono l'esito, spento no.
+    class FlussoFinto:
+        def __init__(self):
+            self.gruppi = []
+
+        def activity_stopped(self):
+            pass
+
+        def tool_result(self, righe, *, errore=False):
+            self.gruppi.append(list(righe))
+
+    evento = TurnEvent(kind=TurnEventKind.TOOL_COMPLETED, tool=salvataggio)
+    flusso = FlussoFinto()
+    with patch.object(config, "MOSTRA_APPRENDIMENTI", True), patch.object(config, "MOSTRA_ESITO_STRUMENTI", True):
+        render.mostra_evento(flusso, evento)
+    esigi(len(flusso.gruppi) == 2, "esito ed eco non sono due gruppi: " + repr(flusso.gruppi))
+    esigi(flusso.gruppi[1][0] == "   in memoria: save_learning", "l'eco non segue l'esito")
+    flusso = FlussoFinto()
+    with patch.object(config, "MOSTRA_APPRENDIMENTI", False), patch.object(config, "MOSTRA_ESITO_STRUMENTI", True):
+        render.mostra_evento(flusso, evento)
+    esigi(len(flusso.gruppi) == 1, "con l'eco spento le righe compaiono lo stesso")
+    return "argomenti interi per save_learning, niente per read_file, e il flag li accende"
 
 
 def entita_complete(lm, user_id: str) -> str:
@@ -2358,6 +2484,8 @@ def main() -> int:
             ("profilo rileggibile ", lambda: profilo_rileggibile(lm, args.user)),
             ("memorie rileggibili ", lambda: memorie_rileggibili(lm, args.user)),
             ("contesto rileggibile", lambda: contesto_rileggibile(lm, args.session)),
+            ("eco apprendimenti   ", lambda: eco_apprendimenti(agent, lm, args.user)),
+            ("scritture in memoria", lambda: scritture_in_memoria()),
             ("entita complete     ", lambda: entita_complete(lm, args.user)),
             ("fatti leggibili     ", lambda: fatti_leggibili(lm, args.user)),
             ("entita cercate      ", lambda: entita_cercate(agent, args.user)),

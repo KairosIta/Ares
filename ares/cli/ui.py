@@ -458,6 +458,16 @@ class CliRenderer:
     def metrics(self, riga: str) -> None:
         self.line(riga, style="ares.muted")
 
+    def learned(self, righe: Iterable[str]) -> None:
+        """Cosa e' entrato in memoria: la sintesi in evidenza, il testo attenuato.
+
+        Fuori dallo stream, perche' arriva quando il turno e' gia' chiuso e
+        l'estrazione ha finito di scrivere. Stessa forma dell'esito di uno
+        strumento: e' l'esito di un'operazione che nessuno ha chiamato.
+        """
+        for indice, riga in enumerate(righe):
+            self.line(riga, style="ares.success" if indice == 0 else "ares.muted")
+
     def stream(self) -> RichRunStream:
         return RichRunStream(self)
 

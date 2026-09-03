@@ -47,6 +47,7 @@ os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
 os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
 
 from ares import config  # noqa: E402
+from ares.agent.echo import Fotografia  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
 from ares.cli import chat  # noqa: E402
@@ -555,7 +556,50 @@ def chat_turno() -> str:
     esigi("RuntimeError" in testo, "il tipo dell'errore non compare")
     esigi("archivio irraggiungibile" in testo, "il messaggio dell'errore non compare")
     esigi("sessione resta aperta" in testo, "non viene detto che la sessione sopravvive")
-    return "turno, pausa irrisolta, Ctrl-C e guasto restano quattro esiti distinti"
+
+    # L'eco: la fotografia prima del turno e quella dopo sono diverse, e la
+    # differenza compare sotto la risposta. L'ordine conta - la prima lettura
+    # deve precedere il turno, perche' `update_user_memory` scrive durante il
+    # run - quindi la finta registra quando viene chiamata.
+    letture: list[str] = []
+    fotografie = iter([Fotografia(), Fotografia(memorie={"m1": "Preferisce config.py ai flag."})])
+
+    def fotografa_finta(agent):
+        letture.append("turno" if turni else "prima")
+        return next(fotografie)
+
+    turni: list[str] = []
+
+    def ciclo_che_scrive(agent, testo, *, on_event, resolve_pause):
+        turni.append(testo)
+        return FintaRisposta()
+
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "run_turn_cycle", ciclo_che_scrive),
+        patch.object(chat, "fotografa", fotografa_finta),
+        patch.object(config, "MOSTRA_APPRENDIMENTI", True),
+        redirect_stdout(uscita),
+    ):
+        chat.esegui_turno(object(), "ricorda che preferisco config.py", input_cli)
+    testo = _piatto(uscita.getvalue())
+    esigi(letture == ["prima", "turno"], "le fotografie non avvolgono il turno: " + repr(letture))
+    esigi("appreso: memorie +1" in testo, "la sintesi dell'eco non compare: " + testo)
+    esigi("Preferisce config.py ai flag." in testo, "il testo della memoria non compare: " + testo)
+
+    # Spento in config non si legge nemmeno l'archivio.
+    letture.clear()
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "run_turn_cycle", ciclo_ok),
+        patch.object(chat, "fotografa", fotografa_finta),
+        patch.object(config, "MOSTRA_APPRENDIMENTI", False),
+        redirect_stdout(uscita),
+    ):
+        chat.esegui_turno(object(), "ciao", input_cli)
+    esigi(letture == [], "con l'eco spento l'archivio viene letto lo stesso")
+    esigi("appreso" not in _piatto(uscita.getvalue()), "con l'eco spento compare una riga di eco")
+    return "turno, pausa irrisolta, Ctrl-C e guasto restano quattro esiti distinti; l'eco avvolge il turno"
 
 
 def chat_ciclo() -> str:

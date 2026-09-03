@@ -28,6 +28,7 @@ from agno.run.agent import RunOutput
 
 from ares import config
 from ares.agent.assistant import build_assistant
+from ares.agent.echo import fotografa, variazioni
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import promemoria_backup
 from ares.cli.commands import COMANDI, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
@@ -42,6 +43,7 @@ from ares.cli.render import (
     righe_esito,
     righe_metriche,
     righe_richiesta,
+    righe_scrittura,
 )
 from ares.cli.ui import UI
 from ares.state.lock import StatoOccupato, lock_stato
@@ -80,6 +82,7 @@ __all__ = (
     "righe_esito",
     "righe_metriche",
     "righe_richiesta",
+    "righe_scrittura",
     "risolvi_comando",
     "stampa_aiuto",
 )
@@ -124,13 +127,18 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     imprevisto: al primo non serve mostrare niente oltre la conferma che si e'
     fermato, al secondo serve l'errore, altrimenti sparisce.
     """
+    # La fotografia precede il turno e non il post-hook: `update_user_memory`
+    # scrive durante il run, e una lettura fatta dopo la risposta non lo
+    # vedrebbe. Spenta in config, non si legge niente.
+    prima = fotografa(agent) if config.MOSTRA_APPRENDIMENTI else None
     try:
-        return _turno(agent, testo, input_cli)
+        risposta = _turno(agent, testo, input_cli)
     except KeyboardInterrupt:
         # Il context manager del renderer ha gia' chiuso l'anteprima e reso
         # permanente l'eventuale Markdown parziale.
         UI.blank()
         UI.line("Interrotto fuori dal turno. Non e' stato appreso.", style="ares.warning")
+        return None
     except Exception as errore:
         UI.blank()
         UI.line(
@@ -141,7 +149,14 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
             "La sessione resta aperta: quello che Ares sapeva prima e' ancora li'.",
             style="ares.muted",
         )
-    return None
+        return None
+
+    if prima is not None:
+        # Anche dopo una pausa lasciata li': cio' che e' stato scritto e'
+        # stato scritto, e tacerlo perche' il turno non e' finito bene
+        # sarebbe il caso in cui l'eco serve di piu'.
+        UI.learned(variazioni(prima, fotografa(agent)))
+    return risposta
 
 
 def _esegui_chat() -> None:

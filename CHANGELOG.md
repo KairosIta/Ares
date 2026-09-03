@@ -25,6 +25,21 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- eco di cio' che entra in memoria (`MOSTRA_APPRENDIMENTI`, acceso di
+  default). Il modello scrive nella memoria durevole senza conferma, per due
+  strade: gli strumenti che chiama (`save_learning`, `remember_about`,
+  `update_user_memory`) e l'estrazione automatica dopo la risposta, che
+  aggiorna profilo e memorie senza passare da nessuno strumento visibile.
+  Cio' che entra viene reiniettato in ogni sessione futura, e finora l'unica
+  traccia era l'esito di un tool - "Learning saved: titolo" - o niente. Ora
+  gli strumenti di memoria mostrano gli argomenti che hanno ricevuto, e
+  sotto la risposta compare la differenza fra profilo e memorie prima e
+  dopo il turno, con il testo intero; tace quando il turno non ha scritto
+  niente. `agent/echo.py` legge gli store con le loro API pubbliche prima e
+  dopo, invece di agganciarsi alle funzioni private di Agno che scrivono.
+  Il contesto di sessione resta fuori, perche' cambia a ogni turno per
+  costruzione. Prove in `smoke` (`eco apprendimenti`, `scritture in
+  memoria`) e in `cli` (`chat turno`);
 - prove del ciclo della REPL in questo processo (`chat turno`, `chat ciclo`,
   `chat avvio` in `tests/cli_test.py`). `chat_repl` prova la REPL da fuori e
   per restare offline puo' mandarle solo comandi: restava scoperta la meta'

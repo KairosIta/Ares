@@ -300,6 +300,33 @@ ESITO_RIGHE = 3
 ESITO_LARGHEZZA = 100
 
 # ---------------------------------------------------------------------------
+# Eco di cio' che entra in memoria
+# ---------------------------------------------------------------------------
+
+# Il modello scrive nella memoria durevole per due strade: gli strumenti che
+# chiama lui (`save_learning`, `remember_about`, `update_user_memory`) e
+# l'estrazione automatica dopo la risposta, che aggiorna profilo e memorie
+# senza passare da nessuno strumento visibile. Nessuna delle due chiede
+# conferma, e cio' che entra viene reiniettato in ogni sessione futura: un
+# file del workspace o l'output di un comando con dentro un'istruzione puo'
+# quindi lasciare una traccia che dura oltre il turno. L'eco e' il modo di
+# accorgersene subito, invece che alla sessione dopo, quando Ares "ricorda"
+# qualcosa che non gli e' mai stato detto.
+#
+# Con l'eco acceso, sotto la risposta compare cosa e' cambiato in profilo e
+# memorie - il testo intero, non un'anteprima - e ogni strumento di memoria
+# mostra i propri argomenti oltre all'esito. Tace quando il turno non ha
+# scritto niente, cioe' nella maggior parte dei turni. Il contesto di
+# sessione resta fuori: cambia a ogni turno per costruzione, e `/contesto`
+# lo mostra quando serve. Vedi `agent/echo.py`.
+#
+# Acceso di default, per la stessa ragione dell'esito degli strumenti: e' la
+# differenza fra vedere cosa Ares ha imparato e fidarsi che abbia imparato
+# la cosa giusta. Il rimedio, quando una riga non convince, sono gli
+# strumenti di memoria (`MEMORY_AGENT_TOOLS`): basta chiederglielo.
+MOSTRA_APPRENDIMENTI = True
+
+# ---------------------------------------------------------------------------
 # Percorsi
 # ---------------------------------------------------------------------------
 
