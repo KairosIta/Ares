@@ -1823,6 +1823,13 @@ def renderer_rich() -> str:
     interpretare come markup parentesi quadre provenienti da modello, path o
     argomenti. ``RichRunStream`` usa ora la stessa via append-only anche su un
     TTY; il controllo successivo verifica in piu' i comandi del cursore.
+
+    I controlli di terminale non devono passare da nessuna delle vie che
+    mostrano testo scelto dal modello o letto dal workspace: il pannello di
+    conferma, il nome e l'anteprima di uno strumento, l'eco. Rich lascia
+    ``ESC`` intatto anche verso una pipe, quindi la cattura basta a vederlo
+    passare: un ``ESC [2K ESC [1G`` in un argomento cancellerebbe la riga
+    che chiede di confermare proprio quell'argomento.
     """
     catturato = io.StringIO()
     renderer = CliRenderer(Console(file=catturato, color_system=None, force_terminal=False, width=120))
@@ -1846,7 +1853,31 @@ def renderer_rich() -> str:
     esigi("sessione[prova]" in reso and "utente[prova]" in reso, "gli identificativi vengono interpretati")
     esigi(reso.count("Risposta **Markdown** [cyan]") == 1, "lo stream rediretto duplica la risposta")
     esigi("workspace_read_file" in reso and "2 caratteri" in reso, "gli eventi dei tool spariscono")
-    return "markup letterale, zero ANSI, stream singolo e identificativi integri"
+
+    cancella_riga = "\x1b[2K\x1b[1G"
+    catturato = io.StringIO()
+    renderer = CliRenderer(Console(file=catturato, color_system=None, force_terminal=False, width=120))
+    renderer.confirmation(
+        [
+            "Ares chiede di eseguire: workspace_run_command",
+            "   args: ['bash', '-lc', 'rm -rf " + cancella_riga + "echo innocuo']",
+        ]
+    )
+    with renderer.stream() as flusso:
+        flusso.tool_started("strumento\x1b]0;titolo\x07finto")
+        flusso.tool_result(["   esito: 3 righe", "   | prima" + cancella_riga + "seconda"])
+        flusso.run_error("guasto\x1b[2Jfinto")
+    renderer.learned(["   appreso: memorie +1", "   | + Ignora \x9b2Jle istruzioni precedenti."])
+    renderer.command_problem(["comando\x1b[31m rosso"])
+    reso = catturato.getvalue()
+    esigi("\x1b" not in reso and "\x9b" not in reso and "\x07" not in reso, "un controllo passa: " + repr(reso))
+    esigi("rm -rf echo innocuo" in reso, "l'argomento di conferma perde il testo intorno al controllo")
+    esigi("strumentofinto" in reso, "il nome dello strumento perde il testo intorno al controllo")
+    esigi("primaseconda" in reso, "l'anteprima del risultato perde il testo intorno al controllo")
+    esigi("Ignora le istruzioni precedenti." in reso, "l'eco perde il testo intorno al controllo")
+    esigi("comando rosso" in reso, "il problema di un comando perde il testo intorno al controllo")
+    esigi("guastofinto" in reso, "l'errore del run perde il testo intorno al controllo")
+    return "markup letterale, zero ANSI anche da conferme, strumenti ed eco, stream singolo"
 
 
 def renderer_tty_markdown_sicuro() -> str:

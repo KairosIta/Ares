@@ -51,6 +51,20 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `ares/cli/chat.py` passa dal 61% al 100% di righe e rami, il totale
   dall'86% all'88%.
 
+### Fixed
+
+- i controlli di terminale non passano piu' da nessuna via che mostra testo
+  scelto dal modello o letto dal workspace. Il filtro ANSI copriva solo lo
+  stream della risposta: il pannello di conferma, il nome e l'anteprima
+  dell'esito di uno strumento, l'errore di un run e le righe dell'eco
+  arrivavano a Rich intatti, e Rich lascia passare `ESC` anche verso una
+  pipe. Un `ESC [2K ESC [1G` in un argomento poteva cancellare la riga che
+  chiedeva di confermare proprio quell'argomento. Ora `_testo` in
+  `cli/ui.py`, la via di ogni testo letterale, toglie sequenze e caratteri
+  di controllo con lo stesso parser dello stream; `tool_started` e
+  `run_error`, che non passavano di li', lo fanno esplicitamente. La prova
+  `renderer Rich` passa un controllo in ognuna di queste vie.
+
 ## [0.4.0] - 2026-09-02
 
 ### Added
