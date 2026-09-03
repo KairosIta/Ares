@@ -54,9 +54,11 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura è intorno all'86%, e il modulo più
-scoperto è `cli/chat.py` al 61%: è il file che contiene il turno conversazionale,
-cioè proprio ciò che senza Ollama non gira.
+Con le sole prove offline la misura è intorno all'88%. `cli/chat.py` era il
+modulo più scoperto, al 61%, quando il turno conversazionale si attraversava
+solo con Ollama; da quando `chat turno` lo percorre con un `run_turn_cycle`
+finto è al 100%. Il meno coperto oggi è `cli/commands.py`, al 76%: i rami dei
+comandi locali che leggono gli archivi.
 
 La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
 le prove ne lanciano parecchi — la CLI di `ares.entities` sei volte,
@@ -71,9 +73,10 @@ quando misura.
 
 Ciò che resta scoperto è quasi tutto composto da gestori d'errore e da rami
 di piattaforma: i percorsi Windows su una macchina Linux, i ripieghi per un
-disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare. Il
-turno conversazionale di `cli/chat.py` è coperto dalle prove con Ollama, che qui
-non girano: `--tutte` alza il numero.
+disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare. Le
+righe che solo un modello vero attraversa — l'estrazione con retry, il
+salvataggio e il riuso delle intuizioni — le coprono le prove con Ollama,
+che qui non girano: `--tutte` alza il numero.
 
 ## Analisi statica
 

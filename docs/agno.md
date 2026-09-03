@@ -1,6 +1,6 @@
 # Agno in Ares
 
-Ares usa **Agno 3.0.1**, ultima stable verificata il 30 agosto 2026, come framework dell'agente. Agno fornisce il ciclo di
+Ares usa **Agno 3.0.5**, ultima stable verificata il 3 settembre 2026, come framework dell'agente. Agno fornisce il ciclo di
 esecuzione, gli store e le primitive agentiche; Ares decide invece politica
 local-first, modelli Ollama, interfaccia, confini degli strumenti, schema dei
 dati, backup e comportamento dell'apprendimento.
@@ -38,6 +38,12 @@ cache degli schemi degli strumenti e caricamento incrementale della storia:
 due miglioramenti pertinenti a un assistente longevo con molti strumenti.
 Consulta le [note 3.0.0](https://github.com/agno-agi/agno/releases/tag/v3.0.0)
 e le [note 3.0.1](https://github.com/agno-agi/agno/releases/tag/v3.0.1).
+Le patch successive, fino alla
+[3.0.5](https://github.com/agno-agi/agno/releases/tag/v3.0.5), entrano dal
+solo `uv.lock`: il vincolo in `pyproject.toml` e' `>=3.0.2,<3.1`, e ogni
+patch viene provata sulle superfici che Ares usa - le firme di
+`LearningMachine.process` e di `SessionContextStore`, che Ares sovrascrive,
+e il ciclo REPL completo - prima di entrare nel lock.
 
 La major estende anche l'isolamento per utente e rende stabili gli id dei
 toolkit. Ares mantiene i propri namespace espliciti `user/<id>`: per le

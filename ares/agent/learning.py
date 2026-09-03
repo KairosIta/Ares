@@ -24,7 +24,7 @@ from ares.state.stores import namespace_entita, namespace_utente
 class AresLearningMachine(LearningMachine):
     """Estrae apprendimenti soltanto quando il run e' davvero concluso.
 
-    Anche Agno 3.0.1 avvia ``LearningMachine.process`` in background prima
+    Agno, verificato fino alla 3.0.5, avvia ``LearningMachine.process`` in background prima
     della chiamata al modello, usando una fotografia dei messaggi. Un run in
     pausa per conferma non genera una seconda estrazione dopo
     ``continue_run``. Il collegamento ``learning=`` resta necessario per

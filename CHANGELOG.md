@@ -8,8 +8,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
-- Agno passa da 3.0.1 a 3.0.2; il pin resta esatto e `uv.lock` ne porta gli
-  hash. La suite offline e' verde sulla nuova versione;
+- Agno passa da 3.0.1 a 3.0.5. La 3.0.2 con il vincolo `>=3.0.2,<3.1` in
+  `pyproject.toml`, le patch successive dal solo `uv.lock`, che ne porta gli
+  hash: ogni patch e' provata sulle superfici che Ares usa e sul ciclo REPL
+  completo prima di entrare nel lock. Badge, `docs/agno.md` e `ROADMAP.md`
+  dicono la versione del lock, e i commenti che citavano un file rinominato
+  o un comportamento verificato su una versione precedente sono allineati;
+  la docstring di `ares-inspect` dice per intero cosa fa - crea la directory
+  dello stato se manca e accende l'embedder per la ricerca fra le
+  intuizioni - invece di promettere che non scrive nulla;
 - `SECURITY.md` dichiara supportata la linea 0.4.x: diceva ancora 0.3.x, e un
   segnalatore ci leggeva che la versione corrente non e' coperta;
 - i vincoli delle dipendenze nel `pyproject.toml` diventano larghi e uniformi.
