@@ -12,16 +12,14 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
-RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-session-retention-test-"))
-os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
-os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
-os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
+from _comune import esigi, fallimento, ok, prepara_ambiente
+
+RADICE_PROVA = prepara_ambiente("session-retention-test")
 
 from agno.fs import FileSystem  # noqa: E402
 from agno.models.base import Model  # noqa: E402
@@ -41,15 +39,6 @@ SESSIONE_VECCHIA = "progetto-concluso"
 SESSIONE_RECENTE = "principale"
 SESSIONE_ALTRUI = "altrui-vecchia"
 PAYLOAD = "\n".join("riga " + str(numero) + ": " + "x" * 80 for numero in range(350))
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    if not condizione:
-        raise AssertionError(messaggio)
-
-
-def ok(nome: str, nota: str) -> None:
-    print("ok      ", nome.ljust(22), "-", nota)
 
 
 class ModelloToolDeterministico(Model):
@@ -331,7 +320,7 @@ def main() -> int:
         riuscita = True
         return 0
     except Exception as errore:
-        print("FALLITO ", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         return 1
     finally:
         if riuscita:

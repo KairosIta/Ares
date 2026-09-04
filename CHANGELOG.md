@@ -8,8 +8,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
-- Agno passa da 3.0.1 a 3.0.2; il pin resta esatto e `uv.lock` ne porta gli
-  hash. La suite offline e' verde sulla nuova versione;
+- Agno passa da 3.0.1 a 3.0.5. La 3.0.2 con il vincolo `>=3.0.2,<3.1` in
+  `pyproject.toml`, le patch successive dal solo `uv.lock`, che ne porta gli
+  hash: ogni patch e' provata sulle superfici che Ares usa e sul ciclo REPL
+  completo prima di entrare nel lock. Badge, `docs/agno.md` e `ROADMAP.md`
+  dicono la versione del lock, e i commenti che citavano un file rinominato
+  o un comportamento verificato su una versione precedente sono allineati;
+  la docstring di `ares-inspect` dice per intero cosa fa - crea la directory
+  dello stato se manca e accende l'embedder per la ricerca fra le
+  intuizioni - invece di promettere che non scrive nulla;
 - `SECURITY.md` dichiara supportata la linea 0.4.x: diceva ancora 0.3.x, e un
   segnalatore ci leggeva che la versione corrente non e' coperta;
 - i vincoli delle dipendenze nel `pyproject.toml` diventano larghi e uniformi.
@@ -21,10 +28,40 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   Resta un solo vincolo stretto, `agno>=3.0.2,<3.1`, con accanto
   l'incompatibilita' nota che lo motiva. Nessuna versione risolta si e' mossa:
   il diff di `uv.lock` tocca i soli metadati. `CONTRIBUTING.md` dice cosa
-  scrivere quando si aggiunge una dipendenza.
+  scrivere quando si aggiunge una dipendenza.;
+- le prove condividono `tests/_comune.py`: `prepara_ambiente`, che sceglie i
+  percorsi usa-e-getta e rifiuta di farlo se `config` e' gia' importato,
+  `esigi`, `ok`, `esegui` e `fallimento`. Erano otto copie che divergevano un
+  poco per volta; il modulo non importa niente di `ares`, ed e' la sola
+  garanzia che i percorsi vengano decisi prima che `config` li legga. Un
+  fallimento mostra ora la riga da cui viene, e un'eccezione che non e'
+  un'asserzione porta il traceback: `KeyError: 'id'` senza la riga che l'ha
+  sollevato era un fallimento da riprodurre a mano invece che da leggere;
+- `tests/smoke_test.py` si divide: cio' che della REPL si prova senza
+  costruire l'agente - conferme, rendering Rich e TTY, indicatore di
+  attivita', core del turno, log, cronologia, editor, comandi - sta in
+  `tests/repl_test.py` (`repl` nel runner). Lo smoke era diventato il posto
+  dove finiva ogni prova offline, duemilacinquecento righe in cui
+  l'assemblaggio dell'agente e il comportamento di un widget stavano nello
+  stesso elenco; la divisione segue cio' che serve per girare..
 
 ### Added
 
+- eco di cio' che entra in memoria (`MOSTRA_APPRENDIMENTI`, acceso di
+  default). Il modello scrive nella memoria durevole senza conferma, per due
+  strade: gli strumenti che chiama (`save_learning`, `remember_about`,
+  `update_user_memory`) e l'estrazione automatica dopo la risposta, che
+  aggiorna profilo e memorie senza passare da nessuno strumento visibile.
+  Cio' che entra viene reiniettato in ogni sessione futura, e finora l'unica
+  traccia era l'esito di un tool - "Learning saved: titolo" - o niente. Ora
+  gli strumenti di memoria mostrano gli argomenti che hanno ricevuto, e
+  sotto la risposta compare la differenza fra profilo e memorie prima e
+  dopo il turno, con il testo intero; tace quando il turno non ha scritto
+  niente. `agent/echo.py` legge gli store con le loro API pubbliche prima e
+  dopo, invece di agganciarsi alle funzioni private di Agno che scrivono.
+  Il contesto di sessione resta fuori, perche' cambia a ogni turno per
+  costruzione. Prove in `smoke` (`eco apprendimenti`, `scritture in
+  memoria`) e in `cli` (`chat turno`);
 - prove del ciclo della REPL in questo processo (`chat turno`, `chat ciclo`,
   `chat avvio` in `tests/cli_test.py`). `chat_repl` prova la REPL da fuori e
   per restare offline puo' mandarle solo comandi: restava scoperta la meta'
@@ -34,7 +71,49 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   turno, la riga delle metriche, gli avvisi d'avvio - cronologia degradata,
   modello cloud, promemoria di backup - e i due modi di uscire dal prompt.
   `ares/cli/chat.py` passa dal 61% al 100% di righe e rami, il totale
-  dall'86% all'88%.
+  dall'86% all'88%;
+- due prove di contratto con Agno, offline, in `tests/agno_contract_test.py`
+  (`contratto` nel runner). Ares da' per vere due cose del framework che
+  nessuna prova gli chiedeva: che l'estrazione avvenga una volta per turno,
+  sul run completo - Agno avvia `LearningMachine.process` prima della
+  chiamata al modello, Ares la azzera e la rifa' nel post-hook, che Agno
+  esegue solo a run non in pausa - e che `run → pausa → continue_run` di
+  `turn_core` combaci con la firma e il comportamento di Agno. La prima
+  conta le estrazioni vere su un turno con pausa per conferma e verifica
+  che l'unica riceva il run finale, esito dello strumento e risposta
+  compresi, mentre il run in pausa non lo conteneva. La seconda attraversa
+  il ciclo vero con `workspace_delete_file`: il file sparisce dopo la
+  conferma e non prima, resta dopo un rifiuto con il motivo consegnato al
+  modello, e in entrambi i casi il run riprende con lo stesso `run_id` e
+  finisce. `smoke` provava il post-hook con un run costruito a mano e
+  `chat turno` il ciclo con un `run_turn_cycle` finto: mancava Agno.
+
+### Fixed
+
+- i controlli di terminale non passano piu' da nessuna via che mostra testo
+  scelto dal modello o letto dal workspace. Il filtro ANSI copriva solo lo
+  stream della risposta: il pannello di conferma, il nome e l'anteprima
+  dell'esito di uno strumento, l'errore di un run e le righe dell'eco
+  arrivavano a Rich intatti, e Rich lascia passare `ESC` anche verso una
+  pipe. Un `ESC [2K ESC [1G` in un argomento poteva cancellare la riga che
+  chiedeva di confermare proprio quell'argomento. Ora `_testo` in
+  `cli/ui.py`, la via di ogni testo letterale, toglie sequenze e caratteri
+  di controllo con lo stesso parser dello stream; `tool_started` e
+  `run_error`, che non passavano di li', lo fanno esplicitamente. La prova
+  `renderer Rich` passa un controllo in ognuna di queste vie;
+- un restore interrotto viene detto. Su POSIX il restore e' due rinomine, e
+  un processo ucciso fra le due lascia accanto allo stato la copia
+  `.tmp-precedente-<hex>` e nessuna `tmp/`: al riavvio Ares ricreava uno
+  stato vuoto e rispondeva come al primo giorno, senza dirlo. Ora la chat
+  all'avvio e `ares-backup list` elencano i residui - la copia precedente e
+  una preparazione mai installata sono distinte - e nominano lo snapshot
+  pre-restore con cui tornare indietro, o dicono che il residuo e' l'unica
+  copia. Nessun residuo viene rimosso da Ares. Nello stesso spirito
+  `ares-sessions` dichiara lo stato parziale quando una cancellazione
+  fallisce a meta': quante sessioni sono sparite e quali, lette
+  dall'archivio a guasto avvenuto, quali restano, e lo snapshot
+  pre-manutenzione da cui tornare. Prove `residui restore` in `backup`,
+  `chat residui` e `sessioni parziale` in `cli`.
 
 ## [0.4.0] - 2026-09-02
 

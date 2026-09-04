@@ -51,8 +51,26 @@ ARES_THEME = Theme(
 
 
 def _testo(valore: object, style: str | None = None) -> Text:
-    """Testo letterale: parentesi quadre e path non diventano markup Rich."""
-    return Text(str(valore), style=style or "")
+    """Testo letterale: ne' markup Rich, ne' controlli di terminale.
+
+    Le parentesi quadre restano parentesi. I controlli ANSI vengono tolti,
+    perche' non tutto cio' che passa di qui l'ha scritto Ares: il nome di
+    uno strumento, i suoi argomenti nel pannello di conferma, l'anteprima
+    di un risultato e le righe dell'eco arrivano dal modello o da un file
+    del workspace. Rich lascia passare ``ESC`` intatto, e una sequenza in
+    un argomento di conferma puo' cancellare la riga che chiede di
+    confermarlo. Lo stream ha il proprio filtro perche' i frammenti
+    arrivano spezzati; qui il testo e' intero e basta un passaggio.
+    """
+    return Text(_senza_controlli(str(valore)), style=style or "")
+
+
+def _senza_controlli(valore: str) -> str:
+    """Il testo senza sequenze ANSI ne' caratteri di controllo, in un colpo."""
+    filtro = _FiltroControlliTerminale()
+    pulito = filtro.feed(valore)
+    filtro.finish()
+    return pulito
 
 
 class _FiltroControlliTerminale:
@@ -331,7 +349,7 @@ class RichRunStream:
         self.above(
             Text.assemble(
                 ("  ◇ ", "ares.cyan"),
-                (nome, "ares.tool"),
+                (_senza_controlli(nome), "ares.tool"),
                 ("  in esecuzione", "ares.muted"),
             )
         )
@@ -348,7 +366,7 @@ class RichRunStream:
         self.above(
             Text.assemble(
                 ("Errore: ", "ares.error"),
-                (str(messaggio or "senza messaggio"), "ares.text"),
+                (_senza_controlli(str(messaggio or "senza messaggio")), "ares.text"),
             )
         )
 
@@ -457,6 +475,16 @@ class CliRenderer:
 
     def metrics(self, riga: str) -> None:
         self.line(riga, style="ares.muted")
+
+    def learned(self, righe: Iterable[str]) -> None:
+        """Cosa e' entrato in memoria: la sintesi in evidenza, il testo attenuato.
+
+        Fuori dallo stream, perche' arriva quando il turno e' gia' chiuso e
+        l'estrazione ha finito di scrivere. Stessa forma dell'esito di uno
+        strumento: e' l'esito di un'operazione che nessuno ha chiamato.
+        """
+        for indice, riga in enumerate(righe):
+            self.line(riga, style="ares.success" if indice == 0 else "ares.muted")
 
     def stream(self) -> RichRunStream:
         return RichRunStream(self)

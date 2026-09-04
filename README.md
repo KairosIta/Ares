@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/runtime-Ollama-white.svg)](https://ollama.com/)
-[![Agno 3.0.1](https://img.shields.io/badge/framework-Agno%203.0.1-6C5CE7.svg)](https://www.agno.com/)
+[![Agno 3.0.5](https://img.shields.io/badge/framework-Agno%203.0.5-6C5CE7.svg)](https://www.agno.com/)
 [![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4C8BF5.svg)](#requisiti)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/KairosIta/Ares/actions/workflows/ci.yml/badge.svg)](https://github.com/KairosIta/Ares/actions/workflows/ci.yml)
@@ -30,6 +30,9 @@ spazio controllato sul disco senza richiedere API cloud.
   dopo una conferma e `continue_run`, con retry mirato sul contesto.
 - **Strumenti controllati:** cronologia, ricerca, quaderno privato e workspace
   su disco con conferma per le operazioni sensibili.
+- **Memoria visibile:** sotto ogni risposta compare cosa è entrato in
+  profilo e memorie, sia dagli strumenti del modello sia dall'estrazione
+  automatica, con il testo intero; tace quando non è cambiato niente.
 - **Contesto protetto:** entro la quota Agno i risultati molto grandi restano
   lossless negli archivi locali e vengono riletti a pagine, mentre le tool
   call storiche nel prompt hanno un limite esplicito.

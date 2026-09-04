@@ -32,7 +32,7 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import ExitStack, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -41,16 +41,17 @@ from unittest.mock import patch
 # I percorsi vanno scelti prima di importare config, che crea TMP_DIR
 # all'import: importarlo e correggere dopo lascerebbe comunque una tmp/ vuota
 # accanto ai dati veri.
-RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-cli-test-"))
-os.environ["ARES_TMP"] = str(RADICE_PROVA / "stato")
-os.environ["ARES_BACKUP_DIR"] = str(RADICE_PROVA / "backup")
-os.environ["ARES_WORKSPACE"] = str(RADICE_PROVA / "lavoro")
+from _comune import esigi, fallimento, ok, prepara_ambiente
+
+RADICE_PROVA = prepara_ambiente("cli-test")
 
 from ares import config  # noqa: E402
+from ares.agent.echo import Fotografia  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
 from ares.cli import chat  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
+from ares.sessions import maintenance  # noqa: E402
 from ares.state.lock import StatoOccupato  # noqa: E402
 
 UTENTE = "prova-cli"
@@ -66,15 +67,6 @@ CONTENUTO_FILE = "riga di prova"
 # proposito, cosi' un tentativo di embedding si vede subito invece di
 # funzionare.
 config.OLLAMA_HOST = "http://127.0.0.1:1"
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    if not condizione:
-        raise AssertionError(messaggio)
-
-
-def ok(nome: str, nota: str) -> None:
-    print("ok      ", nome.ljust(20), "-", nota)
 
 
 # ---------------------------------------------------------------------------
@@ -555,7 +547,50 @@ def chat_turno() -> str:
     esigi("RuntimeError" in testo, "il tipo dell'errore non compare")
     esigi("archivio irraggiungibile" in testo, "il messaggio dell'errore non compare")
     esigi("sessione resta aperta" in testo, "non viene detto che la sessione sopravvive")
-    return "turno, pausa irrisolta, Ctrl-C e guasto restano quattro esiti distinti"
+
+    # L'eco: la fotografia prima del turno e quella dopo sono diverse, e la
+    # differenza compare sotto la risposta. L'ordine conta - la prima lettura
+    # deve precedere il turno, perche' `update_user_memory` scrive durante il
+    # run - quindi la finta registra quando viene chiamata.
+    letture: list[str] = []
+    fotografie = iter([Fotografia(), Fotografia(memorie={"m1": "Preferisce config.py ai flag."})])
+
+    def fotografa_finta(agent):
+        letture.append("turno" if turni else "prima")
+        return next(fotografie)
+
+    turni: list[str] = []
+
+    def ciclo_che_scrive(agent, testo, *, on_event, resolve_pause):
+        turni.append(testo)
+        return FintaRisposta()
+
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "run_turn_cycle", ciclo_che_scrive),
+        patch.object(chat, "fotografa", fotografa_finta),
+        patch.object(config, "MOSTRA_APPRENDIMENTI", True),
+        redirect_stdout(uscita),
+    ):
+        chat.esegui_turno(object(), "ricorda che preferisco config.py", input_cli)
+    testo = _piatto(uscita.getvalue())
+    esigi(letture == ["prima", "turno"], "le fotografie non avvolgono il turno: " + repr(letture))
+    esigi("appreso: memorie +1" in testo, "la sintesi dell'eco non compare: " + testo)
+    esigi("Preferisce config.py ai flag." in testo, "il testo della memoria non compare: " + testo)
+
+    # Spento in config non si legge nemmeno l'archivio.
+    letture.clear()
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "run_turn_cycle", ciclo_ok),
+        patch.object(chat, "fotografa", fotografa_finta),
+        patch.object(config, "MOSTRA_APPRENDIMENTI", False),
+        redirect_stdout(uscita),
+    ):
+        chat.esegui_turno(object(), "ciao", input_cli)
+    esigi(letture == [], "con l'eco spento l'archivio viene letto lo stesso")
+    esigi("appreso" not in _piatto(uscita.getvalue()), "con l'eco spento compare una riga di eco")
+    return "turno, pausa irrisolta, Ctrl-C e guasto restano quattro esiti distinti; l'eco avvolge il turno"
 
 
 def chat_ciclo() -> str:
@@ -615,6 +650,97 @@ def chat_ciclo() -> str:
     esigi("escono dalla macchina" not in testo, "un modello locale mostra l'avviso del cloud")
     esigi("tok" not in testo, "le metriche compaiono senza che siano state chieste")
     return "riga vuota, turno, metriche, avvisi d'avvio e le due uscite dal prompt"
+
+
+def chat_residui() -> str:
+    """Un restore rimasto a meta' viene detto all'avvio, e solo allora.
+
+    Il residuo e' una directory vera accanto allo stato, con il nome che il
+    restore usa: e' la funzione di lettura a trovarlo, non una finta. Si
+    prova prima con il residuo e poi senza, perche' un avviso che compare
+    sempre e' quello che smette di essere letto.
+    """
+    stato = config.TMP_DIR.resolve()
+    residuo = stato.with_name("." + stato.name + "-precedente-deadbeef")
+
+    def avvia() -> str:
+        uscita = io.StringIO()
+        with (
+            patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE]),
+            patch.object(chat, "build_assistant", lambda **k: object()),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([])),
+            patch.object(chat, "promemoria_backup", list),
+            redirect_stdout(uscita),
+        ):
+            chat._esegui_chat()
+        return _piatto(uscita.getvalue())
+
+    residuo.mkdir()
+    try:
+        testo = avvia()
+    finally:
+        shutil.rmtree(residuo, ignore_errors=True)
+    esigi("restore non e' stato completato" in testo, "il residuo del restore non viene detto: " + testo)
+    # Il percorso e' una parola sola piu' larga delle 80 colonne della console
+    # di prova su Windows, e Rich la spezza dove capita: si confronta senza
+    # spazi, perche' l'a-capo non e' cio' che si prova.
+    esigi(residuo.name in "".join(testo.split()), "l'avviso non nomina il residuo: " + testo)
+    esigi("Ares non tocca" in testo, "l'avviso non dice che il residuo resta all'utente")
+    esigi("restore non e' stato completato" not in avvia(), "l'avviso compare senza residui")
+    return "con il residuo l'avviso nomina la directory, senza residui tace"
+
+
+def sessioni_parziale() -> str:
+    """`ares-sessions` con un guasto a meta': il rendiconto dice cosa e' rimasto.
+
+    La cancellazione non e' atomica - Agno elimina sessioni e run in una
+    transazione, ma payload, contesti e verifiche vengono dopo, un passo
+    alla volta - e un guasto li' non e' un rifiuto: qualcosa e' gia' sparito.
+    Due guasti iniettati, uno prima della cancellazione e uno dopo, perche'
+    il conteggio deve venire dall'archivio e non da dove ci si e' fermati:
+    nel primo caso le sessioni ci sono ancora tutte, nel secondo nessuna.
+    """
+    from agno.session.agent import AgentSession
+
+    db = maintenance.build_db()
+    antico = int(time.time()) - 100 * 86_400
+    sessioni = ["cli-inattiva-a", "cli-inattiva-b"]
+    for session_id in sessioni:
+        db.upsert_session(AgentSession(session_id=session_id, user_id=UTENTE, created_at=antico, updated_at=antico))
+
+    def prune(*patches) -> tuple[int, str, str]:
+        uscita, errori = io.StringIO(), io.StringIO()
+        with ExitStack() as pila:
+            for p in patches:
+                pila.enter_context(p)
+            pila.enter_context(redirect_stdout(uscita))
+            pila.enter_context(redirect_stderr(errori))
+            esito = maintenance.main(["prune", "--user", UTENTE, "--older-than", "30", "--apply", "--yes"])
+        return esito, _piatto(uscita.getvalue()), _piatto(errori.getvalue())
+
+    guasto = patch("agno.db.sqlite.SqliteDb.delete_sessions", side_effect=RuntimeError("disco pieno"))
+    esito, testo, errori = prune(guasto)
+    esigi(esito == 1, "un guasto a meta' non esce con 1: " + str(esito) + " " + errori)
+    esigi("Backup verificato" in testo, "lo snapshot pre-manutenzione non e' stato fatto prima del guasto")
+    esigi("Cancellazione interrotta: disco pieno" in errori, "la causa del guasto non compare: " + errori)
+    esigi("Stato parziale: eliminate 0 sessioni su 2, ancora presenti 2." in errori, "conteggio sbagliato: " + errori)
+    esigi("Ancora presenti: cli-inattiva-a, cli-inattiva-b" in errori, "le sessioni rimaste non sono nominate")
+    esigi("Eliminate senza verifica" not in errori, "dichiarate eliminate sessioni che ci sono ancora")
+    esigi("pre-session-prune" in errori and "ares-backup restore" in errori, "lo snapshot da cui tornare non compare")
+    esigi("Manutenzione rifiutata" not in errori, "un guasto a meta' presentato come rifiuto")
+
+    guasto = patch("ares.sessions.retention._contesto_sessione_presente", return_value=True)
+    esito, testo, errori = prune(guasto)
+    esigi(esito == 1, "un guasto nella verifica non esce con 1: " + str(esito) + " " + errori)
+    esigi("contesto di sessione non eliminato" in errori, "la causa del guasto non compare: " + errori)
+    esigi("Stato parziale: eliminate 2 sessioni su 2, ancora presenti 0." in errori, "conteggio sbagliato: " + errori)
+    esigi("Eliminate senza verifica: cli-inattiva-a, cli-inattiva-b" in errori, "le eliminate non sono nominate")
+    esigi("orfani" in errori, "non viene detto che possono restare contesti o payload orfani")
+    esigi("Ancora presenti:" not in errori, "dichiarate presenti sessioni che non ci sono piu'")
+    for session_id in sessioni:
+        rimasta = db.get_session(session_id=session_id, user_id=UTENTE)
+        esigi(rimasta is None, "sessione ancora nell'archivio: " + session_id)
+    return "guasto prima e dopo la cancellazione: conteggio letto dall'archivio e snapshot da cui tornare"
 
 
 def chat_avvio() -> str:
@@ -733,10 +859,14 @@ def main() -> int:
         ok("chat turno", chat_turno())
         ok("chat ciclo", chat_ciclo())
         ok("chat avvio", chat_avvio())
+        ok("chat residui", chat_residui())
+        # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
+        # apre i database in questo processo.
+        ok("sessioni parziale", sessioni_parziale())
         ok("aiuto puro", aiuto_senza_effetti())
     except Exception as errore:
         print()
-        print("FALLITO ", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
 

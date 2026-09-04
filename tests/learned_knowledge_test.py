@@ -25,10 +25,11 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 from pathlib import Path
+
+from _comune import esigi, fallimento, ok, prepara_ambiente
 
 UTENTE_STORE = "prova-intuizioni-store"
 UTENTE_ALTRO = "prova-intuizioni-altro"
@@ -93,15 +94,6 @@ dati = [
 ]
 print("ARES_RILETTURA=" + json.dumps(dati, ensure_ascii=False))
 """
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    if not condizione:
-        raise AssertionError(messaggio)
-
-
-def ok(nome: str, nota: str) -> None:
-    print("ok      ", nome.ljust(23), "-", nota, flush=True)
 
 
 def nomi_strumenti(risposta) -> list[str]:
@@ -313,12 +305,8 @@ def main(args) -> int:
         prova_backup()
         esigi(fotografia(config.BASE_DIR / "tmp") == reale_prima, "lo stato reale e' cambiato durante la prova")
         ok("stato reale", str(len(reale_prima)) + " file invariati")
-    except AssertionError as errore:
-        print("FALLITO ", errore)
-        print("Stato conservato:", RADICE_PROVA)
-        return 1
     except Exception as errore:
-        print("FALLITO ", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         print("Stato conservato:", RADICE_PROVA)
         return 1
     finally:
@@ -339,13 +327,10 @@ if __name__ == "__main__":
     parser.add_argument("--conserva", action="store_true", help="non cancella lo stato temporaneo")
     argomenti = parser.parse_args()
 
-    RADICE_PROVA = Path(tempfile.mkdtemp(prefix="ares-intuizioni-"))
+    RADICE_PROVA = prepara_ambiente("intuizioni")
     RADICE_STATO = RADICE_PROVA / "stato"
-    RADICE_WORKSPACE = RADICE_PROVA / "workspace"
+    RADICE_WORKSPACE = RADICE_PROVA / "lavoro"
     RADICE_BACKUP = RADICE_PROVA / "backup"
-    os.environ["ARES_TMP"] = str(RADICE_STATO)
-    os.environ["ARES_WORKSPACE"] = str(RADICE_WORKSPACE)
-    os.environ["ARES_BACKUP_DIR"] = str(RADICE_BACKUP)
 
     from ares import config
 

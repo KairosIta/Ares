@@ -51,6 +51,9 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
   `prompts.py` compone soltanto le istruzioni coerenti con i flag;
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt;
+- `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
+  restituisce la differenza: e' l'unico modo di vedere cosa l'estrazione
+  automatica ha scritto senza agganciarsi a funzioni private di Agno;
 - `ares/config.py` raccoglie le impostazioni versionate e decide, in un punto
   solo, i percorsi dello stato. Importarlo non tocca il disco: la directory
   dello stato la crea `prepara_archivio()`, che chiamano i costruttori di
@@ -115,6 +118,16 @@ confine non e' una sandbox di processo. I comandi shell possono accedere alle
 risorse dell'host e alla rete, quindi richiedono conferma esplicita. Stato,
 workspace, backup e `.env` restano fuori dal controllo versione.
 
+La memoria durevole non chiede conferma: `save_learning`, `remember_about` e
+`update_user_memory` scrivono cio' che il modello decide, e l'estrazione
+automatica aggiorna profilo e memorie dopo ogni risposta. Un file del
+workspace o l'output di un comando con dentro un'istruzione puo' quindi
+lasciare una traccia che viene reiniettata in ogni sessione futura. Il
+controllo e' la visibilita': con `MOSTRA_APPRENDIMENTI` gli strumenti di
+memoria mostrano i propri argomenti e, a turno chiuso, la CLI stampa cosa e'
+cambiato in profilo e memorie, con il testo intero. Il rimedio sono gli
+stessi strumenti di memoria, chiedendo ad Ares di correggere o cancellare.
+
 Su POSIX lo stato appreso nasce privato: `tmp/` e la directory LanceDB a 0700,
 i due database e la cronologia a 0600, come gli snapshot. La directory e' il
 controllo che regge, perche' senza il diritto di attraversarla i modi dei file
@@ -130,6 +143,10 @@ Su POSIX gli snapshot vengono pubblicati con una rinomina di directory. Su
 Windows, dove LanceDB può impedire quella rinomina anche dopo la chiusura dei
 reader nativi, il manifest viene pubblicato per ultimo come commit marker e
 il restore conserva stabile la directory radice con una copia di rollback.
+Un restore ucciso fra le rinomine puo' lasciare accanto allo stato la copia
+`.tmp-precedente-*` e nessuna `tmp/`: la chat all'avvio e `ares-backup list`
+lo dicono, nominando il residuo e lo snapshot pre-restore da cui tornare,
+senza toccare niente.
 
 La retention segue la sessione invece di una scadenza dei singoli risultati:
 finché la conversazione esiste i suoi `result_id` restano risolvibili. La
@@ -137,7 +154,10 @@ manutenzione offline seleziona sessioni inattive ma non cancella niente
 automaticamente; applicare una selezione richiede lock esclusivo e snapshot.
 Il database principale deve conoscere il backend separato `filesystem.db`
 prima di chiamare la cascata Agno, altrimenti il payload diventerebbe orfano:
-questa registrazione è un'invariante verificata dalla prova dedicata.
+questa registrazione è un'invariante verificata dalla prova dedicata. La
+cancellazione di piu' sessioni non e' atomica: un guasto a meta' esce come
+stato parziale, con l'elenco di cio' che e' sparito letto dall'archivio e lo
+snapshot pre-manutenzione da cui tornare.
 
 ## Configurazione
 

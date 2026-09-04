@@ -44,8 +44,13 @@ def mostra_evento(flusso, evento: TurnEvent) -> None:
         flusso.activity_stopped()
         # Uno strumento fallito emette Completed **e poi** Error, non l'uno
         # o l'altro. La guardia evita un esito riuscito prima dell'errore.
-        if config.MOSTRA_ESITO_STRUMENTI and not getattr(evento.tool, "tool_call_error", False):
-            flusso.tool_result(righe_esito(evento.tool))
+        if not getattr(evento.tool, "tool_call_error", False):
+            if config.MOSTRA_ESITO_STRUMENTI:
+                flusso.tool_result(righe_esito(evento.tool))
+            if config.MOSTRA_APPRENDIMENTI:
+                scrittura = righe_scrittura(evento.tool)
+                if scrittura:
+                    flusso.tool_result(scrittura)
     elif tipo is TurnEventKind.TOOL_ERROR:
         flusso.activity_stopped()
         errore = evento.error or getattr(evento.tool, "result", None) or ""
@@ -143,6 +148,39 @@ def righe_esito(strumento, errore=None) -> list:
         # "in 0.0 s", che sembra un guasto del cronometro.
         misura += " in " + ("<0.1" if durata < 0.1 else str(round(durata, 1))) + " s"
     return ["   esito: " + misura, *anteprima_risultato(testo)]
+
+
+# Gli strumenti con cui il modello scrive da solo nella memoria durevole.
+# Sono i nomi che Agno da' alle funzioni degli store; `write_file` del
+# quaderno non c'e' perche' il quaderno non viene reiniettato nel prompt, e
+# `/file` lo mostra per intero.
+STRUMENTI_DI_MEMORIA = frozenset(
+    {"save_learning", "remember_about", "link_entities", "forget", "update_user_memory", "update_profile"}
+)
+
+
+def righe_scrittura(strumento) -> list:
+    """Cosa uno strumento di memoria ha ricevuto da scrivere, per intero.
+
+    L'esito di `save_learning` dice il titolo e quello di `remember_about`
+    quanti fatti ha registrato: il testo che e' entrato lo dicono solo gli
+    argomenti. Niente troncamento, per la ragione di `righe_argomento`: qui
+    il contenuto non e' il rumore intorno alla decisione, e' la cosa da
+    leggere. Vuoto per ogni altro strumento.
+    """
+    nome = str(getattr(strumento, "tool_name", None) or "")
+    if nome not in STRUMENTI_DI_MEMORIA:
+        return []
+    righe = ["   in memoria: " + nome]
+    for chiave, valore in (getattr(strumento, "tool_args", None) or {}).items():
+        if valore is None or valore == [] or valore == "":
+            continue
+        if isinstance(valore, (list, tuple)):
+            testo = ", ".join(str(v) for v in valore)
+        else:
+            testo = " ".join(str(valore).split())
+        righe.append("   | " + str(chiave) + ": " + testo)
+    return righe
 
 
 def righe_argomento(nome: str, valore) -> list:

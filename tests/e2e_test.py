@@ -35,20 +35,19 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 from contextlib import closing
 
+from _comune import esigi, fallimento, ok, prepara_ambiente
+
 # L'archivio della prova va scelto prima di importare config, che legge i
-# percorsi una volta sola: correggere l'ambiente dopo non sposterebbe lo stato.
-ARCHIVIO_PROVA = tempfile.mkdtemp(prefix="ares-prova-")
-os.environ["ARES_TMP"] = ARCHIVIO_PROVA
-# Anche lo spazio di lavoro: `build_workspace` crea la directory al momento
-# di comporre l'agente, quindi senza questa riga un turno di prova ne farebbe
-# comparire una vera accanto al progetto.
-SPAZIO_PROVA = tempfile.mkdtemp(prefix="ares-prova-lavoro-")
-os.environ["ARES_WORKSPACE"] = SPAZIO_PROVA
+# percorsi una volta sola: correggere l'ambiente dopo non sposterebbe lo
+# stato. Anche lo spazio di lavoro: `build_workspace` crea la directory al
+# momento di comporre l'agente.
+RADICE_PROVA = prepara_ambiente("e2e")
+ARCHIVIO_PROVA = str(RADICE_PROVA / "stato")
+SPAZIO_PROVA = str(RADICE_PROVA / "lavoro")
 
 from ares import config  # noqa: E402
 from ares.ops.preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
@@ -63,12 +62,6 @@ SESSIONE = "prova-e2e"
 # "In una riga" tiene corto il turno: qui si misura che il giro si chiuda, non
 # quanto bene scriva il modello.
 DOMANDA = "Mi chiamo Prova e uso Linux. In una riga: a cosa serve un file di lock delle dipendenze?"
-
-
-def esigi(condizione: object, messaggio: str) -> None:
-    """Asserzione locale: importare lo smoke test ne cambierebbe ARES_TMP."""
-    if not condizione:
-        raise AssertionError(messaggio)
 
 
 # Il processo figlio rilegge l'archivio da zero. Vive come stringa e non come
@@ -168,10 +161,6 @@ def stato_archivio_reale() -> list:
         for percorso in reale.rglob("*")
         if percorso.is_file()
     )
-
-
-def ok(nome: str, nota: str) -> None:
-    print("ok      ", nome, "-", nota)
 
 
 def main() -> int:
@@ -303,13 +292,8 @@ def main() -> int:
         esigi(stato_archivio_reale() == reale_prima, "l'archivio vero e' cambiato durante la prova")
         ok("archivio vero intatto", str(len(reale_prima)) + " file, invariati")
 
-    except AssertionError as errore:
-        print("FALLITO ", errore)
-        print()
-        print("Archivio della prova conservato per l'esame:", ARCHIVIO_PROVA)
-        return 1
     except Exception as errore:
-        print("FALLITO ", type(errore).__name__ + ":", errore)
+        fallimento(errore)
         print()
         print("Archivio della prova conservato per l'esame:", ARCHIVIO_PROVA)
         return 1
@@ -326,8 +310,7 @@ def main() -> int:
     if args.conserva:
         print("Archivio della prova conservato:", ARCHIVIO_PROVA)
     else:
-        shutil.rmtree(ARCHIVIO_PROVA, ignore_errors=True)
-        shutil.rmtree(SPAZIO_PROVA, ignore_errors=True)
+        shutil.rmtree(RADICE_PROVA, ignore_errors=True)
         print("Archivio della prova cancellato.")
     print("Nessun fallimento.")
     return 0

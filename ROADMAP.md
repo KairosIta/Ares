@@ -5,7 +5,7 @@ roadmap privilegia affidabilità, comprensibilità e controllo dell’utente.
 
 ## Stato attuale
 
-La versione corrente usa Agno 3.0.1 e comprende memoria persistente,
+La versione corrente usa Agno 3.0.5 e comprende memoria persistente,
 apprendimento dopo `continue_run`, workspace controllato, backup locale,
 manutenzione delle entita' e delle sessioni, REPL Rich/Prompt Toolkit e
 installazione riproducibile. I risultati tool grandi vengono conservati

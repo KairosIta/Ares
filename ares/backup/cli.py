@@ -16,6 +16,7 @@ from ares.state.lock import StatoOccupato, lock_stato
 class OperazioniBackup:
     """Operazioni della façade usate dalla CLI, iniettate per evitare cicli."""
 
+    avviso_residui: Callable[[], list[str]]
     crea_snapshot: Callable[[], Path]
     elenco_snapshot: Callable[[], list[Path]]
     pota_snapshot: Callable[[int, bool], list[Path]]
@@ -50,6 +51,10 @@ def _dimensione(percorso: Path) -> int:
 
 
 def _stampa_elenco(operazioni: OperazioniBackup) -> None:
+    # Prima del catalogo: chi elenca gli snapshot sta decidendo se e da cosa
+    # ripristinare, e un restore rimasto a meta' e' la prima cosa da sapere.
+    for riga in operazioni.avviso_residui():
+        print(riga)
     snapshot = operazioni.elenco_snapshot()
     if not snapshot:
         print("Nessuno snapshot in", config.BACKUP_DIR)

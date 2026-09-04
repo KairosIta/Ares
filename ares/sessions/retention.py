@@ -27,6 +27,24 @@ class ErroreRetention(RuntimeError):
     """Una selezione o cancellazione di sessioni non e' sicura o completa."""
 
 
+class StatoParziale(ErroreRetention):
+    """Una cancellazione fallita a meta': cosa e' andato via e cosa no.
+
+    Agno elimina sessioni e run in una transazione sola, ma cio' che segue
+    - la cascata dei payload offloaded, il contesto appreso di ogni sessione
+    e le verifiche - avviene un passo alla volta. Un guasto li' lascia un
+    archivio in cui alcune sessioni non ci sono piu' e altre si', e in cui
+    quelle sparite possono aver lasciato un contesto o un payload orfano.
+    Chi legge il messaggio deve sapere entrambe le cose, perche' la scelta
+    fra ripristinare lo snapshot e andare avanti dipende da quelle.
+    """
+
+    def __init__(self, causa: BaseException, eliminate: list[str], rimaste: list[str]) -> None:
+        super().__init__(str(causa) or type(causa).__name__)
+        self.eliminate = eliminate
+        self.rimaste = rimaste
+
+
 @dataclass(frozen=True)
 class SessioneRetention:
     """I soli dati necessari a decidere e spiegare una retention."""
@@ -148,11 +166,35 @@ def elimina_sessioni(
     sessioni: Iterable[SessioneRetention],
     user_id: str,
 ) -> int:
-    """Elimina sessioni, run, contesti e offload, poi verifica la cascata."""
+    """Elimina sessioni, run, contesti e offload, poi verifica la cascata.
+
+    Un guasto dopo la cancellazione di Agno esce come `StatoParziale`, con
+    l'elenco di cio' che risulta davvero sparito: e' letto dall'archivio a
+    guasto avvenuto, non dedotto da dove ci si e' fermati, perche' e' lo
+    stato reale che l'utente deve conoscere.
+    """
     selezionate = list(sessioni)
     if not selezionate:
         return 0
     ids = [sessione.session_id for sessione in selezionate]
+    try:
+        return _elimina_e_verifica(db, store, ids, user_id)
+    except Exception as errore:
+        try:
+            rimaste = [
+                session_id
+                for session_id in ids
+                if db.get_session(session_id=session_id, session_type=SessionType.AGENT, user_id=user_id) is not None
+            ]
+        except Exception:
+            # Se nemmeno la rilettura riesce, l'archivio non risponde: nessuna
+            # sessione si puo' dichiarare eliminata.
+            rimaste = list(ids)
+        eliminate = [session_id for session_id in ids if session_id not in rimaste]
+        raise StatoParziale(errore, eliminate, rimaste) from errore
+
+
+def _elimina_e_verifica(db: SqliteDb, store: ResultStore, ids: list[str], user_id: str) -> int:
     righe_offload = [riga for session_id in ids for riga in db.get_tool_results_for_session(session_id, None)]
     # Questa API Agno rimuove anche i run e avvia la cascata degli offload.
     # Il ResultStore aperto sopra ha registrato filesystem.db sullo stesso db.
