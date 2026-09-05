@@ -103,6 +103,17 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: ./setup.ps1 -SkipPreflight
 
+      # `setup.ps1` e' il percorso d'installazione che l'utente Windows
+      # esegue davvero, e va provato cosi' com'e': senza il gruppo dev. La
+      # misura pero' vuole `coverage`, e lo stesso `sync --locked` sullo
+      # stesso venv lo aggiunge senza toccare il resto: e' un secondo passo,
+      # non una variante dello script.
+      - name: Aggiungi gli strumenti di sviluppo
+        if: runner.os == 'Windows'
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+        run: uv sync --locked --python python
+
       # L'elenco dei moduli era scritto a mano e si era gia' perso
       # `turn_core.py`, aggiunto dopo. Qui l'esclusione e' esplicita e il
       # resto e' automatico: un modulo nuovo entra da solo.
@@ -113,13 +124,10 @@ jobs:
       # separati significavano che aggiungere una prova voleva dire
       # ricordarsi di aggiungerla anche qui, e una prova dimenticata in CI
       # e' una prova che non esiste.
+      #
+      # Con la misura su entrambi i sistemi. La copertura di un progetto non
+      # dipende dal sistema, ma i rami si': i percorsi Windows di `backup` e
+      # `platform_files` esistono per Windows, e misurati solo su Ubuntu
+      # risultavano scoperti anche quando il runner Windows li attraversava.
       - name: Prove offline
-        if: runner.os != 'Windows'
         run: ${{ matrix.python }} tests/run.py --copertura
-
-      # Su Windows la stessa suite senza misura: la copertura di un progetto
-      # non dipende dal sistema, e il runner Windows nasce da setup.ps1, che
-      # installa le sole dipendenze di Ares, senza il gruppo dev.
-      - name: Prove offline
-        if: runner.os == 'Windows'
-        run: ${{ matrix.python }} tests/run.py

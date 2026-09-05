@@ -12,6 +12,13 @@ configurazione che questa versione distribuisce.
 
 ### Changed
 
+- la CI misura la copertura anche su Windows. Il runner Windows nasce da
+  `setup.ps1`, che installa senza il gruppo dev, e la suite ci girava senza
+  misura: i rami Windows di `backup` e `platform_files` risultavano
+  scoperti anche quando quel runner li attraversava, e una regressione li'
+  non l'avrebbe detta nessun numero. Un secondo `uv sync --locked` sullo
+  stesso venv aggiunge `coverage` dopo lo script, che resta provato com'e';
+  il passo delle prove torna uno solo per i due sistemi;
 - i comandi di lettura della REPL passano sull'archivio seminato dello
   smoke (`comandi su archivio`): `/profilo`, `/memorie`, `/contesto`,
   `/entita` con e senza risultati, `/file`, `/lavoro` acceso e spento,
