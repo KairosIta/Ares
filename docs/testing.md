@@ -74,9 +74,16 @@ quando misura.
 Ciò che resta scoperto è quasi tutto composto da gestori d'errore e da rami
 di piattaforma: i percorsi Windows su una macchina Linux, i ripieghi per un
 disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare. Le
-righe che solo un modello vero attraversa — l'estrazione con retry, il
-salvataggio e il riuso delle intuizioni — le coprono le prove con Ollama,
+righe che solo un modello vero attraversa — il salvataggio e il riuso delle
+intuizioni, un turno intero contro Ollama — le coprono le prove con Ollama,
 che qui non girano: `--tutte` alza il numero.
+
+Il retry del contesto stava in quell'elenco e ne è uscito: la sua logica la
+prova ora `contratto`, offline e in modo deterministico, mentre
+`learning_reliability_test.py` resta a misurare ciò che solo un modello vero
+può dire, cioè *quanto spesso* l'estrazione manca il colpo. È la divisione
+giusta fra le due: una risponde "il retry funziona come scritto", l'altra
+"serve davvero, e quanto".
 
 ## Analisi statica
 
@@ -108,13 +115,19 @@ comandi locali. Stava nello smoke, che era diventato il posto dove finiva
 ogni prova offline; la divisione segue ciò che serve per girare.
 `sessioni` attraversa un vero `Agent.run()` con modello deterministico e
 verifica offload, quota, retention, cascata e restore dei due SQLite.
-`contratto` chiede ad Agno le due cose che Ares dà per vere del framework:
-che un turno con pausa per conferma produca una sola estrazione, quella del
-post-hook sul run completo, e che `run → pausa → continue_run` riprenda lo
-stesso run, eseguendo lo strumento dopo la conferma e non prima, e
-conservando il file dopo un rifiuto. Il modello è lo stesso copione
-deterministico, e gli store di apprendimento sono spenti: si conta il
-passaggio, non ciò che scriverebbe.
+`contratto` chiede ad Agno le quattro cose che Ares dà per vere del
+framework: che un turno con pausa per conferma produca una sola estrazione,
+quella del post-hook sul run completo; che `run → pausa → continue_run`
+riprenda lo stesso run, eseguendo lo strumento dopo la conferma e non prima e
+conservando il file dopo un rifiuto; che il retry di
+`AresSessionContextStore` ripeta solo l'estrazione che non ha scritto e si
+fermi appena scrive, sul percorso sincrono e su quello asincrono; e che
+profilo e memorie continuino a rifiutare le modalità `PROPOSE` e `HITL`, che
+è il motivo per cui la memoria durevole non passa da una conferma.
+Il modello è lo stesso copione deterministico. Nei primi due controlli gli
+store di apprendimento sono spenti e si conta il passaggio, non ciò che
+scriverebbe; il terzo lo store lo costruisce davvero, perché lì la domanda è
+proprio se ha scritto.
 `backup` copre snapshot, checksum, restore e prune; `entita` l'audit e la
 fusione. `cli` prova i comandi con cui Ares si usa davvero: il preflight
 contro un server Ollama finto nei tre esiti, l'ispezione degli archivi, i

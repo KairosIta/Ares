@@ -1,0 +1,72 @@
+# Analisi di sicurezza del codice
+# ===============================
+# Ruff e mypy leggono ogni riga del progetto, ma cercano cose diverse: uno
+# stile e difetti locali, l'altro i tipi. CodeQL segue invece il dato da dove
+# entra a dove viene usato - un percorso costruito con cio' che arriva da
+# fuori, un comando composto con una stringa altrui - e quella e' la classe
+# che qui interessa: Ares apre archivi, compone percorsi e lancia
+# sottoprocessi.
+#
+# Volutamente fuori dai controlli obbligatori del ruleset su `main`. Un
+# risultato di CodeQL e' un'ipotesi da leggere, non un verdetto: pretenderlo
+# verde prima di ogni merge trasformerebbe un falso positivo in un blocco, e
+# un blocco che si impara ad aggirare. Cio' che trova compare nella scheda
+# Security e si guarda quando compare.
+
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # Il codice sta fermo, le regole no: una query aggiunta a monte trova cose
+  # in un file che nessuno tocca da mesi. Senza questo passaggio periodico
+  # l'analisi direbbe soltanto cio' che si sapeva l'ultima volta che si e'
+  # scritto qualcosa.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analisi:
+    name: CodeQL · Python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    permissions:
+      # Il solo permesso in piu' rispetto alla CI, ed e' cio' che serve per
+      # scrivere gli avvisi nella scheda Security.
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Le action sono pinnate al commit come nella CI: un tag si sposta, un
+      # SHA no.
+      - name: Inizializza CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: python
+          # `security-and-quality` aggiunge alle query di sicurezza quelle di
+          # manutenibilita'. Qui non servono: ruff e mypy coprono gia' quel
+          # terreno e girano su ogni push in pochi secondi, mentre le loro
+          # regole sono discusse nel `pyproject.toml`. Restano le query di
+          # sicurezza, che sono il motivo per cui questo file esiste.
+          queries: security-extended
+
+      # Niente passo `autobuild`: Python non si compila, e installare le
+      # dipendenze non cambierebbe cio' che l'analisi vede nel codice di Ares.
+      # Il tempo risparmiato e' l'intero `uv sync`.
+      - name: Analizza
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          category: "/language:python"

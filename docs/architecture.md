@@ -128,6 +128,17 @@ memoria mostrano i propri argomenti e, a turno chiuso, la CLI stampa cosa e'
 cambiato in profilo e memorie, con il testo intero. Il rimedio sono gli
 stessi strumenti di memoria, chiedendo ad Ares di correggere o cancellare.
 
+Che il controllo sia la visibilita' e non una conferma non e' una scelta fra
+due possibilita' disponibili. Le modalita' di apprendimento di Agno 3.0.5 sono
+quattro, ma non valgono per tutti gli store: `PROPOSE` e' supportata dal solo
+store delle intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano
+con un warning, e `HITL` non e' implementata da nessuno. Profilo e memorie
+non sono percio' confermabili a livello di framework, e una conferma vera va
+costruita in Ares: e' la voce corrispondente della `ROADMAP.md`. Il limite e'
+sorvegliato da `tests/agno_contract_test.py`, cosi' il giorno in cui Agno lo
+togliesse questa pagina diventerebbe falsa con una prova rossa invece che in
+silenzio.
+
 Su POSIX lo stato appreso nasce privato: `tmp/` e la directory LanceDB a 0700,
 i due database e la cronologia a 0600, come gli snapshot. La directory e' il
 controllo che regge, perche' senza il diritto di attraversarla i modi dei file

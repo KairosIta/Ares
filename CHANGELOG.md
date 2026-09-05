@@ -6,6 +6,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-05 su Agno 3.0.5,
+10 prove su 10, con il modello conversazionale locale — cioè la
+configurazione che questa versione distribuisce.
+
 ### Changed
 
 - Agno passa da 3.0.1 a 3.0.5. La 3.0.2 con il vincolo `>=3.0.2,<3.1` in
@@ -44,8 +48,66 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   dove finiva ogni prova offline, duemilacinquecento righe in cui
   l'assemblaggio dell'agente e il comportamento di un widget stavano nello
   stesso elenco; la divisione segue cio' che serve per girare..
+- **il modello conversazionale distribuito torna locale.** `MAIN_MODEL` era
+  `MODELLO_CLOUD` in `config.py`: chi clonava un progetto che si annuncia
+  local-first mandava le proprie conversazioni a `ollama.com` senza averlo
+  scelto. Il default e' ora `MODELLO_LOCALE`, e la scelta opposta non passa
+  piu' da una modifica al file versionato - che tornerebbe a divergere a ogni
+  `git pull` - ma da `ARES_MAIN_MODEL` nel `.env`, accanto alle variabili di
+  percorso che seguivano gia' quella divisione: qui le decisioni versionate,
+  li' cio' che cambia da una macchina all'altra. Il confine non si sposta:
+  `assistant_runtime` continua a rifiutare un nome cloud per estrazione ed
+  embedding, qualunque cosa dica l'ambiente. README, `SECURITY.md` e
+  `.env.example` dicono ora qual e' il valore di serie invece di lasciarlo
+  dedurre;
+- il messaggio d'errore della sonda LanceDB non si avvolge piu' due volte.
+  `conta_tabelle_lancedb` rilanciava dal proprio gestore anche gli
+  `ErroreBackup` che sollevava lei, e "LanceDB illeggibile in /percorso:
+  risposta non valida dalla sonda LanceDB" diceva due volte la stessa cosa
+  mettendo il dettaglio in fondo. I due errori interni nominano ora il
+  percorso da se' e passano intatti;
+- `CONTRIBUTING.md` chiede di annotare nel CHANGELOG quando le prove con
+  Ollama sono state eseguite. Non girano in CI e non possono - i runner di
+  GitHub non hanno una GPU - quindi tre prove su dieci esistono solo se
+  qualcuno le lancia, e nessuno se ne accorge se smette. Il resto della
+  catena e' dimostrabile da fuori; questo pezzo no, e allora si dichiara.
 
 ### Added
+
+- workflow **CodeQL** (`.github/workflows/codeql.yml`), query
+  `security-extended` su push, PR e una volta a settimana. Ruff e mypy
+  leggono ogni riga ma cercano altro; CodeQL segue il dato da dove entra a
+  dove viene usato, che e' la classe pertinente a un progetto che apre
+  archivi, compone percorsi e lancia sottoprocessi. Volutamente fuori dai
+  check obbligatori del ruleset su `main`: un suo risultato e' un'ipotesi da
+  leggere, e pretenderlo verde prima di ogni merge trasformerebbe un falso
+  positivo in un blocco che si impara ad aggirare;
+- `tests/agno_contract_test.py` sale da due controlli a quattro, e prende le
+  due superfici di Agno che restavano scoperte. Il **retry del contesto di
+  sessione** - la seconda classe che Ares sovrascrive - era provato dalla
+  sola `learning_reliability_test.py`, che vuole Ollama e quindi in CI non
+  gira mai: il ramo piu' delicato dell'apprendimento era verificato solo a
+  mano. Ora un modello a copione lo attraversa offline nei tre casi che
+  contano - riuscito al primo colpo, mai riuscito fino al tetto, fallito e
+  poi recuperato - sul percorso sincrono e su quello asincrono, e afferma i
+  tre fatti di Agno su cui il retry si regge: `extract_and_save` col suo
+  nome, `context_updated` azzerato e acceso solo dopo un'esecuzione, e il
+  gemello `aextract_and_save`. La divisione con la prova che usa Ollama
+  diventa netta: qui "il retry funziona come scritto", li' "serve davvero, e
+  quanto";
+- e, nella stessa prova, **il limite dichiarato sulla memoria durevole
+  diventa un'invariante sorvegliata**. `SECURITY.md` e
+  `docs/architecture.md` dicono che profilo e memorie si scrivono fuori dal
+  ciclo di conferma; la ragione, verificata sull'API installata, e' che Agno
+  3.0.5 non offre la modalita': `PROPOSE` vale per il solo store delle
+  intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano con un
+  warning e `HITL` e' "reserved for future use" su ogni store. La prova lo
+  afferma, cosi' il giorno in cui Agno cambiasse idea la documentazione
+  diventerebbe falsa con una prova rossa invece che in silenzio. La
+  correzione dei documenti che lasciavano intendere il contrario -
+  `docs/agno.md` proponeva `PROPOSE` come candidato per gli apprendimenti da
+  approvare, senza dire su quale store - e la voce di `ROADMAP.md` per la
+  conferma da costruire in Ares partono da qui;
 
 - eco di cio' che entra in memoria (`MOSTRA_APPRENDIMENTI`, acceso di
   default). Il modello scrive nella memoria durevole senza conferma, per due
