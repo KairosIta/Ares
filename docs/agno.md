@@ -119,8 +119,9 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   di proporre e di chiamare `save_learning` solo dopo un si'. E'
   un'approvazione "soft", che dipende dall'obbedienza del modello, sullo
   store che ne aveva meno bisogno. Sugli altri due store la modalita' non
-  esiste (vedi sopra). Una conferma vera sulla memoria durevole va percio'
-  costruita in Ares: e' la voce corrispondente della `ROADMAP.md`.
+  esiste (vedi sopra). La conferma sulla memoria durevole e' percio'
+  costruita in Ares, a valle: `echo.py` legge i due store prima del turno e
+  li riscrive se l'utente dice di no (`CONFERMA_APPRENDIMENTI`).
 - **Curator:** puo' deduplicare e potare apprendimenti, ma deve passare dallo
   stesso modello di anteprima, backup e applicazione gia' usato per le
   entita'.

@@ -16,14 +16,12 @@ automaticamente su Ubuntu e Windows.
 
 ## Evoluzione
 
-- **conferma o annullamento di ciò che entra in memoria durevole.** Oggi
-  profilo e memorie si scrivono fuori dal ciclo di conferma, e il controllo è
-  la visibilità a posteriori dell'eco. Agno non offre una via: `PROPOSE` vale
-  per il solo store delle intuizioni e `HITL` per nessuno, quindi la conferma
-  va costruita qui. La strada più corta parte da `agent/echo.py`, che il
-  diffo fra prima e dopo il turno lo calcola già: manca la decisione
-  dell'utente e la riscrittura dei valori precedenti quando la risposta è no.
-  È il punto della roadmap con il peso maggiore sul modello di sicurezza;
+- **conferma per singola riga di ciò che entra in memoria durevole.** Oggi
+  la conferma c'è ma è tutto o niente per turno: un `n` riporta profilo e
+  memorie a prima del turno. Scegliere quale memoria tenere e quale no
+  richiede di riscrivere lo store voce per voce, e va provato sul modello di
+  dati di Agno prima di promettere che una memoria modificata torni al testo
+  precedente e non sparisca;
 - profili di configurazione per hardware e finestre di contesto differenti;
 - benchmark ripetibili di latenza, VRAM e affidabilità degli store;
 - copertura automatica più ampia del percorso asincrono;

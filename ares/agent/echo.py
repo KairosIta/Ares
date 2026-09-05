@@ -12,6 +12,15 @@ pubbliche prima del turno e dopo, e cio' che e' diverso e' cio' che il turno
 ha scritto, da qualunque strada sia passato. Sono due letture SQLite in piu'
 per turno, locali e senza modello.
 
+La stessa lettura fatta prima del turno e' anche cio' che permette di
+tornare indietro. Agno non offre una conferma su profilo e memorie -
+`PROPOSE` vale per le sole intuizioni, `HITL` per nessuno store - quindi la
+scrittura avviene comunque; ma gli store espongono `save` e `delete`, e
+riscrivere cio' che si era letto prima del turno e' una conferma a
+posteriori con lo stesso effetto di una a priori: cio' che l'utente non
+vuole non sopravvive al turno. `istantanea` conserva gli oggetti come li
+restituiscono gli store, `ripristina` li riscrive.
+
 Solo profilo e memorie, cioe' cio' che e' durevole e attraversa le sessioni:
 un'osservazione sbagliata entra in ogni conversazione futura, ed e' per
 questo che va vista subito. Il contesto di sessione viene riscritto a ogni
@@ -77,24 +86,72 @@ def _memorie(contenitore: Any) -> dict[str, str]:
     return memorie
 
 
-def fotografa(agent: Any) -> Fotografia:
-    """Legge profilo e memorie dell'utente dell'agente.
+@dataclass(frozen=True)
+class Istantanea:
+    """Profilo e memorie come li restituiscono gli store, per riscriverli.
 
-    Tollera tutto cio' che puo' mancare - un agente senza macchina di
-    apprendimento, uno store spento in `config.py`, un archivio ancora vuoto -
-    restituendo una fotografia vuota: l'eco e' un di piu', e non deve poter
-    impedire un turno.
+    `None` vuol dire che lo store non c'era o non aveva niente per l'utente:
+    ripristinare `None` cancella cio' che il turno ha creato.
     """
+
+    profilo: Any = None
+    memorie: Any = None
+
+
+def _store(agent: Any) -> tuple[Any, Any, str | None]:
+    """Gli store di profilo e memorie e l'utente, o `None` dove mancano."""
     macchina = getattr(agent, "learning_machine", None)
     user_id = getattr(agent, "user_id", None)
     if macchina is None or not user_id:
-        return Fotografia()
-    profilo = getattr(macchina, "user_profile_store", None)
-    memorie = getattr(macchina, "user_memory_store", None)
-    return Fotografia(
-        profilo=_campi(profilo.get(user_id=user_id)) if profilo is not None else {},
-        memorie=_memorie(memorie.get(user_id=user_id)) if memorie is not None else {},
+        return None, None, None
+    return getattr(macchina, "user_profile_store", None), getattr(macchina, "user_memory_store", None), user_id
+
+
+def istantanea(agent: Any) -> Istantanea:
+    """Legge profilo e memorie dell'utente dell'agente, senza ridurli.
+
+    Tollera tutto cio' che puo' mancare - un agente senza macchina di
+    apprendimento, uno store spento in `config.py`, un archivio ancora vuoto -
+    restituendo un'istantanea vuota: l'eco e' un di piu', e non deve poter
+    impedire un turno.
+    """
+    profilo, memorie, user_id = _store(agent)
+    return Istantanea(
+        profilo=profilo.get(user_id=user_id) if profilo is not None else None,
+        memorie=memorie.get(user_id=user_id) if memorie is not None else None,
     )
+
+
+def riduci(stato: Istantanea) -> Fotografia:
+    """L'istantanea come testo confrontabile."""
+    return Fotografia(profilo=_campi(stato.profilo), memorie=_memorie(stato.memorie))
+
+
+def fotografa(agent: Any) -> Fotografia:
+    """Profilo e memorie dell'utente dell'agente, ridotti a testo."""
+    return riduci(istantanea(agent))
+
+
+def ripristina(agent: Any, stato: Istantanea) -> bool:
+    """Riporta profilo e memorie a un'istantanea. Vero se ci e' riuscito.
+
+    Riscrive per intero: `save` sostituisce la riga dell'utente, `delete`
+    la toglie quando prima non c'era o era vuota. Passa dalle API pubbliche
+    degli store, che inghiottono i propri errori e li scrivono nel log a
+    livello debug; per questo il risultato non si presume, si rilegge: e'
+    vero solo se la fotografia dopo il ripristino e' uguale a quella di
+    prima del turno.
+    """
+    profilo, memorie, user_id = _store(agent)
+    agent_id = getattr(agent, "id", None)
+    for store, valore, vuoto in ((profilo, stato.profilo, _campi), (memorie, stato.memorie, _memorie)):
+        if store is None:
+            continue
+        if valore is None or not vuoto(valore):
+            store.delete(user_id=user_id)
+        else:
+            store.save(user_id, valore, agent_id=agent_id)
+    return fotografa(agent) == riduci(stato)
 
 
 def variazioni(prima: Fotografia, dopo: Fotografia) -> list[str]:

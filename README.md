@@ -31,9 +31,11 @@ spazio controllato sul disco senza richiedere API cloud.
   dopo una conferma e `continue_run`, con retry mirato sul contesto.
 - **Strumenti controllati:** cronologia, ricerca, quaderno privato e workspace
   su disco con conferma per le operazioni sensibili.
-- **Memoria visibile:** sotto ogni risposta compare cosa è entrato in
-  profilo e memorie, sia dagli strumenti del modello sia dall'estrazione
-  automatica, con il testo intero; tace quando non è cambiato niente.
+- **Memoria visibile e revocabile:** sotto ogni risposta compare cosa è
+  entrato in profilo e memorie, sia dagli strumenti del modello sia
+  dall'estrazione automatica, con il testo intero, e la CLI chiede se
+  tenerlo: un `n` riporta i due store a prima del turno. Tace quando non è
+  cambiato niente.
 - **Contesto protetto:** entro la quota Agno i risultati molto grandi restano
   lossless negli archivi locali e vengono riletti a pagine, mentre le tool
   call storiche nel prompt hanno un limite esplicito.
