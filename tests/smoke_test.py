@@ -87,7 +87,7 @@ from ares.agent.assistant import (  # noqa: E402
     build_workspace,
 )
 from ares.agent.echo import Fotografia, fotografa, variazioni  # noqa: E402
-from ares.agent.schemas import AresProfile  # noqa: E402
+from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.cli.chat import (  # noqa: E402
     gestisci_comando,
 )
@@ -97,6 +97,7 @@ from ares.state.stores import (  # noqa: E402
     leggi_sessioni,
     namespace_entita,
     namespace_utente,
+    prima_domanda,
     righe_entita,
     righe_sessione,
     stampa_store,
@@ -1295,6 +1296,104 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     return str(len(atteso)) + " sessioni ordinate per ultima modifica, filtro, marcatore e nota verificati"
 
 
+def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
+    """Ogni comando di lettura della REPL passa sull'archivio seminato.
+
+    `repl_test` prova che un comando si risolve; qui si prova che, risolto,
+    legge davvero l'archivio e mostra cio' che il seme ci ha messo. Sono i
+    comandi con cui l'utente verifica cosa Ares sa - `/profilo`, `/memorie`,
+    `/entita` - e dopo un "no" alla conferma della memoria sono il modo di
+    controllare che il ripristino sia avvenuto: un comando che stampa vuoto
+    su un archivio pieno toglierebbe quel controllo senza che nessuna prova
+    lo dica.
+    """
+
+    def esegui_comando(riga: str) -> str:
+        catturato = io.StringIO()
+        with contextlib.redirect_stdout(catturato):
+            vive = gestisci_comando(riga, agent, session_id, user_id)
+        esigi(vive is True, riga + " chiude la sessione")
+        return catturato.getvalue()
+
+    uscita = esegui_comando("/profilo")
+    esigi(PROFILO_SEMINATO["occupation"] in uscita, "/profilo non mostra il seme: " + repr(uscita))
+    uscita = esegui_comando("/memorie")
+    esigi(all(m in uscita for m in MEMORIE_SEMINATE), "/memorie non mostra il seme: " + repr(uscita))
+    uscita = esegui_comando("/contesto")
+    esigi("Sessione di collaudo" in uscita, "/contesto non mostra il riassunto del seme: " + repr(uscita))
+
+    uscita = esegui_comando("/entita")
+    esigi(all(nome in uscita for nome, _, _ in ENTITA_SEMINATE), "/entita non elenca il seme: " + repr(uscita))
+    uscita = esegui_comando("/entita parolachenonesiste")
+    esigi("Nessuna entita' per" in uscita, "una ricerca a vuoto non lo dice: " + repr(uscita))
+    esigi("testuale" in uscita, "una ricerca a vuoto non spiega che e' testuale: " + repr(uscita))
+
+    uscita = esegui_comando("/file")
+    esigi(FILE_SEMINATO[0] in uscita, "/file non elenca il quaderno: " + repr(uscita))
+    esigi("byte" in uscita, "/file non dice la dimensione: " + repr(uscita))
+
+    uscita = esegui_comando("/lavoro")
+    esigi(str(config.WORKSPACE_DIR) in uscita, "/lavoro non nomina la directory: " + repr(uscita))
+    acceso = config.WORKSPACE
+    config.WORKSPACE = False
+    try:
+        uscita = esegui_comando("/lavoro")
+    finally:
+        config.WORKSPACE = acceso
+    esigi("spento" in uscita, "/lavoro con il workspace spento non lo dice: " + repr(uscita))
+
+    uscita = esegui_comando("/aiuto")
+    esigi("/profilo" in uscita and "/esci" in uscita, "/aiuto non elenca i comandi: " + repr(uscita))
+
+    # Le funzioni pure dietro `/sessioni`, sui rami che il seme non tocca: un
+    # messaggio il cui contenuto e' una lista di parti, un agente senza
+    # archivio, una sessione senza data.
+    class Messaggio:
+        def __init__(self, role, content):
+            self.role = role
+            self.content = content
+
+    class Run:
+        def __init__(self, messages):
+            self.messages = messages
+
+    class Sessione:
+        session_id = "a-parti"
+        updated_at = None
+        created_at = None
+        runs = (Run([Messaggio("assistant", "x"), Messaggio("user", ["prima ", {"text": "parte"}, {"altro": 1}])]),)
+
+    a_parti = prima_domanda(Sessione())
+    esigi(a_parti == "prima parte", "un contenuto a parti non si legge: " + repr(a_parti))
+    righe = righe_sessione(Sessione())
+    esigi("data ignota" in righe[0], "una sessione senza data non lo dice: " + repr(righe))
+    esigi(prima_domanda(Sessione(), larghezza=5) == "prima...", "il troncamento della domanda non avviene")
+    esigi(leggi_sessioni(object(), user_id=user_id) == [], "un agente senza archivio non da' un elenco vuoto")
+
+    # Le memorie come testo per il prompt: la legenda in testa, la data fra
+    # quadre, una voce che non e' un dict resa com'e', una vuota saltata.
+    memorie = AresMemories(
+        user_id=user_id,
+        memories=[
+            {"content": "Con data.", "updated_at": "2026-09-05T10:00:00"},
+            {"content": "Senza data."},
+            {"content": ""},
+            "testo nudo",
+        ],
+    )
+    testo = memorie.get_memories_text()
+    righe = testo.splitlines()
+    esigi(righe[0].startswith("(fra parentesi quadre"), "la legenda non apre il testo: " + repr(righe))
+    esigi("- Con data. [2026-09-05]" in righe, "la data non e' resa a giorno: " + repr(righe))
+    esigi("- Senza data." in righe, "una memoria senza data non compare: " + repr(righe))
+    esigi("- testo nudo" in righe, "una voce non dict non compare: " + repr(righe))
+    esigi(len(righe) == 4, "una memoria vuota occupa una riga: " + repr(righe))
+    esigi(AresMemories(user_id=user_id, memories=[]).get_memories_text() == "", "senza memorie il testo non e' vuoto")
+    solo_vuote = AresMemories(user_id=user_id, memories=[{"content": ""}])
+    esigi(solo_vuote.get_memories_text() == "", "sole memorie vuote producono la legenda")
+    return "otto comandi sul seme, contenuti a parti, data ignota e testo delle memorie"
+
+
 def file_isolati(user_id: str) -> str:
     """I file di un utente non si vedono da un altro utente.
 
@@ -1491,6 +1590,7 @@ def main() -> int:
             ("fatti leggibili     ", lambda: fatti_leggibili(lm, args.user)),
             ("entita cercate      ", lambda: entita_cercate(agent, args.user)),
             ("sessioni elencate   ", lambda: sessioni_elencate(agent, args.user, args.session)),
+            ("comandi su archivio ", lambda: comandi_sull_archivio(agent, args.user, args.session)),
             ("file isolati        ", lambda: file_isolati(args.user)),
             ("indice vettoriale   ", lambda: indice_vettoriale(lm)),
             ("archivio privato    ", lambda: archivio_privato()),
