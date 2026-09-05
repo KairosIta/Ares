@@ -57,8 +57,10 @@ rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 Con le sole prove offline la misura è intorno all'88%. `cli/chat.py` era il
 modulo più scoperto, al 61%, quando il turno conversazionale si attraversava
 solo con Ollama; da quando `chat turno` lo percorre con un `run_turn_cycle`
-finto è al 100%. Il meno coperto oggi è `cli/commands.py`, al 76%: i rami dei
-comandi locali che leggono gli archivi.
+finto è al 100%. I comandi locali che leggono gli archivi — `/profilo`,
+`/memorie`, `/entita`, `/file`, `/lavoro` — passano in `comandi su archivio`
+nello smoke, sul seme: `cli/commands.py` era al 76% ed è al 92%. Il meno
+coperto oggi è `cli/ui.py`, all'81%: i rami del terminale senza TTY.
 
 La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
 le prove ne lanciano parecchi — la CLI di `ares.entities` sei volte,

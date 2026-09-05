@@ -12,6 +12,15 @@ configurazione che questa versione distribuisce.
 
 ### Changed
 
+- i comandi di lettura della REPL passano sull'archivio seminato dello
+  smoke (`comandi su archivio`): `/profilo`, `/memorie`, `/contesto`,
+  `/entita` con e senza risultati, `/file`, `/lavoro` acceso e spento,
+  `/aiuto`. `repl_test` provava che un comando si risolve, nessuna prova
+  che, risolto, leggesse davvero l'archivio; e dopo un no alla conferma
+  della memoria sono questi comandi il modo di controllare il ripristino.
+  Con loro i rami di `stores.py` sui contenuti a parti e sulle date assenti
+  e `get_memories_text` di `AresMemories`: `cli/commands.py` dal 76% al
+  92%, `state/stores.py` dal 79% al 96%, `agent/schemas.py` al 100%;
 - Agno passa da 3.0.1 a 3.0.5. La 3.0.2 con il vincolo `>=3.0.2,<3.1` in
   `pyproject.toml`, le patch successive dal solo `uv.lock`, che ne porta gli
   hash: ogni patch e' provata sulle superfici che Ares usa e sul ciclo REPL
