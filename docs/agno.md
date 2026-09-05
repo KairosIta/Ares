@@ -29,6 +29,19 @@ primitive interessanti, ma non diventano automaticamente funzionalita' di
 Ares: richiedono prima una politica utente, una rappresentazione nella CLI e
 copertura nei backup.
 
+Una in particolare non e' disponibile nemmeno volendola. Le modalita' di
+apprendimento sono quattro - `ALWAYS`, `AGENTIC`, `PROPOSE`, `HITL` - ma non
+valgono per tutti gli store: `PROPOSE` e' supportato dal solo
+`LearnedKnowledgeStore`, mentre `UserProfileStore` e `UserMemoryStore` lo
+rifiutano con un warning, e `HITL` e' dichiarato "reserved for future use;
+unsupported by every store". **In Agno 3.0.5 non esiste quindi alcun modo, a
+livello di framework, di far confermare cio' che entra in profilo e
+memorie**: e' un limite del framework, non una scelta di Ares, ed e' la
+ragione per cui la sezione "Confini di sicurezza" di
+`docs/architecture.md` dice cio' che dice. Il fatto e' sorvegliato da
+`tests/agno_contract_test.py`, che diventa rosso il giorno in cui Agno
+cambia idea.
+
 ## Cosa porta Agno 3 ad Ares
 
 Agno 3 normalizza ogni run nella tabella `agno_runs`, lasciando alle sessioni
@@ -99,9 +112,15 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **Decision Log:** adatto ad audit e feedback sulle decisioni; per Ares serve
   decidere cosa registrare senza trasformare ogni conversazione in
   telemetria locale rumorosa.
-- **Learning `PROPOSE`:** buon candidato per apprendimenti che l'utente vuole
-  approvare prima del salvataggio. Richiede un flusso CLI distinto dalle
-  conferme degli strumenti distruttivi.
+- **Learning `PROPOSE`:** utilizzabile sul solo `learned_knowledge`, che in
+  Ares e' gia' `AGENTIC` - cioe' un salvataggio che il modello sceglie
+  esplicitamente, lo store meno esposto dei tre. Li' `PROPOSE` non aggiunge
+  una pausa imposta: aggiunge istruzioni nel prompt che chiedono al modello
+  di proporre e di chiamare `save_learning` solo dopo un si'. E'
+  un'approvazione "soft", che dipende dall'obbedienza del modello, sullo
+  store che ne aveva meno bisogno. Sugli altri due store la modalita' non
+  esiste (vedi sopra). Una conferma vera sulla memoria durevole va percio'
+  costruita in Ares: e' la voce corrispondente della `ROADMAP.md`.
 - **Curator:** puo' deduplicare e potare apprendimenti, ma deve passare dallo
   stesso modello di anteprima, backup e applicazione gia' usato per le
   entita'.

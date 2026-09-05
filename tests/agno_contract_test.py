@@ -1,10 +1,11 @@
 """
-Contratto con Agno: una estrazione per turno e il ciclo di conferma
+Contratto con Agno: estrazione, conferma, retry e limiti dichiarati
 ===================================================================
 Uso:
     .venv/bin/python tests/agno_contract_test.py
 
-Due cose Ares le da' per vere di Agno, e nessuna prova le chiedeva ad Agno.
+Quattro cose Ares le da' per vere di Agno, e nessuna prova le chiedeva ad
+Agno.
 
 La prima: l'apprendimento avviene una volta per turno, sul run completo.
 Agno avvia `LearningMachine.process` in un thread prima ancora di chiamare
@@ -24,12 +25,35 @@ afferma e' l'effetto: il file viene cancellato dopo la conferma e non
 prima, resta al suo posto dopo un rifiuto, e in entrambi i casi il run
 riprende e finisce.
 
+La terza: il retry di `AresSessionContextStore`. E' la seconda superficie
+di Agno che Ares sovrascrive, e finora la provava soltanto
+`learning_reliability_test.py`, che vuole Ollama e quindi in CI non gira
+mai: il ramo piu' delicato dell'apprendimento era verificato solo a mano.
+Il retry si regge su tre fatti di Agno - `extract_and_save` esiste con
+quel nome, `context_updated` viene azzerato all'inizio e acceso solo se
+il modello ha eseguito uno strumento, `aextract_and_save` e' il gemello
+asincrono - e se uno cadesse Ares ripeterebbe all'infinito o non
+ripeterebbe mai, in silenzio. Qui il modello e' di nuovo un copione, cosi'
+il caso "fallisce e poi recupera" e' deterministico invece che sperato.
+
+La quarta: profilo e memorie non sono confermabili. `SECURITY.md` e
+`docs/architecture.md` dichiarano che la memoria durevole si scrive senza
+passare da una conferma, e la ragione non e' una scelta di Ares: in Agno
+`UserProfileStore` e `UserMemoryStore` rifiutano PROPOSE, e HITL e'
+"reserved for future use" su ogni store. E' un limite del framework, e un
+limite dichiarato va sorvegliato come un'invariante: il giorno in cui Agno
+lo togliesse, questa prova diventa rossa e la documentazione va riscritta
+invece di restare vera per abitudine.
+
 Niente modello e niente rete: il modello e' uno script che emette le tool
-call decise dalla prova, come in `session_retention_test.py`, e gli store
-di apprendimento sono spenti. L'estrazione e' quindi un passaggio a vuoto
-sugli store, ma e' il passaggio che si conta, non cio' che scriverebbe.
+call decise dalla prova, come in `session_retention_test.py`. Nei primi due
+controlli gli store di apprendimento sono spenti, e l'estrazione e' un
+passaggio a vuoto: e' il passaggio che si conta, non cio' che scriverebbe.
+Il terzo store lo costruisce invece davvero, perche' li' cio' che si guarda
+e' proprio se ha scritto.
 """
 
+import asyncio
 import json
 import shutil
 from collections.abc import AsyncIterator, Iterator
@@ -43,13 +67,21 @@ from _comune import esigi, fallimento, ok, prepara_ambiente
 # sola all'import.
 RADICE_PROVA = prepara_ambiente("agno-contract-test")
 
-from agno.learn import LearningMachine  # noqa: E402
+from agno.learn import (  # noqa: E402
+    LearningMachine,
+    LearningMode,
+    UserMemoryConfig,
+    UserProfileConfig,
+)
+from agno.learn.stores import UserMemoryStore, UserProfileStore  # noqa: E402
 from agno.models.base import Model  # noqa: E402
-from agno.models.message import MessageMetrics  # noqa: E402
+from agno.models.message import Message, MessageMetrics  # noqa: E402
 from agno.models.response import ModelResponse  # noqa: E402
 
 from ares import config  # noqa: E402
 from ares.agent.assistant import build_assistant  # noqa: E402
+from ares.agent.learning import build_session_context_store  # noqa: E402
+from ares.agent.runtime import build_db  # noqa: E402
 from ares.agent.turn_core import TurnEventKind, run_turn_cycle  # noqa: E402
 
 UTENTE = "prova-contratto"
@@ -295,6 +327,147 @@ def ciclo_hitl() -> str:
     return "conferma cancella, rifiuto conserva, stesso run_id e motivo consegnato"
 
 
+class ModelloContesto(ModelloScript):
+    """Salva il contesto soltanto ai tentativi elencati; agli altri tace.
+
+    `SessionContextStore.extract_and_save` fa `model_copy = deepcopy(self.model)`
+    a ogni tentativo. Un contatore sull'istanza vivrebbe percio' una vita sola
+    per tentativo e ogni giro ripeterebbe il primo: il caso "fallisce e poi
+    recupera" non sarebbe esprimibile. `__deepcopy__` restituisce quindi se
+    stesso, e la copia condivide il contatore con l'originale.
+
+    Tacere significa rispondere senza tool call: lo store accende
+    `context_updated` solo se il modello ha *eseguito* uno strumento, quindi
+    una risposta di solo testo e' esattamente l'estrazione che non ha scritto
+    niente - il difetto intermittente che `SESSION_CONTEXT_RETRIES` esiste per
+    assorbire.
+    """
+
+    def __init__(self, riesce_ai: set[int]) -> None:
+        super().__init__([])
+        self.riesce_ai = set(riesce_ai)
+        self.tentativi = 0
+        self.deve_chiudere = False
+
+    def __deepcopy__(self, memo: dict) -> "ModelloContesto":
+        return self
+
+    def _prossima(self) -> ModelResponse:
+        self.chiamate += 1
+
+        # Un tentativo puo' chiamare il modello due volte - la tool call e la
+        # riga che segue il suo esito - e il confine fra i tentativi non si
+        # conta sulle chiamate: solo il tentativo che *ha* emesso lo strumento
+        # ne ha due. Contarle a coppie faceva scivolare il conto di uno, e il
+        # tentativo che doveva riuscire non arrivava mai.
+        if self.deve_chiudere:
+            self.deve_chiudere = False
+            return ModelResponse(role="assistant", content="salvato", response_usage=MessageMetrics())
+
+        self.tentativi += 1
+        if self.tentativi in self.riesce_ai:
+            self.deve_chiudere = True
+            return ModelResponse(
+                role="assistant",
+                tool_calls=[tool_call("save_session_context", summary="riassunto della prova")],
+                response_usage=MessageMetrics(),
+            )
+        return ModelResponse(role="assistant", content="niente da aggiornare", response_usage=MessageMetrics())
+
+
+MESSAGGI_CONTESTO = [
+    Message(role="user", content="stiamo provando il retry del contesto di sessione"),
+    Message(role="assistant", content="va bene"),
+]
+
+
+def store_contesto(riesce_ai: set[int]):
+    return build_session_context_store(build_db(), ModelloContesto(riesce_ai))
+
+
+def contesto_riprova() -> str:
+    """Il retry ripete solo cio' che non ha scritto, e si ferma appena scrive."""
+    esigi(
+        config.SESSION_CONTEXT_RETRIES >= 1,
+        "la prova vuole almeno un retry configurato: " + str(config.SESSION_CONTEXT_RETRIES),
+    )
+    massimo = 1 + config.SESSION_CONTEXT_RETRIES
+
+    # Al primo colpo: nessuna ripetizione, e il contesto e' davvero in archivio.
+    store = store_contesto({1})
+    store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="subito", user_id=UTENTE)
+    esigi(
+        store.last_extraction_attempts == 1, "tentativi con successo immediato: " + str(store.last_extraction_attempts)
+    )
+    esigi(store.was_updated, "`was_updated` e' falso dopo un salvataggio riuscito")
+    esigi(store.context_updated is store.was_updated, "`context_updated` non e' piu' cio' che `was_updated` legge")
+    esigi(store.get(session_id="subito") is not None, "il contesto non e' in archivio dopo il salvataggio")
+
+    # Mai: si ripete fino al tetto e non oltre, e non resta niente scritto.
+    store = store_contesto(set())
+    store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="mai", user_id=UTENTE)
+    esigi(
+        store.last_extraction_attempts == massimo,
+        "tentativi senza mai salvare: " + str(store.last_extraction_attempts) + ", atteso " + str(massimo),
+    )
+    esigi(not store.was_updated, "`was_updated` e' vero senza che il modello abbia eseguito lo strumento")
+    esigi(store.get(session_id="mai") is None, "un'estrazione che non ha scritto ha lasciato un contesto")
+
+    # Il caso che il retry esiste per coprire: fallisce, poi recupera.
+    store = store_contesto({2})
+    store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="recuperato", user_id=UTENTE)
+    esigi(
+        store.last_extraction_attempts == 2,
+        "il retry non ha recuperato al secondo tentativo: " + str(store.last_extraction_attempts),
+    )
+    esigi(store.get(session_id="recuperato") is not None, "il contesto recuperato non e' in archivio")
+
+    # Il gemello asincrono: stessa logica, e va attraversata perche' e' codice
+    # diverso, non lo stesso corpo con un await davanti.
+    store = store_contesto({2})
+    asyncio.run(store.aextract_and_save(messages=MESSAGGI_CONTESTO, session_id="async", user_id=UTENTE))
+    esigi(
+        store.last_extraction_attempts == 2,
+        "il retry asincrono non ha recuperato: " + str(store.last_extraction_attempts),
+    )
+    esigi(store.get(session_id="async") is not None, "il contesto asincrono non e' in archivio")
+
+    return "1 al primo colpo, " + str(massimo) + " al tetto, 2 recuperato, sincrono e asincrono"
+
+
+def memoria_non_confermabile() -> str:
+    """Profilo e memorie rifiutano PROPOSE e HITL: il limite e' di Agno."""
+    avvisi: list[str] = []
+
+    def raccogli(messaggio, *args, **kwargs):
+        avvisi.append(str(messaggio))
+
+    casi = (
+        ("user_profile", UserProfileStore, UserProfileConfig),
+        ("user_memory", UserMemoryStore, UserMemoryConfig),
+    )
+    for nome, classe, configurazione in casi:
+        for modalita in (LearningMode.PROPOSE, LearningMode.HITL):
+            avvisi.clear()
+            modulo = "agno.learn.stores." + nome
+            with patch(modulo + ".log_warning", raccogli):
+                classe(config=configurazione(mode=modalita))
+            atteso = modalita.name + " mode"
+            esigi(
+                any(atteso in avviso for avviso in avvisi),
+                "Agno non rifiuta piu' " + atteso + " su " + nome + ": " + str(avvisi),
+            )
+
+    # Il rovescio: cio' che Ares usa davvero non deve emettere l'avviso, o il
+    # controllo qui sopra passerebbe anche con uno store che si lamenta sempre.
+    avvisi.clear()
+    with patch("agno.learn.stores.user_profile.log_warning", raccogli):
+        UserProfileStore(config=UserProfileConfig(mode=LearningMode.ALWAYS))
+    esigi(not avvisi, "ALWAYS non e' piu' una modalita' accettata dal profilo: " + str(avvisi))
+
+    return "PROPOSE e HITL rifiutati da profilo e memorie, ALWAYS accettata"
+
+
 def main() -> int:
     # Gli store di apprendimento e LanceDB non servono: spegnerli impedisce
     # che una prova dichiarata offline accenda Ollama. Il porto chiuso rende
@@ -310,6 +483,8 @@ def main() -> int:
     try:
         ok("estrazione singola", estrazione_singola())
         ok("ciclo HITL", ciclo_hitl())
+        ok("retry contesto", contesto_riprova())
+        ok("memoria non confermabile", memoria_non_confermabile())
         riuscita = True
         return 0
     except Exception as errore:

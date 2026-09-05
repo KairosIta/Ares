@@ -100,6 +100,24 @@ Il runner elenca le prove con `--help` e ne esegue una sola con
 `--solo <nome>`. Se aggiungi una prova, registrala nella tabella `PROVE` di
 `tests/run.py`: è l'unico elenco, e la CI legge quello.
 
+Quelle con Ollama non girano in CI, e non è una dimenticanza: i runner di
+GitHub non hanno una GPU, e una suite che scarica un modello da 9 GB a ogni
+push non sarebbe una verifica ma un costo. La conseguenza però va accettata
+per intero: **tre prove su dieci esistono solo se qualcuno le lancia**, e
+nessuno se ne accorge se smette di farlo. Perciò, quando le esegui prima di
+un bump di Agno o di un rilascio, **scrivilo nella voce del CHANGELOG**, con
+la data e la versione di Agno su cui sono passate:
+
+```markdown
+- prove con Ollama (`--tutte`) verdi il 2026-09-05 su Agno 3.0.5, modello
+  conversazionale locale.
+```
+
+Una riga, e serve a una cosa sola: distinguere «le ho eseguite» da «di solito
+le eseguo». Il resto della catena — CI verde su due sistemi, lock verificato,
+`main` che non accetta merge senza i tre check — è dimostrabile da fuori;
+questo pezzo no, e allora va dichiarato.
+
 La copertura si misura con `.venv/bin/python tests/run.py --copertura`
 (`--html` per il rapporto navigabile). Non c'è una soglia da rispettare:
 serve a sapere quale ramo non è mai stato eseguito, non a produrre un

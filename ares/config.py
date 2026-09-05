@@ -47,7 +47,25 @@ MODELLO_CLOUD = "glm-5.3-flash:cloud"
 # Agente principale. Il solo ruolo a cui e' consentito un modello cloud:
 # `assistant_runtime` rifiuta di costruire estrazione ed embedding su un
 # nome cloud, cosi' il confine sta nel codice e non in un commento.
-MAIN_MODEL = MODELLO_CLOUD
+#
+# Il valore distribuito e' quello locale. Il progetto promette in copertina
+# che nessun dato esce dalla macchina se non per un modello scelto apposta, e
+# un default deve poter mantenere da solo la promessa di chi lo distribuisce:
+# chi clona non manda una conversazione a `ollama.com` senza averlo deciso.
+#
+# La decisione opposta non richiede pero' di modificare questo file, che
+# tornerebbe a divergere a ogni `git pull`. `ARES_MAIN_MODEL` nel `.env` lo
+# sovrascrive, come gia' fanno `ARES_TMP` e le altre variabili: qui stanno le
+# decisioni versionate, nel `.env` cio' che cambia da una macchina all'altra.
+# Quale modello regge questa scheda, e se questa macchina accetta di parlare
+# con un servizio remoto, sono esattamente cio' che cambia da una macchina
+# all'altra.
+#
+#     ARES_MAIN_MODEL=glm-5.3-flash:cloud
+#
+# Il nome non viene interpretato: se non e' scaricato lo dice `ares-preflight`,
+# e la chat lo ripete all'avvio insieme all'avviso sul cloud.
+MAIN_MODEL = os.environ.get("ARES_MAIN_MODEL") or MODELLO_LOCALE
 
 # Modello per l'estrazione delle memorie. Resta locale sempre: il profilo e
 # le memorie sono la parte piu' sensibile di cio' che Ares sa di te.
@@ -55,6 +73,11 @@ MAIN_MODEL = MODELLO_CLOUD
 # Con MAIN_MODEL in cloud la scheda e' libera e il 9B resta caldo fra un
 # turno e l'altro. Con MAIN_MODEL locale conviene invece MAIN_MODEL anche
 # qui, per evitare lo swap dei pesi fra la risposta e l'apprendimento.
+#
+# Col default distribuito i due ruoli coincidono, che e' proprio il caso in
+# cui lo swap non avviene; puntando `ARES_MAIN_MODEL` al cloud si separano da
+# soli, e `LEARNING_NUM_CTX` qui sotto se ne accorge senza che si tocchi
+# niente.
 LEARNING_MODEL = MODELLO_LOCALE
 
 

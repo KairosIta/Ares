@@ -20,10 +20,11 @@ spazio controllato sul disco senza richiedere API cloud.
 
 ## Perché Ares
 
-- **Inferenza locale, cloud su scelta:** memorie ed embedding restano sempre
-  su Ollama in `localhost`; il modello conversazionale può essere locale o
-  un modello cloud di Ollama, inoltrato dallo stesso daemon senza chiavi API
-  nell'ambiente.
+- **Inferenza locale, cloud su scelta esplicita:** di serie nessuna
+  conversazione lascia la macchina — memorie ed embedding restano sempre su
+  Ollama in `localhost`, e anche il modello conversazionale è locale. Una
+  riga nel `.env` (`ARES_MAIN_MODEL`) lo sposta su un modello cloud di
+  Ollama, inoltrato dallo stesso daemon senza chiavi API nell'ambiente.
 - **Memoria persistente:** profilo, memorie, contesto di sessione, entità e
   conoscenza riutilizzabile attraverso SQLite e LanceDB.
 - **Apprendimento affidabile:** l’estrazione avviene sul run completo, anche
@@ -99,16 +100,25 @@ verifica umana.
 
 ### Modello conversazionale locale o cloud
 
-`MAIN_MODEL` in `config.py` sceglie fra `MODELLO_LOCALE`, che gira in scheda,
-e `MODELLO_CLOUD`, un [modello cloud di Ollama](https://ollama.com/search?c=cloud)
-riconoscibile dal tag `:cloud`. Il daemon locale lo inoltra a `ollama.com`
-dopo un `ollama signin` una tantum: Ares continua a parlare con `localhost`,
-e nessuna chiave API entra nell'ambiente o in `.env`. Con un modello cloud i
-prompt e le risposte della conversazione escono dalla macchina; estrazione
-delle memorie ed embedding restano locali per costruzione, e il preflight e
-il banner della chat lo dicono a ogni avvio. Con la conversazione in cloud
-il modello locale serve solo l'estrazione e gira con un contesto ridotto,
-liberando VRAM; con lo stesso modello locale in entrambi i ruoli i due
+**Il valore distribuito è locale:** appena clonato, Ares risponde con
+`MODELLO_LOCALE`, che gira in scheda, e nessuna conversazione esce dalla
+macchina. Per usare un [modello cloud di Ollama](https://ollama.com/search?c=cloud)
+— riconoscibile dal tag `:cloud` — basta una riga nel `.env`, senza toccare
+`config.py`, che tornerebbe a divergere a ogni `git pull`:
+
+```bash
+ARES_MAIN_MODEL=glm-5.3-flash:cloud
+```
+
+Il daemon locale lo inoltra a `ollama.com` dopo un `ollama signin` una
+tantum: Ares continua a parlare con `localhost`, e nessuna chiave API entra
+nell'ambiente o in `.env`. Con un modello cloud i prompt e le risposte della
+conversazione escono dalla macchina; estrazione delle memorie ed embedding
+restano locali per costruzione — non per configurazione: `assistant_runtime`
+si rifiuta di costruirli su un nome cloud — e il preflight e il banner della
+chat lo dicono a ogni avvio. Con la conversazione in cloud il modello locale
+serve solo l'estrazione e gira con un contesto ridotto, liberando VRAM; con
+lo stesso modello locale in entrambi i ruoli, cioè con il default, i due
 contesti restano uguali, così Ollama non riavvia il runner fra risposta ed
 estrazione.
 
@@ -116,20 +126,26 @@ Ollama dichiara di elaborare quei contenuti in modo transitorio, di non
 conservarli oltre la richiesta e di non usarli per addestrare
 ([privacy policy](https://ollama.com/privacy), marzo 2026). È un impegno
 contrattuale, non una garanzia tecnica: per un uso interamente locale basta
-`MAIN_MODEL = MODELLO_LOCALE`.
+non impostare `ARES_MAIN_MODEL`.
 
 ## Avvio rapido
 
 Installa [uv](https://docs.astral.sh/uv/getting-started/installation/) e
-[Ollama](https://ollama.com/download), quindi scarica i modelli richiesti
-dalla configurazione predefinita. Il pull del modello cloud scarica solo il
-manifesto; l'accesso serve alla prima richiesta:
+[Ollama](https://ollama.com/download), quindi scarica i due modelli della
+configurazione predefinita:
+
+```bash
+ollama pull hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0
+ollama pull nomic-embed-text-v2-moe
+```
+
+Solo se scegli la conversazione in cloud servono anche l'accesso e il
+manifesto del modello remoto — il pull scarica il solo manifesto, l'accesso
+serve alla prima richiesta:
 
 ```bash
 ollama signin
 ollama pull glm-5.3-flash:cloud
-ollama pull hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0
-ollama pull nomic-embed-text-v2-moe
 ```
 
 Clona il progetto:
@@ -269,13 +285,13 @@ viene conservato.
 
 Stato, memorie ed embedding restano locali; non sono richieste chiavi API
 cloud e la telemetria Agno è disabilitata. L’unico dato che può uscire dalla
-macchina è la conversazione, e solo se `MAIN_MODEL` è un modello cloud di
-Ollama: la scelta è esplicita nel file di configurazione, visibile a ogni
-avvio e verificata dallo smoke test, che rifiuta un modello cloud per ogni
-altro ruolo. Installazione e download dei modelli richiedono naturalmente
-accesso alla rete. Inoltre, i comandi shell eseguiti nel workspace possono
-usare la rete quando l’utente li autorizza: Ares è un agente locale
-controllato, non una sandbox di sicurezza.
+macchina è la conversazione, e solo se `ARES_MAIN_MODEL` indica un modello
+cloud di Ollama — che non è il valore distribuito. La scelta è esplicita nel
+`.env`, visibile a ogni avvio e verificata dallo smoke test, che rifiuta un
+modello cloud per ogni altro ruolo. Installazione e download dei modelli
+richiedono naturalmente accesso alla rete. Inoltre, i comandi shell eseguiti
+nel workspace possono usare la rete quando l’utente li autorizza: Ares è un
+agente locale controllato, non una sandbox di sicurezza.
 
 Non committare `tmp/`, snapshot, `.env` o altri dati personali. Per segnalare
 un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).

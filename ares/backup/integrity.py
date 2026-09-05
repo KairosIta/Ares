@@ -91,7 +91,19 @@ def verifica_sqlite(percorso: Path) -> None:
 
 
 def conta_tabelle_lancedb(percorso: Path) -> dict[str, int]:
-    """Verifica LanceDB in un processo isolato e ne conta le righe."""
+    """Verifica LanceDB in un processo isolato e ne conta le righe.
+
+    Il `try` copre l'avvio della sonda e la lettura di cio' che risponde -
+    processo che non parte, timeout, stdout che non e' JSON - perche' li'
+    l'eccezione arriva da sotto e va tradotta. Gli `ErroreBackup` sollevati
+    qui dentro sono invece gia' la diagnosi, con dentro il messaggio della
+    sonda o il motivo per cui la risposta non va bene: ripassarli dal
+    traduttore li avvolgeva una seconda volta, e "LanceDB illeggibile in
+    /percorso: risposta non valida dalla sonda LanceDB" dice due volte la
+    stessa cosa mettendo il dettaglio in fondo. Vengono percio' rilanciati
+    intatti, e nominano il percorso da se': e' l'unica cosa che il messaggio
+    del wrapper aggiungeva.
+    """
     try:
         risultato = subprocess.run(
             [sys.executable, str(Path(__file__).with_name("probe.py")), str(percorso)],
@@ -102,13 +114,20 @@ def conta_tabelle_lancedb(percorso: Path) -> dict[str, int]:
         )
         if risultato.returncode != 0:
             dettaglio = (risultato.stderr or risultato.stdout).strip()
-            raise ErroreBackup(dettaglio or "la sonda LanceDB non ha prodotto un risultato")
+            raise ErroreBackup(
+                "sonda LanceDB fallita su "
+                + str(percorso)
+                + ": "
+                + (dettaglio or "nessun risultato e nessun messaggio")
+            )
         dati = json.loads(risultato.stdout)
         if not isinstance(dati, dict) or any(
             not isinstance(nome, str) or not isinstance(righe, int) or righe < 0 for nome, righe in dati.items()
         ):
-            raise ErroreBackup("risposta non valida dalla sonda LanceDB")
+            raise ErroreBackup("risposta non valida dalla sonda LanceDB su " + str(percorso))
         return dict(sorted(dati.items()))
+    except ErroreBackup:
+        raise
     except Exception as errore:
         raise ErroreBackup("LanceDB illeggibile in " + str(percorso) + ": " + str(errore)) from errore
 

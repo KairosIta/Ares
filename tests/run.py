@@ -45,7 +45,7 @@ PROVE = (
     ("smoke", "smoke_test.py", False, "assemblaggio, store, lock e apprendimento simulato"),
     ("repl", "repl_test.py", False, "conferme, rendering, editor e comandi, senza l'agente"),
     ("sessioni", "session_retention_test.py", False, "offload, retention, cascata e restore"),
-    ("contratto", "agno_contract_test.py", False, "una estrazione per turno e il ciclo di conferma con Agno"),
+    ("contratto", "agno_contract_test.py", False, "estrazione, conferma, retry del contesto e limiti dichiarati"),
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
     ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),
