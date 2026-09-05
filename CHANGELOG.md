@@ -12,6 +12,13 @@ configurazione che questa versione distribuisce.
 
 ### Changed
 
+- la CI misura la copertura anche su Windows. Il runner Windows nasce da
+  `setup.ps1`, che installa senza il gruppo dev, e la suite ci girava senza
+  misura: i rami Windows di `backup` e `platform_files` risultavano
+  scoperti anche quando quel runner li attraversava, e una regressione li'
+  non l'avrebbe detta nessun numero. Un secondo `uv sync --locked` sullo
+  stesso venv aggiunge `coverage` dopo lo script, che resta provato com'e';
+  il passo delle prove torna uno solo per i due sistemi;
 - Agno passa da 3.0.1 a 3.0.5. La 3.0.2 con il vincolo `>=3.0.2,<3.1` in
   `pyproject.toml`, le patch successive dal solo `uv.lock`, che ne porta gli
   hash: ogni patch e' provata sulle superfici che Ares usa e sul ciclo REPL
