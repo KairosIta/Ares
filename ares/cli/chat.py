@@ -28,7 +28,7 @@ from agno.run.agent import RunOutput
 
 from ares import config
 from ares.agent.assistant import build_assistant
-from ares.agent.echo import fotografa, variazioni
+from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli.commands import COMANDI, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
@@ -130,7 +130,7 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     # La fotografia precede il turno e non il post-hook: `update_user_memory`
     # scrive durante il run, e una lettura fatta dopo la risposta non lo
     # vedrebbe. Spenta in config, non si legge niente.
-    prima = fotografa(agent) if config.MOSTRA_APPRENDIMENTI else None
+    stato = istantanea(agent) if config.MOSTRA_APPRENDIMENTI else None
     try:
         risposta = _turno(agent, testo, input_cli)
     except KeyboardInterrupt:
@@ -151,12 +151,39 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
         )
         return None
 
-    if prima is not None:
+    if stato is not None:
         # Anche dopo una pausa lasciata li': cio' che e' stato scritto e'
         # stato scritto, e tacerlo perche' il turno non e' finito bene
         # sarebbe il caso in cui l'eco serve di piu'.
-        UI.learned(variazioni(prima, fotografa(agent)))
+        righe = variazioni(riduci(stato), fotografa(agent))
+        UI.learned(righe)
+        if righe and config.CONFERMA_APPRENDIMENTI:
+            _conferma_apprendimenti(agent, stato, input_cli)
     return risposta
+
+
+def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
+    """Chiede se tenere cio' che il turno ha scritto; un no lo riporta indietro.
+
+    Invio, Ctrl-C e fine dell'input tengono: la scrittura c'e' gia' stata e
+    l'eco l'ha mostrata, quindi non fare niente lascia le cose come sono e
+    come si sono viste. Solo un `n` esplicito riscrive gli store.
+    """
+    try:
+        scelta = input_cli.ask("Tenere in memoria? [S/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        UI.blank()
+        scelta = ""
+    if scelta not in ("n", "no"):
+        return
+    if ripristina(agent, stato):
+        UI.line("   ripristinato: profilo e memorie come prima del turno", style="ares.muted")
+    else:
+        UI.line(
+            "   ripristino incompleto: profilo o memorie non corrispondono a prima del turno",
+            style="ares.error",
+        )
+        UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
 def _esegui_chat() -> None:

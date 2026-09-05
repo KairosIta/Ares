@@ -330,7 +330,8 @@ ESITO_LARGHEZZA = 100
 # chiama lui (`save_learning`, `remember_about`, `update_user_memory`) e
 # l'estrazione automatica dopo la risposta, che aggiorna profilo e memorie
 # senza passare da nessuno strumento visibile. Nessuna delle due chiede
-# conferma, e cio' che entra viene reiniettato in ogni sessione futura: un
+# conferma prima di scrivere - quella viene dopo, CONFERMA_APPRENDIMENTI qui
+# sotto - e cio' che entra viene reiniettato in ogni sessione futura: un
 # file del workspace o l'output di un comando con dentro un'istruzione puo'
 # quindi lasciare una traccia che dura oltre il turno. L'eco e' il modo di
 # accorgersene subito, invece che alla sessione dopo, quando Ares "ricorda"
@@ -348,6 +349,19 @@ ESITO_LARGHEZZA = 100
 # la cosa giusta. Il rimedio, quando una riga non convince, sono gli
 # strumenti di memoria (`MEMORY_AGENT_TOOLS`): basta chiederglielo.
 MOSTRA_APPRENDIMENTI = True
+
+# Con l'eco acceso, quando un turno ha scritto in profilo o memorie la CLI
+# chiede se tenere. Invio tiene; `n` riporta i due store a com'erano prima
+# del turno, riscrivendoli con l'istantanea letta allora. E' la conferma che
+# Agno non offre su questi store, costruita a valle invece che a monte: la
+# scrittura avviene, ma non sopravvive al turno se chi legge dice di no.
+#
+# Tutto o niente, per turno: una memoria giusta e una sbagliata nello stesso
+# turno si tengono o si tolgono insieme, e la correzione fine passa dagli
+# strumenti di memoria. Non e' una domanda in piu' a ogni messaggio: compare
+# solo nei turni che hanno scritto qualcosa, cioe' pochi. Senza l'eco la
+# domanda non ha niente da mostrare e non viene fatta.
+CONFERMA_APPRENDIMENTI = True
 
 # ---------------------------------------------------------------------------
 # Percorsi
