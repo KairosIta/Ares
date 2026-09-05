@@ -54,18 +54,21 @@ dell’utente che ha avviato il processo e può accedere alla rete. Il modello,
 i prompt e le conferme riducono il rischio operativo ma non costituiscono un
 confine di sicurezza.
 
-La memoria durevole sta fuori dal ciclo di conferma. Profilo e memorie
-vengono scritti sia dagli strumenti che il modello chiama sia dall'estrazione
-automatica dopo ogni risposta, e ciò che entra viene reiniettato in ogni
-sessione futura: un file del workspace o l'output di un comando che
-contenga un'istruzione può quindi lasciare una traccia che dura oltre il
-turno. Agno 3.0.5 non offre una modalità che imponga una conferma su questi
-due store — `PROPOSE` vale solo per le intuizioni, `HITL` per nessuno — e
-la mitigazione attuale è la **visibilità**: con `MOSTRA_APPRENDIMENTI`
-acceso, sotto ogni risposta compare per intero ciò che è cambiato in profilo
-e memorie, e gli strumenti di memoria mostrano i propri argomenti. È una
-verifica a posteriori, che funziona se qualcuno la legge; il rimedio, quando
-una riga non convince, è chiedere ad Ares di correggerla o cancellarla.
+La memoria durevole si scrive prima della conferma, non dopo. Profilo e
+memorie vengono scritti sia dagli strumenti che il modello chiama sia
+dall'estrazione automatica dopo ogni risposta, e ciò che entra viene
+reiniettato in ogni sessione futura: un file del workspace o l'output di un
+comando che contenga un'istruzione può quindi lasciare una traccia che dura
+oltre il turno. Agno 3.0.5 non offre una modalità che imponga una conferma
+su questi due store — `PROPOSE` vale solo per le intuizioni, `HITL` per
+nessuno — quindi la conferma è costruita da Ares **a valle**: con
+`MOSTRA_APPRENDIMENTI` e `CONFERMA_APPRENDIMENTI` accesi, sotto ogni risposta
+compare per intero ciò che è cambiato in profilo e memorie e la CLI chiede
+se tenerlo; un `n` riporta i due store a com'erano prima del turno,
+riscrivendoli con l'istantanea letta allora, e verifica di esserci riuscito
+rileggendoli. È tutto o niente per turno, e funziona se qualcuno legge:
+Invio tiene. La correzione fine di una singola riga passa dagli strumenti
+di memoria, chiedendo ad Ares di correggerla o cancellarla.
 
 Su POSIX stato, cronologia e snapshot nascono privati (0700 sulle directory,
 0600 sui file); `setup.sh` applica 0600 anche a `.env`, quando esiste. Su

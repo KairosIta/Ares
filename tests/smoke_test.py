@@ -86,7 +86,7 @@ from ares.agent.assistant import (  # noqa: E402
     build_filesystem,
     build_workspace,
 )
-from ares.agent.echo import Fotografia, fotografa, variazioni  # noqa: E402
+from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
 from ares.agent.schemas import AresProfile  # noqa: E402
 from ares.cli.chat import (  # noqa: E402
     gestisci_comando,
@@ -1003,17 +1003,39 @@ def eco_apprendimenti(agent, lm, user_id: str) -> str:
     )
     esigi(variazioni(prima, fotografa(agent)) == [], "due fotografie uguali producono righe")
 
-    # Una scrittura vera, poi l'archivio torna com'era: le prove dopo questa
-    # contano le memorie seminate.
-    contenitore_prima = lm.user_memory_store.get(user_id=user_id)
+    # Una scrittura vera in entrambi gli store, poi il ripristino dall'istantanea
+    # letta prima: e' il percorso del "no" alla domanda "Tenere in memoria?",
+    # e le prove dopo questa contano le memorie seminate.
+    stato = istantanea(agent)
+    esigi(riduci(stato) == prima, "l'istantanea ridotta non e' la fotografia")
     lm.user_memory_store.add_memory(user_id=user_id, memory="Memoria  aggiunta\ndall'eco.")
+    profilo_toccato = lm.user_profile_store.get(user_id=user_id)
+    profilo_toccato.occupation = "collaudatore dell'eco"
+    lm.user_profile_store.save(user_id=user_id, profile=profilo_toccato)
     try:
         righe = variazioni(prima, fotografa(agent))
     finally:
-        lm.user_memory_store.save(user_id=user_id, memories=contenitore_prima)
-    esigi(righe[:1] == ["   appreso: memorie +1"], "la sintesi di una memoria nuova e' " + repr(righe[:1]))
-    esigi(righe[1:] == ["   | + Memoria aggiunta dall'eco."], "la memoria nuova non e' resa intera: " + repr(righe[1:]))
-    esigi(variazioni(prima, fotografa(agent)) == [], "l'archivio non e' tornato com'era dopo la prova")
+        tornato = ripristina(agent, stato)
+    esigi(righe[:1] == ["   appreso: profilo 1 campo, memorie +1"], "la sintesi e' " + repr(righe[:1]))
+    esigi("   | + Memoria aggiunta dall'eco." in righe, "la memoria nuova non e' resa intera: " + repr(righe[1:]))
+    esigi(tornato, "il ripristino non si dichiara riuscito")
+    esigi(variazioni(prima, fotografa(agent)) == [], "l'archivio non e' tornato com'era dopo il ripristino")
+
+    # Un utente che prima non aveva niente: il ripristino cancella le righe
+    # che il turno ha creato, invece di riscriverle vuote.
+    class AgenteNuovo:
+        learning_machine = lm
+        user_id = "eco-nuovo"
+        id = None
+
+    nuovo = AgenteNuovo()
+    esigi(istantanea(nuovo) == Istantanea(), "un utente mai visto non ha un'istantanea vuota")
+    lm.user_memory_store.add_memory(user_id=nuovo.user_id, memory="Non deve restare.")
+    lm.user_profile_store.save(user_id=nuovo.user_id, profile=AresProfile(user_id=nuovo.user_id, name="Effimero"))
+    esigi(fotografa(nuovo) != Fotografia(), "le scritture per l'utente nuovo non si vedono")
+    esigi(ripristina(nuovo, Istantanea()), "il ripristino a vuoto non si dichiara riuscito")
+    esigi(lm.user_memory_store.get(user_id=nuovo.user_id) is None, "le memorie dell'utente nuovo non sono cancellate")
+    esigi(lm.user_profile_store.get(user_id=nuovo.user_id) is None, "il profilo dell'utente nuovo non e' cancellato")
 
     # Un agente senza macchina di apprendimento - `object()` nelle prove
     # della CLI - deve dare una fotografia vuota, non un AttributeError.
@@ -1041,7 +1063,7 @@ def eco_apprendimenti(agent, lm, user_id: str) -> str:
     esigi("resta" not in " ".join(righe), "una memoria invariata compare fra le variazioni")
     solo_profilo = variazioni(Fotografia(), Fotografia(profilo={"name": "Prova"}))
     esigi(solo_profilo[0] == "   appreso: profilo 1 campo", "un campo solo e' al plurale: " + repr(solo_profilo[0]))
-    return "seme letto, una memoria vera vista intera, e i sei rami della differenza"
+    return "seme letto, scritture vere viste e ripristinate, e i sei rami della differenza"
 
 
 def entita_complete(lm, user_id: str) -> str:
