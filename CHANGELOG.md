@@ -83,6 +83,31 @@ configurazione che questa versione distribuisce.
 
 ### Added
 
+- **righe di attenzione nella conferma di un comando.** `run_command` e' il
+  solo strumento che esce dal recinto, e la conferma umana e' il suo unico
+  confine; il comando era gia' mostrato intero, ma riconoscere un `bash -lc`
+  in coda a venti argomenti o un `/etc/hostname` dentro una riga citata era
+  lasciato a chi legge. Sotto gli argomenti compaiono ora, quando ci sono,
+  righe che nominano un fatto: passa da una shell, tocca percorsi fuori
+  dalla directory, chiede privilegi di amministratore, usa la rete,
+  cancella ricorsivamente. La riga passata a una shell viene aperta con
+  `shlex` per guardarci dentro. Non e' un filtro e non blocca niente: una
+  lista nera si aggira con un alias, e la decisione resta a chi legge
+  (`cli/render.py`, `avvertenze_comando`);
+- **conferma di ciò che entra in memoria durevole.** Quando un turno ha
+  scritto in profilo o memorie, dopo l'eco la CLI chiede "Tenere in memoria?
+  [S/n]": Invio tiene, `n` riporta i due store a com'erano prima del turno.
+  Agno non offre una conferma su questi store - `PROPOSE` vale per le sole
+  intuizioni, `HITL` per nessuno - quindi e' costruita a valle: `echo.py`
+  leggeva gia' i due store prima del turno per calcolare l'eco, e ora
+  conserva gli oggetti come li restituiscono gli store (`istantanea`) e li
+  riscrive con `save`, o li cancella con `delete` se prima non c'erano
+  (`ripristina`). Le API degli store inghiottono i propri errori, quindi
+  l'esito non si presume: si rilegge, e un ripristino che non torna uguale
+  viene detto come tale. Tutto o niente per turno, `CONFERMA_APPRENDIMENTI`
+  in `config.py` lo spegne. Era la prima voce della `ROADMAP.md` e quella
+  con il peso maggiore sul modello di sicurezza; `SECURITY.md`,
+  `docs/architecture.md` e `docs/agno.md` descrivono ora questo;
 - workflow **CodeQL** (`.github/workflows/codeql.yml`), query
   `security-extended` su push, PR e una volta a settimana. Ruff e mypy
   leggono ogni riga ma cercano altro; CodeQL segue il dato da dove entra a

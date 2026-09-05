@@ -46,7 +46,7 @@ from _comune import esigi, fallimento, ok, prepara_ambiente
 RADICE_PROVA = prepara_ambiente("cli-test")
 
 from ares import config  # noqa: E402
-from ares.agent.echo import Fotografia  # noqa: E402
+from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
 from ares.cli import chat  # noqa: E402
@@ -444,10 +444,13 @@ class FintoInput:
     che chiude la REPL e vanno provate dalla stessa coda.
     """
 
-    def __init__(self, righe, history_warning=None):
+    def __init__(self, righe, history_warning=None, risposte=()):
         self.righe = list(righe)
         self.history_warning = history_warning
         self.domande: list[str] = []
+        # Le risposte alle domande, in ordine; esaurite, ogni domanda riceve
+        # una riga vuota, cioe' il default di ogni [S/n] e [s/N].
+        self.risposte = list(risposte)
 
     def prompt(self) -> str:
         if not self.righe:
@@ -459,7 +462,7 @@ class FintoInput:
 
     def ask(self, etichetta: str, *, muted: bool = False) -> str:
         self.domande.append(etichetta)
-        return ""
+        return self.risposte.pop(0) if self.risposte else ""
 
 
 class FintaChiamata:
@@ -553,36 +556,116 @@ def chat_turno() -> str:
     # deve precedere il turno, perche' `update_user_memory` scrive durante il
     # run - quindi la finta registra quando viene chiamata.
     letture: list[str] = []
-    fotografie = iter([Fotografia(), Fotografia(memorie={"m1": "Preferisce config.py ai flag."})])
+    turni: list[str] = []
+    ripristini: list[Istantanea] = []
+
+    def istantanea_finta(agent):
+        letture.append("turno" if turni else "prima")
+        return Istantanea()
 
     def fotografa_finta(agent):
         letture.append("turno" if turni else "prima")
-        return next(fotografie)
-
-    turni: list[str] = []
+        return Fotografia(memorie={"m1": "Preferisce config.py ai flag."})
 
     def ciclo_che_scrive(agent, testo, *, on_event, resolve_pause):
         turni.append(testo)
         return FintaRisposta()
 
+    def ripristina_finto(agent, stato):
+        ripristini.append(stato)
+        return esito_ripristino
+
+    esito_ripristino = True
+
+    def turno_che_scrive(risposte, *, conferma=True):
+        letture.clear()
+        turni.clear()
+        ripristini.clear()
+        input_cli = FintoInput([], risposte=risposte)
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "run_turn_cycle", ciclo_che_scrive),
+            patch.object(chat, "istantanea", istantanea_finta),
+            patch.object(chat, "fotografa", fotografa_finta),
+            patch.object(chat, "ripristina", ripristina_finto),
+            patch.object(config, "MOSTRA_APPRENDIMENTI", True),
+            patch.object(config, "CONFERMA_APPRENDIMENTI", conferma),
+            redirect_stdout(uscita),
+        ):
+            chat.esegui_turno(object(), "ricorda che preferisco config.py", input_cli)
+        return _piatto(uscita.getvalue()), input_cli.domande
+
+    testo, domande = turno_che_scrive([""])
+    esigi(letture == ["prima", "turno"], "le letture non avvolgono il turno: " + repr(letture))
+    esigi("appreso: memorie +1" in testo, "la sintesi dell'eco non compare: " + testo)
+    esigi("Preferisce config.py ai flag." in testo, "il testo della memoria non compare: " + testo)
+    # La domanda segue l'eco, e Invio tiene: nessun ripristino.
+    esigi(domande == ["Tenere in memoria? [S/n] "], "la domanda sull'apprendimento e' " + repr(domande))
+    esigi(ripristini == [], "un Invio ha ripristinato")
+    esigi("ripristinato" not in testo, "con un Invio compare il ripristino")
+
+    # Un no riporta gli store all'istantanea di prima del turno e lo dice.
+    testo, domande = turno_che_scrive(["n"])
+    esigi(ripristini == [Istantanea()], "il no non ripristina l'istantanea di prima: " + repr(ripristini))
+    esigi("ripristinato: profilo e memorie come prima del turno" in testo, "il ripristino non viene detto: " + testo)
+
+    # Un ripristino che non torna uguale viene detto come tale, non taciuto.
+    esito_ripristino = False
+    testo, domande = turno_che_scrive(["no"])
+    esigi(ripristini == [Istantanea()], "il no non ripristina")
+    esigi("ripristino incompleto" in testo, "un ripristino non riuscito passa per riuscito: " + testo)
+    esito_ripristino = True
+
+    # Ctrl-C davanti alla domanda tiene, come un Invio.
+    class InputInterrotto(FintoInput):
+        def ask(self, etichetta, *, muted=False):
+            raise KeyboardInterrupt
+
+    letture.clear()
+    turni.clear()
+    ripristini.clear()
     uscita = io.StringIO()
     with (
         patch.object(chat, "run_turn_cycle", ciclo_che_scrive),
+        patch.object(chat, "istantanea", istantanea_finta),
         patch.object(chat, "fotografa", fotografa_finta),
+        patch.object(chat, "ripristina", ripristina_finto),
         patch.object(config, "MOSTRA_APPRENDIMENTI", True),
+        patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(object(), "ricorda che preferisco config.py", input_cli)
-    testo = _piatto(uscita.getvalue())
-    esigi(letture == ["prima", "turno"], "le fotografie non avvolgono il turno: " + repr(letture))
-    esigi("appreso: memorie +1" in testo, "la sintesi dell'eco non compare: " + testo)
-    esigi("Preferisce config.py ai flag." in testo, "il testo della memoria non compare: " + testo)
+        chat.esegui_turno(object(), "ricorda che preferisco config.py", InputInterrotto([]))
+    esigi(ripristini == [], "un Ctrl-C alla domanda ha ripristinato")
 
-    # Spento in config non si legge nemmeno l'archivio.
+    # Con la conferma spenta l'eco compare e la domanda no.
+    testo, domande = turno_che_scrive(["n"], conferma=False)
+    esigi("appreso: memorie +1" in testo, "senza conferma l'eco sparisce")
+    esigi(domande == [], "con la conferma spenta la domanda viene fatta lo stesso: " + repr(domande))
+    esigi(ripristini == [], "con la conferma spenta si ripristina")
+
+    # Un turno che non ha scritto niente non fa domande.
     letture.clear()
+    turni.clear()
+    input_cli = FintoInput([], risposte=["n"])
     uscita = io.StringIO()
     with (
         patch.object(chat, "run_turn_cycle", ciclo_ok),
+        patch.object(chat, "istantanea", lambda agent: Istantanea()),
+        patch.object(chat, "fotografa", lambda agent: Fotografia()),
+        patch.object(config, "MOSTRA_APPRENDIMENTI", True),
+        patch.object(config, "CONFERMA_APPRENDIMENTI", True),
+        redirect_stdout(uscita),
+    ):
+        chat.esegui_turno(object(), "ciao", input_cli)
+    esigi(input_cli.domande == [], "un turno senza scritture fa una domanda: " + repr(input_cli.domande))
+
+    # Spento in config non si legge nemmeno l'archivio.
+    letture.clear()
+    turni.clear()
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "run_turn_cycle", ciclo_ok),
+        patch.object(chat, "istantanea", istantanea_finta),
         patch.object(chat, "fotografa", fotografa_finta),
         patch.object(config, "MOSTRA_APPRENDIMENTI", False),
         redirect_stdout(uscita),
@@ -590,7 +673,10 @@ def chat_turno() -> str:
         chat.esegui_turno(object(), "ciao", input_cli)
     esigi(letture == [], "con l'eco spento l'archivio viene letto lo stesso")
     esigi("appreso" not in _piatto(uscita.getvalue()), "con l'eco spento compare una riga di eco")
-    return "turno, pausa irrisolta, Ctrl-C e guasto restano quattro esiti distinti; l'eco avvolge il turno"
+    return (
+        "turno, pausa irrisolta, Ctrl-C e guasto restano quattro esiti distinti; "
+        "l'eco avvolge il turno e un no lo riporta indietro"
+    )
 
 
 def chat_ciclo() -> str:

@@ -115,21 +115,32 @@ run finale, evitando di perdere il contenuto prodotto dopo una conferma.
 
 Gli strumenti per i file sono limitati a una directory di lavoro, ma questo
 confine non e' una sandbox di processo. I comandi shell possono accedere alle
-risorse dell'host e alla rete, quindi richiedono conferma esplicita. Stato,
-workspace, backup e `.env` restano fuori dal controllo versione.
+risorse dell'host e alla rete, quindi richiedono conferma esplicita. La
+conferma mostra il comando intero e, sotto, righe di attenzione per cio' che
+va oltre la directory: passa da una shell, tocca percorsi fuori dalla
+directory, chiede privilegi, usa la rete, cancella ricorsivamente
+(`cli/render.py`, `avvertenze_comando`). Non e' un filtro - una lista nera
+si aggira con un alias - ma il pezzo della conferma che dice dove guardare.
+Stato, workspace, backup e `.env` restano fuori dal controllo versione.
 
-La memoria durevole non chiede conferma: `save_learning`, `remember_about` e
-`update_user_memory` scrivono cio' che il modello decide, e l'estrazione
-automatica aggiorna profilo e memorie dopo ogni risposta. Un file del
-workspace o l'output di un comando con dentro un'istruzione puo' quindi
-lasciare una traccia che viene reiniettata in ogni sessione futura. Il
-controllo e' la visibilita': con `MOSTRA_APPRENDIMENTI` gli strumenti di
-memoria mostrano i propri argomenti e, a turno chiuso, la CLI stampa cosa e'
-cambiato in profilo e memorie, con il testo intero. Il rimedio sono gli
-stessi strumenti di memoria, chiedendo ad Ares di correggere o cancellare.
+La memoria durevole non chiede conferma prima di scrivere: `save_learning`,
+`remember_about` e `update_user_memory` scrivono cio' che il modello decide,
+e l'estrazione automatica aggiorna profilo e memorie dopo ogni risposta. Un
+file del workspace o l'output di un comando con dentro un'istruzione puo'
+quindi lasciare una traccia che viene reiniettata in ogni sessione futura.
+Il controllo sta a turno chiuso, in due tempi: con `MOSTRA_APPRENDIMENTI`
+gli strumenti di memoria mostrano i propri argomenti e la CLI stampa cosa e'
+cambiato in profilo e memorie, con il testo intero; con
+`CONFERMA_APPRENDIMENTI` chiede poi se tenerlo, e un `n` riporta i due store
+all'istantanea letta prima del turno (`echo.py`: `istantanea`,
+`ripristina`), verificando di esserci riuscito con una rilettura. E' tutto o
+niente per turno; la correzione di una riga sola passa dagli stessi
+strumenti di memoria, chiedendo ad Ares di correggere o cancellare. Entita'
+e intuizioni restano fuori dal ripristino: si scrivono solo con strumenti
+agentici, che il flusso mostra gia' uno per uno.
 
-Che il controllo sia la visibilita' e non una conferma non e' una scelta fra
-due possibilita' disponibili. Le modalita' di apprendimento di Agno 3.0.5 sono
+Che la conferma stia a valle della scrittura e non a monte non e' una scelta
+fra due possibilita' disponibili. Le modalita' di apprendimento di Agno 3.0.5 sono
 quattro, ma non valgono per tutti gli store: `PROPOSE` e' supportata dal solo
 store delle intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano
 con un warning, e `HITL` non e' implementata da nessuno. Profilo e memorie
