@@ -155,10 +155,14 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse sette prove sia su Ubuntu sia su Windows. Sul
-runner Windows l'ambiente nasce direttamente da `setup.ps1 -SkipPreflight`,
-così la CI verifica anche il percorso d'installazione senza richiedere
-Ollama.
+La CI esegue le stesse sette prove, con la misura, sia su Ubuntu sia su
+Windows. Sul runner Windows l'ambiente nasce direttamente da
+`setup.ps1 -SkipPreflight`, così la CI verifica anche il percorso
+d'installazione senza richiedere Ollama; un secondo `uv sync --locked` sullo
+stesso venv aggiunge poi `coverage`, che lo script di proposito non installa.
+Misurare anche lì non è ridondante: i rami Windows di `backup` e
+`platform_files` esistono per quel sistema, e misurati solo su Ubuntu
+risultavano scoperti anche quando il runner Windows li attraversava.
 
 ## Prove con Ollama
 
