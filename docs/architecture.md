@@ -115,8 +115,13 @@ run finale, evitando di perdere il contenuto prodotto dopo una conferma.
 
 Gli strumenti per i file sono limitati a una directory di lavoro, ma questo
 confine non e' una sandbox di processo. I comandi shell possono accedere alle
-risorse dell'host e alla rete, quindi richiedono conferma esplicita. Stato,
-workspace, backup e `.env` restano fuori dal controllo versione.
+risorse dell'host e alla rete, quindi richiedono conferma esplicita. La
+conferma mostra il comando intero e, sotto, righe di attenzione per cio' che
+va oltre la directory: passa da una shell, tocca percorsi fuori dalla
+directory, chiede privilegi, usa la rete, cancella ricorsivamente
+(`cli/render.py`, `avvertenze_comando`). Non e' un filtro - una lista nera
+si aggira con un alias - ma il pezzo della conferma che dice dove guardare.
+Stato, workspace, backup e `.env` restano fuori dal controllo versione.
 
 La memoria durevole non chiede conferma prima di scrivere: `save_learning`,
 `remember_about` e `update_user_memory` scrivono cio' che il modello decide,
