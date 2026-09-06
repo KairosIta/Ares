@@ -20,6 +20,7 @@ from cyclopts import Parameter
 from ares import config
 from ares.backup import integrity
 from ares.cli.comando import nuova_app
+from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
 from ares.state.lock import StatoOccupato, lock_stato
 
@@ -165,11 +166,9 @@ def ripristina(snapshot: str, *, yes: bool = False, skip_safety: bool = False) -
     operazioni = _op()
     percorso = operazioni.risolvi_snapshot(snapshot)
     operazioni.verifica_snapshot(percorso, True)
-    if not yes:
-        conferma = input("Scrivi " + percorso.name + " per ripristinarlo: ").strip()
-        if conferma != percorso.name:
-            UI.line("Restore annullato.", style="ares.warning")
-            return 2
+    if not yes and not conferma_scritta(percorso.name, cosa="Lo stato attuale verra' sostituito da questo snapshot."):
+        UI.line("Restore annullato.", style="ares.warning")
+        return 2
     sicurezza = operazioni.ripristina_snapshot(percorso.name, not skip_safety)
     UI.line("Restore completato: " + percorso.name, style="ares.success")
     if sicurezza is not None:
@@ -197,7 +196,7 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
     UI.line("Snapshot da eliminare:", style="ares.warning")
     for percorso in candidati:
         UI.line("- " + percorso.name)
-    if not yes and input("Scrivi ELIMINA per continuare: ").strip() != "ELIMINA":
+    if not yes and not conferma_scritta("ELIMINA"):
         UI.line("Prune annullato.", style="ares.warning")
         return 2
     # Fra anteprima e conferma potrebbe essere nato uno snapshot. Non eliminare

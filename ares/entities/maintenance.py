@@ -26,6 +26,7 @@ from cyclopts import Parameter
 from ares import config
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.cli.comando import nuova_app
+from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI
 from ares.entities.audit import (
     PAROLE_COMUNI,
@@ -261,14 +262,7 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
         UI.line("Per applicarla, ripeti lo stesso comando aggiungendo --apply.", style="ares.muted")
         return 0
 
-    UI.blank()
-    UI.line("Per confermare scrivi esattamente:", style="ares.warning")
-    UI.line(piano.conferma, style="ares.title")
-    try:
-        conferma = input("> ").strip()
-    except EOFError:
-        conferma = ""
-    if conferma != piano.conferma:
+    if not conferma_scritta(piano.conferma):
         UI.line("Conferma non corrispondente: fusione annullata.", style="ares.warning")
         return 1
 

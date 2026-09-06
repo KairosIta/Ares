@@ -22,6 +22,7 @@ from ares import config
 from ares.agent.runtime import build_db
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.cli.comando import nuova_app
+from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
 from ares.sessions.retention import (
     ErroreRetention,
@@ -105,11 +106,7 @@ def _confermata(numero: int, yes: bool) -> bool:
     if yes:
         return True
     frase = "ELIMINA " + str(numero) + (" SESSIONE" if numero == 1 else " SESSIONI")
-    try:
-        ricevuta = input("Scrivi " + frase + " per continuare: ").strip()
-    except EOFError:
-        ricevuta = ""
-    return ricevuta == frase
+    return conferma_scritta(frase)
 
 
 def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> int:
