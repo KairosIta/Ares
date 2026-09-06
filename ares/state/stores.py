@@ -67,7 +67,9 @@ def stampa_store(store: Any, etichetta: str, **filtri: Any) -> None:
     sarebbe scritta due volte, ed e' gia' successo con `/entita`.
     """
     if store is None:
-        print(etichetta + ": store spento in config.py")
+        from ares.cli.ui import UI
+
+        UI.line(etichetta + ": store spento in config.py", style="ares.muted")
         return
     store.print(**filtri)
 

@@ -3,6 +3,9 @@
 E' il sotto-comando `ares backup`; `ares-backup` resta come alias. Le
 operazioni vere arrivano da `snapshots.py`, che le inietta all'import per
 evitare il ciclo fra i due moduli.
+
+L'output passa da `UI`: tabelle e colori sul terminale, testo piatto in una
+pipe, errori su stderr. `list` e `verify` hanno `--json` per gli script.
 """
 
 import functools
@@ -10,11 +13,14 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+from cyclopts import Parameter
 
 from ares import config
 from ares.backup import integrity
 from ares.cli.comando import nuova_app
+from ares.cli.ui import UI, byte_leggibili
 from ares.state.lock import StatoOccupato, lock_stato
 
 
@@ -33,6 +39,10 @@ class OperazioniBackup:
 
 app = nuova_app("backup", "Snapshot locali dello stato di Ares")
 
+# `--json` e non `--json_`: il nome della funzione non puo' essere `json`
+# perche' il modulo lo importa, e Cyclopts prenderebbe `--come-json`.
+ComeJson = Annotated[bool, Parameter(name="--json")]
+
 _operazioni: OperazioniBackup | None = None
 
 
@@ -48,14 +58,14 @@ def _op() -> OperazioniBackup:
 
 
 def _protetto(funzione):
-    """Un guasto previsto diventa una riga e il codice 1, non un traceback."""
+    """Un guasto previsto diventa una riga su stderr e il codice 1, non un traceback."""
 
     @functools.wraps(funzione)
     def involucro(*argomenti, **opzioni):
         try:
             return funzione(*argomenti, **opzioni)
         except (integrity.ErroreBackup, StatoOccupato, OSError) as errore:
-            print("ERRORE:", errore)
+            UI.err("ERRORE: " + str(errore))
             return 1
 
     return involucro
@@ -65,51 +75,80 @@ def _dimensione(percorso: Path) -> int:
     return sum(voce.stat().st_size for voce in percorso.rglob("*") if voce.is_file())
 
 
+def _descrivi(percorso: Path) -> dict[str, Any]:
+    """Cio' che di uno snapshot si dice in elenco, letto dal manifest."""
+    try:
+        manifest = json.loads((percorso / integrity.MANIFEST).read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError("manifest non oggetto")
+        tipo = str(manifest.get("type", "?"))
+        creato = str(manifest.get("created_at", "?"))
+        valido = True
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        tipo, creato, valido = "CORROTTO", "?", False
+    return {
+        "snapshot": percorso.name,
+        "type": tipo,
+        "created_at": creato,
+        "bytes": _dimensione(percorso),
+        "path": str(percorso),
+        "manifest_ok": valido,
+    }
+
+
 @app.command(name="create")
 @_protetto
 def crea() -> int:
     """Crea e verifica uno snapshot."""
     creato = _op().crea_snapshot()
-    print("Snapshot creato e verificato:", creato)
+    UI.line("Snapshot creato e verificato: " + str(creato), style="ares.success")
     return 0
 
 
 @app.command(name="list")
 @_protetto
-def elenca() -> int:
-    """Elenca gli snapshot, dal piu' recente."""
+def elenca(*, come_json: ComeJson = False) -> int:
+    """Elenca gli snapshot, dal piu' recente.
+
+    Args:
+        come_json: stampa l'elenco come JSON, per gli script.
+    """
     operazioni = _op()
+    residui = operazioni.avviso_residui()
+    voci = [_descrivi(percorso) for percorso in reversed(operazioni.elenco_snapshot())]
+    if come_json:
+        UI.json({"backup_dir": str(config.BACKUP_DIR), "residui": residui, "snapshot": voci})
+        return 0
     # Prima del catalogo: chi elenca gli snapshot sta decidendo se e da cosa
     # ripristinare, e un restore rimasto a meta' e' la prima cosa da sapere.
-    for riga in operazioni.avviso_residui():
-        print(riga)
-    snapshot = operazioni.elenco_snapshot()
-    if not snapshot:
-        print("Nessuno snapshot in", config.BACKUP_DIR)
+    for indice, riga in enumerate(residui):
+        UI.line(riga, style="ares.error" if indice == 0 else "ares.muted")
+    if residui:
+        UI.blank()
+    if not voci:
+        UI.line("Nessuno snapshot in " + str(config.BACKUP_DIR), style="ares.muted")
         return 0
-    for percorso in reversed(snapshot):
-        try:
-            manifest = json.loads((percorso / integrity.MANIFEST).read_text(encoding="utf-8"))
-            if not isinstance(manifest, dict):
-                raise ValueError("manifest non oggetto")
-            tipo = manifest.get("type", "?")
-            creato = manifest.get("created_at", "?")
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            tipo, creato = "CORROTTO", "?"
-        print(percorso.name, " ", tipo, " ", creato, " ", _dimensione(percorso), "byte")
+    UI.table(
+        ("snapshot", "tipo", "creato", ("dimensione", "ares.text", "right")),
+        ((v["snapshot"], v["type"], v["created_at"], byte_leggibili(v["bytes"])) for v in voci),
+    )
     return 0
 
 
 @app.command(name="verify")
 @_protetto
-def verifica(snapshot: str = "latest") -> int:
+def verifica(snapshot: str = "latest", *, come_json: ComeJson = False) -> int:
     """Verifica checksum e database di uno snapshot.
 
     Args:
         snapshot: nome dello snapshot, o `latest` per l'ultimo.
+        come_json: stampa il manifest verificato come JSON.
     """
     manifest = _op().verifica_snapshot(snapshot, False)
-    print("Snapshot valido:", manifest["snapshot_id"])
+    if come_json:
+        UI.json(manifest)
+        return 0
+    UI.line("Snapshot valido: " + str(manifest["snapshot_id"]), style="ares.success")
     return 0
 
 
@@ -129,12 +168,12 @@ def ripristina(snapshot: str, *, yes: bool = False, skip_safety: bool = False) -
     if not yes:
         conferma = input("Scrivi " + percorso.name + " per ripristinarlo: ").strip()
         if conferma != percorso.name:
-            print("Restore annullato.")
+            UI.line("Restore annullato.", style="ares.warning")
             return 2
     sicurezza = operazioni.ripristina_snapshot(percorso.name, not skip_safety)
-    print("Restore completato:", percorso.name)
+    UI.line("Restore completato: " + percorso.name, style="ares.success")
     if sicurezza is not None:
-        print("Stato precedente salvato in:", sicurezza)
+        UI.pair("Stato precedente salvato in", sicurezza)
     return 0
 
 
@@ -153,13 +192,13 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
     disponibili = operazioni.elenco_snapshot()
     candidati = disponibili[:-keep] if len(disponibili) > keep else []
     if not candidati:
-        print("Niente da eliminare; snapshot:", len(disponibili), " keep:", keep)
+        UI.line("Niente da eliminare; snapshot: " + str(len(disponibili)) + ", keep: " + str(keep), style="ares.muted")
         return 0
-    print("Snapshot da eliminare:")
+    UI.line("Snapshot da eliminare:", style="ares.warning")
     for percorso in candidati:
-        print("-", percorso.name)
+        UI.line("- " + percorso.name)
     if not yes and input("Scrivi ELIMINA per continuare: ").strip() != "ELIMINA":
-        print("Prune annullato.")
+        UI.line("Prune annullato.", style="ares.warning")
         return 2
     # Fra anteprima e conferma potrebbe essere nato uno snapshot. Non eliminare
     # mai qualcosa che l'utente non ha appena visto.
@@ -170,7 +209,7 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
         if [percorso.name for percorso in candidati_attuali] != nomi_visti:
             raise integrity.ErroreBackup("l'elenco degli snapshot e' cambiato; ripeti prune")
         eliminati = operazioni.pota_snapshot(keep, False)
-    print("Eliminati", len(eliminati), "snapshot; conservati", keep)
+    UI.line("Eliminati " + str(len(eliminati)) + " snapshot; conservati " + str(keep), style="ares.success")
     return 0
 
 

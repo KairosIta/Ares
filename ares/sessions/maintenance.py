@@ -11,11 +11,10 @@ applicano richiedono il lock esclusivo, creano uno snapshot verificato e
 usano la cancellazione a cascata di Agno. `ares-sessions` e' l'alias.
 """
 
-import sys
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from cyclopts import Parameter
 
@@ -23,6 +22,7 @@ from ares import config
 from ares.agent.runtime import build_db
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.cli.comando import nuova_app
+from ares.cli.ui import UI, byte_leggibili
 from ares.sessions.retention import (
     ErroreRetention,
     SessioneRetention,
@@ -46,43 +46,58 @@ def _almeno_un_giorno(tipo, valore: int) -> None:
 Giorni = Annotated[int, Parameter(validator=_almeno_un_giorno)]
 
 
-def _dimensione(byte: int) -> str:
-    valore = float(byte)
-    for unita in ("B", "KiB", "MiB", "GiB"):
-        if valore < 1024 or unita == "GiB":
-            return (str(int(valore)) if unita == "B" else format(valore, ".1f")) + " " + unita
-        valore /= 1024
-    return str(byte) + " B"
-
-
 def _data(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
 
 
-def _stampa_sessioni(sessioni: Sequence[SessioneRetention]) -> None:
-    for sessione in sessioni:
-        print(
-            "-",
-            sessione.session_id,
-            " ",
-            _data(sessione.ultimo_uso),
-            " ",
-            sessione.offload_count,
-            "offload,",
-            _dimensione(sessione.offload_bytes),
+def _riga(sessione: SessioneRetention) -> tuple[str, str, str, str]:
+    return (
+        sessione.session_id,
+        _data(sessione.ultimo_uso),
+        str(sessione.offload_count),
+        byte_leggibili(sessione.offload_bytes),
+    )
+
+
+def _tabella_sessioni(sessioni: Sequence[SessioneRetention]) -> None:
+    if sessioni:
+        UI.table(
+            ("sessione", "ultimo uso", ("offload", "ares.text", "right"), ("payload", "ares.text", "right")),
+            (_riga(sessione) for sessione in sessioni),
         )
 
 
-def _stato(user_id: str) -> int:
+def _dati_sessione(sessione: SessioneRetention) -> dict[str, Any]:
+    return {
+        "session_id": sessione.session_id,
+        "last_used": datetime.fromtimestamp(sessione.ultimo_uso).isoformat(timespec="seconds"),
+        "offload_count": sessione.offload_count,
+        "offload_bytes": sessione.offload_bytes,
+    }
+
+
+def _stato(user_id: str, come_json: bool) -> int:
     db = build_db()
     sessioni = inventario(db, user_id)
-    print("Utente:", user_id)
-    print("Sessioni:", len(sessioni))
-    print("Offload indicizzati:", sum(s.offload_count for s in sessioni))
-    print("Payload logici:", _dimensione(sum(s.offload_bytes for s in sessioni)))
+    offload = sum(s.offload_count for s in sessioni)
+    payload = sum(s.offload_bytes for s in sessioni)
+    if come_json:
+        UI.json(
+            {
+                "user": user_id,
+                "sessions": [_dati_sessione(s) for s in sessioni],
+                "offload_count": offload,
+                "offload_bytes": payload,
+            }
+        )
+        return 0
+    UI.pair("Utente", user_id)
+    UI.pair("Sessioni", len(sessioni))
+    UI.pair("Offload indicizzati", offload)
+    UI.pair("Payload logici", byte_leggibili(payload))
     if sessioni:
-        print()
-        _stampa_sessioni(sessioni)
+        UI.blank()
+        _tabella_sessioni(sessioni)
     return 0
 
 
@@ -99,11 +114,11 @@ def _confermata(numero: int, yes: bool) -> bool:
 
 def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> int:
     if not _confermata(len(sessioni), yes):
-        print("Cancellazione annullata.")
+        UI.line("Cancellazione annullata.", style="ares.warning")
         return 2
     snapshot = crea_snapshot(tipo="pre-session-prune", acquisisci_lock=False)
-    print("Backup verificato:", snapshot.name)
-    comando = config.comando_ares("backup")
+    UI.pair("Backup verificato", snapshot.name)
+    comando = config.comando_ares("backup", "restore", snapshot.name)
     db, store = apri_archivio(user_id)
     try:
         eliminate = elimina_sessioni(db, store, sessioni, user_id)
@@ -111,24 +126,26 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
         # Non e' un rifiuto: qualcosa e' gia' stato cancellato. Il rendiconto
         # dice cosa, e lo snapshot appena fatto e' il punto da cui si torna
         # allo stato di prima senza dover capire il guasto.
-        print("Cancellazione interrotta:", errore, file=sys.stderr)
-        print(
-            "Stato parziale: eliminate",
-            len(errore.eliminate),
-            "sessioni su",
-            str(len(sessioni)) + ", ancora presenti",
-            str(len(errore.rimaste)) + ".",
-            file=sys.stderr,
+        UI.err("Cancellazione interrotta: " + str(errore))
+        UI.err(
+            "Stato parziale: eliminate "
+            + str(len(errore.eliminate))
+            + " sessioni su "
+            + str(len(sessioni))
+            + ", ancora presenti "
+            + str(len(errore.rimaste))
+            + ".",
+            style="ares.text",
         )
         if errore.eliminate:
-            print("Eliminate senza verifica:", ", ".join(errore.eliminate), file=sys.stderr)
-            print("Contesto appreso o payload di queste possono essere rimasti orfani.", file=sys.stderr)
+            UI.err("Eliminate senza verifica: " + ", ".join(errore.eliminate), style="ares.text")
+            UI.err("Contesto appreso o payload di queste possono essere rimasti orfani.", style="ares.muted")
         if errore.rimaste:
-            print("Ancora presenti:", ", ".join(errore.rimaste), file=sys.stderr)
-        print("Per tornare allo stato di prima della manutenzione:", comando, "restore", snapshot.name, file=sys.stderr)
+            UI.err("Ancora presenti: " + ", ".join(errore.rimaste), style="ares.text")
+        UI.err("Per tornare allo stato di prima della manutenzione: " + comando, style="ares.muted")
         return 1
-    print("Sessioni eliminate e verificate:", eliminate)
-    print("Per tornare indietro:", comando, "restore", snapshot.name)
+    UI.line("Sessioni eliminate e verificate: " + str(eliminate), style="ares.success")
+    UI.line("Per tornare indietro: " + comando, style="ares.muted")
     return 0
 
 
@@ -140,16 +157,15 @@ def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bo
         giorni=older_than,
         protette=protette,
     )
-    print("Sessioni inattive da oltre", older_than, "giorni:", len(candidate))
-    _stampa_sessioni(candidate)
+    UI.pair("Sessioni inattive da oltre " + str(older_than) + " giorni", len(candidate))
+    _tabella_sessioni(candidate)
     if protette:
-        print("Protette:", ", ".join(sorted(protette)))
+        UI.pair("Protette", ", ".join(sorted(protette)))
     if not candidate:
-        print("Niente da eliminare.")
+        UI.line("Niente da eliminare.", style="ares.muted")
         return 0
     if not apply:
-        print("Anteprima soltanto: nessun dato e' stato modificato.")
-        print("Per applicarla, ripeti lo stesso comando aggiungendo --apply.")
+        _anteprima()
         return 0
     return _applica(user, candidate, yes)
 
@@ -157,46 +173,75 @@ def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bo
 def _delete(user: str, session_id: str, apply: bool, yes: bool) -> int:
     db = build_db()
     sessione = trova_sessione(inventario(db, user), session_id)
-    print("Sessione da eliminare:")
-    _stampa_sessioni([sessione])
+    UI.line("Sessione da eliminare:", style="ares.warning")
+    _tabella_sessioni([sessione])
     if sessione.session_id in config.SESSIONI_PROTETTE:
-        print("Nota: la sessione e' protetta dal prune per eta', ma una cancellazione esatta puo' rimuoverla.")
+        UI.line(
+            "Nota: la sessione e' protetta dal prune per eta', ma una cancellazione esatta puo' rimuoverla.",
+            style="ares.muted",
+        )
     if not apply:
-        print("Anteprima soltanto: nessun dato e' stato modificato.")
-        print("Per applicarla, ripeti lo stesso comando aggiungendo --apply.")
+        _anteprima()
         return 0
     return _applica(user, [sessione], yes)
 
 
-def _esegui(azione: Callable[[], int], *, apply: bool = False, yes: bool = False) -> int:
-    """Il contorno comune ai tre comandi: coerenza dei flag, archivio, lock, errori."""
+def _anteprima() -> None:
+    UI.line("Anteprima soltanto: nessun dato e' stato modificato.", style="ares.warning")
+    UI.line("Per applicarla, ripeti lo stesso comando aggiungendo --apply.", style="ares.muted")
+
+
+def _esegui(
+    azione: Callable[[], int],
+    *,
+    apply: bool = False,
+    yes: bool = False,
+    senza_archivio: Callable[[], int] | None = None,
+) -> int:
+    """Il contorno comune ai tre comandi: coerenza dei flag, archivio, lock, errori.
+
+    `senza_archivio` e' cio' che si fa se il database non esiste: di default
+    una riga che lo dice, ma `status --json` deve rispondere comunque con
+    dati, perche' uno script non legge le frasi.
+    """
     if yes and not apply:
-        print("ERRORE: --yes richiede --apply", file=sys.stderr)
+        UI.err("ERRORE: --yes richiede --apply")
         return 2
     if not Path(config.DB_FILE).is_file():
-        print("Nessun archivio di Ares trovato in", config.DB_FILE)
+        if senza_archivio is not None:
+            return senza_archivio()
+        UI.line("Nessun archivio di Ares trovato in " + str(config.DB_FILE), style="ares.muted")
         return 0
     try:
         config.prepara_archivio()
         with lock_stato(esclusivo=apply):
             return azione()
     except StatoOccupato as errore:
-        print("Impossibile usare lo stato di Ares:", errore, file=sys.stderr)
-        print("Chiudi la chat e attendi che le altre manutenzioni terminino.", file=sys.stderr)
+        UI.err("Impossibile usare lo stato di Ares: " + str(errore))
+        UI.err("Chiudi la chat e attendi che le altre manutenzioni terminino.", style="ares.muted")
         return 2
     except (ErroreRetention, ErroreBackup, OSError) as errore:
-        print("Manutenzione rifiutata:", errore, file=sys.stderr)
+        UI.err("Manutenzione rifiutata: " + str(errore))
         return 2
 
 
 @app.command
-def status(*, user: str = config.DEFAULT_USER_ID) -> int:
+def status(*, user: str = config.DEFAULT_USER_ID, come_json: Annotated[bool, Parameter(name="--json")] = False) -> int:
     """Mostra sessioni e spazio logico degli offload.
 
     Args:
         user: utente di cui elencare le sessioni.
+        come_json: stampa sessioni e totali come JSON, per gli script.
     """
-    return _esegui(lambda: _stato(user))
+
+    def vuoto() -> int:
+        if come_json:
+            UI.json({"user": user, "sessions": [], "offload_count": 0, "offload_bytes": 0})
+            return 0
+        UI.line("Nessun archivio di Ares trovato in " + str(config.DB_FILE), style="ares.muted")
+        return 0
+
+    return _esegui(lambda: _stato(user, come_json), senza_archivio=vuoto)
 
 
 @app.command

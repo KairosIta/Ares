@@ -195,6 +195,15 @@ def main() -> int:
         esigi(stato.returncode == 0, "status fallito: " + stato.stderr)
         esigi("Sessioni: 2" in stato.stdout and "Offload indicizzati: 2" in stato.stdout, "status incompleto")
 
+        stato_json = esegui_cli("status", "--user", UTENTE, "--json")
+        esigi(stato_json.returncode == 0, "status --json fallito: " + stato_json.stderr)
+        dati = json.loads(stato_json.stdout)
+        esigi(
+            {s["session_id"] for s in dati["sessions"]} == {SESSIONE_VECCHIA, SESSIONE_RECENTE}
+            and dati["offload_count"] == 2,
+            "status --json non riporta sessioni e offload: " + stato_json.stdout,
+        )
+
         anteprima = esegui_cli("prune", "--user", UTENTE, "--older-than", "180")
         esigi(anteprima.returncode == 0, "anteprima prune fallita: " + anteprima.stderr)
         esigi(SESSIONE_VECCHIA in anteprima.stdout, "la sessione inattiva non compare nell'anteprima")

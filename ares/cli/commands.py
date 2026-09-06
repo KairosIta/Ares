@@ -4,7 +4,7 @@ import difflib
 
 from ares import config
 from ares.agent.assistant import build_filesystem
-from ares.cli.ui import UI
+from ares.cli.ui import UI, byte_leggibili
 from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
 
 # ---------------------------------------------------------------------------
@@ -92,8 +92,8 @@ def _comando_file(agent, session_id, user_id, argomento):
     elenco = fs.list()
     if not elenco:
         UI.line("Nessun file.", style="ares.muted")
-    for f in elenco:
-        UI.line("- " + str(f.path) + "   " + str(f.size_bytes) + " byte")
+        return
+    UI.table(("file", ("byte", "ares.text", "right")), ((str(f.path), byte_leggibili(f.size_bytes)) for f in elenco))
 
 
 def _comando_lavoro(agent, session_id, user_id, argomento):

@@ -8,14 +8,17 @@ percorso di apprendimento.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Sequence
 from threading import Event, RLock, Thread
 from time import monotonic
+from typing import Any
 
 from rich import box
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.markdown import Markdown
+from rich.measure import Measurement
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -63,6 +66,39 @@ def _testo(valore: object, style: str | None = None) -> Text:
     arrivano spezzati; qui il testo e' intero e basta un passaggio.
     """
     return Text(_senza_controlli(str(valore)), style=style or "")
+
+
+def byte_leggibili(byte: int) -> str:
+    """`1.5 MiB` invece di `1572864`: per le tabelle, non per i dati.
+
+    Base 1024 con il suffisso IEC, come nella riga delle metriche della chat:
+    due convenzioni nella stessa CLI sono peggio di una qualunque delle due.
+    """
+    valore = float(byte)
+    for unita in ("B", "KiB", "MiB", "GiB"):
+        if valore < 1024 or unita == "GiB":
+            return (str(int(valore)) if unita == "B" else format(valore, ".1f")) + " " + unita
+        valore /= 1024
+    return str(byte) + " B"
+
+
+def _riga(console: Console, testo: Text) -> None:
+    """Una riga di testo: a capo per parola sul terminale, intera in una pipe.
+
+    Rich spezza a 80 colonne anche quando nessuno guarda, e una frase
+    spezzata in due righe non si trova piu' con grep ne' con `in`. In una
+    pipe la riga resta com'e', e a portarla a capo pensa chi la legge.
+    """
+    console.print(testo, soft_wrap=not console.is_terminal)
+
+
+def _colonna(colonna: Colonna, indice: int) -> tuple[str, str | None, str]:
+    """Nome, stile e allineamento di una colonna, con i default della tabella."""
+    parti: tuple[str | None, ...] = (colonna,) if isinstance(colonna, str) else colonna
+    nome = str(parti[0])
+    stile = parti[1] if len(parti) > 1 else ("ares.cyan" if indice == 0 else "ares.text")
+    allineamento = str(parti[2]) if len(parti) > 2 else "left"
+    return nome, stile, allineamento
 
 
 def _senza_controlli(valore: str) -> str:
@@ -379,8 +415,13 @@ class RichRunStream:
         )
 
 
+# Una colonna di `CliRenderer.table`: il nome, lo stile delle celle e
+# l'allineamento. Il nome da solo basta per una colonna di testo.
+Colonna = str | tuple[str, str | None] | tuple[str, str | None, str]
+
+
 class CliRenderer:
-    """Componenti visuali piccoli, riusabili e sicuri per la REPL."""
+    """Componenti visuali piccoli, riusabili e sicuri per la REPL e i comandi."""
 
     def __init__(self, console: Console | None = None) -> None:
         # ``file=None`` fa seguire a Console il sys.stdout corrente: i test
@@ -393,9 +434,72 @@ class CliRenderer:
             # conosce il tema costruito da CliRenderer. Applicarlo qui rende
             # i componenti indipendenti da come viene creato l'output.
             self.console.push_theme(ARES_THEME)
+        # Gli errori dei comandi di manutenzione vanno su stderr, cosi' uno
+        # script che legge stdout - o `--json` - non li trova in mezzo ai
+        # dati. `stderr=True` segue il sys.stderr corrente come sopra.
+        self.stderr = Console(theme=ARES_THEME, highlight=False, stderr=True)
 
     def line(self, valore: object = "", *, style: str | None = None) -> None:
-        self.console.print(_testo(valore, style))
+        _riga(self.console, _testo(valore, style))
+
+    def err(self, valore: object = "", *, style: str | None = "ares.error") -> None:
+        """Una riga su stderr; il rosso e' il default perche' quasi sempre e' un errore."""
+        _riga(self.stderr, _testo(valore, style))
+
+    def pair(self, chiave: str, valore: object, *, style: str | None = None) -> None:
+        """`chiave: valore` su una riga, con la chiave attenuata.
+
+        Resta una riga sola e non una tabella perche' `Sessioni: 2` deve
+        potersi cercare con grep e leggersi anche in una pipe.
+        """
+        _riga(
+            self.console,
+            Text.assemble(
+                (_senza_controlli(chiave) + ": ", "ares.muted"),
+                (_senza_controlli(str(valore)), style or "ares.text"),
+            ),
+        )
+
+    def table(self, colonne: Sequence[Colonna], righe: Iterable[Sequence[object]]) -> None:
+        """Una tabella compatta: intestazione attenuata, prima colonna in ciano.
+
+        Su un terminale una cella lunga va a capo dentro la propria colonna.
+        In una pipe no: la console si allarga quanto serve alla tabella,
+        perche' un nome di snapshot spezzato in tre righe non si puo' ne'
+        leggere ne' cercare, e chi legge da una pipe e' quasi sempre un
+        `grep` o un occhio che scorre un log.
+        """
+        tabella = Table(
+            box=box.SIMPLE_HEAD,
+            show_edge=False,
+            pad_edge=False,
+            header_style="ares.muted",
+            collapse_padding=True,
+        )
+        for indice, colonna in enumerate(colonne):
+            nome, stile, allineamento = _colonna(colonna, indice)
+            tabella.add_column(_testo(nome), style=stile, justify=allineamento, overflow="fold")  # type: ignore[arg-type]
+        for riga in righe:
+            tabella.add_row(*(_testo(cella) for cella in riga))
+        if self.console.is_terminal:
+            self.console.print(tabella)
+            return
+        misura = Measurement.get(self.console, self.console.options.update(max_width=4000), tabella)
+        larghezza = self.console.width
+        self.console.width = max(larghezza, misura.maximum)
+        try:
+            self.console.print(tabella)
+        finally:
+            self.console.width = larghezza
+
+    def json(self, dati: Any) -> None:
+        """Dati per uno script, senza colori ne' a-capo di Rich.
+
+        Passa dal file della console e non da `print`, cosi' segue la stessa
+        redirezione di tutto il resto; `default=str` copre Path e datetime.
+        """
+        self.console.file.write(json.dumps(dati, ensure_ascii=False, indent=2, default=str) + "\n")
+        self.console.file.flush()
 
     def blank(self) -> None:
         self.console.print()

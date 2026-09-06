@@ -1,6 +1,7 @@
 """Prova di audit e fusione delle entita', interamente su SQLite temporaneo."""
 
 import copy
+import json
 import os
 import shutil
 import subprocess
@@ -171,6 +172,23 @@ def main() -> int:
         esigi("Entita' analizzate: 9" in comando.stdout, "conteggio assente dalla CLI")
         esigi("Righe malformate ignorate: 1" in comando.stdout, "avviso malformata assente dalla CLI")
         esigi("project/ares_agent" in comando.stdout, "candidato assente dalla CLI")
+
+        come_json = subprocess.run(
+            [sys.executable, "-m", "ares.entities", "audit", "--user", UTENTE, "--json"],
+            cwd=config.BASE_DIR,
+            env=ambiente,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        esigi(come_json.returncode == 0, "audit --json fallito: " + come_json.stderr.strip())
+        dati = json.loads(come_json.stdout)
+        esigi(len(dati["entita"]) == 9 and len(dati["righe_ignorate"]) == 1, "audit --json: conteggi sbagliati")
+        esigi(
+            any("project/ares_agent" in (c["prima"], c["seconda"]) for c in dati["candidati"]),
+            "audit --json non riporta il candidato",
+        )
 
         finale = db.get_learnings(learning_type="entity_memory", namespace=NAMESPACE, limit=None)
         esigi(prima == finale, "la CLI di audit ha modificato lo store")

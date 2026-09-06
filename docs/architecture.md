@@ -46,7 +46,10 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 - `editor.py` gestisce editor, completamento, input multilinea e cronologia
   privata della REPL;
 - `ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i controlli
-  di terminale contenuti nelle risposte del modello.
+  di terminale contenuti nelle risposte del modello. E' anche l'output dei
+  comandi di manutenzione: `table` si allarga in una pipe invece di spezzare
+  le celle, `line` e `pair` non vanno a capo fuori dal terminale, `err`
+  scrive su stderr e `json` emette dati puri per `--json`.
 
 ### Nucleo del turno (`ares/agent/`)
 

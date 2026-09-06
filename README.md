@@ -242,6 +242,12 @@ La distinzione fra test offline ed E2E è descritta nella
 
 ## Operazioni
 
+I comandi di manutenzione mostrano tabelle sul terminale e testo piatto in
+una pipe; gli errori vanno su stderr. Quelli che leggono soltanto accettano
+`--json` per gli script: `ares backup list --json`, `ares backup verify
+--json`, `ares sessions status --json`, `ares entities audit --json`,
+`ares preflight --json`. Il codice di uscita non cambia.
+
 ### Backup
 
 ```bash
