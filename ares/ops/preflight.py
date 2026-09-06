@@ -74,7 +74,8 @@ def main() -> int:
     # ingestion e' stato rimosso sono tutti quelli nominati in config.py.
     # I ruoli si accumulano invece di sovrascriversi: con MAIN_MODEL locale
     # conviene che LEARNING_MODEL sia lo stesso modello, e allora va mostrato
-    # con entrambi i ruoli, non come un modello con un ruolo solo.
+    # con entrambi i ruoli, non come un modello con un ruolo solo. Lo stesso
+    # vale con lo stesso modello cloud in entrambi.
     richiesti: dict[str, list[str]] = {}
     for modello, ruolo in (
         (config.MAIN_MODEL, "conversazione"),
@@ -105,9 +106,10 @@ def main() -> int:
         return 1
 
     print()
-    if config.e_modello_cloud(config.MAIN_MODEL):
-        print("Il modello conversazionale e' cloud: prompt e risposte escono dalla macchina")
-        print("verso ollama.com. Estrazione delle memorie ed embedding restano locali.")
+    avviso = config.avviso_cloud()
+    if avviso:
+        for riga in avviso:
+            print(riga)
         print()
     print("Ambiente pronto:", r".venv\Scripts\ares" if sys.platform == "win32" else ".venv/bin/ares")
     return 0

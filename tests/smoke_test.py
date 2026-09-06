@@ -420,9 +420,12 @@ def chiamate_locali(agent, lm) -> str:
     una variabile d'ambiente per mantenere la promessa.
 
     Un modello cloud di Ollama passa comunque dal daemon locale, quindi
-    l'host non lo distingue: lo distingue il nome. L'unico ruolo a cui e'
-    concesso e' l'agente; gli store di apprendimento e l'embedder ricevono
-    profilo, memorie e intuizioni e devono restare locali per nome.
+    l'host non lo distingue: lo distingue il nome. Agente e store di
+    apprendimento lo accettano, ciascuno per scelta esplicita nel `.env`;
+    l'embedder indicizza le intuizioni gia' scritte e deve restare locale
+    per nome. Gli store devono inoltre seguire tutti LEARNING_MODEL: uno
+    store che usasse un altro modello manderebbe le memorie dove il `.env`
+    non ha detto.
     """
     componenti = [("agente", agent.model)]
     for nome, store in lm.stores.items():
@@ -435,10 +438,15 @@ def chiamate_locali(agent, lm) -> str:
     for nome, componente in componenti:
         host = getattr(componente, "host", None)
         esigi(host == config.OLLAMA_HOST, nome + " ha host " + repr(host) + " invece di " + repr(config.OLLAMA_HOST))
-        if nome != "agente":
+        if nome == "embedder":
             esigi(
                 not config.e_modello_cloud(componente.id),
                 nome + " usa un modello cloud: " + componente.id,
+            )
+        elif nome != "agente":
+            esigi(
+                componente.id == config.LEARNING_MODEL,
+                nome + " usa " + componente.id + " invece di LEARNING_MODEL " + config.LEARNING_MODEL,
             )
     esigi(
         "localhost" in config.OLLAMA_HOST or "127.0.0.1" in config.OLLAMA_HOST,
@@ -463,6 +471,8 @@ def chiamate_locali(agent, lm) -> str:
     esito = str(len(componenti)) + " componenti su " + config.OLLAMA_HOST + ", telemetria spenta"
     if config.e_modello_cloud(agent.model.id):
         esito += ", agente cloud"
+    if config.e_modello_cloud(config.LEARNING_MODEL):
+        esito += ", estrazione cloud"
     return esito
 
 
@@ -470,8 +480,10 @@ def ruoli_locali() -> str:
     """Il confine fra locale e cloud e' nel nome, e il codice lo fa rispettare.
 
     Ollama scrive il tag cloud in due forme e le usa entrambe; un nome di
-    repository che contiene "cloud" non basta. E un modello cloud dato a
-    estrazione o embedding deve fermare la costruzione, non un turno.
+    repository che contiene "cloud" non basta. Un modello cloud dato
+    all'embedder deve fermare la costruzione, non un turno; dato
+    all'estrazione deve invece passare, perche' e' una scelta che il `.env`
+    consente, e l'avviso che ne segue deve dire che le memorie escono.
     """
     from ares.agent import runtime
 
@@ -480,18 +492,26 @@ def ruoli_locali() -> str:
     for nome in ("qwen3.5:latest", "hf.co/cloud-lab/modello:Q8_0", "nomic-embed-text-v2-moe", "cloud"):
         esigi(not config.e_modello_cloud(nome), nome + " e' scambiato per cloud")
 
-    for attributo, costruttore in (
-        ("LEARNING_MODEL", runtime.build_learning_model),
-        ("EMBEDDER_MODEL", runtime.build_knowledge),
-    ):
-        with patch.object(config, attributo, "glm-5.3-flash:cloud"):
-            try:
-                costruttore()
-            except ValueError as errore:
-                esigi(attributo in str(errore), "l'errore non nomina " + attributo + ": " + str(errore))
-            else:
-                raise AssertionError(attributo + " cloud non ha fermato la costruzione")
-    return "due forme di tag riconosciute, estrazione ed embedding rifiutano il cloud"
+    with patch.object(config, "EMBEDDER_MODEL", "glm-5.3-flash:cloud"):
+        try:
+            runtime.build_knowledge()
+        except ValueError as errore:
+            esigi("EMBEDDER_MODEL" in str(errore), "l'errore non nomina EMBEDDER_MODEL: " + str(errore))
+        else:
+            raise AssertionError("EMBEDDER_MODEL cloud non ha fermato la costruzione")
+
+    with patch.object(config, "LEARNING_MODEL", "glm-5.3-flash:cloud"):
+        modello = runtime.build_learning_model()
+        esigi(modello.id == "glm-5.3-flash:cloud", "LEARNING_MODEL cloud non e' stato costruito com'e'")
+        esigi(modello.host == config.OLLAMA_HOST, "LEARNING_MODEL cloud non passa dal daemon locale")
+        avviso = " ".join(config.avviso_cloud())
+        esigi("memorie" in avviso and "escono dalla macchina" in avviso, "l'avviso non dice che le memorie escono")
+        with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"):
+            avviso = " ".join(config.avviso_cloud())
+            esigi("Solo l'embedding resta locale" in avviso, "con entrambi i ruoli cloud non resta solo l'embedding")
+    with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
+        esigi(config.avviso_cloud() == [], "l'avviso compare con soli modelli locali")
+    return "due forme di tag riconosciute, l'embedder rifiuta il cloud, l'estrazione lo accetta e lo dice"
 
 
 def contesto_esteso(agent, lm) -> str:

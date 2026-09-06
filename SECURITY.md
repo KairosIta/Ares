@@ -81,5 +81,6 @@ I modelli Ollama sono artefatti esterni al repository: provenienza, licenza e
 limiti del modello scelto devono essere valutati separatamente. Se
 `ARES_MAIN_MODEL` indica un modello cloud di Ollama — che non è il valore
 distribuito — prompt e risposte della conversazione attraversano
-`ollama.com` sotto la sua privacy policy; le memorie estratte e gli embedding
-non lo fanno mai.
+`ollama.com` sotto la sua privacy policy; se lo indica `ARES_LEARNING_MODEL`
+lo fanno anche il testo dei turni e le memorie già salvate, a ogni
+estrazione. Gli embedding non lo fanno mai.

@@ -10,6 +10,21 @@ Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-05 su Agno 3.0.5,
 10 prove su 10, con il modello conversazionale locale — cioè la
 configurazione che questa versione distribuisce.
 
+### Added
+
+- anche il modello per l'estrazione delle memorie si sceglie dal `.env`:
+  `ARES_LEARNING_MODEL` col tag `:cloud` manda a `ollama.com` il testo dei
+  turni e le memorie gia' salvate, cosi' chi vuole solo modelli cloud puo'
+  averli, con il solo embedder in scheda. E' una riga separata da
+  `ARES_MAIN_MODEL`, perche' affidare fuori cio' che Ares ricorda e' una
+  scelta diversa dal parlare con un modello remoto, e il valore distribuito
+  resta locale. `assistant_runtime` continua a rifiutare un nome cloud per
+  l'embedder; preflight e banner della chat leggono lo stesso avviso
+  (`config.avviso_cloud`) e dicono quali ruoli escono dalla macchina;
+- prove offline sull'estrazione in cloud: costruzione del modello, avviso
+  del preflight con la sola estrazione e con entrambi i ruoli cloud, avviso
+  della chat.
+
 ### Changed
 
 - la CI misura la copertura anche su Windows. Il runner Windows nasce da

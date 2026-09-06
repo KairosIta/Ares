@@ -20,13 +20,14 @@ from ares.state.stores import namespace_utente
 def _esigi_locale(nome: str, ruolo: str) -> str:
     """Rifiuta un modello cloud per un ruolo che deve restare sulla macchina.
 
-    Il solo ruolo a cui `config.py` consente un modello cloud e' la
-    conversazione. Estrazione delle memorie ed embedding ricevono il profilo,
-    le osservazioni e le intuizioni dell'utente: un errore all'avvio e' meglio
-    di un turno che li spedisce fuori in silenzio.
+    Conversazione ed estrazione delle memorie accettano un modello cloud,
+    ciascuna per scelta esplicita nel `.env`. L'embedder no: indicizza le
+    intuizioni gia' scritte in LanceDB, e cambiarlo invaliderebbe l'indice.
+    Un errore all'avvio e' meglio di un turno che le spedisce fuori in
+    silenzio.
     """
     if config.e_modello_cloud(nome):
-        raise ValueError(ruolo + " non puo' usare un modello cloud (" + nome + "): solo MAIN_MODEL puo'.")
+        raise ValueError(ruolo + " non puo' usare un modello cloud (" + nome + "): resta locale sempre.")
     return nome
 
 
@@ -49,9 +50,13 @@ def build_chat_model() -> Ollama:
 
 
 def build_learning_model() -> Ollama:
-    """Modello a bassa temperatura usato per l'estrazione strutturata. Locale sempre."""
+    """Modello a bassa temperatura usato per l'estrazione strutturata.
+
+    Locale o cloud secondo `config.LEARNING_MODEL`, come la conversazione:
+    e' l'utente a decidere nel `.env` a chi affidare cio' che Ares ricorda.
+    """
     return Ollama(
-        id=_esigi_locale(config.LEARNING_MODEL, "LEARNING_MODEL"),
+        id=config.LEARNING_MODEL,
         host=config.OLLAMA_HOST,
         options=config.LEARNING_OPTIONS,
         keep_alive=config.KEEP_ALIVE,
