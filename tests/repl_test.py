@@ -1294,7 +1294,9 @@ def cartella_di_lavoro() -> str:
         patch.object(sys, "stdout", Terminale()),
         patch.object(cartella, "conferma_scritta", finta_conferma),
     ):
-        esito = cartella.autorizza(RADICE_PROVA, esplicito=False)
+        # Risolto come lo passa la chat: su Windows la temp arriva col nome
+        # corto, e la conferma deve chiedere il percorso che poi si apre.
+        esito = cartella.autorizza(RADICE_PROVA.resolve(), esplicito=False)
     esigi(
         esito is False and chieste == [str(RADICE_PROVA.resolve())],
         "la conferma non chiede il percorso: " + repr(chieste),

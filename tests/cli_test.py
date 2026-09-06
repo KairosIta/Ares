@@ -457,7 +457,7 @@ def chat_repl() -> str:
     esigi("A presto" in testo, "la REPL non saluta all'uscita")
     esigi("/aiuto" in testo, "l'elenco dei comandi non compare")
     esigi("appunto.md" in testo, "/file non elenca il file scritto dall'agente")
-    esigi(str(config.WORKSPACE_DIR) in testo, "il banner o /cartella non nominano la cartella di lavoro")
+    esigi(str(config.WORKSPACE_DIR.resolve()) in testo, "il banner o /cartella non nominano la cartella di lavoro")
     esigi("Comando sconosciuto: /sconosciuto" in testo, "il comando ignoto non e' stato riconosciuto come tale")
     # La riga che tiene in piedi la promessa del modulo. Una riga che non
     # comincia con `/` non e' un comando: e' un messaggio, e la REPL lo manda

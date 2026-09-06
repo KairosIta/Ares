@@ -529,9 +529,12 @@ CRONOLOGIA_RIGHE = 2000
 # con la cartella scelta e autorizzata. Se la directory corrente non esiste
 # piu' - cancellata da sotto la shell - si ripiega sulla home, che la
 # verifica dei rischi fermera' con un avviso invece di un traceback.
+# Risolto subito: su Windows la directory corrente puo' arrivare con i nomi
+# corti (`RUNNER~1`), e lo stesso percorso scritto in due modi e' la strada
+# per un confronto che fallisce.
 WORKSPACE = True
 try:
-    WORKSPACE_DIR = Path(os.getcwd())
+    WORKSPACE_DIR = Path(os.getcwd()).resolve()
 except FileNotFoundError:
     WORKSPACE_DIR = Path.home()
 
