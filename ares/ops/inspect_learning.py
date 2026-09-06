@@ -2,9 +2,9 @@
 Ispezione di cio' che l'agente ha imparato
 ==========================================
 Uso:
-    .venv/bin/ares-inspect
-    .venv/bin/ares-inspect --session test_1
-    .venv/bin/ares-inspect --file notes/setup.md
+    ares inspect
+    ares inspect --session test_1
+    ares inspect --file notes/setup.md
 
 Legge gli archivi senza avviare il modello conversazionale e non scrive
 negli store. Due cose vanno dette per intero: come ogni comando che apre
@@ -16,13 +16,11 @@ che conta quando un agente dice di ricordare: dove sta questa informazione,
 e la ritrovera' davvero?
 """
 
-import argparse
-import sys
-
 from ares import config
-from ares.agent.assistant import build_assistant, build_filesystem
+from ares.cli.comando import nuova_app
 from ares.state.lock import StatoOccupato, lock_stato
-from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita, stampa_store
+
+app = nuova_app("inspect", "Ispeziona gli archivi di apprendimento senza toccarli")
 
 
 def separatore(titolo: str) -> None:
@@ -32,29 +30,25 @@ def separatore(titolo: str) -> None:
     print("=" * 70)
 
 
-def _ispeziona() -> None:
-    parser = argparse.ArgumentParser(prog="ares-inspect", description="Ispeziona gli archivi di apprendimento")
-    parser.add_argument("--user", default=config.DEFAULT_USER_ID)
-    parser.add_argument("--session", default="principale")
-    parser.add_argument("--query", default="", help="Query per entita' e intuizioni")
-    parser.add_argument("--file", default=None, help="Stampa il contenuto di un file dell'agente")
-    args = parser.parse_args()
+def _ispeziona(user: str, session: str, query: str, file: str | None) -> None:
+    from ares.agent.assistant import build_assistant, build_filesystem
+    from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita, stampa_store
 
-    # Dopo `parse_args`: `--help` esce prima di qui, e un comando che stampa
+    # Qui e non prima: `--help` esce dentro Cyclopts, e un comando che stampa
     # l'aiuto non deve creare l'archivio che dice di ispezionare.
     config.prepara_archivio()
 
-    fs = build_filesystem(args.user)
+    fs = build_filesystem(user)
 
-    if args.file:
-        contenuto = fs.read(args.file)
+    if file:
+        contenuto = fs.read(file)
         if contenuto is None:
-            print("Nessun file a questo percorso:", args.file)
+            print("Nessun file a questo percorso:", file)
         else:
             print(contenuto)
         return
 
-    agent = build_assistant(user_id=args.user, session_id=args.session)
+    agent = build_assistant(user_id=user, session_id=session)
     lm = agent.learning_machine
     # `build_assistant` passa sempre `learning=`, quindi la macchina c'e'. I
     # singoli store possono invece essere None se spenti in config.py, ed e'
@@ -62,16 +56,16 @@ def _ispeziona() -> None:
     assert lm is not None
 
     separatore("PROFILO UTENTE   (per utente, sopravvive a ogni sessione)")
-    stampa_store(lm.user_profile_store, "Profilo", user_id=args.user)
+    stampa_store(lm.user_profile_store, "Profilo", user_id=user)
 
     separatore("MEMORIE   (osservazioni non strutturate, per utente)")
-    stampa_store(lm.user_memory_store, "Memorie", user_id=args.user)
+    stampa_store(lm.user_memory_store, "Memorie", user_id=user)
 
-    separatore("CONTESTO DI SESSIONE   (sessione: " + args.session + ")")
-    stampa_store(lm.session_context_store, "Contesto", session_id=args.session)
+    separatore("CONTESTO DI SESSIONE   (sessione: " + session + ")")
+    stampa_store(lm.session_context_store, "Contesto", session_id=session)
 
     separatore("ENTITA'   (persone, progetti, sistemi)")
-    entita = leggi_entita(lm, user_id=args.user, query=args.query)
+    entita = leggi_entita(lm, user_id=user, query=query)
     if not entita:
         print("Nessuna entita' registrata.")
     for e in entita:
@@ -79,7 +73,7 @@ def _ispeziona() -> None:
             print(riga)
 
     separatore("INTUIZIONI APPRESE   (indice vettoriale LanceDB)")
-    intuizioni = leggi_intuizioni(lm, user_id=args.user, query=args.query)
+    intuizioni = leggi_intuizioni(lm, user_id=user, query=query)
     if not intuizioni:
         print("Nessuna intuizione salvata.")
     for k in intuizioni:
@@ -95,17 +89,37 @@ def _ispeziona() -> None:
     for f in elenco:
         print("-", f.path, "  ", f.size_bytes, "byte")
     print()
-    comando = r".venv\Scripts\ares-inspect" if sys.platform == "win32" else ".venv/bin/ares-inspect"
-    print("Per leggerne uno:", comando, "--file <percorso>")
+    print("Per leggerne uno:", config.comando_ares("inspect", "--file", "<percorso>"))
 
 
-def main() -> None:
+@app.default
+def ispeziona(
+    *,
+    user: str = config.DEFAULT_USER_ID,
+    session: str = "principale",
+    query: str = "",
+    file: str | None = None,
+) -> None:
+    """Profilo, memorie, contesto, entita', intuizioni e file dell'agente.
+
+    Args:
+        user: identificativo dell'utente.
+        session: sessione di cui mostrare il contesto.
+        query: filtra entita' e intuizioni; le intuizioni per somiglianza.
+        file: stampa solo il contenuto di questo file del quaderno privato.
+    """
     try:
         with lock_stato(esclusivo=False):
-            _ispeziona()
+            _ispeziona(user, session, query, file)
     except StatoOccupato as errore:
         print("Impossibile leggere lo stato di Ares:", errore)
         print("Attendi che backup o restore terminino e riprova.")
+
+
+def main() -> None:
+    from ares.cli.app import esegui
+
+    esegui("inspect")
 
 
 if __name__ == "__main__":

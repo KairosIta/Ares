@@ -189,9 +189,11 @@ sola volta `powershell -ExecutionPolicy Bypass -File .\setup.ps1`.
 
 Se Ollama non è già attivo, avvialo prima con `ollama serve`. Entrambi gli
 script di setup creano il virtualenv, installano esattamente le versioni di
-[`uv.lock`](uv.lock) e Ares stesso, ed eseguono il preflight. I comandi
-`ares`, `ares-backup`, `ares-entities`, `ares-sessions`, `ares-preflight` e
-`ares-inspect` compaiono nel venv; `python -m ares` continua a funzionare. Su
+[`uv.lock`](uv.lock) e Ares stesso, ed eseguono il preflight. Nel venv
+compare il comando `ares`: da solo apre la chat, `ares --help` elenca i
+sottocomandi di manutenzione (`ares backup`, `ares sessions`, `ares entities`,
+`ares preflight`, `ares inspect`). Gli alias `ares-backup`, `ares-sessions`...
+restano e fanno la stessa cosa; `python -m ares` continua a funzionare. Su
 Windows `setup.ps1 -SkipPreflight` prepara soltanto le dipendenze e viene
 usato dalla CI, dove Ollama non è disponibile.
 
@@ -243,11 +245,11 @@ La distinzione fra test offline ed E2E è descritta nella
 ### Backup
 
 ```bash
-.venv/bin/ares-backup create
-.venv/bin/ares-backup list
-.venv/bin/ares-backup verify latest
-.venv/bin/ares-backup restore <snapshot>
-.venv/bin/ares-backup prune --keep 20
+.venv/bin/ares backup create
+.venv/bin/ares backup list
+.venv/bin/ares backup verify latest
+.venv/bin/ares backup restore <snapshot>
+.venv/bin/ares backup prune --keep 20
 ```
 
 Gli snapshot vivono per default nella directory `ares-backup` accanto al
@@ -264,10 +266,10 @@ cioè esattamente ciò che non si fa mentre qualcuno sta aspettando un prompt.
 ### Entità duplicate
 
 ```bash
-.venv/bin/ares-entities audit --all
-.venv/bin/ares-entities merge \
+.venv/bin/ares entities audit --all
+.venv/bin/ares entities merge \
   --source project/doppione --into project/canonico
-.venv/bin/ares-entities merge \
+.venv/bin/ares entities merge \
   --source project/doppione --into project/canonico --apply
 ```
 
@@ -277,10 +279,10 @@ acquisisce il lock esclusivo, crea un backup e domanda una conferma testuale.
 ### Sessioni e risultati tool
 
 ```bash
-.venv/bin/ares-sessions status
-.venv/bin/ares-sessions prune --older-than 180
-.venv/bin/ares-sessions prune --older-than 180 --apply
-.venv/bin/ares-sessions delete <session-id> --apply
+.venv/bin/ares sessions status
+.venv/bin/ares sessions prune --older-than 180
+.venv/bin/ares sessions prune --older-than 180 --apply
+.venv/bin/ares sessions delete <session-id> --apply
 ```
 
 I risultati offloaded non hanno un TTL indipendente: vivono quanto la loro

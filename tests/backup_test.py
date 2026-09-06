@@ -462,7 +462,7 @@ def prova_residui_restore() -> None:
         sicurezza = snapshot_sintetico(config.BACKUP_DIR, manifest["snapshot_id"], manifest)
         righe = avviso_residui_restore()
         unite = "\n".join(righe)
-        esigi("ares-backup restore " + sicurezza.name in unite, "l'avviso non nomina lo snapshot pre-restore: " + unite)
+        esigi("ares backup restore " + sicurezza.name in unite, "l'avviso non nomina lo snapshot pre-restore: " + unite)
         esigi("unica copia" not in unite, "l'avviso dice 'unica copia' con uno snapshot pre-restore a disposizione")
         esigi(precedente.is_dir() and (precedente / "kairos.db").is_file(), "la lettura ha toccato un residuo")
 
@@ -750,7 +750,7 @@ def main() -> int:
             righe = promemoria_backup(soglia_giorni=7)
             esigi(righe, "nessun promemoria pur non essendoci mai stato uno snapshot")
             esigi("Nessuno snapshot" in righe[0], "il promemoria non dice che non ce n'e' nessuno")
-            esigi("ares-backup create" in righe[-1], "il promemoria non dice come rimediare")
+            esigi("ares backup create" in righe[-1], "il promemoria non dice come rimediare")
             # Una domanda non deve lasciare una directory: chiedere "ho un
             # backup?" e ottenere in cambio una cartella vuota e' esattamente
             # il tipo di effetto che questo progetto ha appena tolto altrove.

@@ -4,7 +4,7 @@ Ricostruisce l'ambiente Windows di Ares.
 
 .DESCRIPTION
 Crea il virtualenv Python 3.12, installa le dipendenze bloccate in uv.lock e
-Ares stesso nel venv, poi verifica Ollama con `ares-preflight`. Non modifica
+Ares stesso nel venv, poi verifica Ollama con `ares preflight`. Non modifica
 tmp/, workspace o backup.
 
 .PARAMETER SkipPreflight
@@ -82,7 +82,7 @@ try {
     }
     else {
         Write-Host
-        & ".venv\Scripts\ares-preflight.exe"
+        & ".venv\Scripts\ares.exe" preflight
         if ($LASTEXITCODE -ne 0) {
             throw "le dipendenze sono a posto, ma il preflight Ollama non e' passato"
         }

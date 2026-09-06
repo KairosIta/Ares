@@ -1,5 +1,5 @@
-"""``python -m ares`` avvia la REPL."""
+"""``python -m ares`` e' il comando ``ares``: la chat, o un sottocomando."""
 
-from ares.cli.chat import main
+from ares.cli.app import main
 
 main()

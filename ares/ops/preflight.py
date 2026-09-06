@@ -2,7 +2,7 @@
 Verifica dell'ambiente prima di avviare l'agente
 ================================================
 Uso:
-    .venv/bin/ares-preflight
+    ares preflight
 
 Risponde a una domanda sola: se avvio la chat adesso, parte? Controlla che
 il server Ollama risponda e che i modelli nominati in `config.py` siano
@@ -19,10 +19,6 @@ Non accende nessun modello e non lascia niente su disco: legge da `config`,
 il cui import non crea piu' nulla, e non chiama `prepara_archivio()`. Un
 comando che deve dire se l'ambiente funziona non e' il posto giusto per
 creare l'archivio.
-
-Va eseguito con l'interprete del venv. Il file usa solo la libreria
-standard, ma `config` carica `.env` con python-dotenv e importa
-`platform_files`, che usa portalocker: nessuna delle due e' stdlib.
 """
 
 import json
@@ -31,6 +27,9 @@ import urllib.error
 import urllib.request
 
 from ares import config
+from ares.cli.comando import nuova_app
+
+app = nuova_app("preflight", "Controlla che Ollama risponda e che i modelli ci siano")
 
 
 def modelli_disponibili(host: str, timeout: int = 10) -> list:
@@ -58,7 +57,9 @@ def stessa_etichetta(richiesto: str, presente: str) -> bool:
     return normalizza(richiesto) == normalizza(presente)
 
 
-def main() -> int:
+@app.default
+def controlla() -> int:
+    """Se avvio la chat adesso, parte? Server, modelli e avvisi sul cloud."""
     print("Server:", config.OLLAMA_HOST)
     try:
         presenti = modelli_disponibili(config.OLLAMA_HOST)
@@ -111,8 +112,14 @@ def main() -> int:
         for riga in avviso:
             print(riga)
         print()
-    print("Ambiente pronto:", r".venv\Scripts\ares" if sys.platform == "win32" else ".venv/bin/ares")
+    print("Ambiente pronto:", config.comando_ares())
     return 0
+
+
+def main() -> int:
+    from ares.cli.app import esegui
+
+    return esegui("preflight")
 
 
 if __name__ == "__main__":

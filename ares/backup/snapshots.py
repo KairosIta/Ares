@@ -3,11 +3,13 @@ Backup locale dello stato di Ares
 =================================
 
 Uso:
-    .venv/bin/ares-backup create
-    .venv/bin/ares-backup list
-    .venv/bin/ares-backup verify latest
-    .venv/bin/ares-backup restore <snapshot>
-    .venv/bin/ares-backup prune --keep 20
+    ares backup create
+    ares backup list
+    ares backup verify latest
+    ares backup restore <snapshot>
+    ares backup prune --keep 20
+
+`ares-backup` e' l'alias con gli stessi sottocomandi.
 
 Salva il cervello di Ares - i due SQLite e LanceDB - non il workspace. Ogni
 snapshot e' una directory trasparente con manifest e checksum. Creazione e
@@ -337,7 +339,7 @@ def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
         valida_percorsi()
         root = config.BACKUP_DIR
         disponibili = _snapshot_dentro(root) if root.is_dir() else []
-        comando = "    " + (r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup") + " create"
+        comando = "    " + config.comando_ares("backup", "create")
         if not disponibili:
             return [
                 "Nessuno snapshot: profilo, memorie ed entita' esistono in una copia sola.",
@@ -424,7 +426,7 @@ def avviso_residui_restore() -> list[str]:
         sicurezza = _ultimo_snapshot_di_tipo("pre-restore") if precedenti else None
     except OSError:
         precedenti, sicurezza = residui, None
-    comando = r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup"
+    comando = config.comando_ares("backup")
     righe = ["Un restore non e' stato completato: accanto allo stato sono rimasti dei residui."]
     for residuo in residui:
         if residuo in precedenti:
@@ -495,18 +497,24 @@ def pota_snapshot(da_tenere: int, acquisisci_lock: bool = True) -> list[Path]:
         return candidati
 
 
+OPERAZIONI = cli.OperazioniBackup(
+    avviso_residui=avviso_residui_restore,
+    crea_snapshot=crea_snapshot,
+    elenco_snapshot=elenco_snapshot,
+    pota_snapshot=pota_snapshot,
+    ripristina_snapshot=ripristina_snapshot,
+    risolvi_snapshot=risolvi_snapshot,
+    verifica_snapshot=verifica_snapshot,
+)
+
+# All'import e non in `main()`: `ares backup ...` carica questo modulo per
+# arrivare all'App, e l'App deve trovare le operazioni gia' al loro posto.
+cli.imposta_operazioni(OPERAZIONI)
+app = cli.app
+
+
 def main() -> int:
-    return cli.main(
-        cli.OperazioniBackup(
-            avviso_residui=avviso_residui_restore,
-            crea_snapshot=crea_snapshot,
-            elenco_snapshot=elenco_snapshot,
-            pota_snapshot=pota_snapshot,
-            ripristina_snapshot=ripristina_snapshot,
-            risolvi_snapshot=risolvi_snapshot,
-            verifica_snapshot=verifica_snapshot,
-        )
-    )
+    return cli.main(OPERAZIONI)
 
 
 if __name__ == "__main__":
