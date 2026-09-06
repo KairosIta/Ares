@@ -9,20 +9,23 @@ locali per costruzione.
 
 ## Struttura del codice
 
-Il codice vive nel package `ares/`, diviso per responsabilita'. I comandi
-fra parentesi sono quelli che `uv sync` installa nel venv; ogni sottopackage
-con un `__main__.py` risponde anche a `python -m`.
+Il codice vive nel package `ares/`, diviso per responsabilita'. Fra
+parentesi il sottocomando di `ares` che ogni package espone: `cli/app.py` li
+registra per nome di modulo, cosi' `ares backup list` non importa Agno e
+`ares --help` li elenca tutti. Gli alias `ares-backup`, `ares-sessions`...
+passano dalla stessa App, e ogni sottopackage con un `__main__.py` risponde
+anche a `python -m`.
 
 ```text
 ares/
 ├── config.py       impostazioni versionate e percorsi dello stato
 ├── agent/          composizione dell'agente, turno, apprendimento, schemi
-├── cli/            la REPL: chat, comandi locali, rendering, editor   (ares)
+├── cli/            il comando `ares`: App Cyclopts, REPL, comandi, rendering, editor
 ├── state/          lettura degli archivi, lock, primitive di piattaforma
-├── backup/         snapshot locali: creazione, verifica, restore      (ares-backup)
-├── entities/       audit e fusione delle entita'                      (ares-entities)
-├── sessions/       retention di sessioni e risultati tool             (ares-sessions)
-└── ops/            preflight e ispezione a modello spento             (ares-preflight, ares-inspect)
+├── backup/         snapshot locali: creazione, verifica, restore      (ares backup)
+├── entities/       audit e fusione delle entita'                      (ares entities)
+├── sessions/       retention di sessioni e risultati tool             (ares sessions)
+└── ops/            preflight e ispezione a modello spento             (ares preflight, ares inspect)
 ```
 
 `tests/` contiene le prove e il loro runner, `docs/` questa documentazione,
@@ -33,6 +36,10 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 
 ### Interfaccia (`ares/cli/`)
 
+- `app.py` e' il comando `ares`: un'App Cyclopts con la chat come default e i
+  sottocomandi di manutenzione registrati per nome di modulo, cosi' si
+  importano solo quando servono; `comando.py` e' la fabbrica che da' a tutte
+  le App gli stessi titoli e la console di `ui.py`;
 - `chat.py` avvia e coordina la REPL; `commands.py` contiene la tabella dei
   comandi locali e il loro dispatch, mentre `render.py` presenta eventi,
   conferme e metriche del turno;
@@ -166,7 +173,7 @@ Windows, dove LanceDB può impedire quella rinomina anche dopo la chiusura dei
 reader nativi, il manifest viene pubblicato per ultimo come commit marker e
 il restore conserva stabile la directory radice con una copia di rollback.
 Un restore ucciso fra le rinomine puo' lasciare accanto allo stato la copia
-`.tmp-precedente-*` e nessuna `tmp/`: la chat all'avvio e `ares-backup list`
+`.tmp-precedente-*` e nessuna `tmp/`: la chat all'avvio e `ares backup list`
 lo dicono, nominando il residuo e lo snapshot pre-restore da cui tornare,
 senza toccare niente.
 

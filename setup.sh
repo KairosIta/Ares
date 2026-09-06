@@ -29,7 +29,7 @@ fi
 # `sync` porta il venv esattamente com'e' scritto in uv.lock: crea `.venv`
 # se manca, sulla versione di Python in `.python-version`, rimuove i residui
 # di installazioni manuali e installa Ares in editable, cosi' i comandi
-# `ares`, `ares-backup`... compaiono in `.venv/bin`. Il lock porta gli hash
+# `ares` e gli alias `ares-backup`... compaiono in `.venv/bin`. Il lock porta gli hash
 # degli artefatti e uv li verifica: se un file scaricato non corrisponde
 # l'installazione si ferma, invece di riuscire con altro dentro.
 #
@@ -47,7 +47,7 @@ uv sync --locked --no-dev
 uv pip check --python .venv/bin/python
 
 echo
-if ! .venv/bin/ares-preflight; then
+if ! .venv/bin/ares preflight; then
     echo
     echo "Le dipendenze sono a posto: manca qualcosa sul lato Ollama."
     exit 1

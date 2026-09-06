@@ -1,26 +1,28 @@
 """Manutenzione offline del ciclo di vita delle sessioni di Ares.
 
 Uso:
-    .venv/bin/ares-sessions status
-    .venv/bin/ares-sessions prune --older-than 180
-    .venv/bin/ares-sessions prune --older-than 180 --apply
-    .venv/bin/ares-sessions delete <session-id> --apply
+    ares sessions status
+    ares sessions prune --older-than 180
+    ares sessions prune --older-than 180 --apply
+    ares sessions delete <session-id> --apply
 
 Senza ``--apply`` i comandi distruttivi sono soltanto un'anteprima. Quando si
 applicano richiedono il lock esclusivo, creano uno snapshot verificato e
-usano la cancellazione a cascata di Agno.
+usano la cancellazione a cascata di Agno. `ares-sessions` e' l'alias.
 """
 
-import argparse
-import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
+
+from cyclopts import Parameter
 
 from ares import config
 from ares.agent.runtime import build_db
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
+from ares.cli.comando import nuova_app
 from ares.sessions.retention import (
     ErroreRetention,
     SessioneRetention,
@@ -33,51 +35,15 @@ from ares.sessions.retention import (
 )
 from ares.state.lock import StatoOccupato, lock_stato
 
-
-def _giorni(valore: str) -> int:
-    try:
-        giorni = int(valore)
-    except ValueError as errore:
-        raise argparse.ArgumentTypeError("servono giorni interi") from errore
-    if giorni < 1:
-        raise argparse.ArgumentTypeError("deve essere almeno 1")
-    return giorni
+app = nuova_app("sessions", "Retention delle sessioni e dei risultati tool di Ares")
 
 
-def costruisci_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="ares-sessions", description="Retention delle sessioni e dei risultati tool di Ares"
-    )
-    sottocomandi = parser.add_subparsers(dest="comando", required=True)
+def _almeno_un_giorno(tipo, valore: int) -> None:
+    if valore < 1:
+        raise ValueError("deve essere almeno 1")
 
-    status = sottocomandi.add_parser("status", help="mostra sessioni e spazio logico degli offload")
-    status.add_argument("--user", default=config.DEFAULT_USER_ID)
 
-    prune = sottocomandi.add_parser("prune", help="propone o elimina sessioni inattive")
-    prune.add_argument("--user", default=config.DEFAULT_USER_ID)
-    prune.add_argument(
-        "--older-than",
-        type=_giorni,
-        default=config.SESSION_RETENTION_DAYS,
-        metavar="GIORNI",
-        help="ultimo uso precedente a questo numero di giorni",
-    )
-    prune.add_argument(
-        "--keep",
-        action="append",
-        default=[],
-        metavar="SESSIONE",
-        help="protegge un'altra sessione in questa esecuzione; ripetibile",
-    )
-    prune.add_argument("--apply", action="store_true", help="crea un backup e applica la selezione mostrata")
-    prune.add_argument("--yes", action="store_true", help="con --apply, non chiedere conferma")
-
-    delete = sottocomandi.add_parser("delete", help="propone o elimina una sessione esatta")
-    delete.add_argument("session_id")
-    delete.add_argument("--user", default=config.DEFAULT_USER_ID)
-    delete.add_argument("--apply", action="store_true", help="crea un backup ed elimina la sessione mostrata")
-    delete.add_argument("--yes", action="store_true", help="con --apply, non chiedere conferma")
-    return parser
+Giorni = Annotated[int, Parameter(validator=_almeno_un_giorno)]
 
 
 def _dimensione(byte: int) -> str:
@@ -137,7 +103,7 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
         return 2
     snapshot = crea_snapshot(tipo="pre-session-prune", acquisisci_lock=False)
     print("Backup verificato:", snapshot.name)
-    comando = r".venv\Scripts\ares-backup" if os.name == "nt" else ".venv/bin/ares-backup"
+    comando = config.comando_ares("backup")
     db, store = apri_archivio(user_id)
     try:
         eliminate = elimina_sessioni(db, store, sessioni, user_id)
@@ -166,45 +132,45 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
     return 0
 
 
-def _prune(args: argparse.Namespace) -> int:
+def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bool) -> int:
     db = build_db()
-    protette = set(config.SESSIONI_PROTETTE) | set(args.keep)
+    protette = set(config.SESSIONI_PROTETTE) | set(keep)
     candidate = seleziona_inattive(
-        inventario(db, args.user),
-        giorni=args.older_than,
+        inventario(db, user),
+        giorni=older_than,
         protette=protette,
     )
-    print("Sessioni inattive da oltre", args.older_than, "giorni:", len(candidate))
+    print("Sessioni inattive da oltre", older_than, "giorni:", len(candidate))
     _stampa_sessioni(candidate)
     if protette:
         print("Protette:", ", ".join(sorted(protette)))
     if not candidate:
         print("Niente da eliminare.")
         return 0
-    if not args.apply:
+    if not apply:
         print("Anteprima soltanto: nessun dato e' stato modificato.")
         print("Per applicarla, ripeti lo stesso comando aggiungendo --apply.")
         return 0
-    return _applica(args.user, candidate, args.yes)
+    return _applica(user, candidate, yes)
 
 
-def _delete(args: argparse.Namespace) -> int:
+def _delete(user: str, session_id: str, apply: bool, yes: bool) -> int:
     db = build_db()
-    sessione = trova_sessione(inventario(db, args.user), args.session_id)
+    sessione = trova_sessione(inventario(db, user), session_id)
     print("Sessione da eliminare:")
     _stampa_sessioni([sessione])
     if sessione.session_id in config.SESSIONI_PROTETTE:
         print("Nota: la sessione e' protetta dal prune per eta', ma una cancellazione esatta puo' rimuoverla.")
-    if not args.apply:
+    if not apply:
         print("Anteprima soltanto: nessun dato e' stato modificato.")
         print("Per applicarla, ripeti lo stesso comando aggiungendo --apply.")
         return 0
-    return _applica(args.user, [sessione], args.yes)
+    return _applica(user, [sessione], yes)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = costruisci_parser().parse_args(argv)
-    if getattr(args, "yes", False) and not getattr(args, "apply", False):
+def _esegui(azione: Callable[[], int], *, apply: bool = False, yes: bool = False) -> int:
+    """Il contorno comune ai tre comandi: coerenza dei flag, archivio, lock, errori."""
+    if yes and not apply:
         print("ERRORE: --yes richiede --apply", file=sys.stderr)
         return 2
     if not Path(config.DB_FILE).is_file():
@@ -212,14 +178,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     try:
         config.prepara_archivio()
-        esclusivo = bool(getattr(args, "apply", False))
-        with lock_stato(esclusivo=esclusivo):
-            if args.comando == "status":
-                return _stato(args.user)
-            if args.comando == "prune":
-                return _prune(args)
-            if args.comando == "delete":
-                return _delete(args)
+        with lock_stato(esclusivo=apply):
+            return azione()
     except StatoOccupato as errore:
         print("Impossibile usare lo stato di Ares:", errore, file=sys.stderr)
         print("Chiudi la chat e attendi che le altre manutenzioni terminino.", file=sys.stderr)
@@ -227,7 +187,56 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ErroreRetention, ErroreBackup, OSError) as errore:
         print("Manutenzione rifiutata:", errore, file=sys.stderr)
         return 2
-    return 2
+
+
+@app.command
+def status(*, user: str = config.DEFAULT_USER_ID) -> int:
+    """Mostra sessioni e spazio logico degli offload.
+
+    Args:
+        user: utente di cui elencare le sessioni.
+    """
+    return _esegui(lambda: _stato(user))
+
+
+@app.command
+def prune(
+    *,
+    user: str = config.DEFAULT_USER_ID,
+    older_than: Giorni = config.SESSION_RETENTION_DAYS,
+    keep: list[str] | None = None,
+    apply: bool = False,
+    yes: bool = False,
+) -> int:
+    """Propone o elimina le sessioni inattive.
+
+    Args:
+        user: utente proprietario delle sessioni.
+        older_than: ultimo uso precedente a questo numero di giorni.
+        keep: protegge un'altra sessione in questa esecuzione; ripetibile.
+        apply: crea un backup e applica la selezione mostrata.
+        yes: con --apply, non chiedere conferma.
+    """
+    return _esegui(lambda: _prune(user, older_than, keep or [], apply, yes), apply=apply, yes=yes)
+
+
+@app.command
+def delete(session_id: str, *, user: str = config.DEFAULT_USER_ID, apply: bool = False, yes: bool = False) -> int:
+    """Propone o elimina una sessione esatta.
+
+    Args:
+        session_id: la sessione da eliminare.
+        user: utente proprietario della sessione.
+        apply: crea un backup ed elimina la sessione mostrata.
+        yes: con --apply, non chiedere conferma.
+    """
+    return _esegui(lambda: _delete(user, session_id, apply, yes), apply=apply, yes=yes)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    from ares.cli.app import esegui
+
+    return esegui("sessions", argv)
 
 
 if __name__ == "__main__":

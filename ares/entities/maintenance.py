@@ -3,26 +3,30 @@ Manutenzione delle entita' di Ares
 ==================================
 
 Uso:
-    .venv/bin/ares-entities audit
-    .venv/bin/ares-entities audit --all
-    .venv/bin/ares-entities audit --all-pairs
-    .venv/bin/ares-entities merge --source project/doppione --into project/canonico
-    .venv/bin/ares-entities merge --source project/doppione --into project/canonico --apply
+    ares entities audit
+    ares entities audit --all
+    ares entities audit --all-pairs
+    ares entities merge --source project/doppione --into project/canonico
+    ares entities merge --source project/doppione --into project/canonico --apply
+
+`ares-entities` e' l'alias con gli stessi sottocomandi.
 
 La CLI coordina audit, anteprima, lock, backup e applicazione. La logica pura
 vive nei moduli `entity_audit` ed `entity_merge`; gli import pubblici storici
 restano disponibili da questo modulo per compatibilita'.
 """
 
-import argparse
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import Annotated
 
 from agno.db.sqlite import SqliteDb
+from cyclopts import Parameter
 
 from ares import config
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
+from ares.cli.comando import nuova_app
 from ares.entities.audit import (
     PAROLE_COMUNI,
     SOGLIA_CONTENUTO_SIMILE,
@@ -45,6 +49,8 @@ from ares.entities.models import (
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import namespace_entita
 
+app = nuova_app("entities", "Manutenzione offline delle entita' di Ares")
+
 __all__ = (
     "PAROLE_COMUNI",
     "SOGLIA_CONTENUTO_SIMILE",
@@ -57,9 +63,9 @@ __all__ = (
     "PianoFusione",
     "StatisticheFusione",
     "analizza",
+    "app",
     "applica_piano",
     "carica_entita",
-    "costruisci_parser",
     "main",
     "normalizza_testo",
     "pianifica_fusione",
@@ -176,35 +182,6 @@ def stampa_piano(piano: PianoFusione) -> None:
     print("La sorgente sara' eliminata dopo un backup verificato; il canonico restera' attivo.")
 
 
-def costruisci_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ares-entities", description="Manutenzione offline delle entita' di Ares")
-    sottocomandi = parser.add_subparsers(dest="comando", required=True)
-    audit = sottocomandi.add_parser("audit", help="trova possibili duplicati senza modificare lo stato")
-    audit.add_argument("--user", default=config.DEFAULT_USER_ID, help="utente di cui analizzare le entita'")
-    audit.add_argument("--all", action="store_true", help="mostra anche l'inventario completo")
-    audit.add_argument(
-        "--all-pairs",
-        action="store_true",
-        help="mostra anche ogni coppia dello stesso tipo priva di indizi automatici",
-    )
-    merge = sottocomandi.add_parser("merge", help="prepara o applica una fusione esplicita")
-    merge.add_argument("--user", default=config.DEFAULT_USER_ID, help="utente proprietario delle entita'")
-    merge.add_argument("--source", required=True, help="entita' da assorbire, nel formato tipo/id")
-    merge.add_argument(
-        "--into",
-        "--canonical",
-        dest="canonical",
-        required=True,
-        help="entita' canonica da conservare, nel formato tipo/id",
-    )
-    merge.add_argument(
-        "--apply",
-        action="store_true",
-        help="dopo l'anteprima chiede conferma, crea un backup e applica la fusione",
-    )
-    return parser
-
-
 def _esegui_audit(user_id: str, mostra_tutte: bool, tutte_le_coppie: bool) -> int:
     percorso = Path(config.DB_FILE)
     if not percorso.is_file():
@@ -271,29 +248,50 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
         )
         raise
     print("Fusione completata e verificata:", piano.sorgente.riferimento, "->", piano.canonica.riferimento)
-    comando = r".venv\Scripts\ares-backup" if sys.platform == "win32" else ".venv/bin/ares-backup"
-    print("Per tornare indietro:", comando, "restore", snapshot.name)
+    print("Per tornare indietro:", config.comando_ares("backup", "restore", snapshot.name))
     return 0
 
 
-def main(argv: Iterable[str] | None = None) -> int:
-    args = costruisci_parser().parse_args(list(argv) if argv is not None else None)
+@app.command
+def audit(
+    *,
+    user: str = config.DEFAULT_USER_ID,
+    mostra_tutte: Annotated[bool, Parameter(name="--all")] = False,
+    tutte_le_coppie: Annotated[bool, Parameter(name="--all-pairs")] = False,
+) -> int:
+    """Trova possibili duplicati senza modificare lo stato.
+
+    Args:
+        user: utente di cui analizzare le entita'.
+        mostra_tutte: mostra anche l'inventario completo.
+        tutte_le_coppie: mostra anche ogni coppia dello stesso tipo priva di indizi automatici.
+    """
+    return _esegui(lambda: _esegui_audit(user, mostra_tutte, tutte_le_coppie), esclusivo=False)
+
+
+@app.command
+def merge(
+    *,
+    source: str,
+    canonical: Annotated[str, Parameter(name=["--into", "--canonical"])],
+    user: str = config.DEFAULT_USER_ID,
+    apply: bool = False,
+) -> int:
+    """Prepara o applica una fusione esplicita fra due entita'.
+
+    Args:
+        source: entita' da assorbire, nel formato tipo/id.
+        canonical: entita' canonica da conservare, nel formato tipo/id.
+        user: utente proprietario delle entita'.
+        apply: dopo l'anteprima chiede conferma, crea un backup e applica la fusione.
+    """
+    return _esegui(lambda: _esegui_merge(user, source, canonical, apply), esclusivo=apply)
+
+
+def _esegui(azione: Callable[[], int], *, esclusivo: bool) -> int:
     try:
-        if args.comando == "audit":
-            with lock_stato(esclusivo=False):
-                return _esegui_audit(
-                    user_id=args.user,
-                    mostra_tutte=args.all,
-                    tutte_le_coppie=args.all_pairs,
-                )
-        if args.comando == "merge":
-            with lock_stato(esclusivo=args.apply):
-                return _esegui_merge(
-                    user_id=args.user,
-                    source=args.source,
-                    canonical=args.canonical,
-                    applica=args.apply,
-                )
+        with lock_stato(esclusivo=esclusivo):
+            return azione()
     except StatoOccupato as errore:
         print("Impossibile usare lo stato di Ares:", errore, file=sys.stderr)
         print("Attendi che backup, restore o manutenzione terminino e riprova.", file=sys.stderr)
@@ -301,7 +299,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     except (ErroreManutenzione, ErroreBackup) as errore:
         print("Manutenzione rifiutata:", errore, file=sys.stderr)
         return 2
-    return 2
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    from ares.cli.app import esegui
+
+    return esegui("entities", list(argv) if argv is not None else None)
 
 
 if __name__ == "__main__":

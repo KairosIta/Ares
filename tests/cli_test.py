@@ -194,32 +194,32 @@ def costruisci_archivio() -> str:
 # ---------------------------------------------------------------------------
 
 
+LOCALE = "qwen3:9b"
+
+
 def preflight_pronto() -> str:
-    # Il server annuncia i nomi come li scrive Ollama: con il tag esplicito
-    # dove c'e', con `:latest` aggiunto dove config.py non ne scrive uno. E'
-    # il falso negativo che `stessa_etichetta` esiste per evitare, e la
-    # differenza fra i due modelli lo mette alla prova in entrambi i versi.
-    richiesti = {config.MAIN_MODEL, config.LEARNING_MODEL, config.EMBEDDER_MODEL}
+    # I modelli si fissano qui e non si leggono dal `.env`: la prova deve dire
+    # la stessa cosa su una macchina con la conversazione in cloud e su una
+    # tutta locale. Il server annuncia i nomi come li scrive Ollama: con il
+    # tag esplicito dove c'e', con `:latest` aggiunto dove config.py non ne
+    # scrive uno. E' il falso negativo che `stessa_etichetta` esiste per
+    # evitare, e la differenza fra i due modelli lo mette alla prova in
+    # entrambi i versi.
+    richiesti = {LOCALE, config.EMBEDDER_MODEL}
     modelli = [nome if ":" in nome else nome + ":latest" for nome in richiesti]
     esigi(
         any(":" not in nome for nome in richiesti),
         "nessun modello e' senza tag: la prova non sta piu' verificando la normalizzazione",
     )
-    esito, testo = esegui_preflight(modelli)
+    with patch.object(config, "MAIN_MODEL", LOCALE), patch.object(config, "LEARNING_MODEL", LOCALE):
+        esito, testo = esegui_preflight(modelli)
     esigi(esito == 0, "preflight con tutti i modelli presenti non e' uscito con 0: " + testo)
     esigi("Ambiente pronto" in testo, "il preflight non dichiara l'ambiente pronto")
     esigi("MANCANTE" not in testo, "il preflight segnala un modello mancante che c'e'")
     # I ruoli si accumulano: main e learning sono lo stesso modello e vanno
     # mostrati su una riga sola.
-    if config.MAIN_MODEL == config.LEARNING_MODEL:
-        esigi(" + " in testo, "i due ruoli dello stesso modello non sono stati uniti")
-    # Un "ok" su un modello cloud deve dire che quel ruolo esce dalla
-    # macchina, sulla riga del modello e in coda, dove si legge l'esito.
-    if config.e_modello_cloud(config.MAIN_MODEL) or config.e_modello_cloud(config.LEARNING_MODEL):
-        esigi("(cloud, via ollama.com)" in testo, "il modello cloud non e' marcato come tale")
-        esigi("escono dalla macchina" in testo, "manca l'avviso sul modello cloud")
-    else:
-        esigi("cloud" not in testo, "il preflight parla di cloud con soli modelli locali")
+    esigi(" + " in testo, "i due ruoli dello stesso modello non sono stati uniti")
+    esigi("cloud" not in testo, "il preflight parla di cloud con soli modelli locali")
     return "tag :latest riconosciuto, ruoli accumulati"
 
 
@@ -249,7 +249,9 @@ def preflight_estrazione_cloud() -> str:
 def preflight_modello_mancante() -> str:
     # Presente il modello di conversazione, assente l'embedder: e' il caso
     # tipico, perche' l'embedder si scarica dopo e non serve al primo turno.
-    esito, testo = esegui_preflight([config.MAIN_MODEL])
+    # Tutto locale per costruzione: cio' che manca non deve chiedere accessi.
+    with patch.object(config, "MAIN_MODEL", LOCALE), patch.object(config, "LEARNING_MODEL", LOCALE):
+        esito, testo = esegui_preflight([LOCALE])
     esigi(esito == 1, "un modello mancante non ha prodotto uscita 1")
     esigi("MANCANTE" in testo, "il modello mancante non e' segnalato")
     esigi("ollama pull" in testo, "manca il comando per scaricare il modello")
@@ -263,8 +265,8 @@ def preflight_modello_mancante() -> str:
 def preflight_cloud_mancante() -> str:
     # Il pull di un modello cloud riesce anche senza accesso, ma la prima
     # richiesta no: il rimedio deve nominare `ollama signin` prima del pull.
-    with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"):
-        esito, testo = esegui_preflight([config.LEARNING_MODEL, config.EMBEDDER_MODEL])
+    with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"), patch.object(config, "LEARNING_MODEL", LOCALE):
+        esito, testo = esegui_preflight([LOCALE, config.EMBEDDER_MODEL])
     esigi(esito == 1, "un modello cloud mancante non ha prodotto uscita 1")
     esigi("MANCANTE  glm-5.3-flash:cloud" in testo, "il modello cloud mancante non e' segnalato")
     esigi(testo.index("ollama signin") < testo.index("ollama pull"), "signin non precede il pull")
@@ -720,15 +722,14 @@ def chat_ciclo() -> str:
 
     uscita = io.StringIO()
     with (
-        patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE, "--metriche"]),
         patch.object(chat, "build_assistant", lambda **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
-        patch.object(chat, "promemoria_backup", lambda: ["Ultimo backup: mai", "Esegui ares-backup create"]),
+        patch.object(chat, "promemoria_backup", lambda: ["Ultimo backup: mai", "Esegui ares backup create"]),
         patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"),
         redirect_stdout(uscita),
     ):
-        chat._esegui_chat()
+        chat._esegui_chat(session=SESSIONE, user=UTENTE, metriche=True)
 
     testo = _piatto(uscita.getvalue())
     esigi(turni == ["ciao Ares"], "le righe vuote hanno aperto un turno: " + repr(turni))
@@ -745,7 +746,6 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE]),
         patch.object(chat, "build_assistant", lambda **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
@@ -755,7 +755,7 @@ def chat_ciclo() -> str:
         patch.object(config, "MOSTRA_METRICHE", False),
         redirect_stdout(uscita),
     ):
-        chat._esegui_chat()
+        chat._esegui_chat(session=SESSIONE, user=UTENTE)
     testo = _piatto(uscita.getvalue())
     esigi("escono dalla macchina" not in testo, "un modello locale mostra l'avviso del cloud")
     esigi("tok" not in testo, "le metriche compaiono senza che siano state chieste")
@@ -765,7 +765,6 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE]),
         patch.object(chat, "build_assistant", lambda **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
@@ -775,7 +774,7 @@ def chat_ciclo() -> str:
         patch.object(config, "MOSTRA_METRICHE", False),
         redirect_stdout(uscita),
     ):
-        chat._esegui_chat()
+        chat._esegui_chat(session=SESSIONE, user=UTENTE)
     testo = _piatto(uscita.getvalue())
     esigi("memorie gia' salvate" in testo, "l'estrazione cloud non avvisa che le memorie escono")
     esigi("escono dalla macchina" in testo, "l'estrazione cloud non avvisa che qualcosa esce")
@@ -796,13 +795,12 @@ def chat_residui() -> str:
     def avvia() -> str:
         uscita = io.StringIO()
         with (
-            patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE]),
             patch.object(chat, "build_assistant", lambda **k: object()),
             patch.object(chat, "CliInput", lambda **k: FintoInput([])),
             patch.object(chat, "promemoria_backup", list),
             redirect_stdout(uscita),
         ):
-            chat._esegui_chat()
+            chat._esegui_chat(session=SESSIONE, user=UTENTE)
         return _piatto(uscita.getvalue())
 
     residuo.mkdir()
@@ -856,7 +854,7 @@ def sessioni_parziale() -> str:
     esigi("Stato parziale: eliminate 0 sessioni su 2, ancora presenti 2." in errori, "conteggio sbagliato: " + errori)
     esigi("Ancora presenti: cli-inattiva-a, cli-inattiva-b" in errori, "le sessioni rimaste non sono nominate")
     esigi("Eliminate senza verifica" not in errori, "dichiarate eliminate sessioni che ci sono ancora")
-    esigi("pre-session-prune" in errori and "ares-backup restore" in errori, "lo snapshot da cui tornare non compare")
+    esigi("pre-session-prune" in errori and "ares backup restore" in errori, "lo snapshot da cui tornare non compare")
     esigi("Manutenzione rifiutata" not in errori, "un guasto a meta' presentato come rifiuto")
 
     guasto = patch("ares.sessions.retention._contesto_sessione_presente", return_value=True)
@@ -892,7 +890,7 @@ def chat_avvio() -> str:
     esigi("backup in corso" in testo, "il motivo dell'occupazione non compare")
     esigi("riprova" in testo, "non viene suggerito di riprovare")
 
-    def avvio_interrotto() -> None:
+    def avvio_interrotto(**_argomenti: object) -> None:
         raise KeyboardInterrupt
 
     uscita = io.StringIO()
@@ -905,8 +903,8 @@ def chat_avvio() -> str:
 def aiuto_senza_effetti() -> str:
     """`--help` non crea l'archivio, per nessuno dei cinque comandi.
 
-    Ogni comando chiama `config.prepara_archivio()` dopo `parse_args()` e non
-    prima, perche' `--help` esce li' in mezzo. Non e' un dettaglio estetico:
+    Ogni comando chiama `config.prepara_archivio()` dentro la funzione del
+    comando e non all'import, perche' `--help` esce dentro Cyclopts prima. Non e' un dettaglio estetico:
     un archivio a 0700 creato da un comando che stampa l'aiuto e' comunque un
     archivio che non c'era, e su una macchina condivisa e' la traccia che
     qualcuno ha guardato. La differenza fra prima e dopo quella riga sono
@@ -935,15 +933,15 @@ def aiuto_senza_effetti() -> str:
                 check=False,
             )
             esigi(figlio.returncode == 0, comando + " --help non e' uscito con 0: " + figlio.stderr[-300:])
-            esigi("usage" in figlio.stdout, comando + " --help non stampa l'uso")
+            esigi("usage" in figlio.stdout.lower(), comando + " --help non stampa l'uso")
             esigi(not stato.exists(), comando + " --help ha creato l'archivio in " + str(stato))
         finally:
             shutil.rmtree(pulita, ignore_errors=True)
 
-    # `preflight` non ha argparse: non ha argomenti da leggere, e non e'
-    # una mancanza da colmare qui. Su di lui vale la stessa invariante presa
-    # dal verso giusto - un'esecuzione intera non deve lasciare l'archivio -
-    # e l'esito dipende da cosa gira sulla macchina, quindi non si controlla.
+    # `preflight` non ha argomenti da leggere. Su di lui vale la stessa
+    # invariante presa dal verso giusto - un'esecuzione intera non deve
+    # lasciare l'archivio - e l'esito dipende da cosa gira sulla macchina,
+    # quindi non si controlla.
     pulita = Path(tempfile.mkdtemp(prefix="ares-aiuto-"))
     stato = pulita / "stato"
     ambiente = os.environ.copy()

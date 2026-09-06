@@ -11,10 +11,11 @@ Il package e' diviso per responsabilita', non per tipo di file:
 - ``sessions``  retention offline delle sessioni e dei risultati offloaded;
 - ``ops``       preflight dell'ambiente e ispezione degli archivi a modello spento.
 
-I comandi installati nel venv da ``pyproject.toml`` - ``ares``, ``ares-backup``,
-``ares-entities``, ``ares-sessions``, ``ares-preflight``, ``ares-inspect`` -
-sono i ``main()`` di questi moduli; i sottopackage con un ``__main__.py``
-rispondono anche a ``python -m``.
+Il comando ``ares`` (``cli/app.py``) li riunisce: da solo apre la chat, e
+``ares backup``, ``ares sessions``, ``ares entities``, ``ares preflight``,
+``ares inspect`` sono i sottocomandi. Gli alias ``ares-backup``... di
+``pyproject.toml`` passano dalla stessa App; i sottopackage con un
+``__main__.py`` rispondono anche a ``python -m``.
 """
 
 from importlib.metadata import PackageNotFoundError, version

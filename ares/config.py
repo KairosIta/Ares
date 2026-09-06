@@ -558,3 +558,15 @@ WORKSPACE_READ_BEFORE_WRITE = True
 # ---------------------------------------------------------------------------
 
 DEFAULT_USER_ID = os.environ.get("ARES_USER_ID", "default")
+
+
+def comando_ares(*parole: str) -> str:
+    """Il comando `ares` come lo si scrive da fuori dal venv, con le sue parole.
+
+    `comando_ares("backup", "restore", nome)` da' `.venv/bin/ares backup restore
+    <nome>` su POSIX e `.venv\\Scripts\\ares ...` su Windows. Serve alle righe
+    che suggeriscono un rimedio: la chat che ricorda il backup, il restore
+    lasciato a meta', la manutenzione che dice da dove tornare.
+    """
+    eseguibile = r".venv\Scripts\ares" if os.name == "nt" else ".venv/bin/ares"
+    return " ".join((eseguibile, *parole))

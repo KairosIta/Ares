@@ -2,10 +2,13 @@
 REPL interattivo
 ================
 Uso:
-    .venv/bin/ares                       sessione predefinita
-    .venv/bin/ares --session progetto-x  sessione separata
-    .venv/bin/ares --debug               mostra le chiamate al modello
-    .venv/bin/ares --metriche            costo di ogni turno
+    ares                       sessione predefinita
+    ares --session progetto-x  sessione separata
+    ares --debug               mostra le chiamate al modello
+    ares --metriche            costo di ogni turno
+
+Le opzioni le dichiara `cli/app.py`, che e' il comando `ares` intero: qui
+c'e' il corpo della chat, che si importa solo quando la chat parte.
 
 Ogni sessione ha il proprio contesto: obiettivo, piano, avanzamento. Il
 profilo e le memorie invece sono per utente, quindi attraversano tutte le
@@ -21,7 +24,6 @@ completa e bastano le iniziali finche' restano uniche. L'elenco vive in
 divergite.
 """
 
-import argparse
 import logging
 
 from agno.run.agent import RunOutput
@@ -69,6 +71,7 @@ __all__ = (
     "AGNO_LOGGER_NAMES",
     "COMANDI",
     "anteprima_risultato",
+    "avvia",
     "chiedi_conferme",
     "configura_log_agno",
     "esegui_turno",
@@ -186,31 +189,19 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
-def _esegui_chat() -> None:
-    parser = argparse.ArgumentParser(prog="ares", description="Assistente personale locale")
-    parser.add_argument("--session", default="principale", help="Identificativo della sessione")
-    parser.add_argument("--user", default=config.DEFAULT_USER_ID, help="Identificativo dell'utente")
-    parser.add_argument("--debug", action="store_true", help="Mostra le chiamate al modello")
-    parser.add_argument(
-        "--metriche",
-        action="store_true",
-        help="Mostra il costo di ogni turno: finestra occupata, token, secondi",
-    )
-    args = parser.parse_args()
-
-    # Dopo `parse_args` e non prima: `--help` esce qui, e un comando che
-    # stampa l'aiuto non deve lasciarsi dietro un archivio. La cronologia
-    # della REPL nasce dentro tmp/, che quindi deve esistere gia' privata
-    # quando `CliInput` ci scrive.
+def _esegui_chat(*, session: str, user: str, debug: bool = False, metriche: bool = False) -> None:
+    # Prima di tutto cio' che scrive: la cronologia della REPL nasce dentro
+    # tmp/, che quindi deve esistere gia' privata quando `CliInput` ci
+    # scrive. `--help` non arriva qui: esce dentro Cyclopts.
     config.prepara_archivio()
 
-    configura_log_agno(args.debug)
-    agent = build_assistant(user_id=args.user, session_id=args.session, debug=args.debug)
+    configura_log_agno(debug)
+    agent = build_assistant(user_id=user, session_id=session, debug=debug)
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
     # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa
     # per un pomeriggio, non una preferenza permanente.
-    mostra_metriche = config.MOSTRA_METRICHE or args.metriche
+    mostra_metriche = config.MOSTRA_METRICHE or metriche
 
     input_cli = CliInput(
         comandi=[(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI],
@@ -223,7 +214,7 @@ def _esegui_chat() -> None:
             style="ares.warning",
         )
 
-    UI.banner(modello=config.MAIN_MODEL, sessione=args.session, utente=args.user)
+    UI.banner(modello=config.MAIN_MODEL, sessione=session, utente=user)
 
     # Un modello cloud si vede dal nome, ma il nome non dice cosa comporta.
     # Ogni sessione, non solo la prima: e' la stessa logica del promemoria
@@ -270,7 +261,7 @@ def _esegui_chat() -> None:
             continue
 
         if testo.startswith("/"):
-            if not gestisci_comando(testo, agent, args.session, args.user):
+            if not gestisci_comando(testo, agent, session, user):
                 break
             UI.blank()
             continue
@@ -284,12 +275,13 @@ def _esegui_chat() -> None:
     UI.line("A presto.", style="ares.title")
 
 
-def main() -> None:
+def avvia(*, session: str, user: str, debug: bool = False, metriche: bool = False) -> None:
+    """La chat con la rete intorno: il lock e i due modi in cui l'avvio non parte."""
     try:
         # Lock condiviso per tutta la vita del processo. Piu' chat possono
         # convivere; backup e restore, che chiedono il lock esclusivo, no.
         with lock_stato(esclusivo=False):
-            _esegui_chat()
+            _esegui_chat(session=session, user=user, debug=debug, metriche=metriche)
     except StatoOccupato as errore:
         UI.line("Impossibile avviare Ares: " + str(errore), style="ares.error")
         UI.line("Attendi che backup o restore terminino e riprova.", style="ares.muted")
@@ -299,6 +291,12 @@ def main() -> None:
         # apre database e indice: li' un traceback sarebbe l'unica traccia.
         UI.blank()
         UI.line("Avvio interrotto.", style="ares.warning")
+
+
+def main() -> None:
+    from ares.cli.app import main as radice
+
+    radice()
 
 
 if __name__ == "__main__":
