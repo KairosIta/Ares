@@ -44,9 +44,10 @@ MODELLO_LOCALE = "hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0"
 # un impegno contrattuale, non una garanzia tecnica, e va scelto sapendolo.
 MODELLO_CLOUD = "glm-5.3-flash:cloud"
 
-# Agente principale. Il solo ruolo a cui e' consentito un modello cloud:
-# `assistant_runtime` rifiuta di costruire estrazione ed embedding su un
-# nome cloud, cosi' il confine sta nel codice e non in un commento.
+# Agente principale. Conversazione ed estrazione delle memorie possono usare
+# un modello cloud, ciascuna per scelta esplicita nel `.env`; l'embedder no:
+# `assistant_runtime` rifiuta di costruirlo su un nome cloud, cosi' il
+# confine sta nel codice e non in un commento.
 #
 # Il valore distribuito e' quello locale. Il progetto promette in copertina
 # che nessun dato esce dalla macchina se non per un modello scelto apposta, e
@@ -67,18 +68,28 @@ MODELLO_CLOUD = "glm-5.3-flash:cloud"
 # e la chat lo ripete all'avvio insieme all'avviso sul cloud.
 MAIN_MODEL = os.environ.get("ARES_MAIN_MODEL") or MODELLO_LOCALE
 
-# Modello per l'estrazione delle memorie. Resta locale sempre: il profilo e
-# le memorie sono la parte piu' sensibile di cio' che Ares sa di te.
+# Modello per l'estrazione delle memorie. Il valore distribuito e' locale,
+# per la stessa ragione di MAIN_MODEL e a maggior ragione: il profilo e le
+# memorie sono la parte piu' sensibile di cio' che Ares sa di te, e ogni
+# estrazione manda al modello il testo del turno piu' le memorie gia' salvate.
 #
-# Con MAIN_MODEL in cloud la scheda e' libera e il 9B resta caldo fra un
-# turno e l'altro. Con MAIN_MODEL locale conviene invece MAIN_MODEL anche
-# qui, per evitare lo swap dei pesi fra la risposta e l'apprendimento.
+# Chi vuole una macchina senza pesi in scheda, con la sola eccezione
+# dell'embedder, lo dichiara nel `.env` come per la conversazione:
 #
-# Col default distribuito i due ruoli coincidono, che e' proprio il caso in
-# cui lo swap non avviene; puntando `ARES_MAIN_MODEL` al cloud si separano da
-# soli, e `LEARNING_NUM_CTX` qui sotto se ne accorge senza che si tocchi
-# niente.
-LEARNING_MODEL = MODELLO_LOCALE
+#     ARES_LEARNING_MODEL=glm-5.3-flash:cloud
+#
+# E' una scelta separata da ARES_MAIN_MODEL, perche' le due variabili
+# rispondono a domande diverse: quale modello parla con te, e a chi affidi
+# cio' che Ares ricorda di te. Preflight e banner della chat dicono a ogni
+# avvio quali dei due ruoli escono dalla macchina.
+#
+# Con MAIN_MODEL in cloud e LEARNING_MODEL locale la scheda e' libera e il
+# 9B resta caldo fra un turno e l'altro. Con MAIN_MODEL locale conviene
+# invece MAIN_MODEL anche qui, per evitare lo swap dei pesi fra la risposta
+# e l'apprendimento: e' il default distribuito, in cui i due ruoli
+# coincidono. Puntando `ARES_MAIN_MODEL` al cloud si separano da soli, e
+# `LEARNING_NUM_CTX` qui sotto se ne accorge senza che si tocchi niente.
+LEARNING_MODEL = os.environ.get("ARES_LEARNING_MODEL") or MODELLO_LOCALE
 
 
 def e_modello_cloud(nome: str) -> bool:
@@ -94,9 +105,39 @@ def e_modello_cloud(nome: str) -> bool:
     return bool(separatore) and (tag == "cloud" or tag.endswith("-cloud"))
 
 
+def avviso_cloud() -> list[str]:
+    """Righe che dicono cosa esce dalla macchina; vuoto se niente esce.
+
+    La prima riga nomina i ruoli cloud e cio' che mandano fuori, la seconda
+    cio' che resta locale. Preflight e chat le stampano tali e quali: un
+    avviso che riguarda dove finiscono le parole deve dire la stessa cosa
+    ovunque lo si legga.
+    """
+    conversazione = e_modello_cloud(MAIN_MODEL)
+    estrazione = e_modello_cloud(LEARNING_MODEL)
+    if conversazione and estrazione:
+        return [
+            "Conversazione ed estrazione delle memorie sono cloud: prompt, risposte e memorie",
+            "escono dalla macchina verso ollama.com. Solo l'embedding resta locale.",
+        ]
+    if conversazione:
+        return [
+            "Il modello conversazionale e' cloud: prompt e risposte escono dalla macchina",
+            "verso ollama.com. Estrazione delle memorie ed embedding restano locali.",
+        ]
+    if estrazione:
+        return [
+            "Il modello di estrazione e' cloud: il testo dei turni e le memorie gia' salvate",
+            "escono dalla macchina verso ollama.com. Conversazione ed embedding restano locali.",
+        ]
+    return []
+
+
 # Embedder unico per le collezioni LanceDB. Indici e query devono usare lo
-# stesso modello e la stessa dimensionalita'. Locale sempre, come
-# LEARNING_MODEL: cambiare embedder invaliderebbe l'indice gia' scritto.
+# stesso modello e la stessa dimensionalita'. E' il solo ruolo che resta
+# locale sempre, qualunque cosa dica il `.env`: cambiare embedder
+# invaliderebbe l'indice gia' scritto, e `assistant_runtime` rifiuta un nome
+# cloud per questo ruolo.
 EMBEDDER_MODEL = "nomic-embed-text-v2-moe"
 EMBEDDER_DIMENSIONS = 768
 
@@ -178,7 +219,7 @@ SESSION_CONTEXT_RETRIES = 1
 # risposta, eseguita in sequenza. Con tre store attivi paghi tre inferenze
 # extra per turno. Sul 9B in scheda e col pensiero spento (LEARNING_THINK)
 # sono rapide, ma la latenza percepita cresce comunque: disattiva quello
-# che non ti serve. Sono sempre locali, qualunque sia MAIN_MODEL.
+# che non ti serve. Passano tutte da LEARNING_MODEL, locale o cloud che sia.
 LEARN_USER_PROFILE = True  # ALWAYS - chi sei, come preferisci le risposte
 LEARN_USER_MEMORY = True  # ALWAYS - osservazioni non strutturate su di te
 LEARN_SESSION_CONTEXT = True  # ALWAYS - obiettivo, piano, avanzamento

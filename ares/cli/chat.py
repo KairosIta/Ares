@@ -228,14 +228,14 @@ def _esegui_chat() -> None:
     # Un modello cloud si vede dal nome, ma il nome non dice cosa comporta.
     # Ogni sessione, non solo la prima: e' la stessa logica del promemoria
     # di backup, e un avviso che riguarda dove finiscono le parole non e'
-    # una preferenza da ricordare.
-    if config.e_modello_cloud(config.MAIN_MODEL):
+    # una preferenza da ricordare. Vale per la conversazione e per
+    # l'estrazione delle memorie, che il `.env` puo' mandare in cloud
+    # separatamente: le righe sono le stesse del preflight.
+    avviso_cloud = config.avviso_cloud()
+    if avviso_cloud:
+        UI.line(" ".join(avviso_cloud), style="ares.warning")
         UI.line(
-            "Modello cloud: i messaggi di questa sessione escono dalla macchina verso ollama.com.",
-            style="ares.warning",
-        )
-        UI.line(
-            "Ollama dichiara nessuna conservazione e nessun addestramento; memorie ed embedding restano locali.",
+            "Ollama dichiara nessuna conservazione e nessun addestramento.",
             style="ares.muted",
         )
 

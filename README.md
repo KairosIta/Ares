@@ -20,11 +20,13 @@ spazio controllato sul disco senza richiedere API cloud.
 
 ## Perché Ares
 
-- **Inferenza locale, cloud su scelta esplicita:** di serie nessuna
-  conversazione lascia la macchina — memorie ed embedding restano sempre su
-  Ollama in `localhost`, e anche il modello conversazionale è locale. Una
-  riga nel `.env` (`ARES_MAIN_MODEL`) lo sposta su un modello cloud di
-  Ollama, inoltrato dallo stesso daemon senza chiavi API nell'ambiente.
+- **Inferenza locale, cloud su scelta esplicita:** di serie niente lascia
+  la macchina — conversazione, estrazione delle memorie ed embedding girano
+  tutti su Ollama in `localhost`. Due righe nel `.env` (`ARES_MAIN_MODEL`,
+  `ARES_LEARNING_MODEL`) spostano conversazione ed estrazione, insieme o
+  separatamente, su un modello cloud di Ollama, inoltrato dallo stesso
+  daemon senza chiavi API nell'ambiente. Solo l'embedding resta locale
+  sempre.
 - **Memoria persistente:** profilo, memorie, contesto di sessione, entità e
   conoscenza riutilizzabile attraverso SQLite e LanceDB.
 - **Apprendimento affidabile:** l’estrazione avviene sul run completo, anche
@@ -115,12 +117,23 @@ ARES_MAIN_MODEL=glm-5.3-flash:cloud
 Il daemon locale lo inoltra a `ollama.com` dopo un `ollama signin` una
 tantum: Ares continua a parlare con `localhost`, e nessuna chiave API entra
 nell'ambiente o in `.env`. Con un modello cloud i prompt e le risposte della
-conversazione escono dalla macchina; estrazione delle memorie ed embedding
-restano locali per costruzione — non per configurazione: `assistant_runtime`
-si rifiuta di costruirli su un nome cloud — e il preflight e il banner della
-chat lo dicono a ogni avvio. Con la conversazione in cloud il modello locale
-serve solo l'estrazione e gira con un contesto ridotto, liberando VRAM; con
-lo stesso modello locale in entrambi i ruoli, cioè con il default, i due
+conversazione escono dalla macchina; l'estrazione delle memorie resta locale
+finché non lo decidi tu, con una seconda riga:
+
+```bash
+ARES_LEARNING_MODEL=glm-5.3-flash:cloud
+```
+
+È una scelta separata perché risponde a un'altra domanda — a chi affidi ciò
+che Ares ricorda di te — e pesa di più: ogni estrazione manda al modello il
+testo del turno e le memorie già salvate. Con entrambe le righe nessun peso
+gira in scheda, salvo l'embedder: quello resta locale per costruzione, non
+per configurazione — `assistant_runtime` si rifiuta di costruirlo su un
+nome cloud — perché cambiarlo invaliderebbe l'indice già scritto. Il
+preflight e il banner della chat dicono a ogni avvio quali ruoli escono
+dalla macchina. Con la sola conversazione in cloud il modello locale serve
+solo l'estrazione e gira con un contesto ridotto, liberando VRAM; con lo
+stesso modello locale in entrambi i ruoli, cioè con il default, i due
 contesti restano uguali, così Ollama non riavvia il runner fra risposta ed
 estrazione.
 
@@ -128,7 +141,7 @@ Ollama dichiara di elaborare quei contenuti in modo transitorio, di non
 conservarli oltre la richiesta e di non usarli per addestrare
 ([privacy policy](https://ollama.com/privacy), marzo 2026). È un impegno
 contrattuale, non una garanzia tecnica: per un uso interamente locale basta
-non impostare `ARES_MAIN_MODEL`.
+non impostare né `ARES_MAIN_MODEL` né `ARES_LEARNING_MODEL`.
 
 ## Avvio rapido
 
@@ -285,12 +298,13 @@ viene conservato.
 
 ## Località e sicurezza
 
-Stato, memorie ed embedding restano locali; non sono richieste chiavi API
-cloud e la telemetria Agno è disabilitata. L’unico dato che può uscire dalla
-macchina è la conversazione, e solo se `ARES_MAIN_MODEL` indica un modello
-cloud di Ollama — che non è il valore distribuito. La scelta è esplicita nel
-`.env`, visibile a ogni avvio e verificata dallo smoke test, che rifiuta un
-modello cloud per ogni altro ruolo. Installazione e download dei modelli
+Stato ed embedding restano locali; non sono richieste chiavi API cloud e la
+telemetria Agno è disabilitata. Possono uscire dalla macchina la
+conversazione, se `ARES_MAIN_MODEL` indica un modello cloud di Ollama, e il
+testo dei turni con le memorie già salvate, se lo indica
+`ARES_LEARNING_MODEL` — nessuno dei due è il valore distribuito. La scelta è
+esplicita nel `.env`, visibile a ogni avvio e verificata dallo smoke test,
+che rifiuta un modello cloud per l'embedder. Installazione e download dei modelli
 richiedono naturalmente accesso alla rete. Inoltre, i comandi shell eseguiti
 nel workspace possono usare la rete quando l’utente li autorizza: Ares è un
 agente locale controllato, non una sandbox di sicurezza.

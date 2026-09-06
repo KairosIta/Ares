@@ -215,12 +215,35 @@ def preflight_pronto() -> str:
         esigi(" + " in testo, "i due ruoli dello stesso modello non sono stati uniti")
     # Un "ok" su un modello cloud deve dire che quel ruolo esce dalla
     # macchina, sulla riga del modello e in coda, dove si legge l'esito.
-    if config.e_modello_cloud(config.MAIN_MODEL):
+    if config.e_modello_cloud(config.MAIN_MODEL) or config.e_modello_cloud(config.LEARNING_MODEL):
         esigi("(cloud, via ollama.com)" in testo, "il modello cloud non e' marcato come tale")
-        esigi("escono dalla macchina" in testo, "manca l'avviso sul modello conversazionale cloud")
+        esigi("escono dalla macchina" in testo, "manca l'avviso sul modello cloud")
     else:
         esigi("cloud" not in testo, "il preflight parla di cloud con soli modelli locali")
     return "tag :latest riconosciuto, ruoli accumulati"
+
+
+def preflight_estrazione_cloud() -> str:
+    # L'estrazione in cloud e' una scelta del `.env` separata dalla
+    # conversazione: l'avviso deve dire che escono le memorie, non i prompt,
+    # e con entrambi i ruoli in cloud deve restare da nominare solo l'embedder.
+    cloud = "glm-5.3-flash:cloud"
+    with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", cloud):
+        esito, testo = esegui_preflight(["qwen3:9b", cloud, config.EMBEDDER_MODEL])
+    esigi(esito == 0, "preflight con l'estrazione cloud presente non e' uscito con 0: " + testo)
+    esigi(cloud + "  - estrazione delle memorie (cloud, via ollama.com)" in testo, "il ruolo cloud non e' marcato")
+    esigi("memorie gia' salvate" in testo, "l'avviso non dice che le memorie escono")
+    esigi("escono dalla macchina" in testo, "l'avviso non dice che qualcosa esce")
+    esigi("Conversazione ed embedding restano locali" in testo, "l'avviso non dice cosa resta locale")
+
+    with patch.object(config, "MAIN_MODEL", cloud), patch.object(config, "LEARNING_MODEL", cloud):
+        esito, testo = esegui_preflight([cloud, config.EMBEDDER_MODEL])
+    esigi(esito == 0, "preflight con entrambi i ruoli cloud non e' uscito con 0: " + testo)
+    esigi(
+        "conversazione + estrazione delle memorie (cloud, via ollama.com)" in testo, "i due ruoli cloud non sono uniti"
+    )
+    esigi("Solo l'embedding resta locale" in testo, "con entrambi i ruoli cloud l'avviso non isola l'embedding")
+    return "avviso sulle memorie, poi sul solo embedding locale"
 
 
 def preflight_modello_mancante() -> str:
@@ -728,6 +751,7 @@ def chat_ciclo() -> str:
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", list),
         patch.object(config, "MAIN_MODEL", "qwen3:9b"),
+        patch.object(config, "LEARNING_MODEL", "qwen3:9b"),
         patch.object(config, "MOSTRA_METRICHE", False),
         redirect_stdout(uscita),
     ):
@@ -735,6 +759,26 @@ def chat_ciclo() -> str:
     testo = _piatto(uscita.getvalue())
     esigi("escono dalla macchina" not in testo, "un modello locale mostra l'avviso del cloud")
     esigi("tok" not in testo, "le metriche compaiono senza che siano state chieste")
+
+    # L'estrazione in cloud con la conversazione locale e' l'altro avviso:
+    # deve nominare le memorie, perche' sono quelle a uscire, non i prompt.
+    input_cli = FintoInput(["ciao Ares"])
+    uscita = io.StringIO()
+    with (
+        patch.object(sys, "argv", ["ares", "--user", UTENTE, "--session", SESSIONE]),
+        patch.object(chat, "build_assistant", lambda **k: object()),
+        patch.object(chat, "CliInput", lambda **k: input_cli),
+        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(chat, "promemoria_backup", list),
+        patch.object(config, "MAIN_MODEL", "qwen3:9b"),
+        patch.object(config, "LEARNING_MODEL", "glm-5.3-flash:cloud"),
+        patch.object(config, "MOSTRA_METRICHE", False),
+        redirect_stdout(uscita),
+    ):
+        chat._esegui_chat()
+    testo = _piatto(uscita.getvalue())
+    esigi("memorie gia' salvate" in testo, "l'estrazione cloud non avvisa che le memorie escono")
+    esigi("escono dalla macchina" in testo, "l'estrazione cloud non avvisa che qualcosa esce")
     return "riga vuota, turno, metriche, avvisi d'avvio e le due uscite dal prompt"
 
 
@@ -931,6 +975,7 @@ def main() -> int:
             ("preflight pronto", preflight_pronto),
             ("preflight mancante", preflight_modello_mancante),
             ("preflight cloud mancante", preflight_cloud_mancante),
+            ("preflight estrazione cloud", preflight_estrazione_cloud),
             ("preflight spento", preflight_server_spento),
         ):
             ok(nome, prova())

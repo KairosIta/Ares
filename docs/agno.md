@@ -14,7 +14,7 @@ capacita' Agno che qui non e' stata configurata e verificata.
 | Capacita' Agno | Uso concreto in Ares | Decisione del progetto |
 | --- | --- | --- |
 | `Agent`, run ed eventi streaming | ciclo `run → pausa → continue_run`, output e metriche | `agent/turn_core.py` traduce gli eventi in un contratto indipendente dalla CLI |
-| modello Ollama ed embedder Ollama | estrazione strutturata ed embedding restano locali; la conversazione puo' usare un modello cloud di Ollama inoltrato dal daemon | nessun provider diverso da Ollama, nessuna chiave API nell'ambiente: `assistant_runtime` rifiuta un nome cloud fuori da `MAIN_MODEL` |
+| modello Ollama ed embedder Ollama | l'embedding resta locale; conversazione ed estrazione strutturata possono usare, ciascuna per scelta nel `.env`, un modello cloud di Ollama inoltrato dal daemon | nessun provider diverso da Ollama, nessuna chiave API nell'ambiente: `assistant_runtime` rifiuta un nome cloud per `EMBEDDER_MODEL` |
 | `SqliteDb` | sessioni, run, profilo, memorie, contesto ed entita' | file privati, lock cooperativo e snapshot verificati |
 | Learning Machine | profilo, memoria utente, contesto di sessione, entita' e conoscenza appresa | schema italiano, namespace per utente e post-hook sul run completo |
 | `Knowledge` + LanceDB | ricerca ibrida nelle intuizioni riutilizzabili | indice incorporato, embedding locale e nessun servizio vettoriale remoto |
