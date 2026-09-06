@@ -18,16 +18,15 @@ e la ritrovera' davvero?
 
 from ares import config
 from ares.cli.comando import nuova_app
+from ares.cli.ui import UI, byte_leggibili
 from ares.state.lock import StatoOccupato, lock_stato
 
 app = nuova_app("inspect", "Ispeziona gli archivi di apprendimento senza toccarli")
 
 
 def separatore(titolo: str) -> None:
-    print()
-    print("=" * 70)
-    print(titolo)
-    print("=" * 70)
+    UI.blank()
+    UI.heading(titolo)
 
 
 def _ispeziona(user: str, session: str, query: str, file: str | None) -> None:
@@ -43,8 +42,10 @@ def _ispeziona(user: str, session: str, query: str, file: str | None) -> None:
     if file:
         contenuto = fs.read(file)
         if contenuto is None:
-            print("Nessun file a questo percorso:", file)
+            UI.err("Nessun file a questo percorso: " + file)
         else:
+            # Verbatim, senza passare da Rich: e' il contenuto di un file, e
+            # chi lo redirige su un altro file lo vuole identico.
             print(contenuto)
         return
 
@@ -67,29 +68,29 @@ def _ispeziona(user: str, session: str, query: str, file: str | None) -> None:
     separatore("ENTITA'   (persone, progetti, sistemi)")
     entita = leggi_entita(lm, user_id=user, query=query)
     if not entita:
-        print("Nessuna entita' registrata.")
+        UI.line("Nessuna entita' registrata.", style="ares.muted")
     for e in entita:
-        for riga in righe_entita(e):
-            print(riga)
+        UI.lines(righe_entita(e))
 
     separatore("INTUIZIONI APPRESE   (indice vettoriale LanceDB)")
     intuizioni = leggi_intuizioni(lm, user_id=user, query=query)
     if not intuizioni:
-        print("Nessuna intuizione salvata.")
+        UI.line("Nessuna intuizione salvata.", style="ares.muted")
     for k in intuizioni:
-        titolo = getattr(k, "title", "?")
-        testo = getattr(k, "learning", "")
-        print("-", titolo)
-        print("   ", testo)
+        UI.line("- " + str(getattr(k, "title", "?")), style="ares.cyan")
+        UI.line("    " + str(getattr(k, "learning", "")))
 
     separatore("FILE DELL'AGENTE   (scritti da lui, verbatim)")
     elenco = fs.list()
     if not elenco:
-        print("Nessun file.")
-    for f in elenco:
-        print("-", f.path, "  ", f.size_bytes, "byte")
-    print()
-    print("Per leggerne uno:", config.comando_ares("inspect", "--file", "<percorso>"))
+        UI.line("Nessun file.", style="ares.muted")
+    else:
+        UI.table(
+            ("file", ("dimensione", "ares.text", "right")),
+            ((str(f.path), byte_leggibili(f.size_bytes)) for f in elenco),
+        )
+    UI.blank()
+    UI.line("Per leggerne uno: " + config.comando_ares("inspect", "--file", "<percorso>"), style="ares.muted")
 
 
 @app.default
@@ -112,8 +113,8 @@ def ispeziona(
         with lock_stato(esclusivo=False):
             _ispeziona(user, session, query, file)
     except StatoOccupato as errore:
-        print("Impossibile leggere lo stato di Ares:", errore)
-        print("Attendi che backup o restore terminino e riprova.")
+        UI.err("Impossibile leggere lo stato di Ares: " + str(errore))
+        UI.err("Attendi che backup o restore terminino e riprova.", style="ares.muted")
 
 
 def main() -> None:

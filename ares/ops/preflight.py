@@ -3,6 +3,7 @@ Verifica dell'ambiente prima di avviare l'agente
 ================================================
 Uso:
     ares preflight
+    ares preflight --json
 
 Risponde a una domanda sola: se avvio la chat adesso, parte? Controlla che
 il server Ollama risponda e che i modelli nominati in `config.py` siano
@@ -25,9 +26,14 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
+from typing import Annotated, Any
+
+from cyclopts import Parameter
 
 from ares import config
 from ares.cli.comando import nuova_app
+from ares.cli.ui import UI
 
 app = nuova_app("preflight", "Controlla che Ollama risponda e che i modelli ci siano")
 
@@ -57,19 +63,29 @@ def stessa_etichetta(richiesto: str, presente: str) -> bool:
     return normalizza(richiesto) == normalizza(presente)
 
 
-@app.default
-def controlla() -> int:
-    """Se avvio la chat adesso, parte? Server, modelli e avvisi sul cloud."""
-    print("Server:", config.OLLAMA_HOST)
+def esamina() -> dict[str, Any]:
+    """Il preflight come dati: cosa serve, cosa c'e', cosa manca.
+
+    Separato dalla stampa perche' `--json` e la tabella devono dire le
+    stesse cose, e perche' il verdetto - `pronto` - va deciso una volta.
+    """
+    esito: dict[str, Any] = {
+        "server": config.OLLAMA_HOST,
+        "raggiungibile": False,
+        "modelli_scaricati": None,
+        "modelli": [],
+        "mancanti": [],
+        "avviso_cloud": config.avviso_cloud(),
+        "pronto": False,
+        "errore": None,
+    }
     try:
         presenti = modelli_disponibili(config.OLLAMA_HOST)
     except (urllib.error.URLError, OSError) as e:
-        print("  non raggiungibile:", e)
-        print()
-        print("Avvia il server con: ollama serve")
-        return 1
-    print("  raggiungibile,", len(presenti), "modelli scaricati")
-    print()
+        esito["errore"] = str(e)
+        return esito
+    esito["raggiungibile"] = True
+    esito["modelli_scaricati"] = len(presenti)
 
     # I modelli davvero usati a ogni turno, che da quando l'embedder di
     # ingestion e' stato rimosso sono tutti quelli nominati in config.py.
@@ -86,40 +102,73 @@ def controlla() -> int:
         richiesti.setdefault(modello, []).append(ruolo)
 
     nomi = [m.get("name", "") for m in presenti]
-    mancanti = []
     for modello, ruoli in richiesti.items():
-        ruolo = " + ".join(ruoli)
-        if config.e_modello_cloud(modello):
-            ruolo += " (cloud, via ollama.com)"
-        if any(stessa_etichetta(modello, n) for n in nomi):
-            print("ok       ", modello, " -", ruolo)
-        else:
-            print("MANCANTE ", modello, " -", ruolo)
-            mancanti.append(modello)
+        presente = any(stessa_etichetta(modello, n) for n in nomi)
+        esito["modelli"].append(
+            {"modello": modello, "ruoli": ruoli, "cloud": config.e_modello_cloud(modello), "presente": presente}
+        )
+        if not presente:
+            esito["mancanti"].append(modello)
+    esito["pronto"] = not esito["mancanti"]
+    return esito
 
+
+def _ruolo(voce: dict[str, Any]) -> str:
+    ruolo = " + ".join(voce["ruoli"])
+    if voce["cloud"]:
+        ruolo += " (cloud, via ollama.com)"
+    return ruolo
+
+
+@app.default
+def controlla(*, come_json: Annotated[bool, Parameter(name="--json")] = False) -> int:
+    """Se avvio la chat adesso, parte? Server, modelli e avvisi sul cloud.
+
+    Args:
+        come_json: stampa l'esito come JSON, per gli script; il codice di uscita non cambia.
+    """
+    esito = esamina()
+    if come_json:
+        UI.json(esito)
+        return 0 if esito["pronto"] else 1
+
+    UI.pair("Server", esito["server"])
+    if not esito["raggiungibile"]:
+        UI.line("  non raggiungibile: " + str(esito["errore"]), style="ares.error")
+        UI.blank()
+        UI.line("Avvia il server con: ollama serve", style="ares.muted")
+        return 1
+    UI.line("  raggiungibile, " + str(esito["modelli_scaricati"]) + " modelli scaricati", style="ares.success")
+    UI.blank()
+
+    UI.table(
+        (("stato", "ares.text"), "modello", ("ruolo", "ares.muted")),
+        ((("ok" if voce["presente"] else "MANCANTE"), voce["modello"], _ruolo(voce)) for voce in esito["modelli"]),
+    )
+
+    mancanti = esito["mancanti"]
     if mancanti:
-        print()
-        print("Scaricali con:")
+        UI.blank()
+        UI.line("Scaricali con:", style="ares.warning")
         if any(config.e_modello_cloud(m) for m in mancanti):
-            print("    ollama signin")
+            UI.line("    ollama signin")
         for modello in mancanti:
-            print("    ollama pull", modello)
+            UI.line("    ollama pull " + modello)
         return 1
 
-    print()
-    avviso = config.avviso_cloud()
-    if avviso:
-        for riga in avviso:
-            print(riga)
-        print()
-    print("Ambiente pronto:", config.comando_ares())
+    UI.blank()
+    if esito["avviso_cloud"]:
+        for riga in esito["avviso_cloud"]:
+            UI.line(riga, style="ares.warning")
+        UI.blank()
+    UI.line("Ambiente pronto: " + config.comando_ares(), style="ares.success")
     return 0
 
 
-def main() -> int:
+def main(argomenti: Sequence[str] | None = None) -> int:
     from ares.cli.app import esegui
 
-    return esegui("preflight")
+    return esegui("preflight", argomenti)
 
 
 if __name__ == "__main__":

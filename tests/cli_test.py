@@ -113,7 +113,7 @@ def porta_libera() -> int:
         return int(presa.getsockname()[1])
 
 
-def esegui_preflight(modelli: list[str] | None) -> tuple[int, str]:
+def esegui_preflight(modelli: list[str] | None, argomenti: list[str] | None = None) -> tuple[int, str]:
     """Lancia il preflight contro un server finto, o contro nessun server.
 
     Con `modelli=None` non avvia niente e punta a una porta chiusa: e' il caso
@@ -130,7 +130,7 @@ def esegui_preflight(modelli: list[str] | None) -> tuple[int, str]:
     try:
         uscita = io.StringIO()
         with patch.object(config, "OLLAMA_HOST", host), redirect_stdout(uscita):
-            esito = preflight.main()
+            esito = preflight.main(argomenti or [])
         return esito, uscita.getvalue()
     finally:
         if servitore is not None:
@@ -223,6 +223,11 @@ def preflight_pronto() -> str:
     return "tag :latest riconosciuto, ruoli accumulati"
 
 
+def stessa_riga(testo: str, *parti: str) -> bool:
+    """Vero se una riga dell'output contiene tutte le parti, in qualunque colonna."""
+    return any(all(parte in riga for parte in parti) for riga in testo.splitlines())
+
+
 def preflight_estrazione_cloud() -> str:
     # L'estrazione in cloud e' una scelta del `.env` separata dalla
     # conversazione: l'avviso deve dire che escono le memorie, non i prompt,
@@ -231,7 +236,7 @@ def preflight_estrazione_cloud() -> str:
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", cloud):
         esito, testo = esegui_preflight(["qwen3:9b", cloud, config.EMBEDDER_MODEL])
     esigi(esito == 0, "preflight con l'estrazione cloud presente non e' uscito con 0: " + testo)
-    esigi(cloud + "  - estrazione delle memorie (cloud, via ollama.com)" in testo, "il ruolo cloud non e' marcato")
+    esigi(stessa_riga(testo, cloud, "estrazione delle memorie (cloud, via ollama.com)"), "ruolo cloud non marcato")
     esigi("memorie gia' salvate" in testo, "l'avviso non dice che le memorie escono")
     esigi("escono dalla macchina" in testo, "l'avviso non dice che qualcosa esce")
     esigi("Conversazione ed embedding restano locali" in testo, "l'avviso non dice cosa resta locale")
@@ -268,9 +273,22 @@ def preflight_cloud_mancante() -> str:
     with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"), patch.object(config, "LEARNING_MODEL", LOCALE):
         esito, testo = esegui_preflight([LOCALE, config.EMBEDDER_MODEL])
     esigi(esito == 1, "un modello cloud mancante non ha prodotto uscita 1")
-    esigi("MANCANTE  glm-5.3-flash:cloud" in testo, "il modello cloud mancante non e' segnalato")
+    esigi(stessa_riga(testo, "MANCANTE", "glm-5.3-flash:cloud"), "il modello cloud mancante non e' segnalato")
     esigi(testo.index("ollama signin") < testo.index("ollama pull"), "signin non precede il pull")
     return "signin suggerito prima del pull"
+
+
+def preflight_json() -> str:
+    # Stessi dati della tabella, stesso codice di uscita, niente testo intorno.
+    with patch.object(config, "MAIN_MODEL", LOCALE), patch.object(config, "LEARNING_MODEL", LOCALE):
+        esito, testo = esegui_preflight([LOCALE], argomenti=["--json"])
+    dati = json.loads(testo)
+    esigi(esito == 1 and dati["pronto"] is False, "il verdetto JSON non concorda con il codice di uscita")
+    esigi(dati["mancanti"] == [config.EMBEDDER_MODEL], "i mancanti JSON non sono l'embedder: " + testo)
+    ruoli = {voce["modello"]: voce["ruoli"] for voce in dati["modelli"]}
+    esigi(ruoli[LOCALE] == ["conversazione", "estrazione delle memorie"], "i ruoli JSON non si accumulano: " + testo)
+    esigi(all(not voce["cloud"] for voce in dati["modelli"]), "un modello locale e' marcato cloud nel JSON")
+    return "verdetto, mancanti e ruoli come dati"
 
 
 def preflight_server_spento() -> str:
@@ -290,10 +308,13 @@ def backup_cli(_archivio: Path) -> str:
     """
 
     def comando(*argomenti: str, risposta: str | None = None) -> tuple[int, str]:
+        # stdout e stderr insieme: gli errori vanno su stderr, e qui si prova
+        # che compaiano, non dove.
         uscita = io.StringIO()
         with ExitStack() as pila:
             pila.enter_context(patch.object(sys, "argv", ["ares-backup", *argomenti]))
             pila.enter_context(redirect_stdout(uscita))
+            pila.enter_context(redirect_stderr(uscita))
             if risposta is not None:
                 # `input` viene sostituito solo dove la conferma serve: nei
                 # comandi che non la chiedono, una risposta pronta
@@ -311,9 +332,21 @@ def backup_cli(_archivio: Path) -> str:
     esigi(esito == 0, "list non riuscito: " + testo)
     esigi(primo in testo, "list non elenca lo snapshot appena creato")
 
+    # `--json` e' per gli script: deve essere JSON puro, con gli stessi dati
+    # della tabella.
+    esito, testo = comando("list", "--json")
+    esigi(esito == 0, "list --json non riuscito: " + testo)
+    dati = json.loads(testo)
+    esigi([voce["snapshot"] for voce in dati["snapshot"]] == [primo], "list --json non elenca lo snapshot: " + testo)
+    esigi(dati["snapshot"][0]["type"] == "manuale", "list --json non riporta il tipo: " + testo)
+
     esito, testo = comando("verify", "latest")
     esigi(esito == 0, "verify latest non riuscito: " + testo)
     esigi("Snapshot valido" in testo, "verify non conferma la validita'")
+
+    esito, testo = comando("verify", "latest", "--json")
+    esigi(esito == 0, "verify --json non riuscito: " + testo)
+    esigi(json.loads(testo)["snapshot_id"] == primo, "verify --json non restituisce il manifest: " + testo)
 
     esito, testo = comando("verify", "non-esiste")
     esigi(esito == 1, "verify di uno snapshot inesistente non e' uscito con 1")
@@ -376,7 +409,7 @@ def inspect_learning_cli() -> str:
     # non accende nemmeno gli store.
     uscita = io.StringIO()
     argv = ["ares-inspect", "--user", UTENTE, "--file", "non/esiste.md"]
-    with patch.object(sys, "argv", argv), redirect_stdout(uscita):
+    with patch.object(sys, "argv", argv), redirect_stderr(uscita):
         inspect_learning.main()
     esigi("Nessun file a questo percorso" in uscita.getvalue(), "un file assente non viene segnalato")
 
@@ -974,6 +1007,7 @@ def main() -> int:
             ("preflight mancante", preflight_modello_mancante),
             ("preflight cloud mancante", preflight_cloud_mancante),
             ("preflight estrazione cloud", preflight_estrazione_cloud),
+            ("preflight json", preflight_json),
             ("preflight spento", preflight_server_spento),
         ):
             ok(nome, prova())
