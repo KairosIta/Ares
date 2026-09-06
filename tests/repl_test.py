@@ -64,6 +64,7 @@ from ares.cli import render  # noqa: E402
 from ares.cli.chat import (  # noqa: E402
     AGNO_LOGGER_NAMES,
     COMANDI,
+    StatoChat,
     chiedi_conferme,
     configura_log_agno,
     finestra_occupata,
@@ -944,7 +945,7 @@ def input_repl() -> str:
             input=pipe,
             output=DummyOutput(),
         )
-        pipe.send_text("/me\t\r")
+        pipe.send_text("/mem\t\r")
         esigi(input_cli.prompt() == "/memorie", "TAB non completa nel prompt reale")
 
         pipe.send_text("prima riga\x1b\rseconda riga\r")
@@ -1091,25 +1092,120 @@ def comandi() -> str:
     # Nessuno dei due tocca l'agente, quindi None basta.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        vive = gestisci_comando("/pipppo", None, "sessione", "utente")
+        vive = gestisci_comando("/pipppo", StatoChat(agent=None, session_id="sessione", user_id="utente"))
     esigi(vive is True, "un comando sconosciuto chiude la sessione")
     esigi(catturato.getvalue().strip() != "", "un comando sconosciuto non dice niente")
+    vuoto = StatoChat(agent=None, session_id="sessione", user_id="utente")
     with contextlib.redirect_stdout(io.StringIO()):
-        esigi(gestisci_comando("/esci", None, "sessione", "utente") is False, "/esci non chiude")
-        esigi(gestisci_comando("/qu", None, "sessione", "utente") is False, "/qu non chiude")
+        esigi(gestisci_comando("/esci", vuoto) is False, "/esci non chiude")
+        esigi(gestisci_comando("/qu", vuoto) is False, "/qu non chiude")
 
     completatore = CompletamentoComandi([(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI])
 
     def completa(testo: str) -> list[str]:
         return [voce.text for voce in completatore.get_completions(Document(testo), CompleteEvent())]
 
-    esigi(completa("/me") == ["/memorie"], "il menu non completa un comando")
+    esigi(completa("/mem") == ["/memorie"], "il menu non completa un comando")
+    # `/me` e' ambiguo da quando c'e' `/metriche`: il menu mostra entrambi e
+    # non sceglie, come `risolvi_comando`.
+    esigi(completa("/me") == ["/memorie", "/metriche"], "il menu non elenca i due candidati di /me")
     esigi(completa("/") == nomi, "lo slash non elenca tutti i comandi")
     esigi(completa("ricordami /mem") == [], "un comando dentro una frase apre il menu")
     esigi(completa("scrivo 23/08") == [], "una data dentro una frase apre il menu")
     esigi(completa("/sessioni lavoro") == [], "il menu copre l'argomento di un comando")
 
     return str(len(nomi)) + " comandi dalla tabella, refusi e troncamenti distinti"
+
+
+def stato_della_chat() -> str:
+    """`/debug`, `/metriche` e `/sessione` cambiano lo stato che il ciclo rilegge.
+
+    L'agente e' un oggetto qualunque con `debug_mode`, e `build_assistant`
+    e' sostituito: qui si prova che i comandi scrivano nello `StatoChat` e
+    che il cambio di sessione ricostruisca l'agente con il nome nuovo,
+    non che l'agente funzioni.
+    """
+    from ares.cli import commands
+
+    class AgenteFinto:
+        def __init__(self, session_id: str, debug: bool) -> None:
+            self.session_id = session_id
+            self.debug_mode = debug
+
+    costruiti: list[tuple[str, bool]] = []
+
+    def costruisci(*, user_id: str, session_id: str, debug: bool) -> AgenteFinto:
+        costruiti.append((session_id, debug))
+        return AgenteFinto(session_id, debug)
+
+    stato = StatoChat(agent=AgenteFinto("principale", False), session_id="principale", user_id="utente")
+
+    def comando(riga: str) -> str:
+        catturato = io.StringIO()
+        with contextlib.redirect_stdout(catturato), patch.object(commands, "build_assistant", costruisci):
+            esigi(gestisci_comando(riga, stato) is True, riga + " chiude la sessione")
+        return catturato.getvalue()
+
+    uscita = comando("/metriche")
+    esigi(stato.metriche is True and "accese" in uscita, "/metriche non accende: " + repr(uscita))
+    uscita = comando("/metriche")
+    esigi(stato.metriche is False and "spente" in uscita, "/metriche non spegne: " + repr(uscita))
+
+    uscita = comando("/debug")
+    esigi(stato.debug is True and stato.agent.debug_mode is True, "/debug non accende l'agente: " + repr(uscita))
+    esigi(
+        all(h.level == logging.DEBUG for nome in AGNO_LOGGER_NAMES for h in logging.getLogger(nome).handlers),
+        "/debug non abbassa la soglia dei log di Agno",
+    )
+    uscita = comando("/debug")
+    esigi(stato.debug is False and stato.agent.debug_mode is False, "/debug non spegne l'agente")
+
+    uscita = comando("/sessione")
+    esigi("principale" in uscita and costruiti == [], "/sessione senza argomento ricostruisce o non dice la sessione")
+    uscita = comando("/sessione principale")
+    esigi(costruiti == [] and "gia'" in uscita, "/sessione sulla sessione corrente ricostruisce l'agente")
+    uscita = comando("/sessione progetto-x")
+    esigi(costruiti == [("progetto-x", False)], "/sessione non ricostruisce con il nome nuovo: " + repr(costruiti))
+    esigi(stato.session_id == "progetto-x" and stato.agent.session_id == "progetto-x", "lo stato non cambia sessione")
+    esigi("progetto-x" in uscita, "il cambio di sessione non viene detto: " + repr(uscita))
+    # Il debug acceso sopravvive al cambio di sessione: e' una scelta della
+    # persona, non della sessione.
+    comando("/debug")
+    comando("/sessione progetto-y")
+    esigi(costruiti[-1] == ("progetto-y", True), "il cambio di sessione perde il debug: " + repr(costruiti))
+    comando("/debug")
+    return "metriche e debug a interruttore, sessione cambiata ricostruendo l'agente"
+
+
+def conferme_scritte() -> str:
+    """`conferma_scritta`: la frase esatta e nient'altro, e Ctrl-C e' un no.
+
+    Senza terminale la domanda passa da `input()`, che qui e' sostituito:
+    e' lo stesso ripiego che permette a uno script di rispondere da stdin.
+    """
+    from ares.cli.conferma import conferma_scritta
+
+    def prova(risposta, attesa: str = "ELIMINA 2 SESSIONI") -> tuple[bool, str]:
+        catturato = io.StringIO()
+
+        def finto_input(_etichetta: str = "") -> str:
+            if isinstance(risposta, BaseException):
+                raise risposta
+            return risposta
+
+        with contextlib.redirect_stdout(catturato), patch("builtins.input", finto_input):
+            esito = conferma_scritta(attesa, cosa="Le sessioni verranno eliminate.")
+        return esito, catturato.getvalue()
+
+    esito, testo = prova("ELIMINA 2 SESSIONI")
+    esigi(esito is True, "la frase esatta non conferma")
+    esigi("ELIMINA 2 SESSIONI" in testo and "eliminate" in testo, "la richiesta non dice cosa scrivere: " + repr(testo))
+    esigi(prova("  ELIMINA 2 SESSIONI \n")[0] is True, "gli spazi intorno alla frase la invalidano")
+    esigi(prova("elimina 2 sessioni")[0] is False, "una frase diversa conferma")
+    esigi(prova("")[0] is False, "una riga vuota conferma")
+    esigi(prova(EOFError())[0] is False, "la fine dell'input conferma")
+    esigi(prova(KeyboardInterrupt())[0] is False, "Ctrl-C conferma")
+    return "frase esatta, spazi tollerati, vuoto, EOF e Ctrl-C sono un no"
 
 
 def main() -> int:
@@ -1133,6 +1229,8 @@ def main() -> int:
             ("cronologia          ", cronologia_persistente),
             ("input REPL          ", input_repl),
             ("comandi             ", comandi),
+            ("stato della chat    ", stato_della_chat),
+            ("conferme scritte    ", conferme_scritte),
         )
     )
     print()

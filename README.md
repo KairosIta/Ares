@@ -213,7 +213,9 @@ Durante la chat `/` apre il menu dei comandi e TAB completa la voce
 selezionata. Invio spedisce il messaggio, `Alt+Invio` aggiunge una nuova riga,
 le frecce percorrono la cronologia e i suggerimenti riprendono le domande
 precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
-`/sessioni`, `/entita`, `/file` e `/lavoro`.
+`/sessioni`, `/entita`, `/file` e `/lavoro`. Tre cambiano la sessione in
+corso senza riavviare: `/sessione <nome>` passa a un'altra sessione,
+`/metriche` accende il costo di ogni turno, `/debug` le chiamate al modello.
 
 ## Verifica
 
@@ -243,7 +245,9 @@ La distinzione fra test offline ed E2E è descritta nella
 ## Operazioni
 
 I comandi di manutenzione mostrano tabelle sul terminale e testo piatto in
-una pipe; gli errori vanno su stderr. Quelli che leggono soltanto accettano
+una pipe; gli errori vanno su stderr. Prima di toccare lo stato chiedono di
+riscrivere una frase esatta, con lo stesso editor della chat; `--yes` la
+salta, e da uno script la frase si passa su stdin. Quelli che leggono soltanto accettano
 `--json` per gli script: `ares backup list --json`, `ares backup verify
 --json`, `ares sessions status --json`, `ares entities audit --json`,
 `ares preflight --json`. Il codice di uscita non cambia.

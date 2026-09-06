@@ -89,6 +89,7 @@ from ares.agent.assistant import (  # noqa: E402
 from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.cli.chat import (  # noqa: E402
+    StatoChat,
     gestisci_comando,
 )
 from ares.state.stores import (  # noqa: E402
@@ -1174,7 +1175,7 @@ def entita_cercate(agent, user_id: str) -> str:
     # sembra rispondere.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/entita Uno", agent, "sessione", user_id)
+        gestisci_comando("/entita Uno", StatoChat(agent=agent, session_id="sessione", user_id=user_id))
     stampato = catturato.getvalue()
     esigi("Entita Uno" in stampato, "/entita con un argomento non trova l'entita' cercata")
     esigi("Entita Due" not in stampato, "/entita ignora l'argomento e stampa l'archivio intero")
@@ -1269,13 +1270,13 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     try:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            gestisci_comando("/sessioni", agent, session_id, user_id)
+            gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
         troncato = catturato.getvalue()
         esigi("altre 2" in troncato, "l'elenco tagliato non dice quante ne restano: " + repr(troncato))
         esigi(atteso[3] not in troncato, "il tetto non taglia niente")
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            gestisci_comando("/sessioni " + atteso[3], agent, session_id, user_id)
+            gestisci_comando("/sessioni " + atteso[3], StatoChat(agent=agent, session_id=session_id, user_id=user_id))
         esigi(
             atteso[3] in catturato.getvalue(),
             "una sessione oltre il tetto non si trova nemmeno cercandola: si taglia prima di filtrare",
@@ -1289,7 +1290,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     # in archivio ma esclusa da un filtro.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni", agent, session_id, user_id)
+        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
     stampato = catturato.getvalue()
     esigi(session_id in stampato, "l'assenza della sessione in corso non viene spiegata")
     for nome in atteso:
@@ -1300,7 +1301,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     agent.db.upsert_session(_sessione_finta(session_id, 500, "domanda di questa", user_id))
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni", agent, session_id, user_id)
+        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
     presente = catturato.getvalue()
     esigi("(questa)" in presente, "la sessione in corso non e' marcata nell'elenco: " + repr(presente))
     esigi(
@@ -1315,7 +1316,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     try:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            gestisci_comando("/sessioni", agent, session_id, user_id)
+            gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
         oltre = catturato.getvalue()
         esigi("(questa)" not in oltre, "il tetto non taglia la sessione in corso: " + repr(oltre))
         esigi(
@@ -1329,7 +1330,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     # falsa, ed e' il caso che il primo controllo da solo lasciava passare.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni lavoro", agent, session_id, user_id)
+        gestisci_comando("/sessioni lavoro", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
     filtrato = catturato.getvalue()
     esigi(
         "dal primo turno salvato" not in filtrato,
@@ -1353,7 +1354,7 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     def esegui_comando(riga: str) -> str:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            vive = gestisci_comando(riga, agent, session_id, user_id)
+            vive = gestisci_comando(riga, StatoChat(agent=agent, session_id=session_id, user_id=user_id))
         esigi(vive is True, riga + " chiude la sessione")
         return catturato.getvalue()
 

@@ -41,8 +41,12 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
   importano solo quando servono; `comando.py` e' la fabbrica che da' a tutte
   le App gli stessi titoli e la console di `ui.py`;
 - `chat.py` avvia e coordina la REPL; `commands.py` contiene la tabella dei
-  comandi locali e il loro dispatch, mentre `render.py` presenta eventi,
-  conferme e metriche del turno;
+  comandi locali, il loro dispatch e lo `StatoChat` che `/sessione`,
+  `/metriche` e `/debug` modificano a meta' conversazione, mentre
+  `render.py` presenta eventi, conferme e metriche del turno;
+- `conferma.py` e' la conferma scritta dei comandi di manutenzione - la
+  frase esatta da riscrivere prima di un restore, un prune o una fusione -
+  con l'editor della chat sul terminale e `input()` in una pipe;
 - `editor.py` gestisce editor, completamento, input multilinea e cronologia
   privata della REPL;
 - `ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i controlli

@@ -33,7 +33,7 @@ from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
-from ares.cli.commands import COMANDI, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
+from ares.cli.commands import COMANDI, StatoChat, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
 from ares.cli.editor import CliInput
 from ares.cli.render import (
     anteprima_risultato,
@@ -70,6 +70,7 @@ def configura_log_agno(debug: bool) -> None:
 __all__ = (
     "AGNO_LOGGER_NAMES",
     "COMANDI",
+    "StatoChat",
     "anteprima_risultato",
     "avvia",
     "chiedi_conferme",
@@ -200,8 +201,15 @@ def _esegui_chat(*, session: str, user: str, debug: bool = False, metriche: bool
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
     # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa
-    # per un pomeriggio, non una preferenza permanente.
-    mostra_metriche = config.MOSTRA_METRICHE or metriche
+    # per un pomeriggio, non una preferenza permanente. `/metriche`,
+    # `/debug` e `/sessione` cambiano questo stato a meta' conversazione.
+    stato = StatoChat(
+        agent=agent,
+        session_id=session,
+        user_id=user,
+        debug=debug,
+        metriche=config.MOSTRA_METRICHE or metriche,
+    )
 
     input_cli = CliInput(
         comandi=[(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI],
@@ -261,13 +269,13 @@ def _esegui_chat(*, session: str, user: str, debug: bool = False, metriche: bool
             continue
 
         if testo.startswith("/"):
-            if not gestisci_comando(testo, agent, session, user):
+            if not gestisci_comando(testo, stato):
                 break
             UI.blank()
             continue
 
-        risposta = esegui_turno(agent, testo, input_cli)
-        if mostra_metriche and risposta is not None:
+        risposta = esegui_turno(stato.agent, testo, input_cli)
+        if stato.metriche and risposta is not None:
             for riga in righe_metriche(risposta):
                 UI.metrics(riga)
         UI.blank()

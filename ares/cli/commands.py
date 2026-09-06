@@ -1,11 +1,31 @@
 """Comandi locali della REPL, derivati da un'unica tabella."""
 
 import difflib
+from dataclasses import dataclass
+from typing import Any
 
 from ares import config
-from ares.agent.assistant import build_filesystem
+from ares.agent.assistant import build_assistant, build_filesystem
 from ares.cli.ui import UI, byte_leggibili
 from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
+
+
+@dataclass
+class StatoChat:
+    """Cio' che la REPL tiene fra un turno e l'altro, e che un comando puo' cambiare.
+
+    Prima i comandi ricevevano agente, sessione e utente come tre argomenti
+    e non potevano toccare niente: `/debug`, `/metriche` e `/sessione` hanno
+    bisogno di scrivere, e il ciclo della chat di rileggere. Un oggetto solo,
+    mutabile, e' il modo piu' corto di dirlo.
+    """
+
+    agent: Any
+    session_id: str
+    user_id: str
+    debug: bool = False
+    metriche: bool = False
+
 
 # ---------------------------------------------------------------------------
 # I comandi
@@ -14,35 +34,35 @@ from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_
 # Ogni comando e' una funzione con la stessa firma, anche quando non usa tutti
 # gli argomenti: e' il prezzo di avere una tabella invece di una catena di if,
 # e la tabella e' cio' che tiene allineati aiuto, completamento e abbreviazioni.
-# `argomento` e' tutto cio' che segue il primo spazio. Lo leggono `/entita` e
-# `/sessioni`; per gli altri resta vuoto, e un argomento passato a un comando
-# che non lo usa viene ignorato in silenzio.
+# `argomento` e' tutto cio' che segue il primo spazio. Lo leggono `/entita`,
+# `/sessioni` e `/sessione`; per gli altri resta vuoto, e un argomento passato
+# a un comando che non lo usa viene ignorato in silenzio.
 #
 # Chi restituisce False chiude la sessione. Gli altri non restituiscono niente.
 
 
-def _comando_aiuto(agent, session_id, user_id, argomento):
+def _comando_aiuto(stato: StatoChat, argomento: str):
     stampa_aiuto()
 
 
-def _comando_profilo(agent, session_id, user_id, argomento):
-    stampa_store(agent.learning_machine.user_profile_store, "Profilo", user_id=user_id)
+def _comando_profilo(stato: StatoChat, argomento: str):
+    stampa_store(stato.agent.learning_machine.user_profile_store, "Profilo", user_id=stato.user_id)
 
 
-def _comando_memorie(agent, session_id, user_id, argomento):
-    stampa_store(agent.learning_machine.user_memory_store, "Memorie", user_id=user_id)
+def _comando_memorie(stato: StatoChat, argomento: str):
+    stampa_store(stato.agent.learning_machine.user_memory_store, "Memorie", user_id=stato.user_id)
 
 
-def _comando_contesto(agent, session_id, user_id, argomento):
-    stampa_store(agent.learning_machine.session_context_store, "Contesto", session_id=session_id)
+def _comando_contesto(stato: StatoChat, argomento: str):
+    stampa_store(stato.agent.learning_machine.session_context_store, "Contesto", session_id=stato.session_id)
 
 
-def _comando_sessioni(agent, session_id, user_id, argomento):
+def _comando_sessioni(stato: StatoChat, argomento: str):
     UI.heading("Sessioni")
-    sessioni = leggi_sessioni(agent, user_id=user_id, query=argomento)
+    sessioni = leggi_sessioni(stato.agent, user_id=stato.user_id, query=argomento)
     mostrate = sessioni[: config.SESSIONI_ELENCO]
     for s in mostrate:
-        for riga in righe_sessione(s, corrente=(getattr(s, "session_id", None) == session_id)):
+        for riga in righe_sessione(s, corrente=(getattr(s, "session_id", None) == stato.session_id)):
             UI.line(riga)
     if not mostrate:
         if argomento:
@@ -52,7 +72,7 @@ def _comando_sessioni(agent, session_id, user_id, argomento):
     nascoste = len(sessioni) - len(mostrate)
     if nascoste:
         UI.line("(altre " + str(nascoste) + ": /sessioni <testo> filtra per nome)", style="ares.muted")
-    if not argomento and all(getattr(s, "session_id", None) != session_id for s in sessioni):
+    if not argomento and all(getattr(s, "session_id", None) != stato.session_id for s in sessioni):
         # La sessione in corso entra in archivio col primo turno salvato.
         # Prima di allora manca dall'elenco, e un'assenza non spiegata si
         # legge come un difetto.
@@ -62,14 +82,57 @@ def _comando_sessioni(agent, session_id, user_id, argomento):
         # esclude, e quando e' in archivio ma oltre il tetto. In tutti e due
         # la sessione c'e', e dire che manca e' peggio del silenzio.
         UI.line(
-            "Questa sessione (" + session_id + ") compare qui dal primo turno salvato.",
+            "Questa sessione (" + stato.session_id + ") compare qui dal primo turno salvato.",
             style="ares.muted",
         )
 
 
-def _comando_entita(agent, session_id, user_id, argomento):
+def _comando_sessione(stato: StatoChat, argomento: str):
+    """Mostra la sessione corrente o passa a un'altra senza riavviare.
+
+    Passare vuol dire ricostruire l'agente: la sessione e' fissata alla sua
+    costruzione, e il contesto appreso - obiettivo, piano, avanzamento - e'
+    per sessione. Profilo e memorie sono per utente e restano gli stessi.
+    """
+    if not argomento:
+        UI.pair("Sessione corrente", stato.session_id)
+        UI.line("/sessione <nome> passa a un'altra; /sessioni le elenca.", style="ares.muted")
+        return
+    nome = argomento.split()[0]
+    if nome == stato.session_id:
+        UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
+        return
+    stato.agent = build_assistant(user_id=stato.user_id, session_id=nome, debug=stato.debug)
+    stato.session_id = nome
+    UI.pair("Sessione", nome, style="ares.title")
+    UI.line("Il contesto e' quello di questa sessione; profilo e memorie non cambiano.", style="ares.muted")
+
+
+def _comando_debug(stato: StatoChat, argomento: str):
+    """Accende o spegne le chiamate al modello a schermo, per il resto della sessione."""
+    stato.debug = not stato.debug
+    # Le due leve che `--debug` muove all'avvio: il livello dei log di Agno e
+    # la modalita' dell'agente, che decide se stampare i propri passaggi.
+    from ares.cli.chat import configura_log_agno
+
+    configura_log_agno(stato.debug)
+    if hasattr(stato.agent, "debug_mode"):
+        stato.agent.debug_mode = stato.debug
+    UI.pair("Debug", "acceso" if stato.debug else "spento", style="ares.title" if stato.debug else "ares.muted")
+
+
+def _comando_metriche(stato: StatoChat, argomento: str):
+    """Accende o spegne la riga del costo sotto ogni risposta."""
+    stato.metriche = not stato.metriche
+    stile = "ares.title" if stato.metriche else "ares.muted"
+    UI.pair("Metriche", "accese" if stato.metriche else "spente", style=stile)
+    if stato.metriche:
+        UI.line("Sotto ogni risposta: finestra occupata, token, secondi.", style="ares.muted")
+
+
+def _comando_entita(stato: StatoChat, argomento: str):
     UI.heading("Entita'")
-    entita = leggi_entita(agent.learning_machine, user_id=user_id, query=argomento)
+    entita = leggi_entita(stato.agent.learning_machine, user_id=stato.user_id, query=argomento)
     if not entita:
         if argomento:
             # La ricerca delle entita' e' testuale, non semantica: senza una
@@ -86,9 +149,9 @@ def _comando_entita(agent, session_id, user_id, argomento):
             UI.line(riga)
 
 
-def _comando_file(agent, session_id, user_id, argomento):
+def _comando_file(stato: StatoChat, argomento: str):
     UI.heading("Quaderno privato")
-    fs = build_filesystem(user_id)
+    fs = build_filesystem(stato.user_id)
     elenco = fs.list()
     if not elenco:
         UI.line("Nessun file.", style="ares.muted")
@@ -96,7 +159,7 @@ def _comando_file(agent, session_id, user_id, argomento):
     UI.table(("file", ("byte", "ares.text", "right")), ((str(f.path), byte_leggibili(f.size_bytes)) for f in elenco))
 
 
-def _comando_lavoro(agent, session_id, user_id, argomento):
+def _comando_lavoro(stato: StatoChat, argomento: str):
     UI.heading("Workspace")
     if not config.WORKSPACE:
         UI.line("Lo spazio di lavoro e' spento in config.py.", style="ares.muted")
@@ -110,7 +173,7 @@ def _comando_lavoro(agent, session_id, user_id, argomento):
         UI.line("- " + voce.name + ("/" if voce.is_dir() else ""))
 
 
-def _comando_esci(agent, session_id, user_id, argomento):
+def _comando_esci(stato: StatoChat, argomento: str):
     return False
 
 
@@ -122,15 +185,22 @@ def _comando_esci(agent, session_id, user_id, argomento):
 #
 # Gli alias restano fuori dall'elenco a schermo e dal TAB, ma si scrivono e si
 # abbreviano come gli altri: sono superstiti inglesi, non comandi da imparare.
+#
+# `/sessione` e `/sessioni` condividono il prefisso fino all'ultima lettera:
+# `/sess` e' ambiguo e lo resta di proposito, perche' uno elenca e l'altro
+# cambia sessione. Il TAB li mostra entrambi.
 COMANDI = (
     ("/aiuto", ("/?",), "questo elenco", _comando_aiuto),
     ("/profilo", (), "il profilo utente accumulato", _comando_profilo),
     ("/memorie", (), "le memorie non strutturate", _comando_memorie),
     ("/contesto", (), "obiettivo e avanzamento della sessione", _comando_contesto),
     ("/sessioni", (), "le conversazioni in archivio; /sessioni <testo> filtra", _comando_sessioni),
+    ("/sessione", (), "la sessione corrente; /sessione <nome> passa a un'altra", _comando_sessione),
     ("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
     ("/file", (), "i file scritti dall'agente", _comando_file),
     ("/lavoro", (), "la directory di lavoro sul disco", _comando_lavoro),
+    ("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
+    ("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),
     ("/esci", ("/quit", "/exit"), "termina la sessione", _comando_esci),
 )
 
@@ -176,11 +246,11 @@ def risolvi_comando(nome: str) -> tuple:
     return None, righe
 
 
-def gestisci_comando(comando: str, agent, session_id: str, user_id: str) -> bool:
+def gestisci_comando(comando: str, stato: StatoChat) -> bool:
     """Esegue un comando locale. Ritorna False se la sessione deve terminare."""
     nome, _, argomento = comando.partition(" ")
     voce, righe = risolvi_comando(nome)
     if voce is None:
         UI.command_problem(righe)
         return True
-    return voce[3](agent, session_id, user_id, argomento.strip()) is not False
+    return voce[3](stato, argomento.strip()) is not False
