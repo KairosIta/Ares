@@ -41,7 +41,7 @@ from unittest.mock import patch
 # I percorsi vanno scelti prima di importare config, che crea TMP_DIR
 # all'import: importarlo e correggere dopo lascerebbe comunque una tmp/ vuota
 # accanto ai dati veri.
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("cli-test")
 
@@ -438,11 +438,15 @@ def chat_repl() -> str:
     Ollama irraggiungibile diventa un evento di errore che la REPL stampa,
     e la prova resterebbe verde per il motivo sbagliato.
     """
+    # Il figlio parte dalla cartella di lavoro della prova, come farebbe un
+    # utente che scrive `ares` nel proprio progetto: e' cosi' che la cartella
+    # viene scelta. Da `BASE_DIR` sarebbe una cartella rischiosa - contiene
+    # il codice di Ares - e senza terminale la REPL la rifiuterebbe.
     figlio = subprocess.run(
         [sys.executable, "-m", "ares", "--user", UTENTE, "--session", SESSIONE],
-        cwd=config.BASE_DIR,
+        cwd=config.WORKSPACE_DIR,
         env=os.environ.copy(),
-        input="/aiuto\n\n/entita\n/file\n/sconosciuto comando\n/esci\n",
+        input="/aiuto\n\n/entita\n/file\n/cartella\n/sconosciuto comando\n/esci\n",
         capture_output=True,
         text=True,
         timeout=180,
@@ -453,6 +457,7 @@ def chat_repl() -> str:
     esigi("A presto" in testo, "la REPL non saluta all'uscita")
     esigi("/aiuto" in testo, "l'elenco dei comandi non compare")
     esigi("appunto.md" in testo, "/file non elenca il file scritto dall'agente")
+    esigi(str(config.WORKSPACE_DIR) in testo, "il banner o /cartella non nominano la cartella di lavoro")
     esigi("Comando sconosciuto: /sconosciuto" in testo, "il comando ignoto non e' stato riconosciuto come tale")
     # La riga che tiene in piedi la promessa del modulo. Una riga che non
     # comincia con `/` non e' un comando: e' un messaggio, e la REPL lo manda
@@ -814,6 +819,64 @@ def chat_ciclo() -> str:
     return "riga vuota, turno, metriche, avvisi d'avvio e le due uscite dal prompt"
 
 
+def chat_cartella() -> str:
+    """La cartella si decide prima di tutto: se non va, niente agente e niente banner.
+
+    Tre avvii: una cartella che non esiste, una che `autorizza` rifiuta, una
+    buona passata con `--workspace`. Nei primi due l'agente non deve nemmeno
+    essere costruito; nel terzo `config.WORKSPACE_DIR` deve puntare alla
+    cartella scelta e il banner nominarla, con il suo ARES.md.
+    """
+    originale = config.WORKSPACE_DIR
+    costruiti: list[dict] = []
+
+    def costruisci(**argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    uscita = io.StringIO()
+    with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+        esito = chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=Path(originale) / "non-esiste")
+    testo = _piatto(uscita.getvalue())
+    esigi(esito == 1, "una cartella inesistente non esce con 1: " + str(esito))
+    esigi("non esiste" in testo, "una cartella inesistente non viene detta: " + repr(testo))
+    esigi(not costruiti, "l'agente e' stato costruito su una cartella inesistente")
+
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "build_assistant", costruisci),
+        patch.object(chat.cartella, "autorizza", lambda percorso, *, esplicito: False),
+        redirect_stdout(uscita),
+    ):
+        esito = chat._esegui_chat(session=SESSIONE, user=UTENTE)
+    esigi(esito == 1, "una cartella rifiutata non esce con 1: " + str(esito))
+    esigi(not costruiti, "l'agente e' stato costruito su una cartella rifiutata")
+    esigi("ARES" not in uscita.getvalue(), "il banner compare dopo un rifiuto")
+
+    progetto = RADICE_PROVA / "progetto-chat"
+    progetto.mkdir()
+    (progetto / "ARES.md").write_text("Regole del progetto.\n", encoding="utf-8")
+    input_cli = FintoInput([KeyboardInterrupt])
+    uscita = io.StringIO()
+    try:
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: input_cli),
+            patch.object(chat, "promemoria_backup", list),
+            redirect_stdout(uscita),
+        ):
+            chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=progetto)
+        scelta = config.WORKSPACE_DIR
+    finally:
+        config.WORKSPACE_DIR = originale
+    testo = _piatto(uscita.getvalue())
+    esigi(scelta == progetto.resolve(), "--workspace non ha cambiato la cartella di lavoro: " + str(scelta))
+    esigi(len(costruiti) == 1, "l'agente non e' stato costruito una volta sola: " + str(len(costruiti)))
+    esigi(str(progetto.resolve()) in testo, "il banner non nomina la cartella: " + repr(testo))
+    esigi("ARES.md" in testo, "il banner non dice che c'e' un ARES.md: " + repr(testo))
+    return "cartella inesistente, rifiutata e scelta con --workspace"
+
+
 def chat_residui() -> str:
     """Un restore rimasto a meta' viene detto all'avvio, e solo allora.
 
@@ -913,12 +976,17 @@ def chat_avvio() -> str:
     dell'agente non e' ancora protetta da nulla.
     """
     uscita = io.StringIO()
+    codice = 0
     with (
         patch.object(chat, "lock_stato", lambda esclusivo: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
         redirect_stdout(uscita),
     ):
-        chat.main()
+        try:
+            chat.main()
+        except SystemExit as fine:
+            codice = int(fine.code or 0)
     testo = _piatto(uscita.getvalue())
+    esigi(codice == 1, "un archivio occupato non esce con 1: " + str(codice))
     esigi("Impossibile avviare Ares" in testo, "l'archivio occupato non viene detto")
     esigi("backup in corso" in testo, "il motivo dell'occupazione non compare")
     esigi("riprova" in testo, "non viene suggerito di riprovare")
@@ -928,9 +996,10 @@ def chat_avvio() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "_esegui_chat", avvio_interrotto), redirect_stdout(uscita):
+        # Nessun SystemExit: un Ctrl-C all'avvio e' una scelta, e vale 0.
         chat.main()
     esigi("Avvio interrotto" in _piatto(uscita.getvalue()), "un Ctrl-C durante l'avvio non viene detto")
-    return "lock condiviso, archivio occupato e Ctrl-C prima della REPL"
+    return "lock condiviso, archivio occupato con uscita 1 e Ctrl-C prima della REPL"
 
 
 def aiuto_senza_effetti() -> str:
@@ -1021,6 +1090,7 @@ def main() -> int:
         ok("chat REPL", chat_repl())
         ok("chat turno", chat_turno())
         ok("chat ciclo", chat_ciclo())
+        ok("chat cartella", chat_cartella())
         ok("chat avvio", chat_avvio())
         ok("chat residui", chat_residui())
         # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
@@ -1033,7 +1103,7 @@ def main() -> int:
         print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
 
-    shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+    pulisci(RADICE_PROVA)
     print()
     print("Concluso in", round(time.monotonic() - avvio, 2), "s")
     print("Nessun fallimento.")

@@ -31,8 +31,9 @@ spazio controllato sul disco senza richiedere API cloud.
   conoscenza riutilizzabile attraverso SQLite e LanceDB.
 - **Apprendimento affidabile:** l’estrazione avviene sul run completo, anche
   dopo una conferma e `continue_run`, con retry mirato sul contesto.
-- **Strumenti controllati:** cronologia, ricerca, quaderno privato e workspace
-  su disco con conferma per le operazioni sensibili.
+- **Strumenti controllati:** cronologia, ricerca, quaderno privato e la
+  cartella da cui lanci `ares` come spazio di lavoro, con conferma per le
+  operazioni sensibili e un avviso prima di aprire una cartella rischiosa.
 - **Memoria visibile e revocabile:** sotto ogni risposta compare cosa è
   entrato in profilo e memorie, sia dagli strumenti del modello sia
   dall'estrazione automatica, con il testo intero, e la CLI chiede se
@@ -197,6 +198,25 @@ restano e fanno la stessa cosa; `python -m ares` continua a funzionare. Su
 Windows `setup.ps1 -SkipPreflight` prepara soltanto le dipendenze e viene
 usato dalla CI, dove Ollama non è disponibile.
 
+Ares lavora nella cartella da cui lo lanci, come Claude Code o Codex: entra
+nel progetto e scrivi `ares`. Il banner mostra la cartella e, se è un
+repository, il ramo. Gli strumenti sui file non escono da lì; i comandi shell
+chiedono conferma uno per uno. Se la cartella è rischiosa — la home intera,
+la radice del disco, una directory di sistema, una che contiene lo stato o il
+codice di Ares — te lo dice e chiede di riscrivere il percorso prima di
+partire; da uno script senza terminale una cartella così si apre solo
+nominandola con `--workspace`. Per lavorare su un'altra cartella senza
+spostarti:
+
+```bash
+.venv/bin/ares --workspace ~/progetti/demo
+```
+
+Se nella cartella c'è un `ARES.md`, Ares lo legge prima del primo turno: è
+il posto per le convenzioni del progetto, cosa non toccare, come si lanciano
+le prove. `ares init` ne scrive uno scheletro nella cartella corrente e non
+tocca un file che esiste già.
+
 Per aprire una sessione separata:
 
 ```bash
@@ -213,9 +233,10 @@ Durante la chat `/` apre il menu dei comandi e TAB completa la voce
 selezionata. Invio spedisce il messaggio, `Alt+Invio` aggiunge una nuova riga,
 le frecce percorrono la cronologia e i suggerimenti riprendono le domande
 precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
-`/sessioni`, `/entita`, `/file` e `/lavoro`. Tre cambiano la sessione in
-corso senza riavviare: `/sessione <nome>` passa a un'altra sessione,
-`/metriche` accende il costo di ogni turno, `/debug` le chiamate al modello.
+`/sessioni`, `/entita`, `/file` e `/cartella`, che mostra percorso, ramo,
+file modificati e se c'è un `ARES.md`. Tre cambiano la sessione in corso
+senza riavviare: `/sessione <nome>` passa a un'altra sessione, `/metriche`
+accende il costo di ogni turno, `/debug` le chiamate al modello.
 
 ## Verifica
 
@@ -263,8 +284,8 @@ salta, e da uno script la frase si passa su stdin. Quelli che leggono soltanto a
 ```
 
 Gli snapshot vivono per default nella directory `ares-backup` accanto al
-clone, non nel repository. Database, indice vettoriale, cronologia e workspace
-restano esclusi da Git.
+clone, non nel repository. Database, indice vettoriale e cronologia restano
+esclusi da Git.
 
 Il backup resta un comando che dai tu. La chat però se ne accorge: se l'ultimo
 snapshot ha più di `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero

@@ -29,7 +29,7 @@ import time
 import urllib.error
 from pathlib import Path
 
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 UTENTE_STORE = "prova-intuizioni-store"
 UTENTE_ALTRO = "prova-intuizioni-altro"
@@ -291,12 +291,12 @@ def main(args) -> int:
         except (urllib.error.URLError, OSError) as errore:
             print("SALTATA  Ollama non raggiungibile:", errore)
             if not args.conserva:
-                shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+                pulisci(RADICE_PROVA)
             return 2
         if not pronti:
             print("SALTATA ", dettaglio)
             if not args.conserva:
-                shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+                pulisci(RADICE_PROVA)
             return 2
         ok("modelli", dettaglio)
 
@@ -316,7 +316,7 @@ def main(args) -> int:
     if args.conserva:
         print("Stato conservato:", RADICE_PROVA)
     else:
-        shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+        pulisci(RADICE_PROVA)
         print("Stato temporaneo cancellato.")
     print("Nessun fallimento.")
     return 0

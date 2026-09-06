@@ -10,15 +10,16 @@ fallimento, se il traceback si vedeva o no.
 
 La regola: questo modulo non importa `config` ne' niente di `ares`. E' la
 sola garanzia che `prepara_ambiente` funzioni, perche' `config` legge
-`ARES_TMP`, `ARES_BACKUP_DIR` e `ARES_WORKSPACE` una volta all'import e crea
-`TMP_DIR` in quel momento. Una prova che importasse `config` prima di aver
-scelto i percorsi scriverebbe accanto ai dati veri, e questo modulo non
-puo' diventare la via da cui succede.
+`ARES_TMP`, `ARES_BACKUP_DIR` e la directory corrente una volta all'import.
+Una prova che importasse `config` prima di aver scelto i percorsi
+scriverebbe accanto ai dati veri, e questo modulo non puo' diventare la via
+da cui succede.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 import traceback
@@ -37,6 +38,10 @@ def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = Tr
     `lavoro/` accanto. Va chiamata prima di importare `config`, e il
     controllo iniziale lo pretende: se `config` e' gia' in memoria i percorsi
     sono gia' decisi, e la prova starebbe per scrivere dove non deve.
+
+    La cartella di lavoro non ha una variabile: e' la directory corrente, come
+    quando si scrive `ares` in un progetto. Per questo la prova ci entra con
+    `chdir`, e `config` la legge da li'.
     """
     if "ares.config" in sys.modules:
         raise RuntimeError("prepara_ambiente va chiamata prima di importare ares.config")
@@ -45,8 +50,26 @@ def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = Tr
     if backup:
         os.environ["ARES_BACKUP_DIR"] = str(radice / "backup")
     if workspace:
-        os.environ["ARES_WORKSPACE"] = str(radice / "lavoro")
+        lavoro = radice / "lavoro"
+        lavoro.mkdir()
+        os.chdir(lavoro)
     return radice
+
+
+def pulisci(radice: Path) -> None:
+    """Cancella la radice usa-e-getta a fine prova.
+
+    Prima esce dalla cartella di lavoro, se la prova ci sta ancora dentro:
+    su Windows la directory corrente di un processo non si cancella, e un
+    `rmtree` con gli errori ignorati lascerebbe la radice sul disco senza
+    dirlo.
+    """
+    try:
+        if Path.cwd().resolve().is_relative_to(radice.resolve()):
+            os.chdir(radice.parent)
+    except OSError:
+        pass
+    shutil.rmtree(radice, ignore_errors=True)
 
 
 def esigi(condizione: object, messaggio: str) -> None:

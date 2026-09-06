@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("backup-test")
 
@@ -797,7 +797,7 @@ def main() -> int:
         print("Dati della prova conservati:", RADICE_PROVA)
         return 1
 
-    shutil.rmtree(RADICE_PROVA)
+    pulisci(RADICE_PROVA)
     print()
     print("Concluso in", round(time.monotonic() - avvio, 2), "s")
     print("Nessun fallimento.")

@@ -14,9 +14,12 @@ toccare i dati del clone in uso.
 ```
 
 `tests/run.py` non importa le prove: le lancia, una per processo. Non è una
-preferenza di stile. Ogni prova scrive `ARES_TMP`, `ARES_BACKUP_DIR` e
-`ARES_WORKSPACE` **prima** di importare `config`, che quelle variabili le
-legge una volta sola all'import e non le rilegge mai più. Due prove nello
+preferenza di stile. Ogni prova scrive `ARES_TMP` e `ARES_BACKUP_DIR` ed
+entra nella propria cartella di lavoro usa-e-getta **prima** di importare
+`config`, che quelle cose le legge una volta sola all'import e non le rilegge
+mai più. La cartella di lavoro non ha una variabile d'ambiente perché nel
+prodotto è la directory corrente, quella da cui si scrive `ares`: le prove
+fanno lo stesso gesto con `chdir`. Due prove nello
 stesso interprete condividerebbero il primo `config` importato — cioè i
 percorsi della prima — e il giorno in cui una sbagliasse variabile
 scriverebbe nell'archivio vero senza che nessuno se ne accorga. Un processo
@@ -24,7 +27,9 @@ per prova rende quell'errore impossibile invece che improbabile.
 
 Quel gesto, e le poche righe che ogni prova ripeteva uguali, stanno in
 `tests/_comune.py`: `prepara_ambiente` sceglie i percorsi usa-e-getta e
-rifiuta di farlo se `config` è già in memoria; `esigi` è l'asserzione che
+rifiuta di farlo se `config` è già in memoria; `pulisci` li cancella alla
+fine uscendo prima dalla cartella di lavoro, perché su Windows la directory
+corrente non si cancella; `esigi` è l'asserzione che
 `python -O` non toglie; `esegui` e `fallimento` stampano una riga per
 controllo e, quando un controllo fallisce, la riga da cui viene — con il
 traceback intero se non è un'asserzione ma un guasto che la prova non
@@ -58,7 +63,7 @@ Con le sole prove offline la misura è intorno all'88%. `cli/chat.py` era il
 modulo più scoperto, al 61%, quando il turno conversazionale si attraversava
 solo con Ollama; da quando `chat turno` lo percorre con un `run_turn_cycle`
 finto è al 100%. I comandi locali che leggono gli archivi — `/profilo`,
-`/memorie`, `/entita`, `/file`, `/lavoro` — passano in `comandi su archivio`
+`/memorie`, `/entita`, `/file`, `/cartella` — passano in `comandi su archivio`
 nello smoke, sul seme: `cli/commands.py` era al 76% ed è al 92%. Il meno
 coperto oggi è `cli/ui.py`, all'81%: i rami del terminale senza TTY.
 
@@ -112,8 +117,10 @@ macchina di apprendimento e l'eco di ciò che entra in memoria. `repl` prova
 ciò che della chat gira senza l'agente: conferme lette e applicate, esito e
 metriche degli strumenti, rendering Rich su pipe e su un terminale simulato
 con i controlli filtrati, core del turno con eventi fabbricati, log di Agno,
-cronologia privata, editor con completamento e multilinea, Ctrl-C/D e
-comandi locali. Stava nello smoke, che era diventato il posto dove finiva
+cronologia privata, editor con completamento e multilinea, Ctrl-C/D,
+comandi locali e la cartella di lavoro: i percorsi rischiosi, i tre esiti
+dell'autorizzazione, il ramo letto da `.git/HEAD`, `ARES.md` e `ares init`.
+Stava nello smoke, che era diventato il posto dove finiva
 ogni prova offline; la divisione segue ciò che serve per girare.
 `sessioni` attraversa un vero `Agent.run()` con modello deterministico e
 verifica offload, quota, retention, cascata e restore dei due SQLite.
