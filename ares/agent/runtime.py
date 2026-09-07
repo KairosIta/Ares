@@ -1,20 +1,31 @@
-"""Componenti runtime dell'assistente: modelli, archivi e strumenti locali."""
+"""Componenti runtime dell'assistente: modelli, indice vettoriale e strumenti locali."""
 
 from pathlib import Path
 
-from agno.db.sqlite import SqliteDb
-from agno.fs import FileSystem
 from agno.knowledge.embedder.ollama import OllamaEmbedder
 from agno.knowledge.knowledge import Knowledge
 from agno.models.ollama import Ollama
-from agno.offload.store import ResultStore
 from agno.tools.workspace import Workspace
 from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 
 from ares import config
+from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
-from ares.state.stores import namespace_utente
+
+# I costruttori degli archivi vivono in `state/archivi.py`: sono di chi legge
+# lo stato, non dell'agente, e `sessions` li usa senza passare da qui. Restano
+# importabili da questo modulo perche' le prove e i comandi lo fanno da sempre.
+__all__ = [
+    "AresWorkspace",
+    "build_chat_model",
+    "build_db",
+    "build_filesystem",
+    "build_knowledge",
+    "build_learning_model",
+    "build_result_store",
+    "build_workspace",
+]
 
 
 def _esigi_locale(nome: str, ruolo: str) -> str:
@@ -64,33 +75,6 @@ def build_learning_model() -> Ollama:
     )
 
 
-def _archivio_privato(percorso: str) -> str:
-    """Crea il file SQLite con permessi privati prima della prima connessione."""
-    config.prepara_archivio()
-    file_db = Path(percorso)
-    file_db.parent.mkdir(parents=True, exist_ok=True)
-    if not file_db.exists():
-        file_db.touch()
-    rendi_privato(file_db)
-    return percorso
-
-
-def _build_sqlite(percorso: str) -> SqliteDb:
-    """Costruisce SQLite e materializza subito i pragma persistenti di Agno."""
-    db = SqliteDb(db_file=_archivio_privato(percorso))
-    # Agno registra WAL sull'evento di connessione, ma il costruttore e'
-    # lazy. Senza questa apertura un archivio nuovo resta in DELETE mode fino
-    # alla prima lettura e un comando di ispezione finisce per modificarlo.
-    with db.db_engine.connect():
-        pass
-    return db
-
-
-def build_db() -> SqliteDb:
-    """Stato dell'agente: sessioni, profilo, memorie, entita'."""
-    return _build_sqlite(config.DB_FILE)
-
-
 def build_knowledge() -> Knowledge:
     """Indice vettoriale locale delle intuizioni apprese."""
     config.prepara_archivio()
@@ -108,22 +92,6 @@ def build_knowledge() -> Knowledge:
                 dimensions=config.EMBEDDER_DIMENSIONS,
             ),
         ),
-    )
-
-
-def build_filesystem(user_id: str = config.DEFAULT_USER_ID) -> FileSystem:
-    """Quaderno privato su SQLite, separato e isolato per utente."""
-    return FileSystem(
-        _build_sqlite(config.FS_DB_FILE),
-        namespace=namespace_utente(user_id),
-    )
-
-
-def build_result_store(filesystem: FileSystem) -> ResultStore:
-    """Conserva i risultati grandi nel FileSystem gia' incluso nei backup."""
-    return ResultStore(
-        fs=filesystem,
-        threshold_chars=config.TOOL_RESULT_THRESHOLD_CHARS,
     )
 
 
@@ -146,8 +114,12 @@ class AresWorkspace(Workspace):
         self.add_instructions = False
 
 
-def build_workspace(modo: str = config.MODO_PREDEFINITO) -> AresWorkspace:
+def build_workspace(modo: str | None = None) -> AresWorkspace:
     """Costruisce lo spazio di lavoro sulla cartella scelta all'avvio, nella modalita' data.
+
+    `modo` vuoto vale `config.MODO_PREDEFINITO`, letto adesso e non alla
+    definizione della funzione: un default nella firma fotografa il valore
+    all'import, e una prova che lo cambia con `patch.object` non lo vedrebbe.
 
     La cartella e' quella dell'utente, decisa e autorizzata da
     `cli/cartella.py` prima di arrivare qui: i rischi - la home, il disco
@@ -158,7 +130,7 @@ def build_workspace(modo: str = config.MODO_PREDEFINITO) -> AresWorkspace:
     radice = config.WORKSPACE_DIR.resolve()
     if not radice.is_dir():
         raise ValueError("La cartella di lavoro " + str(radice) + " non esiste.")
-    silenziosi, confermati = config.liste_modalita(modo)
+    silenziosi, confermati = config.liste_modalita(modo or config.MODO_PREDEFINITO)
     return AresWorkspace(
         radice,
         prefisso=config.WORKSPACE_PREFIX,

@@ -5,12 +5,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from ares import config
-from ares.agent.assistant import build_assistant, build_filesystem
+from ares.agent.assistant import build_assistant
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
-from ares.cli.ui import UI, byte_leggibili
+from ares.cli.ui import UI, byte_leggibili, stampa_store
+from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
-from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
+from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione
 
 
 @dataclass

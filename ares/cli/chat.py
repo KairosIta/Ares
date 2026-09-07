@@ -43,7 +43,6 @@ from agno.run.agent import RunOutput
 from ares import config
 from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
-from ares.agent.runtime import build_db
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
@@ -65,6 +64,7 @@ from ares.cli.render import (
 )
 from ares.cli.ui import UI
 from ares.ops import migrazione
+from ares.state.archivi import build_db
 from ares.state.git import ramo_git
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella

@@ -19,7 +19,6 @@ from typing import Annotated, Any
 from cyclopts import Parameter
 
 from ares import config
-from ares.agent.runtime import build_db
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_RIFIUTO, esegui_protetto, nuova_app
 from ares.cli.conferma import conferma_scritta
@@ -34,6 +33,7 @@ from ares.sessions.retention import (
     seleziona_inattive,
     trova_sessione,
 )
+from ares.state.archivi import build_db
 
 app = nuova_app("sessions", "Retention delle sessioni e dei risultati tool di Ares")
 

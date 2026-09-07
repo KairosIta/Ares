@@ -72,6 +72,13 @@ locale non e' stato provato in questo giro.
 
 ### Changed
 
+- **Le dipendenze fra pacchetti vanno in un verso solo.** `state/archivi.py`
+  apre i due SQLite e il deposito dei risultati grandi: stavano in
+  `agent/runtime.py`, e `sessions` dipendeva dall'agente per aprire un
+  database. `stampa_store` sta in `cli/ui.py`: era in `state/stores.py`, che
+  dichiara di non scrivere niente e importava l'interfaccia per stampare.
+  `lock_stato`, `build_filesystem` e `build_workspace` leggono il default da
+  `config` quando vengono chiamati e non quando vengono definiti;
 - **Un solo significato per ogni codice di uscita.** Erano cinque wrapper
   con quattro idee diverse: lo stato occupato valeva 1 in chat, backup e
   migrate e 2 in sessions ed entities; una conferma sbagliata valeva 1 in

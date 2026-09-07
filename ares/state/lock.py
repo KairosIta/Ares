@@ -27,9 +27,15 @@ class StatoOccupato(RuntimeError):
 def lock_stato(
     esclusivo: bool,
     bloccante: bool = False,
-    percorso: Path = config.STATE_LOCK_FILE,
+    percorso: Path | None = None,
 ) -> Iterator[None]:
-    """Acquisisce il lock condiviso o esclusivo e lo rilascia sempre."""
+    """Acquisisce il lock condiviso o esclusivo e lo rilascia sempre.
+
+    `percorso` vuoto vale `config.STATE_LOCK_FILE`, letto adesso: un default
+    nella firma lo fotograferebbe all'import, e una prova che cambia lo stato
+    con `patch.object` continuerebbe a bloccare quello vero.
+    """
+    percorso = Path(config.STATE_LOCK_FILE) if percorso is None else percorso
     try:
         with lock_file(
             Path(percorso),

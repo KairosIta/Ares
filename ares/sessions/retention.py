@@ -18,7 +18,7 @@ from agno.learn.utils import build_learning_id
 from agno.offload.setup import build_result_store as configura_result_store
 from agno.offload.store import ResultStore
 
-from ares.agent.runtime import build_db, build_filesystem, build_result_store
+from ares.state.archivi import build_db, build_filesystem, build_result_store
 
 SECONDI_AL_GIORNO = 86_400
 
