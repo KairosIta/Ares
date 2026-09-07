@@ -4,8 +4,10 @@ Ricostruisce l'ambiente Windows di Ares.
 
 .DESCRIPTION
 Crea il virtualenv Python 3.12, installa le dipendenze bloccate in uv.lock e
-Ares stesso nel venv, poi verifica Ollama con `ares preflight`. Non modifica
-tmp/, workspace o backup.
+Ares stesso nel venv, scrive lo shim `ares.cmd` in %USERPROFILE%\.local\bin
+(o in ARES_BIN_DIR), porta in ~\.ares lo stato di un clone precedente e
+verifica Ollama con `ares preflight`. Lo stato appreso e i backup non vengono
+toccati, salvo quello spostamento una tantum.
 
 .PARAMETER SkipPreflight
 Salta soltanto il controllo di Ollama e dei modelli. Serve alla CI e a chi
@@ -75,6 +77,29 @@ try {
     Invoke-External {
         & $Uv.Source pip check --python $VenvPython
     } "le dipendenze installate non sono coerenti"
+
+    # `ares` da qualunque cartella: uno shim `.cmd` che chiama il comando del
+    # venv. Uno shim e non `uv tool install`, che risolverebbe le dipendenze
+    # da capo senza guardare uv.lock: il comando globale deve essere
+    # esattamente l'ambiente bloccato, e seguire il codice del clone.
+    $BinDir = if ($env:ARES_BIN_DIR) { $env:ARES_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
+    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+    $Shim = Join-Path $BinDir "ares.cmd"
+    $Target = Join-Path $PSScriptRoot ".venv\Scripts\ares.exe"
+    Set-Content -LiteralPath $Shim -Value ('@"' + $Target + '" %*') -Encoding ASCII
+    Write-Host "Comando globale: $Shim"
+    if (-not (($env:Path -split ';') -contains $BinDir)) {
+        Write-Host "  $BinDir non e' nel PATH. Aggiungilo una volta con:"
+        Write-Host "      [Environment]::SetEnvironmentVariable('Path', `$env:Path + ';$BinDir', 'User')"
+        Write-Host "  e riapri il terminale."
+    }
+
+    # Lo stato di un clone precedente, da tmp\ e ..\ares-backup a ~\.ares.
+    # Non fa niente se e' gia' li' o se non c'e' niente da spostare.
+    Write-Host
+    Invoke-External {
+        & ".venv\Scripts\ares.exe" migrate
+    } "lo spostamento dello stato in ~\.ares non e' riuscito"
 
     if ($SkipPreflight) {
         Write-Host

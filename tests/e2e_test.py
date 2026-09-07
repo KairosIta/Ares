@@ -152,7 +152,7 @@ def stato_archivio_reale() -> list:
     senza, l'unico modo di sapere che il turno non ha scritto tra i dati veri
     sarebbe fidarsi della variabile d'ambiente.
     """
-    reale = config.BASE_DIR / "tmp"
+    reale = config.ARES_HOME / "stato"
     if not reale.exists():
         return []
     return sorted(
@@ -177,7 +177,7 @@ def main() -> int:
 
     try:
         esigi(
-            not config.DB_FILE.startswith(str(config.BASE_DIR / "tmp")),
+            not config.DB_FILE.startswith(str(config.ARES_HOME / "stato")),
             "l'archivio della prova coincide con quello vero: " + config.DB_FILE,
         )
         ok("archivio separato   ", "i dati veri non vengono ne' letti ne' scritti")

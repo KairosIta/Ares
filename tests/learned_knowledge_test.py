@@ -282,10 +282,10 @@ def main(args) -> int:
     print("Backup temporaneo:", RADICE_BACKUP)
     print()
 
-    reale_prima = fotografia(config.BASE_DIR / "tmp")
+    reale_prima = fotografia(config.ARES_HOME / "stato")
     avvio = time.monotonic()
     try:
-        esigi(RADICE_STATO != config.BASE_DIR / "tmp", "la prova punta allo stato reale")
+        esigi(RADICE_STATO != config.ARES_HOME / "stato", "la prova punta allo stato reale")
         try:
             pronti, dettaglio = modelli_pronti()
         except (urllib.error.URLError, OSError) as errore:
@@ -303,7 +303,7 @@ def main(args) -> int:
         prova_store()
         prova_agente()
         prova_backup()
-        esigi(fotografia(config.BASE_DIR / "tmp") == reale_prima, "lo stato reale e' cambiato durante la prova")
+        esigi(fotografia(config.ARES_HOME / "stato") == reale_prima, "lo stato reale e' cambiato durante la prova")
         ok("stato reale", str(len(reale_prima)) + " file invariati")
     except Exception as errore:
         fallimento(errore)

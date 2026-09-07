@@ -968,6 +968,86 @@ def chat_sessioni() -> str:
     return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin"
 
 
+def migrazione_stato() -> str:
+    """`ares migrate`: lo stato di un clone precedente passa in ~/.ares, e la chat aspetta.
+
+    Vecchio e nuovo sono directory della prova, scambiate in `config` per la
+    durata del controllo. Si prova lo spostamento, l'idempotenza, il rifiuto
+    di toccare una destinazione piena, e che la chat si fermi finche' lo
+    stato e' ancora di la': costruire l'agente su un archivio vuoto accanto a
+    uno pieno e' esattamente cio' che la migrazione esiste per evitare.
+    """
+    from ares.ops import migrazione
+
+    radice = RADICE_PROVA / "migrazione"
+    vecchio_tmp = radice / "clone" / "tmp"
+    vecchio_backup = radice / "ares-backup"
+    casa = radice / "casa" / ".ares"
+    (vecchio_tmp / "lancedb").mkdir(parents=True)
+    (vecchio_tmp / "kairos.db").write_text("db", encoding="utf-8")
+    (vecchio_backup / "snap").mkdir(parents=True)
+    (vecchio_backup / "snap" / "manifest.json").write_text("{}", encoding="utf-8")
+
+    costruiti: list[dict] = []
+
+    def costruisci(**argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    def migra() -> tuple[int, str]:
+        uscita = io.StringIO()
+        with redirect_stdout(uscita), redirect_stderr(uscita):
+            esito = migrazione.migra()
+        return esito, _piatto(uscita.getvalue())
+
+    with patch.multiple(
+        config,
+        ARES_HOME=casa,
+        TMP_DIR=casa / "stato",
+        BACKUP_DIR=casa / "backup",
+        STATE_LOCK_FILE=casa / "stato.lock",
+        VECCHIO_TMP_DIR=vecchio_tmp,
+        VECCHIO_BACKUP_DIR=vecchio_backup,
+    ):
+        righe = migrazione.avviso()
+        esigi(
+            len(righe) == 4 and "migrate" in righe[-1], "l'avviso non elenca le due parti e il rimedio: " + repr(righe)
+        )
+
+        uscita = io.StringIO()
+        with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+            esito = chat._esegui_chat(user=UTENTE)
+        esigi(esito == 1 and not costruiti, "la chat e' partita con lo stato ancora nel posto di prima")
+        esigi("migrate" in uscita.getvalue(), "la chat non dice come spostare lo stato: " + repr(uscita.getvalue()))
+
+        esito, testo = migra()
+        esigi(esito == 0, "la migrazione non e' riuscita: " + testo)
+        esigi("Spostato lo stato" in testo and "Spostato i backup" in testo, "non dice cosa ha spostato: " + testo)
+        esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "il database non e' arrivato")
+        esigi((casa / "stato" / "lancedb").is_dir(), "l'indice non e' arrivato")
+        esigi((casa / "backup" / "snap" / "manifest.json").is_file(), "gli snapshot non sono arrivati")
+        esigi(not vecchio_tmp.exists() and not vecchio_backup.exists(), "il vecchio posto non e' vuoto")
+        esigi(not (vecchio_tmp.parent / "tmp.lock").exists(), "il vecchio lock e' rimasto")
+        if os.name == "posix":
+            esigi((casa.stat().st_mode & 0o777) == 0o700, "~/.ares non e' privata")
+            esigi(((casa / "stato").stat().st_mode & 0o777) == 0o700, "lo stato spostato non e' privato")
+        esigi(migrazione.avviso() == [], "l'avviso resta dopo la migrazione")
+
+        esito, testo = migra()
+        esigi(esito == 0 and "Niente da spostare" in testo, "la seconda migrazione non e' un no-op: " + testo)
+
+        # Il vecchio posto si riempie di nuovo mentre il nuovo e' pieno: non
+        # si tocca niente e lo si dice, e la chat non si ferma.
+        vecchio_tmp.mkdir(parents=True)
+        (vecchio_tmp / "kairos.db").write_text("altro", encoding="utf-8")
+        esito, testo = migra()
+        esigi(esito == 0 and "contiene gia' dei dati" in testo, "un conflitto non viene detto: " + testo)
+        esigi((vecchio_tmp / "kairos.db").exists(), "un conflitto ha spostato o cancellato qualcosa")
+        esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "un conflitto ha sovrascritto")
+        esigi(migrazione.avviso() == [], "un conflitto ferma la chat")
+    return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve"
+
+
 def chat_residui() -> str:
     """Un restore rimasto a meta' viene detto all'avvio, e solo allora.
 
@@ -1183,6 +1263,7 @@ def main() -> int:
         ok("chat ciclo", chat_ciclo())
         ok("chat cartella", chat_cartella())
         ok("chat sessioni", chat_sessioni())
+        ok("migrazione", migrazione_stato())
         ok("chat avvio", chat_avvio())
         ok("chat residui", chat_residui())
         # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e

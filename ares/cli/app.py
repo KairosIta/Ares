@@ -43,6 +43,7 @@ SOTTOCOMANDI = (
     ("entities", "ares.entities.maintenance:app", "Audit e fusione delle entita' duplicate"),
     ("preflight", "ares.ops.preflight:app", "Controlla che Ollama risponda e che i modelli ci siano"),
     ("inspect", "ares.ops.inspect_learning:app", "Ispeziona gli archivi di apprendimento senza toccarli"),
+    ("migrate", "ares.ops.migrazione:app", "Sposta stato e backup di prima in ~/.ares"),
 )
 for _nome, _modulo, _aiuto in SOTTOCOMANDI:
     app.command(_modulo, name=_nome, help=_aiuto)

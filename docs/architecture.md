@@ -30,7 +30,12 @@ ares/
 
 `tests/` contiene le prove e il loro runner, `docs/` questa documentazione,
 la radice i file di configurazione degli strumenti e gli script di setup. Lo
-stato appreso sta in `tmp/`, fuori dal controllo versione.
+stato appreso non sta nel clone: vive in `~/.ares/stato`, con gli snapshot in
+`~/.ares/backup`, cosi' `ares` sul PATH lo trova da qualunque cartella e un
+clone si puo' spostare o rifare senza perdere niente. `ARES_HOME`, `ARES_TMP`
+e `ARES_BACKUP_DIR` lo spostano; `ops/migrazione.py` porta li', una volta
+sola, lo stato che una versione precedente teneva in `tmp/` dentro il clone,
+e la chat si ferma finche' non e' successo.
 
 ## Componenti
 
@@ -110,6 +115,10 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
   nominati in `config.py` siano scaricati, senza accendere niente e senza
   lasciare niente su disco;
 - `ops/inspect_learning.py` rilegge gli archivi a modello spento;
+- `ops/migrazione.py` e' `ares migrate`: sposta stato e backup dal posto di
+  prima - `tmp/` nel clone, `ares-backup` accanto - a `~/.ares`, sotto lock
+  esclusivo e come rinomina di directory. Idempotente, e non tocca una
+  destinazione che contiene gia' dei dati. I setup lo chiamano;
 - `backup/snapshots.py` coordina creazione, catalogo e restore degli snapshot
   locali; parser, conferme e output vivono in `backup/cli.py`, formato,
   checksum e verifica in `backup/integrity.py`, staging e rollback in
@@ -156,7 +165,8 @@ va oltre la directory: passa da una shell, tocca percorsi fuori dalla
 directory, chiede privilegi, usa la rete, cancella ricorsivamente
 (`cli/render.py`, `avvertenze_comando`). Non e' un filtro - una lista nera
 si aggira con un alias - ma il pezzo della conferma che dice dove guardare.
-Stato, workspace, backup e `.env` restano fuori dal controllo versione.
+Stato e backup vivono in `~/.ares`, fuori dal clone; `.env` resta nel clone
+ma fuori dal controllo versione.
 
 La memoria durevole non chiede conferma prima di scrivere: `save_learning`,
 `remember_about` e `update_user_memory` scrivono cio' che il modello decide,
