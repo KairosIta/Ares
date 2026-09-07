@@ -4,6 +4,24 @@ Le modifiche rilevanti di Ares sono raccolte in questo file. Il formato segue
 [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e il progetto
 adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
+## [Unreleased]
+
+### Changed
+
+- **I percorsi sono un oggetto costruito a runtime.** `config.Percorsi` -
+  home, stato, backup, cartella di lavoro, utente, con i nomi derivati come
+  proprietà - nasce da `leggi_percorsi`, che legge un ambiente e una
+  directory dati o quelli veri quando viene chiamata, non quando il modulo
+  viene importato. I nomi di sempre, `TMP_DIR`, `DB_FILE`, `BACKUP_DIR`,
+  `WORKSPACE_DIR` e gli altri, restano e sono viste dell'oggetto corrente;
+  `imposta_percorsi` è l'unica porta da cui si sostituisce e li rilega tutti
+  insieme, così non esiste un istante con uno stato nuovo e un lock vecchio.
+  La chat ci passa con la cartella scelta, dove prima assegnava
+  `config.WORKSPACE_DIR` e cinque punti del codice lo trovavano cambiato
+  senza vederne il motivo. Una prova può ora costruire i propri percorsi
+  nello stesso interprete; il runner continua a lanciare un processo per
+  prova, per scelta e non per necessità.
+
 ## [0.6.0] - 2026-09-07
 
 Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-07 su Agno 3.0.5 e

@@ -1732,6 +1732,51 @@ def archivio_privato() -> str:
     return str(len(directory)) + " directory a 700 e " + str(len(database)) + " database a 600, anche se preesistenti"
 
 
+def percorsi_a_runtime() -> str:
+    """I percorsi sono un oggetto costruito quando serve, e si sostituiscono da una porta sola.
+
+    `leggi_percorsi` legge un ambiente dato, non `os.environ`, quindi si
+    prova senza toccare niente: `ARES_HOME` sposta stato e backup insieme,
+    `ARES_TMP` una parte sola, i nomi derivati seguono. `imposta_percorsi`
+    rilega tutti i nomi del modulo: dopo, `DB_FILE` sta dentro il nuovo
+    `TMP_DIR` e il lock accanto, e non esiste un istante in cui i due
+    puntano ad archivi diversi. Alla fine si rimette l'oggetto di prima,
+    perche' il resto della prova legge da li'.
+    """
+    from ares.config import Percorsi, imposta_percorsi, leggi_percorsi
+
+    radice = RADICE_PROVA / "percorsi"
+    casa = radice / "casa"
+    tutto = leggi_percorsi({"ARES_HOME": str(casa), "ARES_USER_ID": "prova-percorsi"}, cwd=radice)
+    esigi(tutto.stato == casa / "stato" and tutto.backup == casa / "backup", "ARES_HOME non sposta stato e backup")
+    esigi(tutto.lavoro == radice and tutto.utente == "prova-percorsi", "cartella o utente non letti")
+    esigi(tutto.db_file == str(casa / "stato" / "kairos.db"), "DB_FILE non deriva dallo stato")
+    esigi(tutto.lock_file == casa / "stato.lock", "il lock non e' accanto allo stato")
+    esigi(tutto.cronologia_file == casa / "stato" / "cronologia_chat.txt", "la cronologia non e' nello stato")
+    parte = leggi_percorsi({"ARES_TMP": str(radice / "solo-stato")}, cwd=radice)
+    esigi(
+        parte.stato == radice / "solo-stato" and parte.backup == Path.home() / ".ares" / "backup",
+        "ARES_TMP sposta troppo",
+    )
+    esigi(isinstance(tutto, Percorsi) and leggi_percorsi({}, cwd=radice).utente == "default", "utente senza default")
+
+    prima = config.PERCORSI
+    imposta_percorsi(tutto)
+    try:
+        esigi(tutto.stato == config.TMP_DIR and tutto.db_file == config.DB_FILE, "TMP_DIR e DB_FILE non seguono")
+        esigi(
+            tutto.backup == config.BACKUP_DIR and tutto.lock_file == config.STATE_LOCK_FILE, "backup o lock non seguono"
+        )
+        esigi(
+            tutto.cronologia_file == config.CRONOLOGIA_FILE and radice == config.WORKSPACE_DIR, "cronologia o cartella"
+        )
+        esigi(config.DEFAULT_USER_ID == "prova-percorsi" and casa == config.ARES_HOME, "utente o home non seguono")
+    finally:
+        imposta_percorsi(prima)
+    esigi(prima.stato == config.TMP_DIR and prima.db_file == config.DB_FILE, "i percorsi di prima non tornano")
+    return "letti da un ambiente dato, derivati coerenti, sostituiti e rimessi da una porta sola"
+
+
 def import_senza_effetti() -> str:
     """Importare `config` non tocca il disco.
 
@@ -1851,6 +1896,7 @@ def main() -> int:
             ("file isolati        ", lambda: file_isolati(args.user)),
             ("indice vettoriale   ", lambda: indice_vettoriale(lm)),
             ("archivio privato    ", lambda: archivio_privato()),
+            ("percorsi a runtime  ", percorsi_a_runtime),
             ("import senza effetti", lambda: import_senza_effetti()),
             ("archivio vero intatto", lambda: archivio_vero_intatto(reale_prima)),
         )

@@ -27,8 +27,8 @@ principale sono verificati automaticamente su Ubuntu e Windows.
   richiede di riscrivere lo store voce per voce, e va provato sul modello di
   dati di Agno prima di promettere che una memoria modificata torni al testo
   precedente e non sparisca;
-- un oggetto dei percorsi costruito a runtime al posto delle costanti di
-  `config.py` lette all'import, primo passo verso prove in-process;
+- prove in-process: `config.imposta_percorsi` lo permette, il runner lancia
+  ancora un processo per prova per l'isolamento che garantisce;
 - profili di configurazione per hardware e finestre di contesto differenti;
 - benchmark ripetibili di latenza, VRAM e affidabilità degli store;
 - copertura automatica più ampia del percorso asincrono;

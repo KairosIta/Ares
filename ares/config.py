@@ -6,11 +6,15 @@ quando previsto, tramite variabili d'ambiente.
 
 Importare questo modulo non tocca il disco: legge `.env` e definisce nomi.
 La directory dello stato la crea `prepara_archivio()`, che chiama chi
-l'archivio lo apre davvero.
+l'archivio lo apre davvero. I percorsi sono un oggetto `Percorsi` costruito
+da `leggi_percorsi` e sostituibile con `imposta_percorsi`, l'unica porta; i
+nomi TMP_DIR, DB_FILE, BACKUP_DIR... sono viste dell'oggetto corrente.
 """
 
 import os
 import shutil
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -430,26 +434,102 @@ CONFERMA_APPRENDIMENTI = True
 # ogni avvio lo stato deve avere un posto che non dipenda da dove si e'
 # scaricato il codice. `ARES_HOME` lo sposta in blocco; `ARES_TMP` e
 # `ARES_BACKUP_DIR` spostano le due parti da sole, ed e' cio' che usano le
-# prove per girare su un archivio usa-e-getta. Letti qui e non nei singoli
-# percorsi: e' una decisione sola.
-ARES_HOME = Path(os.environ.get("ARES_HOME") or Path.home() / ".ares")
-TMP_DIR = Path(os.environ.get("ARES_TMP") or ARES_HOME / "stato")
+# prove per girare su un archivio usa-e-getta.
+#
+# I percorsi sono un oggetto, costruito da `leggi_percorsi` quando viene
+# chiamata e non quando questo modulo viene importato. I nomi di sempre -
+# TMP_DIR, DB_FILE, BACKUP_DIR... - restano, e sono viste dell'oggetto
+# corrente: `imposta_percorsi` e' la porta sola da cui si sostituisce, e
+# rilega tutti i nomi insieme, cosi' non esiste un TMP_DIR nuovo con un
+# DB_FILE vecchio. E' cio' che la chat fa con la cartella scelta, e cio' che
+# una prova puo' fare nello stesso interprete senza rilanciare Python.
+
+
+@dataclass(frozen=True)
+class Percorsi:
+    """Dove sta lo stato, dove i backup, dove si lavora, e per conto di chi."""
+
+    home: Path
+    stato: Path
+    backup: Path
+    lavoro: Path
+    utente: str
+
+    # Il nome del file conserva quello che il progetto aveva prima del
+    # rilascio pubblico, mentre le classi sono state rinominate. Non e' una
+    # svista: sta nella tupla `DATABASE` di backup/integrity.py e quindi
+    # nell'insieme di file che `verifica_snapshot` pretende, cioe' dentro
+    # ogni snapshot gia' creato. Cambiarlo e' una migrazione con bump di
+    # FORMATO_BACKUP e lettura di entrambi i nomi al restore, non una
+    # rinomina - e il nome non arriva mai all'utente.
+    @property
+    def db_file(self) -> str:
+        return str(self.stato / "kairos.db")
+
+    @property
+    def fs_db_file(self) -> str:
+        return str(self.stato / "filesystem.db")
+
+    @property
+    def lancedb_uri(self) -> str:
+        return str(self.stato / "lancedb")
+
+    # Lock fratello della directory dello stato, non al suo interno: il
+    # restore sostituisce l'intera directory e il file che coordina
+    # l'operazione deve restare fermo.
+    @property
+    def lock_file(self) -> Path:
+        return self.stato.with_name(self.stato.name + ".lock")
+
+    # Dentro lo stato per due motivi: le prove sono gia' isolate, e il backup
+    # la copia negli snapshot insieme al resto. Un restore pero' non la
+    # riavvolge: riporta indietro Ares, non chi gli parla. Contiene tutto cio'
+    # che si e' scritto ad Ares; `CronologiaSicura` la crea a 0600 su POSIX.
+    @property
+    def cronologia_file(self) -> Path:
+        return self.stato / "cronologia_chat.txt"
+
+
+def leggi_percorsi(ambiente: Mapping[str, str] | None = None, cwd: Path | None = None) -> Percorsi:
+    """I percorsi di questo avvio, letti dall'ambiente dato o da quello vero.
+
+    `ambiente` e `cwd` esistono per le prove e per chi vuole un secondo
+    insieme di percorsi nello stesso processo; senza, si legge `os.environ`
+    dopo il `.env` e la directory corrente. Se quella non esiste piu' -
+    cancellata da sotto la shell - si ripiega sulla home, che la verifica dei
+    rischi fermera' con un avviso invece di un traceback. Risolta subito: su
+    Windows la directory corrente puo' arrivare con i nomi corti
+    (`RUNNER~1`), e lo stesso percorso scritto in due modi e' la strada per
+    un confronto che fallisce.
+    """
+    env: Mapping[str, str] = os.environ if ambiente is None else ambiente
+    home = Path(env.get("ARES_HOME") or Path.home() / ".ares")
+    if cwd is None:
+        try:
+            cwd = Path(os.getcwd()).resolve()
+        except FileNotFoundError:
+            cwd = Path.home()
+    return Percorsi(
+        home=home,
+        stato=Path(env.get("ARES_TMP") or home / "stato"),
+        backup=Path(env.get("ARES_BACKUP_DIR") or home / "backup"),
+        lavoro=cwd,
+        utente=env.get("ARES_USER_ID", "default"),
+    )
+
+
+PERCORSI = leggi_percorsi()
+ARES_HOME: Path = PERCORSI.home
+TMP_DIR: Path = PERCORSI.stato
 
 # Dove stavano prima. Li legge `ops/migrazione.py`, che li sposta una volta
 # sola; la chat si ferma finche' ci sono dati li' e niente nel posto nuovo,
 # perche' partire con uno stato vuoto accanto a uno pieno li sdoppierebbe.
 VECCHIO_TMP_DIR = BASE_DIR / "tmp"
 VECCHIO_BACKUP_DIR = BASE_DIR.parent / "ares-backup"
-# Il nome del file conserva quello che il progetto aveva prima del rilascio
-# pubblico, mentre le classi sono state rinominate. Non e' una svista: questo
-# nome sta nella tupla `DATABASE` di backup/integrity.py e quindi nell'insieme di file
-# che `verifica_snapshot` pretende, cioe' dentro ogni snapshot gia' creato.
-# Cambiarlo e' una migrazione con bump di FORMATO_BACKUP e lettura di
-# entrambi i nomi al restore, non una rinomina - e il nome non arriva mai
-# all'utente.
-DB_FILE = str(TMP_DIR / "kairos.db")
-FS_DB_FILE = str(TMP_DIR / "filesystem.db")
-LANCEDB_URI = str(TMP_DIR / "lancedb")
+DB_FILE: str = PERCORSI.db_file
+FS_DB_FILE: str = PERCORSI.fs_db_file
+LANCEDB_URI: str = PERCORSI.lancedb_uri
 
 
 def prepara_archivio() -> Path:
@@ -486,14 +566,9 @@ def prepara_archivio() -> Path:
 
 # Snapshot locali dello stato appreso. Accanto allo stato e non dentro,
 # perche' un backup dentro cio' che deve salvare verrebbe copiato
-# ricorsivamente e sparirebbe insieme all'originale. La variabile d'ambiente
-# rende le prove interamente usa-e-getta.
-BACKUP_DIR = Path(os.environ.get("ARES_BACKUP_DIR") or ARES_HOME / "backup")
-
-# Lock fratello della directory dello stato, non al suo interno: il restore
-# sostituisce l'intera directory e il file che coordina l'operazione deve
-# restare fermo.
-STATE_LOCK_FILE = TMP_DIR.with_name(TMP_DIR.name + ".lock")
+# ricorsivamente e sparirebbe insieme all'originale.
+BACKUP_DIR: Path = PERCORSI.backup
+STATE_LOCK_FILE: Path = PERCORSI.lock_file
 
 # Solo il valore suggerito dalla CLI. Nessuno snapshot viene cancellato
 # automaticamente: `backup.py prune` mostra sempre i candidati e chiede una
@@ -519,20 +594,11 @@ BACKUP_PROMEMORIA_GIORNI = 7
 # Cronologia della riga di comando
 # ---------------------------------------------------------------------------
 
-# Sta qui e non accanto alle altre impostazioni della REPL perche' e' un
-# percorso, e i percorsi si decidono dopo TMP_DIR.
-#
-# Dentro tmp/ per due motivi: le prove sono gia' isolate - ognuna sposta
-# ARES_TMP prima di importare config, quindi nessuna puo' scrivere nella
-# cronologia vera - e `backup.py` la copia negli snapshot insieme al resto.
-# Un restore pero' non la riavvolge: riporta indietro Ares, non chi gli parla,
-# e quella dello snapshot torna solo se tmp/ e' andata persa davvero.
-# Contiene tutto cio' che si e' scritto ad Ares. `CronologiaSicura` lo crea a
-# 0600 su POSIX (su Windows conserva la DACL ereditata), tiene una voce JSON
-# per messaggio anche multilinea e coordina con un lock breve le chat aperte
-# insieme. Il vecchio formato GNU Readline viene riletto e migrato alla prima
-# nuova voce.
-CRONOLOGIA_FILE = TMP_DIR / "cronologia_chat.txt"
+# Il percorso sta in `Percorsi.cronologia_file`; qui il formato:
+# `CronologiaSicura` tiene una voce JSON per messaggio anche multilinea e
+# coordina con un lock breve le chat aperte insieme. Il vecchio formato GNU
+# Readline viene riletto e migrato alla prima nuova voce.
+CRONOLOGIA_FILE: Path = PERCORSI.cronologia_file
 
 # Un tetto perche' un file che cresce e basta e' esattamente cio' che questo
 # progetto conta altrove. Il backend lo applica atomicamente a ogni nuova
@@ -558,18 +624,11 @@ CRONOLOGIA_RIGHE = 2000
 # conferma umana, non il codice: per questo la shell sta fra le azioni da
 # confermare e non fra quelle libere.
 #
-# Il valore qui e' il default letto all'import; la chat lo riscrive all'avvio
-# con la cartella scelta e autorizzata. Se la directory corrente non esiste
-# piu' - cancellata da sotto la shell - si ripiega sulla home, che la
-# verifica dei rischi fermera' con un avviso invece di un traceback.
-# Risolto subito: su Windows la directory corrente puo' arrivare con i nomi
-# corti (`RUNNER~1`), e lo stesso percorso scritto in due modi e' la strada
-# per un confronto che fallisce.
+# Il valore e' la directory corrente letta da `leggi_percorsi`; la chat lo
+# sostituisce all'avvio con la cartella scelta e autorizzata, passando da
+# `imposta_percorsi`.
 WORKSPACE = True
-try:
-    WORKSPACE_DIR = Path(os.getcwd()).resolve()
-except FileNotFoundError:
-    WORKSPACE_DIR = Path.home()
+WORKSPACE_DIR: Path = PERCORSI.lavoro
 
 # Il file che, se c'e' nella cartella di lavoro, entra nelle istruzioni del
 # turno: convenzioni del progetto, cosa non toccare, come si lanciano le
@@ -643,7 +702,32 @@ WORKSPACE_READ_BEFORE_WRITE = True
 # Identita'
 # ---------------------------------------------------------------------------
 
-DEFAULT_USER_ID = os.environ.get("ARES_USER_ID", "default")
+DEFAULT_USER_ID: str = PERCORSI.utente
+
+
+def imposta_percorsi(percorsi: Percorsi) -> None:
+    """Sostituisce i percorsi correnti e rilega tutti i nomi che li vedono.
+
+    E' l'unica porta. Prima la chat scriveva `config.WORKSPACE_DIR = radice`
+    e gli altri cinque punti che lo leggevano lo trovavano cambiato: un
+    canale invisibile a chi legge `render.py`. Ora la cartella scelta e' un
+    campo dell'oggetto, e i nomi derivati - DB_FILE da TMP_DIR, il lock, la
+    cronologia - cambiano insieme, cosi' una prova che sposta lo stato nello
+    stesso interprete non lascia un lock che punta all'archivio vero.
+    """
+    global PERCORSI, ARES_HOME, TMP_DIR, DB_FILE, FS_DB_FILE, LANCEDB_URI
+    global BACKUP_DIR, STATE_LOCK_FILE, CRONOLOGIA_FILE, WORKSPACE_DIR, DEFAULT_USER_ID
+    PERCORSI = percorsi
+    ARES_HOME = percorsi.home
+    TMP_DIR = percorsi.stato
+    DB_FILE = percorsi.db_file
+    FS_DB_FILE = percorsi.fs_db_file
+    LANCEDB_URI = percorsi.lancedb_uri
+    BACKUP_DIR = percorsi.backup
+    STATE_LOCK_FILE = percorsi.lock_file
+    CRONOLOGIA_FILE = percorsi.cronologia_file
+    WORKSPACE_DIR = percorsi.lavoro
+    DEFAULT_USER_ID = percorsi.utente
 
 
 def comando_ares(*parole: str) -> str:
