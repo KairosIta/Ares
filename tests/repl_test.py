@@ -217,6 +217,47 @@ def conferme_leggibili() -> str:
     return str(len(comando)) + " elementi resi per intero, citati e con la directory"
 
 
+def conferma_scrittura() -> str:
+    """Un `write_file` su un file esistente mostra cosa cambia, su uno nuovo il contenuto.
+
+    Il contenuto intero di un file riscritto dice tutto tranne la cosa da
+    guardare, cio' che sparisce; un file nuovo non ha un prima. Un percorso
+    fuori dalla radice non viene letto: la conferma non e' un modo per far
+    leggere ad Ares un file che non potrebbe aprire.
+    """
+    radice = RADICE_PROVA / "scrittura"
+    radice.mkdir()
+    (radice / "note.md").write_text("prima riga\nseconda riga\nterza riga\n", encoding="utf-8")
+    esistente = ToolExecution(
+        tool_name=config.WORKSPACE_PREFIX + "write_file",
+        tool_args={"path": "note.md", "content": "prima riga\nseconda riga cambiata\nterza riga\n"},
+    )
+    righe = righe_richiesta(esistente, radice=radice)
+    testo = "\n".join(righe)
+    esigi("differenza con il file esistente" in testo, "un file esistente non mostra la differenza")
+    esigi(
+        "-seconda riga" in testo and "+seconda riga cambiata" in testo, "la differenza non dice cosa cambia:\n" + testo
+    )
+    esigi("@@" in testo and "content:\n" not in testo, "la differenza ricopia il file intero invece del diff")
+
+    nuovo = ToolExecution(
+        tool_name=config.WORKSPACE_PREFIX + "write_file", tool_args={"path": "nuovo.md", "content": "uno\ndue\n"}
+    )
+    testo = "\n".join(righe_richiesta(nuovo, radice=radice))
+    esigi(
+        "differenza" not in testo and "      uno" in testo and "      due" in testo,
+        "un file nuovo non e' mostrato intero",
+    )
+
+    fuori = ToolExecution(
+        tool_name=config.WORKSPACE_PREFIX + "write_file",
+        tool_args={"path": "../../etc/passwd", "content": "x"},
+    )
+    testo = "\n".join(righe_richiesta(fuori, radice=radice))
+    esigi("differenza" not in testo, "un percorso fuori dalla radice viene letto per il diff")
+    return "differenza su un file esistente, contenuto intero su uno nuovo, niente lettura fuori radice"
+
+
 def avvertenze_del_comando() -> str:
     """Le righe di attenzione nominano cio' che un comando fa oltre la directory.
 
@@ -1515,6 +1556,7 @@ def main() -> int:
     falliti, non_conclusivi = esegui(
         (
             ("conferme leggibili  ", conferme_leggibili),
+            ("conferma scrittura  ", conferma_scrittura),
             ("avvertenze comando  ", avvertenze_del_comando),
             ("conferme applicate  ", conferme_applicate),
             ("metriche del turno  ", metriche_del_turno),

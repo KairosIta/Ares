@@ -1,5 +1,6 @@
 """Presentazione degli eventi, delle conferme e delle metriche del turno."""
 
+import difflib
 import shlex
 from pathlib import Path
 
@@ -298,6 +299,41 @@ def _dentro(percorso: str, radice) -> bool:
         return False
 
 
+def _contenuto_esistente(radice, percorso) -> str | None:
+    """Il testo del file che `write_file` sta per sostituire, se c'e' ed e' leggibile."""
+    if radice is None or not isinstance(percorso, str) or not percorso or not _dentro(percorso, radice):
+        return None
+    candidato = Path(radice, percorso)
+    if not candidato.is_file():
+        return None
+    try:
+        return candidato.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def righe_differenza(esistente: str, nuovo: str, percorso: str) -> list:
+    """Cosa cambia in un file che esiste gia', invece del file intero.
+
+    Un `write_file` su un file esistente lo sostituisce da capo, e mostrare
+    il contenuto nuovo per intero direbbe tutto tranne la cosa da guardare:
+    cosa sparisce. Il diff unificato la dice riga per riga, senza troncare -
+    e' cio' che l'utente sta autorizzando.
+    """
+    righe = ["   content: differenza con il file esistente"]
+    for riga in difflib.unified_diff(
+        esistente.splitlines(),
+        nuovo.splitlines(),
+        fromfile=percorso + " (ora)",
+        tofile=percorso + " (dopo)",
+        lineterm="",
+    ):
+        righe.append("      " + riga)
+    if len(righe) == 1:
+        righe.append("      (identico: il file non cambia)")
+    return righe
+
+
 def righe_richiesta(esecuzione, radice=None) -> list:
     """Descrive per intero cio' che si sta per autorizzare.
 
@@ -309,13 +345,19 @@ def righe_richiesta(esecuzione, radice=None) -> list:
     Le righe di attenzione seguono gli argomenti e precedono la directory:
     dicono cosa, in quegli argomenti, va oltre la directory.
     """
-    righe = ["Ares chiede di eseguire: " + str(esecuzione.tool_name)]
+    strumento = str(esecuzione.tool_name or "")
+    righe = ["Ares chiede di eseguire: " + strumento]
     argomenti = esecuzione.tool_args or {}
     if not argomenti:
         righe.append("   (senza argomenti)")
     for nome, valore in argomenti.items():
+        if nome == "content" and strumento.endswith("write_file"):
+            esistente = _contenuto_esistente(radice, argomenti.get("path"))
+            if esistente is not None:
+                righe.extend(righe_differenza(esistente, str(valore), str(argomenti.get("path"))))
+                continue
         righe.extend(righe_argomento(str(nome), valore))
-    if str(esecuzione.tool_name or "").endswith("run_command"):
+    if strumento.endswith("run_command"):
         righe.extend(avvertenze_comando(argomenti.get("args"), radice))
     if radice is not None:
         # Per un `delete_file` il percorso e' relativo alla radice: senza
