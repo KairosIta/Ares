@@ -39,7 +39,7 @@ def separatore(titolo: str) -> None:
     UI.heading(titolo)
 
 
-def _ispeziona(user: str, session: str | None, query: str, file: str | None, prompt: bool) -> None:
+def _ispeziona(user: str, session: str | None, query: str, file: str | None, prompt: bool, modo: str) -> None:
     from ares.agent.assistant import build_assistant
     from ares.agent.prompts import messaggio_di_sistema
     from ares.cli.cartella import nuovo_id_sessione
@@ -74,7 +74,7 @@ def _ispeziona(user: str, session: str | None, query: str, file: str | None, pro
         # restano, ma tolti dallo stdout che qui e' il testo e basta.
         configura_log_agno(False)
         session = session or nuovo_id_sessione(Path.cwd())
-        agent = build_assistant(user_id=user, session_id=session)
+        agent = build_assistant(user_id=user, session_id=session, modo=modo)
         print(messaggio_di_sistema(agent, session_id=session, user_id=user))
         return
 
@@ -137,6 +137,7 @@ def ispeziona(
     query: str = "",
     file: str | None = None,
     prompt: bool = False,
+    modo: config.Modo = config.MODO_PREDEFINITO,
 ) -> None:
     """Profilo, memorie, contesto, entita', intuizioni e file dell'agente.
 
@@ -146,10 +147,11 @@ def ispeziona(
         query: filtra entita' e intuizioni; le intuizioni per somiglianza.
         file: stampa solo il contenuto di questo file del quaderno privato.
         prompt: stampa solo il system message che la chat manderebbe al modello da questa cartella.
+        modo: con --prompt, la modalita' del prompt da stampare: manuale, modifiche, piano o auto.
     """
     try:
         with lock_stato(esclusivo=False):
-            _ispeziona(user, session, query, file, prompt)
+            _ispeziona(user, session, query, file, prompt, modo)
     except StatoOccupato as errore:
         UI.err("Impossibile leggere lo stato di Ares: " + str(errore))
         UI.err("Attendi che backup o restore terminino e riprova.", style="ares.muted")

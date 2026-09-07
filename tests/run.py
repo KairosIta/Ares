@@ -147,12 +147,18 @@ def ambiente_figli() -> dict[str, str]:
     `COVERAGE_PROCESS_START` dice a `coverage.process_startup()` quale
     configurazione usare; `PYTHONPATH` mette a portata il `sitecustomize.py`
     che quella funzione la chiama. Le prove copiano `os.environ` quando
-    lanciano un figlio, quindi la coppia si propaga anche ai nipoti.
+    lanciano un figlio, quindi la terna si propaga anche ai nipoti.
+
+    `COVERAGE_FILE` e' il terzo: coverage scrive `.coverage.<pid>` nella
+    directory corrente del processo, e un figlio lanciato dalla cartella di
+    lavoro usa-e-getta di una prova lo lascerebbe li', dove `combine` non
+    guarda. Un percorso assoluto mette ogni file accanto al pyproject.
     """
     aggiunta = str(RADICE / "tests" / "_copertura")
     esistente = os.environ.get("PYTHONPATH", "")
     return {
         "COVERAGE_PROCESS_START": str(RADICE / "pyproject.toml"),
+        "COVERAGE_FILE": str(RADICE / ".coverage"),
         "PYTHONPATH": aggiunta + os.pathsep + esistente if esistente else aggiunta,
     }
 

@@ -236,7 +236,8 @@ fa da solo lo decide la modalità, come in Claude Code:
 `manuale` è il valore distribuito: ciò che Ares legge — un file, l'output di
 un comando, lo stesso `ARES.md` — può contenere un'istruzione, e una
 scrittura che nessuno guarda può riscrivere uno script o un Makefile. La
-richiesta di conferma mostra per intero cosa sta per succedere. `ares --modo
+richiesta di conferma mostra per intero cosa sta per succedere, e per un file
+che esiste già la differenza riga per riga. `ares --modo
 modifiche` sceglie per una sessione, `/modo piano` cambia a metà
 conversazione sulla stessa sessione, e il modello sa in quale modalità si
 trova. `auto` si sceglie solo con `ares --modo auto`, il banner lo dice in

@@ -106,7 +106,11 @@ def conta_tabelle_lancedb(percorso: Path) -> dict[str, int]:
     """
     try:
         risultato = subprocess.run(
-            [sys.executable, str(Path(__file__).with_name("probe.py")), str(percorso)],
+            # Come modulo e non per percorso: un file lanciato per percorso e'
+            # `__main__` e basta, e la misura di copertura, che segue il
+            # package `ares`, non lo contava; la sonda risultava allo 0% pur
+            # girando a ogni create e verify.
+            [sys.executable, "-m", "ares.backup.probe", str(percorso)],
             capture_output=True,
             text=True,
             timeout=60,

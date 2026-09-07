@@ -435,6 +435,11 @@ def inspect_learning_cli() -> str:
     esigi(str(config.WORKSPACE_DIR.resolve()) in testo, "il prompt non nomina la cartella corrente")
     esigi("<istruzioni_" in testo, "il prompt non contiene le guide degli store di apprendimento")
     esigi(prima == (file_db.stat().st_mtime_ns, file_db.stat().st_size), "--prompt ha modificato l'archivio")
+    uscita = io.StringIO()
+    argv = ["ares-inspect", "--user", UTENTE, "--prompt", "--modo", "piano"]
+    with patch.object(sys, "argv", argv), redirect_stdout(uscita):
+        inspect_learning.main()
+    esigi("Modalita' piano" in uscita.getvalue(), "--prompt --modo piano non mostra il prompt di piano")
     return "cinque sezioni, archivio invariato, --file presente e assente, --prompt intero"
 
 

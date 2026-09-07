@@ -38,6 +38,12 @@ locale non e' stato provato in questo giro.
   `diff`. Il testo mostra anche quanto del prompt e' scritto da Agno in
   inglese, ed e' il punto di partenza per riscriverlo.
 
+- **La conferma di una scrittura mostra la differenza.** Un `write_file` su
+  un file che esiste gia' lo sostituisce da capo, e il contenuto nuovo per
+  intero diceva tutto tranne la cosa da guardare: cosa sparisce. La
+  richiesta mostra ora il diff unificato riga per riga; un file nuovo resta
+  intero, e un percorso fuori dalla radice non viene letto;
+- `ares inspect --prompt --modo piano` stampa il prompt di quella modalita';
 - **Le modalita', come in Claude Code.** `manuale` chiede conferma per
   tutto cio' che lascia una traccia sul disco ed e' il valore distribuito;
   `modifiche` scrive e modifica file da sola e chiede per spostare,
@@ -115,6 +121,12 @@ locale non e' stato provato in questo giro.
 
 ### Fixed
 
+- **La sonda LanceDB e' misurata.** `backup/probe.py` risultava allo 0% pur
+  girando a ogni `create` e `verify`: la misura di copertura segue il
+  package `ares`, e un file lanciato per percorso e' `__main__` e basta.
+  `integrity.py` la lancia come modulo, `-m ares.backup.probe`, e il runner
+  passa `COVERAGE_FILE` assoluto cosi' un figlio non lascia la misura nella
+  cartella usa-e-getta da cui parte;
 - **L'avviso sul cloud dice tutto cio' che esce.** Con la conversazione in
   cloud non escono solo "prompt e risposte": escono i file letti dal
   workspace, l'output dei comandi, profilo e memorie iniettati nel prompt,

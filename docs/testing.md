@@ -76,7 +76,13 @@ suoi discendenti, e prima dell'aggancio `entities/maintenance.py` risultava al
 mandava a scrivere prove per righe che ne avevano già una. L'aggancio è
 `tests/_copertura/sitecustomize.py`, che Python importa da sé all'avvio di
 ogni interprete e che il runner attiva con `COVERAGE_PROCESS_START` solo
-quando misura.
+quando misura, insieme a `COVERAGE_FILE` assoluto, perché un figlio scrive
+la propria misura nella directory corrente e da una cartella usa-e-getta la
+lascerebbe lì. Un figlio va lanciato come modulo, non per percorso: la
+misura segue il package `ares`, e un file eseguito per percorso è `__main__`
+e basta — la sonda LanceDB di `backup` risultava allo 0% pur girando a ogni
+`create` e `verify`, finché `integrity.py` non l'ha lanciata con
+`-m ares.backup.probe`.
 
 Ciò che resta scoperto è quasi tutto composto da gestori d'errore e da rami
 di piattaforma: i percorsi Windows su una macchina Linux, i ripieghi per un
