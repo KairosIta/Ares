@@ -11,7 +11,7 @@ from agno.learn import (
     UserMemoryConfig,
     UserProfileConfig,
 )
-from agno.learn.stores import SessionContextStore
+from agno.learn.stores import EntityMemoryStore, LearnedKnowledgeStore, SessionContextStore, UserMemoryStore
 from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
 
@@ -92,6 +92,78 @@ class AresSessionContextStore(SessionContextStore):
         return risultato
 
 
+class AresUserMemoryStore(UserMemoryStore):
+    """Le memorie, spiegate al modello in italiano e per una persona sola.
+
+    Agno scrive la guida di ogni store in inglese, per un agente generico
+    che puo' avere davanti una squadra. Qui la voce e' quella del resto del
+    prompt, e dice cio' che il modello deve sapere per non sbagliare: che le
+    memorie si aggiornano da sole dopo ogni risposta, che l'utente le vede
+    e puo' annullarle, e quando invece tocca a lui usare lo strumento.
+    """
+
+    def instructions(self) -> str:
+        if not self._should_expose_tools or not self.config.agent_can_update_memories:
+            return ""
+        return (
+            "<istruzioni_memorie>\n"
+            "Le memorie sono osservazioni sulla persona con cui parli: abitudini, vincoli, "
+            "opinioni, cose provate e scartate. Si aggiornano da sole dopo ogni tua risposta, "
+            "e cio' che entra viene mostrato alla persona, che puo' annullarlo. "
+            "update_user_memory serve quando ti chiede esplicitamente di ricordare, correggere "
+            "o dimenticare qualcosa, o quando una memoria che vedi qui sotto e' sbagliata o "
+            "superata: descrivi a parole cosa aggiungere, cambiare o togliere, in italiano.\n"
+            "</istruzioni_memorie>"
+        )
+
+
+class AresEntityMemoryStore(EntityMemoryStore):
+    """Le entita', spiegate in italiano: quattro strumenti e quando usarli."""
+
+    def instructions(self) -> str:
+        if not self._should_expose_tools:
+            return ""
+        return (
+            "<istruzioni_entita>\n"
+            "Le entita' sono persone, progetti, sistemi e prodotti che contano per la persona con "
+            "cui parli, con i loro fatti ed eventi. Non si aggiornano da sole. "
+            "remember_about registra un fatto, un evento, una descrizione o una nota su "
+            "un'entita', per nome: una correzione e' il fatto nuovo, quello contraddetto viene "
+            "ritirato da solo. link_entities registra una relazione fra due entita'. "
+            "search_entities le cerca, e senza query le elenca dalla piu' recente. forget ritira "
+            "un fatto o archivia un'entita' intera. Registra quando impari qualcosa di sostanziale "
+            "su una persona, un progetto o un sistema che servira' in una conversazione futura, "
+            "e scrivilo in italiano.\n"
+            "</istruzioni_entita>"
+        )
+
+
+class AresLearnedKnowledgeStore(LearnedKnowledgeStore):
+    """Le intuizioni, spiegate in italiano e senza regole di squadra.
+
+    La guida di Agno chiede di conservare "obiettivi e politiche del team
+    perche' ne beneficino altri utenti": qui c'e' una persona sola, e quella
+    regola farebbe salvare come intuizione cio' che e' una preferenza.
+    """
+
+    def instructions(self) -> str:
+        if self.config.mode != LearningMode.AGENTIC or not self.config.enable_agent_tools:
+            return super().instructions()
+        return (
+            "<istruzioni_intuizioni>\n"
+            "Le intuizioni sono criteri riutilizzabili imparati lavorando, cercabili per "
+            "somiglianza. Non si aggiornano da sole. search_learnings(query) le cerca: usalo "
+            "prima di rispondere a una domanda di metodo, di scelta o di convenzione, e sempre "
+            "prima di salvarne una, per non duplicarla. save_learning(title, learning, context, "
+            "tags) ne salva una: quando la persona lo chiede esplicitamente - ricorda, salva, "
+            "tieni a mente - o quando hai scoperto da solo qualcosa di non ovvio, riutilizzabile "
+            "e abbastanza concreto da applicarsi. Non salvare fatti grezzi, preferenze della "
+            "persona - quelle sono memorie - o doppioni. Qui c'e' una persona sola: non esistono "
+            "regole di squadra da conservare per altri.\n"
+            "</istruzioni_intuizioni>"
+        )
+
+
 def build_session_context_store(db: SqliteDb, model: Ollama) -> AresSessionContextStore:
     """Costruisce lo store di contesto con retry mirato."""
     return AresSessionContextStore(
@@ -162,9 +234,13 @@ def build_learning_machine(
             ),
         )
 
-    user_memory: UserMemoryConfig | bool = False
+    # Gli store con una guida per il modello si costruiscono qui, con le
+    # classi che la scrivono in italiano: la macchina accetta istanze gia'
+    # fatte e non le completa, quindi db, modello e limiti vanno passati.
+    user_memory: AresUserMemoryStore | bool = False
     if config.LEARN_USER_MEMORY:
-        user_memory = UserMemoryConfig(
+        user_memory_config = UserMemoryConfig(
+            db=db,
             mode=LearningMode.ALWAYS,
             model=learning_model,
             schema=AresMemories if config.DATE_MEMORIE else None,
@@ -178,27 +254,35 @@ def build_learning_machine(
                 "la conversazione che l'ha generata."
             ),
         )
+        user_memory = AresUserMemoryStore(config=user_memory_config)
 
     session_context: AresSessionContextStore | bool = False
     if config.LEARN_SESSION_CONTEXT:
         session_context = build_session_context_store(db, learning_model)
 
-    entity_memory: EntityMemoryConfig | bool = False
+    entity_memory: AresEntityMemoryStore | bool = False
     if config.LEARN_ENTITIES:
-        entity_memory = EntityMemoryConfig(
-            model=learning_model,
-            namespace=namespace_entita(user_id),
-            enable_agent_tools=strumenti,
+        entity_memory = AresEntityMemoryStore(
+            config=EntityMemoryConfig(
+                db=db,
+                model=learning_model,
+                namespace=namespace_entita(user_id),
+                max_updates_per_run=config.MAX_UPDATES_PER_RUN,
+                enable_agent_tools=strumenti,
+            )
         )
 
-    learned_knowledge: LearnedKnowledgeConfig | bool = False
+    learned_knowledge: AresLearnedKnowledgeStore | bool = False
     if config.LEARN_KNOWLEDGE:
-        learned_knowledge = LearnedKnowledgeConfig(
-            knowledge=knowledge,
-            model=learning_model,
-            mode=LearningMode.AGENTIC,
-            namespace=namespace_utente(user_id),
-            enable_agent_tools=strumenti,
+        learned_knowledge = AresLearnedKnowledgeStore(
+            config=LearnedKnowledgeConfig(
+                knowledge=knowledge,
+                model=learning_model,
+                mode=LearningMode.AGENTIC,
+                namespace=namespace_utente(user_id),
+                max_updates_per_run=config.MAX_UPDATES_PER_RUN,
+                enable_agent_tools=strumenti,
+            )
         )
 
     return AresLearningMachine(

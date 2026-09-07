@@ -20,7 +20,9 @@ from ares.agent.prompts import (
     istruzioni_dalla_cartella,
     istruzioni_senza_terminale,
     istruzioni_sugli_strumenti,
+    istruzioni_sul_quaderno,
     istruzioni_sull_ambiente,
+    istruzioni_sulla_memoria,
     istruzioni_sulle_conversazioni,
 )
 from ares.agent.runtime import (
@@ -110,6 +112,8 @@ def build_assistant(
             "in passato, dillo esplicitamente. Vedere da dove viene una "
             "risposta e' quello che rende la memoria affidabile.",
             "Se non sai una cosa, dillo invece di ricostruirla per verosimiglianza.",
+            "Formatta le risposte in Markdown.",
+            *istruzioni_sulla_memoria(),
             *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None),
             *istruzioni_dalla_cartella(spazio.root if spazio is not None else None),
             *istruzioni_sulle_conversazioni(precedenti, cartella=spazio.root if spazio is not None else None),
@@ -117,7 +121,7 @@ def build_assistant(
             "sara' utile in una conversazione futura su un argomento diverso. Una "
             "risposta a una domanda specifica non e' un'intuizione; il criterio che "
             "ha portato a quella risposta lo e'.",
-            fs.instructions(),
+            *istruzioni_sul_quaderno(),
         ],
         learning=build_learning_machine(db=db, knowledge=knowledge, user_id=user_id, strumenti=interattivo),
         post_hooks=[apprendi_a_run_completato] if interattivo else [],
@@ -132,7 +136,10 @@ def build_assistant(
         add_datetime_to_context=True,
         datetime_format=config.DATETIME_FORMAT,
         timezone_identifier="Europe/Rome",
-        markdown=True,
+        # Spento: l'unica cosa che accende e' la riga inglese "Use markdown to
+        # format your answers", detta sopra in italiano. Il renderer della
+        # CLI interpreta il Markdown comunque.
+        markdown=False,
         # Ares e' local-first: nessun metadato di run deve uscire dal processo.
         telemetry=False,
         debug_mode=debug,

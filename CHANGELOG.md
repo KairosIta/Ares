@@ -33,6 +33,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `diff`. Il testo mostra anche quanto del prompt e' scritto da Agno in
   inglese, ed e' il punto di partenza per riscriverlo.
 
+- **Il prompt e' tutto in italiano, e spiega la memoria.** Agno aggiunge
+  da se' le guide degli store di apprendimento, del quaderno e del
+  Markdown, in inglese e per un agente di squadra: "conserva gli obiettivi
+  del team perche' ne beneficino altri utenti". Ares deriva memorie, entita'
+  e intuizioni con una guida in italiano per una persona sola, scrive la
+  propria per il quaderno privato e la riga sul Markdown, e prima degli
+  strumenti dice come funziona la memoria: quali archivi si aggiornano da
+  soli dopo ogni risposta e quali solo con gli strumenti, che cio' che entra
+  in profilo e memorie compare sotto la risposta e si puo' annullare, che
+  cio' che sa viene da conversazioni passate e l'utente di oggi ha la
+  precedenza, e che un risultato oltre la soglia si rilegge a pagine. Le
+  tre righe che restano in inglese - ora, nome, anteprima dei risultati -
+  sono di Agno e non passano da qui;
 - **Ares sa cosa puo' fare da solo e cosa no.** Il paragrafo sullo spazio
   di lavoro e' generato dalle due liste di `config.py`: nomina uno per uno
   gli strumenti che girano in silenzio e quelli che fermano il turno, cosi'

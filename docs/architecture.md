@@ -76,7 +76,9 @@ e la chat si ferma finche' non e' successo.
   senza dipendere dall'interfaccia;
 - `assistant.py` e' la facciata che assembla l'agente e conserva gli import
   pubblici; `runtime.py` costruisce modelli, archivi e strumenti,
-  `learning.py` configura gli store e il post-hook sul run completo,
+  `learning.py` configura gli store e il post-hook sul run completo, e
+  deriva memorie, entita' e intuizioni per scrivere in italiano, e per una
+  persona sola, la guida che Agno mette nel prompt in inglese,
   `prompts.py` apre il prompt con una scheda letta da `config` e dal
   sistema - quale modello fa parlare Ares e se e' locale o cloud, quale
   estrae le memorie, l'embedder, la finestra di contesto, sistema e shell,
@@ -84,8 +86,11 @@ e la chat si ferma finche' non e' successo.
   secondo i modelli, cosi' la promessa sulla privacy compare solo quando
   e' vera; genera dalle due liste di `config` l'elenco di cio' che gira in
   silenzio e di cio' che chiede conferma, dice a `ares -p` che nessuno
-  risponde e niente entra in memoria; poi compone soltanto le istruzioni
-  coerenti con i flag e vi
+  risponde e niente entra in memoria; spiega come funziona la memoria - quali
+  archivi si aggiornano da soli e quali con gli strumenti, che l'utente vede
+  e puo' annullare cio' che entra, come si rileggono i risultati grandi - e
+  il quaderno privato, in italiano al posto del testo di Agno; poi compone
+  soltanto le istruzioni coerenti con i flag e vi
   aggiunge, se c'e', l'`ARES.md` della cartella di lavoro - le regole del
   progetto scritte da chi ci lavora, delimitate e presentate come dati e non
   come ordini, troncate oltre un tetto e dichiarate tali al modello - e le ultime conversazioni nate nella stessa cartella,
