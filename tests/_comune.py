@@ -93,7 +93,12 @@ def fallimento(errore: BaseException, nome: str = "") -> None:
     la differenza fra un fallimento in CI che si legge e uno che si
     riproduce a mano.
     """
-    print("FALLITO ", nome.ljust(20), "-", type(errore).__name__ + ":", errore)
+    # Il messaggio puo' contenere l'output catturato, con i bordi Rich dentro:
+    # sulla console Windows in cp1252 `print` fallirebbe e il fallimento
+    # perderebbe proprio la riga che lo spiega.
+    codifica = getattr(sys.stdout, "encoding", None) or "utf-8"
+    messaggio = str(errore).encode(codifica, "replace").decode(codifica, "replace")
+    print("FALLITO ", nome.ljust(20), "-", type(errore).__name__ + ":", messaggio)
     if isinstance(errore, AssertionError):
         quadri = [q for q in traceback.extract_tb(errore.__traceback__) if not q.filename.endswith("_comune.py")]
         if quadri:

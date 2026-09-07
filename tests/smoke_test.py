@@ -805,8 +805,10 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
         )
         return NON_CONCLUSIVO + "WORKSPACE e' spento in config.py, e nessuna istruzione lo nomina"
 
+    # Tutti e due risolti: su Windows la temp ha il nome corto (`RUNNER~1`)
+    # e `config` la conserva espansa.
     esigi(
-        str(config.WORKSPACE_DIR).startswith(tempfile.gettempdir()),
+        config.WORKSPACE_DIR.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()),
         "la prova sta usando lo spazio di lavoro vero: " + str(config.WORKSPACE_DIR),
     )
     esigi(config.WORKSPACE_DIR.is_dir(), "lo spazio di lavoro non e' stato creato")

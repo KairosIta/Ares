@@ -856,7 +856,9 @@ def chat_cartella() -> str:
     progetto = RADICE_PROVA / "progetto-chat"
     progetto.mkdir()
     (progetto / "ARES.md").write_text("Regole del progetto.\n", encoding="utf-8")
-    input_cli = FintoInput([KeyboardInterrupt])
+    # `/cartella` stampa il percorso su una riga sola anche in una pipe; il
+    # banner a 80 colonne lo manda a capo se e' lungo, come la temp di Windows.
+    input_cli = FintoInput(["/cartella", KeyboardInterrupt])
     uscita = io.StringIO()
     try:
         with (
@@ -872,7 +874,8 @@ def chat_cartella() -> str:
     testo = _piatto(uscita.getvalue())
     esigi(scelta == progetto.resolve(), "--workspace non ha cambiato la cartella di lavoro: " + str(scelta))
     esigi(len(costruiti) == 1, "l'agente non e' stato costruito una volta sola: " + str(len(costruiti)))
-    esigi(str(progetto.resolve()) in testo, "il banner non nomina la cartella: " + repr(testo))
+    esigi(str(progetto.resolve()) in testo, "/cartella non nomina la cartella scelta: " + repr(testo))
+    esigi(progetto.name in testo.split("Cartella di lavoro")[0], "il banner non nomina la cartella: " + repr(testo))
     esigi("ARES.md" in testo, "il banner non dice che c'e' un ARES.md: " + repr(testo))
     return "cartella inesistente, rifiutata e scelta con --workspace"
 
