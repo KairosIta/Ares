@@ -195,7 +195,8 @@ sorvegliato da `tests/agno_contract_test.py`, cosi' il giorno in cui Agno lo
 togliesse questa pagina diventerebbe falsa con una prova rossa invece che in
 silenzio.
 
-Su POSIX lo stato appreso nasce privato: `tmp/` e la directory LanceDB a 0700,
+Su POSIX lo stato appreso nasce privato: `~/.ares`, `stato/` e la directory
+LanceDB a 0700,
 i due database e la cronologia a 0600, come gli snapshot. La directory e' il
 controllo che regge, perche' senza il diritto di attraversarla i modi dei file
 dentro non si raggiungono; i database vengono comunque creati vuoti e con i

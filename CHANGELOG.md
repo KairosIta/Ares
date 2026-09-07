@@ -4,14 +4,99 @@ Le modifiche rilevanti di Ares sono raccolte in questo file. Il formato segue
 [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e il progetto
 adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
-## [Unreleased]
+## [0.5.0] - 2026-09-07
 
-Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-05 su Agno 3.0.5,
-10 prove su 10, con il modello conversazionale locale — cioè la
-configurazione che questa versione distribuisce.
+Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-07 su Agno 3.0.5 e
+LanceDB 0.38.0, 10 prove su 10, sia con il modello conversazionale locale -
+cioè la configurazione che questa versione distribuisce - sia con
+`glm-5.3-flash:cloud` nei due ruoli dal `.env`.
 
 ### Added
 
+- **Ares lavora nella cartella da cui viene lanciato.** Si entra in un
+  progetto e si scrive `ares`, come con Claude Code o Codex: la cartella
+  corrente e' lo spazio di lavoro, oppure lo e' quella di
+  `--workspace PERCORSO`. Non c'e' piu' una directory fissa accanto al clone e
+  `ARES_WORKSPACE` sparisce dal `.env`; una cartella che non esiste e' un
+  errore, non una da creare. Prima di aprire, `cli/cartella.py` elenca i
+  motivi per cui un percorso e' rischioso - radice del disco, home intera,
+  directory di sistema, una cartella che contiene lo stato, i backup o il
+  codice di Ares - e sul terminale chiede di riscriverlo con la stessa
+  conferma scritta della manutenzione; senza terminale una cartella cosi'
+  passa solo se nominata con `--workspace`, altrimenti l'avvio esce con 1. Le
+  istruzioni dicono al modello che la cartella e' il progetto dell'utente,
+  non uno spazio suo: modifica solo cio' che gli viene chiesto. Il banner
+  mostra cartella e ramo git, letto da `.git/HEAD` senza lanciare git;
+- **`ARES.md`**: se c'e' nella cartella entra nelle istruzioni di ogni turno,
+  troncato oltre 32 KB e dichiarato tale al modello. `ares init` ne scrive
+  uno scheletro e non tocca un file esistente. `/cartella` sostituisce
+  `/lavoro`, che resta alias: percorso, ramo, file modificati, `ARES.md` e
+  gli stessi avvisi dell'avvio;
+- **conversazioni legate alla cartella.** Ogni `ares` apre una conversazione
+  nuova, nominata dalla cartella e dal momento (`progetto-20260907-103127`):
+  profilo e memorie ci sono comunque perche' sono per utente, obiettivo,
+  piano e avanzamento partono vuoti. La cartella viaggia con la sessione nei
+  `metadata` dell'agente, che Agno copia nella sessione nuova e lascia com'e'
+  in una ripresa. **`ares resume`** riapre l'ultima conversazione nata in
+  questa cartella e dice data, scambi e prima domanda; **`ares resume
+  --scegli`** le elenca numerate e ne fa scegliere una. `/sessioni` mostra
+  quelle di questa cartella piu' quelle senza cartella, nate prima di questa
+  versione; `/sessioni tutte` allarga alle altre cartelle e dice dove sono
+  nate. All'avvio il modello riceve le ultime conversazioni della stessa
+  cartella con l'id da passare a `read_past_session`, cosi' "dove eravamo
+  rimasti" funziona anche in una conversazione nuova. `--session nome` resta
+  per chi vuole un nome fisso; `principale` e' il ripiego senza spazio di
+  lavoro e resta protetto dalla retention;
+- **`ares -p "domanda"`** fa un turno ed esce: niente banner, lo stdin in
+  pipe si aggiunge alla domanda, le conferme valgono no perche' nessuno puo'
+  rispondere. `git diff | ares -p "scrivi il messaggio di commit"`;
+- **`ares` da qualunque cartella, con lo stato in `~/.ares`.** `setup.sh`
+  crea un link in `~/.local/bin` al comando del venv, `setup.ps1` uno shim
+  `ares.cmd` in `%USERPROFILE%\.local\bin`; `ARES_BIN_DIR` sceglie un'altra
+  directory e, se non e' nel PATH, il setup dice la riga da aggiungere. Non
+  e' un `uv tool install`, che risolverebbe le dipendenze da capo senza
+  guardare `uv.lock`. Lo stato vive in `~/.ares/stato`, gli snapshot in
+  `~/.ares/backup`, fuori dal clone, che si puo' spostare o rifare senza
+  perdere niente; `ARES_HOME` sposta tutto, `ARES_TMP` e `ARES_BACKUP_DIR`
+  una parte sola. **`ares migrate`** porta li', una volta sola, cio' che una
+  versione precedente teneva in `tmp/` nel clone e in `../ares-backup`:
+  rinomina sotto lock esclusivo, idempotente, e non tocca una destinazione
+  che contiene gia' dei dati. I setup lo chiamano, e la chat si ferma con
+  codice 1 finche' lo stato e' ancora nel posto di prima, perche' un archivio
+  vuoto accanto a uno pieno li sdoppierebbe;
+- **un solo comando `ares`** (`cli/app.py`, su Cyclopts): la chat come
+  default, `backup`, `sessions`, `entities`, `preflight`, `inspect` e
+  `migrate` come sottocomandi, `--help` in italiano disegnato con Rich,
+  `--version`. I sottocomandi si registrano per nome di modulo, cosi'
+  `ares backup list` non importa Agno e parte in un decimo di secondo. Sei
+  `argparse.ArgumentParser` scritti a mano spariscono; gli alias
+  `ares-backup`, `ares-sessions`... e `python -m ares.*` restano e passano
+  dalla stessa App, con firma e codici di uscita di prima;
+- **tabelle Rich e `--json` nei comandi di manutenzione.** Elenchi di
+  snapshot, sessioni, entita', modelli del preflight e file del quaderno in
+  tabella, riepiloghi `chiave: valore`, colori del tema; gli errori vanno su
+  stderr. In una pipe la console si allarga alla tabella invece di spezzare
+  le celle a 80 colonne e le righe non vanno a capo, cosi' un nome di
+  snapshot si trova con `grep`. `--json` sui comandi che leggono soltanto:
+  `backup list`, `backup verify`, `sessions status`, `entities audit`,
+  `preflight`;
+- **conferme uniformi** (`cli/conferma.py`): restore, prune, retention delle
+  sessioni e fusione delle entita' chiedono la frase esatta nello stesso
+  modo. Sul terminale con l'editor della chat, in una pipe con `input()`,
+  cosi' la frase si passa da stdin; Ctrl-C e fine dell'input valgono no;
+- **`/sessione`**, **`/metriche`** e **`/debug`** nella chat: la prima mostra
+  la sessione corrente e con un nome ricostruisce l'agente su quella senza
+  riavviare, le altre due accendono e spengono la riga del costo e i log di
+  Agno. I comandi ricevono uno `StatoChat` che il ciclo della REPL rilegge a
+  ogni giro; `/me` e' ora ambiguo fra `/memorie` e `/metriche` e il menu
+  mostra entrambi;
+- `ares inspect` senza `--session` guarda l'ultima conversazione toccata;
+- prove: `cartella di lavoro`, `conversazioni`, `stato della chat` e
+  `conferme scritte` in `repl`; `chat cartella`, `chat sessioni`,
+  `migrazione` e le varianti `--json` in `cli`; l'agente registra la cartella
+  nei metadati in `smoke`. Le prove entrano nella propria cartella con
+  `chdir` invece di una variabile d'ambiente e ne escono prima di
+  cancellarla, perche' su Windows la directory corrente non si cancella;
 - anche il modello per l'estrazione delle memorie si sceglie dal `.env`:
   `ARES_LEARNING_MODEL` col tag `:cloud` manda a `ollama.com` il testo dei
   turni e le memorie gia' salvate, cosi' chi vuole solo modelli cloud puo'
@@ -23,10 +108,120 @@ configurazione che questa versione distribuisce.
   (`config.avviso_cloud`) e dicono quali ruoli escono dalla macchina;
 - prove offline sull'estrazione in cloud: costruzione del modello, avviso
   del preflight con la sola estrazione e con entrambi i ruoli cloud, avviso
-  della chat.
+  della chat;
+- **righe di attenzione nella conferma di un comando.** `run_command` e' il
+  solo strumento che esce dal recinto, e la conferma umana e' il suo unico
+  confine; il comando era gia' mostrato intero, ma riconoscere un `bash -lc`
+  in coda a venti argomenti o un `/etc/hostname` dentro una riga citata era
+  lasciato a chi legge. Sotto gli argomenti compaiono ora, quando ci sono,
+  righe che nominano un fatto: passa da una shell, tocca percorsi fuori
+  dalla directory, chiede privilegi di amministratore, usa la rete,
+  cancella ricorsivamente. La riga passata a una shell viene aperta con
+  `shlex` per guardarci dentro. Non e' un filtro e non blocca niente: una
+  lista nera si aggira con un alias, e la decisione resta a chi legge
+  (`cli/render.py`, `avvertenze_comando`);
+- **conferma di ciò che entra in memoria durevole.** Quando un turno ha
+  scritto in profilo o memorie, dopo l'eco la CLI chiede "Tenere in memoria?
+  [S/n]": Invio tiene, `n` riporta i due store a com'erano prima del turno.
+  Agno non offre una conferma su questi store - `PROPOSE` vale per le sole
+  intuizioni, `HITL` per nessuno - quindi e' costruita a valle: `echo.py`
+  leggeva gia' i due store prima del turno per calcolare l'eco, e ora
+  conserva gli oggetti come li restituiscono gli store (`istantanea`) e li
+  riscrive con `save`, o li cancella con `delete` se prima non c'erano
+  (`ripristina`). Le API degli store inghiottono i propri errori, quindi
+  l'esito non si presume: si rilegge, e un ripristino che non torna uguale
+  viene detto come tale. Tutto o niente per turno, `CONFERMA_APPRENDIMENTI`
+  in `config.py` lo spegne. Era la prima voce della `ROADMAP.md` e quella
+  con il peso maggiore sul modello di sicurezza; `SECURITY.md`,
+  `docs/architecture.md` e `docs/agno.md` descrivono ora questo;
+- workflow **CodeQL** (`.github/workflows/codeql.yml`), query
+  `security-extended` su push, PR e una volta a settimana. Ruff e mypy
+  leggono ogni riga ma cercano altro; CodeQL segue il dato da dove entra a
+  dove viene usato, che e' la classe pertinente a un progetto che apre
+  archivi, compone percorsi e lancia sottoprocessi. Volutamente fuori dai
+  check obbligatori del ruleset su `main`: un suo risultato e' un'ipotesi da
+  leggere, e pretenderlo verde prima di ogni merge trasformerebbe un falso
+  positivo in un blocco che si impara ad aggirare;
+- `tests/agno_contract_test.py` sale da due controlli a quattro, e prende le
+  due superfici di Agno che restavano scoperte. Il **retry del contesto di
+  sessione** - la seconda classe che Ares sovrascrive - era provato dalla
+  sola `learning_reliability_test.py`, che vuole Ollama e quindi in CI non
+  gira mai: il ramo piu' delicato dell'apprendimento era verificato solo a
+  mano. Ora un modello a copione lo attraversa offline nei tre casi che
+  contano - riuscito al primo colpo, mai riuscito fino al tetto, fallito e
+  poi recuperato - sul percorso sincrono e su quello asincrono, e afferma i
+  tre fatti di Agno su cui il retry si regge: `extract_and_save` col suo
+  nome, `context_updated` azzerato e acceso solo dopo un'esecuzione, e il
+  gemello `aextract_and_save`. La divisione con la prova che usa Ollama
+  diventa netta: qui "il retry funziona come scritto", li' "serve davvero, e
+  quanto";
+- e, nella stessa prova, **il limite dichiarato sulla memoria durevole
+  diventa un'invariante sorvegliata**. `SECURITY.md` e
+  `docs/architecture.md` dicono che profilo e memorie si scrivono fuori dal
+  ciclo di conferma; la ragione, verificata sull'API installata, e' che Agno
+  3.0.5 non offre la modalita': `PROPOSE` vale per il solo store delle
+  intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano con un
+  warning e `HITL` e' "reserved for future use" su ogni store. La prova lo
+  afferma, cosi' il giorno in cui Agno cambiasse idea la documentazione
+  diventerebbe falsa con una prova rossa invece che in silenzio. La
+  correzione dei documenti che lasciavano intendere il contrario -
+  `docs/agno.md` proponeva `PROPOSE` come candidato per gli apprendimenti da
+  approvare, senza dire su quale store - e la voce di `ROADMAP.md` per la
+  conferma da costruire in Ares partono da qui;
+- eco di cio' che entra in memoria (`MOSTRA_APPRENDIMENTI`, acceso di
+  default). Il modello scrive nella memoria durevole senza conferma, per due
+  strade: gli strumenti che chiama (`save_learning`, `remember_about`,
+  `update_user_memory`) e l'estrazione automatica dopo la risposta, che
+  aggiorna profilo e memorie senza passare da nessuno strumento visibile.
+  Cio' che entra viene reiniettato in ogni sessione futura, e finora l'unica
+  traccia era l'esito di un tool - "Learning saved: titolo" - o niente. Ora
+  gli strumenti di memoria mostrano gli argomenti che hanno ricevuto, e
+  sotto la risposta compare la differenza fra profilo e memorie prima e
+  dopo il turno, con il testo intero; tace quando il turno non ha scritto
+  niente. `agent/echo.py` legge gli store con le loro API pubbliche prima e
+  dopo, invece di agganciarsi alle funzioni private di Agno che scrivono.
+  Il contesto di sessione resta fuori, perche' cambia a ogni turno per
+  costruzione. Prove in `smoke` (`eco apprendimenti`, `scritture in
+  memoria`) e in `cli` (`chat turno`);
+- prove del ciclo della REPL in questo processo (`chat turno`, `chat ciclo`,
+  `chat avvio` in `tests/cli_test.py`). `chat_repl` prova la REPL da fuori e
+  per restare offline puo' mandarle solo comandi: restava scoperta la meta'
+  che un utente attraversa a ogni frase. Con una `run_turn_cycle` finta al
+  posto del modello sono ora provati i quattro esiti di `esegui_turno`
+  (turno, pausa irrisolta, Ctrl-C, guasto), la riga vuota che non apre un
+  turno, la riga delle metriche, gli avvisi d'avvio - cronologia degradata,
+  modello cloud, promemoria di backup - e i due modi di uscire dal prompt.
+  `ares/cli/chat.py` passa dal 61% al 100% di righe e rami, il totale
+  dall'86% all'88%;
+- due prove di contratto con Agno, offline, in `tests/agno_contract_test.py`
+  (`contratto` nel runner). Ares da' per vere due cose del framework che
+  nessuna prova gli chiedeva: che l'estrazione avvenga una volta per turno,
+  sul run completo - Agno avvia `LearningMachine.process` prima della
+  chiamata al modello, Ares la azzera e la rifa' nel post-hook, che Agno
+  esegue solo a run non in pausa - e che `run → pausa → continue_run` di
+  `turn_core` combaci con la firma e il comportamento di Agno. La prima
+  conta le estrazioni vere su un turno con pausa per conferma e verifica
+  che l'unica riceva il run finale, esito dello strumento e risposta
+  compresi, mentre il run in pausa non lo conteneva. La seconda attraversa
+  il ciclo vero con `workspace_delete_file`: il file sparisce dopo la
+  conferma e non prima, resta dopo un rifiuto con il motivo consegnato al
+  modello, e in entrambi i casi il run riprende con lo stesso `run_id` e
+  finisce. `smoke` provava il post-hook con un run costruito a mano e
+  `chat turno` il ciclo con un `run_turn_cycle` finto: mancava Agno.
 
 ### Changed
 
+- il backup non vieta piu' di sovrapporsi allo spazio di lavoro: con la
+  cartella corrente come workspace, `ares backup create` dalla home deve
+  funzionare;
+- `config.comando_ares` suggerisce `ares` quando e' sul PATH e il percorso nel
+  venv altrimenti; il README usa `ares` ovunque, e i documenti dicono dove
+  vivono stato e snapshot;
+- dipendenze aggiornate con i PR di Dependabot: lancedb 0.38.0, openai 3.8.0,
+  ruff 0.16.6. La 0.38 di LanceDB dichiara due rotture - l'esistenza di una
+  tabella si legge dal manifest e pydantic deve essere v2 - e nessuna tocca
+  Ares: la suite offline e le tre prove con Ollama, che scrivono e rileggono
+  l'indice delle intuizioni, passano sul lock nuovo;
 - la CI misura la copertura anche su Windows. Il runner Windows nasce da
   `setup.ps1`, che installa senza il gruppo dev, e la suite ci girava senza
   misura: i rami Windows di `backup` e `platform_files` risultavano
@@ -103,111 +298,14 @@ configurazione che questa versione distribuisce.
   qualcuno le lancia, e nessuno se ne accorge se smette. Il resto della
   catena e' dimostrabile da fuori; questo pezzo no, e allora si dichiara.
 
-### Added
-
-- **righe di attenzione nella conferma di un comando.** `run_command` e' il
-  solo strumento che esce dal recinto, e la conferma umana e' il suo unico
-  confine; il comando era gia' mostrato intero, ma riconoscere un `bash -lc`
-  in coda a venti argomenti o un `/etc/hostname` dentro una riga citata era
-  lasciato a chi legge. Sotto gli argomenti compaiono ora, quando ci sono,
-  righe che nominano un fatto: passa da una shell, tocca percorsi fuori
-  dalla directory, chiede privilegi di amministratore, usa la rete,
-  cancella ricorsivamente. La riga passata a una shell viene aperta con
-  `shlex` per guardarci dentro. Non e' un filtro e non blocca niente: una
-  lista nera si aggira con un alias, e la decisione resta a chi legge
-  (`cli/render.py`, `avvertenze_comando`);
-- **conferma di ciò che entra in memoria durevole.** Quando un turno ha
-  scritto in profilo o memorie, dopo l'eco la CLI chiede "Tenere in memoria?
-  [S/n]": Invio tiene, `n` riporta i due store a com'erano prima del turno.
-  Agno non offre una conferma su questi store - `PROPOSE` vale per le sole
-  intuizioni, `HITL` per nessuno - quindi e' costruita a valle: `echo.py`
-  leggeva gia' i due store prima del turno per calcolare l'eco, e ora
-  conserva gli oggetti come li restituiscono gli store (`istantanea`) e li
-  riscrive con `save`, o li cancella con `delete` se prima non c'erano
-  (`ripristina`). Le API degli store inghiottono i propri errori, quindi
-  l'esito non si presume: si rilegge, e un ripristino che non torna uguale
-  viene detto come tale. Tutto o niente per turno, `CONFERMA_APPRENDIMENTI`
-  in `config.py` lo spegne. Era la prima voce della `ROADMAP.md` e quella
-  con il peso maggiore sul modello di sicurezza; `SECURITY.md`,
-  `docs/architecture.md` e `docs/agno.md` descrivono ora questo;
-- workflow **CodeQL** (`.github/workflows/codeql.yml`), query
-  `security-extended` su push, PR e una volta a settimana. Ruff e mypy
-  leggono ogni riga ma cercano altro; CodeQL segue il dato da dove entra a
-  dove viene usato, che e' la classe pertinente a un progetto che apre
-  archivi, compone percorsi e lancia sottoprocessi. Volutamente fuori dai
-  check obbligatori del ruleset su `main`: un suo risultato e' un'ipotesi da
-  leggere, e pretenderlo verde prima di ogni merge trasformerebbe un falso
-  positivo in un blocco che si impara ad aggirare;
-- `tests/agno_contract_test.py` sale da due controlli a quattro, e prende le
-  due superfici di Agno che restavano scoperte. Il **retry del contesto di
-  sessione** - la seconda classe che Ares sovrascrive - era provato dalla
-  sola `learning_reliability_test.py`, che vuole Ollama e quindi in CI non
-  gira mai: il ramo piu' delicato dell'apprendimento era verificato solo a
-  mano. Ora un modello a copione lo attraversa offline nei tre casi che
-  contano - riuscito al primo colpo, mai riuscito fino al tetto, fallito e
-  poi recuperato - sul percorso sincrono e su quello asincrono, e afferma i
-  tre fatti di Agno su cui il retry si regge: `extract_and_save` col suo
-  nome, `context_updated` azzerato e acceso solo dopo un'esecuzione, e il
-  gemello `aextract_and_save`. La divisione con la prova che usa Ollama
-  diventa netta: qui "il retry funziona come scritto", li' "serve davvero, e
-  quanto";
-- e, nella stessa prova, **il limite dichiarato sulla memoria durevole
-  diventa un'invariante sorvegliata**. `SECURITY.md` e
-  `docs/architecture.md` dicono che profilo e memorie si scrivono fuori dal
-  ciclo di conferma; la ragione, verificata sull'API installata, e' che Agno
-  3.0.5 non offre la modalita': `PROPOSE` vale per il solo store delle
-  intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano con un
-  warning e `HITL` e' "reserved for future use" su ogni store. La prova lo
-  afferma, cosi' il giorno in cui Agno cambiasse idea la documentazione
-  diventerebbe falsa con una prova rossa invece che in silenzio. La
-  correzione dei documenti che lasciavano intendere il contrario -
-  `docs/agno.md` proponeva `PROPOSE` come candidato per gli apprendimenti da
-  approvare, senza dire su quale store - e la voce di `ROADMAP.md` per la
-  conferma da costruire in Ares partono da qui;
-
-- eco di cio' che entra in memoria (`MOSTRA_APPRENDIMENTI`, acceso di
-  default). Il modello scrive nella memoria durevole senza conferma, per due
-  strade: gli strumenti che chiama (`save_learning`, `remember_about`,
-  `update_user_memory`) e l'estrazione automatica dopo la risposta, che
-  aggiorna profilo e memorie senza passare da nessuno strumento visibile.
-  Cio' che entra viene reiniettato in ogni sessione futura, e finora l'unica
-  traccia era l'esito di un tool - "Learning saved: titolo" - o niente. Ora
-  gli strumenti di memoria mostrano gli argomenti che hanno ricevuto, e
-  sotto la risposta compare la differenza fra profilo e memorie prima e
-  dopo il turno, con il testo intero; tace quando il turno non ha scritto
-  niente. `agent/echo.py` legge gli store con le loro API pubbliche prima e
-  dopo, invece di agganciarsi alle funzioni private di Agno che scrivono.
-  Il contesto di sessione resta fuori, perche' cambia a ogni turno per
-  costruzione. Prove in `smoke` (`eco apprendimenti`, `scritture in
-  memoria`) e in `cli` (`chat turno`);
-- prove del ciclo della REPL in questo processo (`chat turno`, `chat ciclo`,
-  `chat avvio` in `tests/cli_test.py`). `chat_repl` prova la REPL da fuori e
-  per restare offline puo' mandarle solo comandi: restava scoperta la meta'
-  che un utente attraversa a ogni frase. Con una `run_turn_cycle` finta al
-  posto del modello sono ora provati i quattro esiti di `esegui_turno`
-  (turno, pausa irrisolta, Ctrl-C, guasto), la riga vuota che non apre un
-  turno, la riga delle metriche, gli avvisi d'avvio - cronologia degradata,
-  modello cloud, promemoria di backup - e i due modi di uscire dal prompt.
-  `ares/cli/chat.py` passa dal 61% al 100% di righe e rami, il totale
-  dall'86% all'88%;
-- due prove di contratto con Agno, offline, in `tests/agno_contract_test.py`
-  (`contratto` nel runner). Ares da' per vere due cose del framework che
-  nessuna prova gli chiedeva: che l'estrazione avvenga una volta per turno,
-  sul run completo - Agno avvia `LearningMachine.process` prima della
-  chiamata al modello, Ares la azzera e la rifa' nel post-hook, che Agno
-  esegue solo a run non in pausa - e che `run → pausa → continue_run` di
-  `turn_core` combaci con la firma e il comportamento di Agno. La prima
-  conta le estrazioni vere su un turno con pausa per conferma e verifica
-  che l'unica riceva il run finale, esito dello strumento e risposta
-  compresi, mentre il run in pausa non lo conteneva. La seconda attraversa
-  il ciclo vero con `workspace_delete_file`: il file sparisce dopo la
-  conferma e non prima, resta dopo un rifiuto con il motivo consegnato al
-  modello, e in entrambi i casi il run riprende con lo stesso `run_id` e
-  finisce. `smoke` provava il post-hook con un run costruito a mano e
-  `chat turno` il ciclo con un `run_turn_cycle` finto: mancava Agno.
-
 ### Fixed
 
+- il tetto di tempo delle prove offline in `tests/run.py` sale da 180 a 360
+  secondi. La prova `cli` lancia una REPL per sottoprocesso e ognuno importa
+  Agno: sul runner Windows di GitHub sta fra 150 e 165 secondi, e un runner
+  appena piu' lento la dichiarava bloccata, come e' successo alla CI del
+  bump di ruff. Il tetto resta per distinguere una prova bloccata da una
+  lenta, e ora e' il doppio della misura;
 - i controlli di terminale non passano piu' da nessuna via che mostra testo
   scelto dal modello o letto dal workspace. Il filtro ANSI copriva solo lo
   stream della risposta: il pannello di conferma, il nome e l'anteprima
@@ -510,7 +608,8 @@ configurazione che questa versione distribuisce.
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/KairosIta/Ares/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/KairosIta/Ares/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/KairosIta/Ares/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/KairosIta/Ares/compare/v0.2.0...v0.3.0

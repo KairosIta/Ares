@@ -319,9 +319,9 @@ ares backup restore <snapshot>
 ares backup prune --keep 20
 ```
 
-Gli snapshot vivono per default nella directory `ares-backup` accanto al
-clone, non nel repository. Database, indice vettoriale e cronologia restano
-esclusi da Git.
+Gli snapshot vivono per default in `~/.ares/backup`, accanto allo stato e
+fuori dal clone; `ARES_BACKUP_DIR` nel `.env` li sposta altrove. Database,
+indice vettoriale e cronologia restano esclusi da Git.
 
 Il backup resta un comando che dai tu. La chat però se ne accorge: se l'ultimo
 snapshot ha più di `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero
@@ -378,7 +378,7 @@ richiedono naturalmente accesso alla rete. Inoltre, i comandi shell eseguiti
 nel workspace possono usare la rete quando l’utente li autorizza: Ares è un
 agente locale controllato, non una sandbox di sicurezza.
 
-Non committare `tmp/`, snapshot, `.env` o altri dati personali. Per segnalare
+Non committare lo stato appreso, snapshot, `.env` o altri dati personali. Per segnalare
 un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).
 
 ## Documentazione
