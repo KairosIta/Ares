@@ -364,7 +364,7 @@ def backup_cli(_archivio: Path) -> str:
     esigi("Stato precedente salvato in" in testo, "il restore non nomina lo snapshot di sicurezza")
 
     esito, testo = comando("prune", "--keep", "0", "--yes")
-    esigi(esito == 1, "prune con --keep 0 non e' stato rifiutato")
+    esigi(esito == 2, "prune con --keep 0 non e' stato rifiutato con 2: " + str(esito))
     esigi("almeno 1" in testo, "prune non spiega il rifiuto")
 
     esito, testo = comando("prune", "--keep", "99")
@@ -866,7 +866,7 @@ def chat_cartella() -> str:
         redirect_stdout(uscita),
     ):
         esito = chat._esegui_chat(session=SESSIONE, user=UTENTE)
-    esigi(esito == 1, "una cartella rifiutata non esce con 1: " + str(esito))
+    esigi(esito == 2, "una cartella rifiutata non esce con 2: " + str(esito))
     esigi(not costruiti, "l'agente e' stato costruito su una cartella rifiutata")
     esigi("ARES" not in uscita.getvalue(), "il banner compare dopo un rifiuto")
 
@@ -935,7 +935,7 @@ def chat_sessioni() -> str:
     esigi("(nuova)" in testo, "il banner non dice che la conversazione e' nuova: " + repr(testo))
 
     esito, testo = avvio(riprendi=True)
-    esigi(esito == 1 and len(costruiti) == 1, "resume senza conversazioni ha aperto qualcosa")
+    esigi(esito == 2 and len(costruiti) == 1, "resume senza conversazioni ha aperto qualcosa o non esce con 2")
     esigi("Nessuna conversazione in questa cartella" in testo, "resume a vuoto non lo dice: " + repr(testo))
 
     # Seminate nel database della suite e tolte alla fine: `sessioni parziale`,
@@ -962,7 +962,7 @@ def chat_sessioni() -> str:
         esigi(esito == 0 and costruiti[-1]["session_id"] == "ripresa-vecchia", "--scegli non apre la scelta")
         with patch("builtins.input", lambda _etichetta="": ""):
             esito, testo = avvio(riprendi=True, scegli=True)
-        esigi(esito == 1 and "Nessuna conversazione ripresa" in testo, "rinunciare alla scelta apre qualcosa")
+        esigi(esito == 2 and "Nessuna conversazione ripresa" in testo, "rinunciare alla scelta apre qualcosa")
     finally:
         db.delete_sessions([identificativo for identificativo, _, _ in seminate], user_id=UTENTE)
 
@@ -990,7 +990,7 @@ def chat_sessioni() -> str:
     # `auto` con `-p` non parte, e non tocca niente: esce prima della cartella.
     prima = len(costruiti)
     esito, testo = avvio(prompt="riassumi", modo="auto")
-    esigi(esito == 1 and "auto" in testo and len(costruiti) == prima, "-p --modo auto non viene rifiutato")
+    esigi(esito == 2 and "auto" in testo and len(costruiti) == prima, "-p --modo auto non viene rifiutato con 2")
     esito, testo = avvio(modo="piano")
     esigi(esito == 0 and costruiti[-1]["modo"] == "piano" and "piano" in testo, "--modo piano non arriva al banner")
     return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin senza memoria"
@@ -1185,7 +1185,7 @@ def chat_avvio() -> str:
         except SystemExit as fine:
             codice = int(fine.code or 0)
     testo = _piatto(uscita.getvalue())
-    esigi(codice == 1, "un archivio occupato non esce con 1: " + str(codice))
+    esigi(codice == 3, "un archivio occupato non esce con 3: " + str(codice))
     esigi("Impossibile avviare Ares" in testo, "l'archivio occupato non viene detto")
     esigi("backup in corso" in testo, "il motivo dell'occupazione non compare")
     esigi("riprova" in testo, "non viene suggerito di riprovare")
@@ -1198,7 +1198,7 @@ def chat_avvio() -> str:
         # Nessun SystemExit: un Ctrl-C all'avvio e' una scelta, e vale 0.
         chat.main()
     esigi("Avvio interrotto" in _piatto(uscita.getvalue()), "un Ctrl-C durante l'avvio non viene detto")
-    return "lock condiviso, archivio occupato con uscita 1 e Ctrl-C prima della REPL"
+    return "lock condiviso, archivio occupato con uscita 3 e Ctrl-C prima della REPL"
 
 
 def aiuto_senza_effetti() -> str:

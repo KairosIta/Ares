@@ -47,6 +47,7 @@ from ares.agent.runtime import build_db
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
+from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_OCCUPATO, ESITO_RIFIUTO
 from ares.cli.commands import COMANDI, StatoChat, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
 from ares.cli.editor import CliInput
 from ares.cli.log import AGNO_LOGGER_NAMES, configura_log_agno
@@ -263,7 +264,7 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
     if stato.metriche and risposta is not None:
         for riga in righe_metriche(risposta):
             UI.metrics(riga)
-    return 0 if risposta is not None else 1
+    return ESITO_FATTO if risposta is not None else ESITO_GUASTO
 
 
 def _esegui_chat(
@@ -278,13 +279,17 @@ def _esegui_chat(
     prompt: str | None = None,
     modo: str = config.MODO_PREDEFINITO,
 ) -> int:
-    """La chat. Restituisce il codice di uscita: 1 se stato, cartella, sessione o modalita' non vanno, 0 altrimenti."""
+    """La chat. Restituisce il codice di uscita secondo la tabella di `cli/comando.py`.
+
+    1 se lo stato non e' pronto o la cartella non esiste; 2 se la cartella
+    e' rifiutata, non c'e' niente da riprendere o `-p` chiede `auto`.
+    """
     # `auto` con `-p` e' la combinazione che nessuno deve poter scrivere per
     # sbaglio: una pipe con un testo ostile eseguirebbe comandi senza che
     # nessuno guardi. Prima di tutto il resto, cosi' non tocca niente.
     if prompt is not None and modo == "auto":
         UI.line("La modalita' auto non si combina con -p: nessuno vedrebbe cosa viene eseguito.", style="ares.error")
-        return 1
+        return ESITO_RIFIUTO
     # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio
     # vuoto accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
     # risponderebbe come al primo giorno senza che si capisca perche'.
@@ -293,7 +298,7 @@ def _esegui_chat(
         UI.line(ancora_di_la[0], style="ares.warning")
         for riga in ancora_di_la[1:]:
             UI.line(riga, style="ares.muted")
-        return 1
+        return ESITO_GUASTO
 
     # Poi la cartella, perche' e' l'altro passo che puo' dire no: un avvio
     # rifiutato non deve aver toccato niente, nemmeno la directory dello
@@ -305,9 +310,9 @@ def _esegui_chat(
             radice = cartella.scegli(workspace)
         except ValueError as errore:
             UI.line(str(errore), style="ares.error")
-            return 1
+            return ESITO_GUASTO
         if not cartella.autorizza(radice, esplicito=workspace is not None):
-            return 1
+            return ESITO_RIFIUTO
         config.WORKSPACE_DIR = radice
 
     # Poi cio' che scrive: la cronologia della REPL nasce dentro tmp/, che
@@ -319,7 +324,7 @@ def _esegui_chat(
     if session is None:
         session, etichetta = _sessione_da_aprire(user, radice, riprendi=riprendi, scegli=scegli)
         if session is None:
-            return 1
+            return ESITO_RIFIUTO
 
     configura_log_agno(debug)
     agent = build_assistant(user_id=user, session_id=session, debug=debug, interattivo=prompt is None, modo=modo)
@@ -440,10 +445,10 @@ def avvia(
 ) -> int:
     """La chat con la rete intorno: il lock e i tre modi in cui l'avvio non parte.
 
-    Restituisce il codice di uscita. Una cartella rifiutata, niente da
-    riprendere e un archivio occupato valgono 1, perche' uno script che
-    lancia `ares` deve poterlo vedere; un Ctrl-C durante l'avvio vale 0,
-    perche' l'ha deciso l'utente.
+    Restituisce il codice di uscita della tabella di `cli/comando.py`: un
+    archivio occupato vale 3, una cartella rifiutata o niente da riprendere
+    2, perche' uno script che lancia `ares` deve poterli distinguere; un
+    Ctrl-C durante l'avvio vale 0, perche' l'ha deciso l'utente.
     """
     try:
         # Lock condiviso per tutta la vita del processo. Piu' chat possono
@@ -464,7 +469,7 @@ def avvia(
     except StatoOccupato as errore:
         UI.line("Impossibile avviare Ares: " + str(errore), style="ares.error")
         UI.line("Attendi che backup o restore terminino e riprova.", style="ares.muted")
-        return 1
+        return ESITO_OCCUPATO
     except KeyboardInterrupt:
         # Dentro la chat il Ctrl-C e' gia' gestito - dal prompt esce, da un
         # turno lo interrompe. Resta scoperta la costruzione dell'agente, che

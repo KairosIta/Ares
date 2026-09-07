@@ -25,7 +25,7 @@ from cyclopts import Parameter
 
 from ares import config
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
-from ares.cli.comando import nuova_app
+from ares.cli.comando import ESITO_RIFIUTO, esegui_protetto, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI
 from ares.entities.audit import (
@@ -47,7 +47,6 @@ from ares.entities.models import (
     PianoFusione,
     StatisticheFusione,
 )
-from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import namespace_entita
 
 app = nuova_app("entities", "Manutenzione offline delle entita' di Ares")
@@ -264,7 +263,7 @@ def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> i
 
     if not conferma_scritta(piano.conferma):
         UI.line("Conferma non corrispondente: fusione annullata.", style="ares.warning")
-        return 1
+        return ESITO_RIFIUTO
 
     snapshot = crea_snapshot(tipo="pre-merge", acquisisci_lock=False)
     UI.pair("Backup verificato", snapshot.name)
@@ -321,16 +320,7 @@ def merge(
 
 
 def _esegui(azione: Callable[[], int], *, esclusivo: bool) -> int:
-    try:
-        with lock_stato(esclusivo=esclusivo):
-            return azione()
-    except StatoOccupato as errore:
-        UI.err("Impossibile usare lo stato di Ares: " + str(errore))
-        UI.err("Attendi che backup, restore o manutenzione terminino e riprova.", style="ares.muted")
-        return 2
-    except (ErroreManutenzione, ErroreBackup) as errore:
-        UI.err("Manutenzione rifiutata: " + str(errore))
-        return 2
+    return esegui_protetto(azione, esclusivo=esclusivo, rifiuti=(ErroreManutenzione, ErroreBackup))
 
 
 def main(argv: Iterable[str] | None = None) -> int:

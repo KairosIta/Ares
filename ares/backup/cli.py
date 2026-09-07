@@ -19,7 +19,7 @@ from cyclopts import Parameter
 
 from ares import config
 from ares.backup import integrity
-from ares.cli.comando import nuova_app
+from ares.cli.comando import ESITO_RIFIUTO, codice_di, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
 from ares.state.lock import StatoOccupato, lock_stato
@@ -59,7 +59,12 @@ def _op() -> OperazioniBackup:
 
 
 def _protetto(funzione):
-    """Un guasto previsto diventa una riga su stderr e il codice 1, non un traceback."""
+    """Un guasto previsto diventa una riga su stderr e un codice, non un traceback.
+
+    Le operazioni prendono il lock da sole, dentro `snapshots`; qui si
+    traducono soltanto le eccezioni con la tabella di `cli/comando.py`: lo
+    stato occupato vale 3, uno snapshot corrotto o un disco che non scrive 1.
+    """
 
     @functools.wraps(funzione)
     def involucro(*argomenti, **opzioni):
@@ -67,7 +72,7 @@ def _protetto(funzione):
             return funzione(*argomenti, **opzioni)
         except (integrity.ErroreBackup, StatoOccupato, OSError) as errore:
             UI.err("ERRORE: " + str(errore))
-            return 1
+            return codice_di(errore, rifiuti=())
 
     return involucro
 
@@ -168,7 +173,7 @@ def ripristina(snapshot: str, *, yes: bool = False, skip_safety: bool = False) -
     operazioni.verifica_snapshot(percorso, True)
     if not yes and not conferma_scritta(percorso.name, cosa="Lo stato attuale verra' sostituito da questo snapshot."):
         UI.line("Restore annullato.", style="ares.warning")
-        return 2
+        return ESITO_RIFIUTO
     sicurezza = operazioni.ripristina_snapshot(percorso.name, not skip_safety)
     UI.line("Restore completato: " + percorso.name, style="ares.success")
     if sicurezza is not None:
@@ -187,7 +192,8 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
     """
     operazioni = _op()
     if keep < 1:
-        raise integrity.ErroreBackup("--keep deve essere almeno 1")
+        UI.err("ERRORE: --keep deve essere almeno 1")
+        return ESITO_RIFIUTO
     disponibili = operazioni.elenco_snapshot()
     candidati = disponibili[:-keep] if len(disponibili) > keep else []
     if not candidati:
@@ -198,7 +204,7 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
         UI.line("- " + percorso.name)
     if not yes and not conferma_scritta("ELIMINA"):
         UI.line("Prune annullato.", style="ares.warning")
-        return 2
+        return ESITO_RIFIUTO
     # Fra anteprima e conferma potrebbe essere nato uno snapshot. Non eliminare
     # mai qualcosa che l'utente non ha appena visto.
     nomi_visti = [percorso.name for percorso in candidati]

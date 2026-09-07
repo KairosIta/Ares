@@ -21,7 +21,7 @@ from cyclopts import Parameter
 from ares import config
 from ares.agent.runtime import build_db
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
-from ares.cli.comando import nuova_app
+from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_RIFIUTO, esegui_protetto, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
 from ares.sessions.retention import (
@@ -34,7 +34,6 @@ from ares.sessions.retention import (
     seleziona_inattive,
     trova_sessione,
 )
-from ares.state.lock import StatoOccupato, lock_stato
 
 app = nuova_app("sessions", "Retention delle sessioni e dei risultati tool di Ares")
 
@@ -112,7 +111,7 @@ def _confermata(numero: int, yes: bool) -> bool:
 def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> int:
     if not _confermata(len(sessioni), yes):
         UI.line("Cancellazione annullata.", style="ares.warning")
-        return 2
+        return ESITO_RIFIUTO
     snapshot = crea_snapshot(tipo="pre-session-prune", acquisisci_lock=False)
     UI.pair("Backup verificato", snapshot.name)
     comando = config.comando_ares("backup", "restore", snapshot.name)
@@ -140,7 +139,7 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
         if errore.rimaste:
             UI.err("Ancora presenti: " + ", ".join(errore.rimaste), style="ares.text")
         UI.err("Per tornare allo stato di prima della manutenzione: " + comando, style="ares.muted")
-        return 1
+        return ESITO_GUASTO
     UI.line("Sessioni eliminate e verificate: " + str(eliminate), style="ares.success")
     UI.line("Per tornare indietro: " + comando, style="ares.muted")
     return 0
@@ -203,23 +202,19 @@ def _esegui(
     """
     if yes and not apply:
         UI.err("ERRORE: --yes richiede --apply")
-        return 2
+        return ESITO_RIFIUTO
     if not Path(config.DB_FILE).is_file():
         if senza_archivio is not None:
             return senza_archivio()
         UI.line("Nessun archivio di Ares trovato in " + str(config.DB_FILE), style="ares.muted")
-        return 0
-    try:
-        config.prepara_archivio()
-        with lock_stato(esclusivo=apply):
-            return azione()
-    except StatoOccupato as errore:
-        UI.err("Impossibile usare lo stato di Ares: " + str(errore))
-        UI.err("Chiudi la chat e attendi che le altre manutenzioni terminino.", style="ares.muted")
-        return 2
-    except (ErroreRetention, ErroreBackup, OSError) as errore:
-        UI.err("Manutenzione rifiutata: " + str(errore))
-        return 2
+        return ESITO_FATTO
+    config.prepara_archivio()
+    return esegui_protetto(
+        azione,
+        esclusivo=apply,
+        rifiuti=(ErroreRetention, ErroreBackup),
+        riprova="Chiudi la chat e attendi che le altre manutenzioni terminino.",
+    )
 
 
 @app.command

@@ -330,7 +330,10 @@ riscrivere una frase esatta, con lo stesso editor della chat; `--yes` la
 salta, e da uno script la frase si passa su stdin. Quelli che leggono soltanto accettano
 `--json` per gli script: `ares backup list --json`, `ares backup verify
 --json`, `ares sessions status --json`, `ares entities audit --json`,
-`ares preflight --json`. Il codice di uscita non cambia.
+`ares preflight --json`. Il codice di uscita non cambia, ed è lo stesso per
+ogni comando, chat compresa: `0` fatto, `1` guasto, `2` rifiutato — argomenti
+incoerenti, conferma negata, cartella rifiutata, niente da riprendere — e
+`3` stato occupato da un altro processo, da riprovare.
 
 ### Backup
 

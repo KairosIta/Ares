@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ares import config
-from ares.cli.comando import nuova_app
+from ares.cli.comando import ESITO_GUASTO, ESITO_OCCUPATO, nuova_app
 from ares.cli.ui import UI
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.platform_files import rendi_privato
@@ -109,11 +109,11 @@ def migra() -> int:
     except StatoOccupato as errore:
         UI.err("ERRORE: " + str(errore))
         UI.err("Chiudi Ares e riprova.", style="ares.muted")
-        return 1
+        return ESITO_OCCUPATO
     except OSError as errore:
         UI.err("ERRORE: spostamento fallito: " + str(errore))
         UI.err("Niente e' andato perso: cio' che non si e' mosso e' ancora dov'era.", style="ares.muted")
-        return 1
+        return ESITO_GUASTO
     with contextlib.suppress(OSError):
         vecchio_lock.unlink()
     UI.line("Da ora `ares` legge da " + str(config.ARES_HOME) + ", da qualunque cartella.", style="ares.muted")
