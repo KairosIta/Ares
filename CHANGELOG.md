@@ -67,6 +67,22 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **L'avviso sul cloud dice tutto cio' che esce.** Con la conversazione in
+  cloud non escono solo "prompt e risposte": escono i file letti dal
+  workspace, l'output dei comandi, profilo e memorie iniettati nel prompt,
+  le conversazioni passate rilette. Preflight, banner, SECURITY.md,
+  `.env.example` e README lo dicono per intero. `docs/architecture.md` e
+  `docs/agno.md` dicevano ancora che l'estrazione delle memorie resta locale
+  per costruzione: da `ARES_LEARNING_MODEL` non e' piu' vero;
+- allineamenti documentali: `docs/testing.md` diceva che la copertura in CI
+  gira solo su Ubuntu e che il tetto di una prova offline e' di tre minuti
+  (e' su entrambi i sistemi, e sono sei); il README ripeteva per Windows un
+  blocco identico a quello Linux e non nominava `ARES_BIN_DIR`;
+  `CONTRIBUTING.md` chiamava `tmp/` lo stato reale; due refusi nel
+  changelog di 0.5.0. Le due prove con Ollama impostavano `ARES_WORKSPACE`,
+  che nessuno legge piu', e rilanciavano il processo figlio con il clone
+  come directory corrente: ora la cartella di prova. `--help` e' provato
+  su tutti e sette i comandi, `preflight` e `migrate` compresi;
 - **Su Windows Ares riceve l'ora con il fuso.** `zoneinfo` non ha un
   database dei fusi su Windows e `ZoneInfo("Europe/Rome")` falliva: Agno lo
   segnalava con un WARNING e metteva nel prompt un'ora senza fuso. `tzdata`
@@ -333,7 +349,7 @@ cioè la configurazione che questa versione distribuisce - sia con
   Resta un solo vincolo stretto, `agno>=3.0.2,<3.1`, con accanto
   l'incompatibilita' nota che lo motiva. Nessuna versione risolta si e' mossa:
   il diff di `uv.lock` tocca i soli metadati. `CONTRIBUTING.md` dice cosa
-  scrivere quando si aggiunge una dipendenza.;
+  scrivere quando si aggiunge una dipendenza;
 - le prove condividono `tests/_comune.py`: `prepara_ambiente`, che sceglie i
   percorsi usa-e-getta e rifiuta di farlo se `config` e' gia' importato,
   `esigi`, `ok`, `esegui` e `fallimento`. Erano otto copie che divergevano un
@@ -348,7 +364,7 @@ cioè la configurazione che questa versione distribuisce - sia con
   `tests/repl_test.py` (`repl` nel runner). Lo smoke era diventato il posto
   dove finiva ogni prova offline, duemilacinquecento righe in cui
   l'assemblaggio dell'agente e il comportamento di un widget stavano nello
-  stesso elenco; la divisione segue cio' che serve per girare..
+  stesso elenco; la divisione segue cio' che serve per girare.
 - **il modello conversazionale distribuito torna locale.** `MAIN_MODEL` era
   `MODELLO_CLOUD` in `config.py`: chi clonava un progetto che si annuncia
   local-first mandava le proprie conversazioni a `ollama.com` senza averlo

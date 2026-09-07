@@ -138,5 +138,6 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **Context Providers e integrazioni remote:** Agno offre connettori e
   accesso live a fonti esterne. Ares resta deliberatamente Ollama-only:
   l'unico servizio remoto ammesso e' il cloud di Ollama, raggiunto dal
-  daemon locale e solo per il modello conversazionale. Il percorso diretto
+  daemon locale, per il modello conversazionale e, su scelta separata nel
+  `.env`, per quello che estrae le memorie; mai per l'embedding. Il percorso diretto
   di Agno verso `https://ollama.com` con `api_key` non viene usato.

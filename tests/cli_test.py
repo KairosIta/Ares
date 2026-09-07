@@ -1195,7 +1195,7 @@ def chat_avvio() -> str:
 
 
 def aiuto_senza_effetti() -> str:
-    """`--help` non crea l'archivio, per nessuno dei cinque comandi.
+    """`--help` non crea l'archivio, per nessuno dei sette comandi.
 
     Ogni comando chiama `config.prepara_archivio()` dentro la funzione del
     comando e non all'import, perche' `--help` esce dentro Cyclopts prima. Non e' un dettaglio estetico:
@@ -1210,6 +1210,8 @@ def aiuto_senza_effetti() -> str:
         "ares.entities",
         "ares.sessions",
         "ares.ops.inspect_learning",
+        "ares.ops.preflight",
+        "ares.ops.migrazione",
     )
     for comando in comandi:
         pulita = Path(tempfile.mkdtemp(prefix="ares-aiuto-"))

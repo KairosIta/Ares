@@ -157,14 +157,14 @@ figli — `OLLAMA_HOST` è una costante, non una variabile d'ambiente — quindi
 la REPL provata in un processo separato riceve solo righe che cominciano con
 `/`, e una asserzione verifica che nessun turno col modello sia stato aperto.
 
-Il runner interrompe una prova offline dopo tre minuti e una prova con Ollama
+Il runner interrompe una prova offline dopo sei minuti e una prova con Ollama
 dopo quindici. Non sono tempi attesi ma limiti di sicurezza: evitano che un
 deadlock o una dipendenza bloccata consumino indefinitamente il terminale o
 l'intero timeout della CI. Un superamento appare nel riepilogo come fallimento.
 
 Due controlli sorvegliano un'invariante che nessun'altra prova vedrebbe:
 importare `config` non deve creare niente su disco (`smoke`), e `--help` di
-ognuno dei cinque comandi nemmeno (`cli`). Entrambi girano in processi nuovi,
+ognuno dei sette comandi nemmeno (`cli`). Entrambi girano in processi nuovi,
 perché un modulo si importa una volta sola. Sono la rete sotto una riga
 spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
@@ -198,7 +198,8 @@ I comandi mostrano il percorso Linux. Su Windows sostituisci
 
 GitHub Actions esegue due job. `Analisi statica` gira una volta su Ubuntu con
 ruff e mypy; `tests` installa le dipendenze bloccate, verifica lo script di
-setup, compila il codice e lancia `tests/run.py` su Ubuntu e Windows — con
-`--copertura` solo su Ubuntu, perché la copertura di un progetto non dipende
-dal sistema. Le prove con Ollama restano intenzionalmente locali perché
+setup, compila il codice e lancia `tests/run.py --copertura` su Ubuntu e
+Windows: la copertura di un progetto non dipende dal sistema, ma i rami
+Windows di `backup` e `platform_files` esistono per quel sistema e misurati
+solo su Ubuntu risultavano scoperti. Le prove con Ollama restano intenzionalmente locali perché
 richiedono modelli e hardware dedicato.

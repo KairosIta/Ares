@@ -2,10 +2,10 @@
 
 Ares e' un'applicazione Python local-first. La CLI costruisce un agente Agno
 collegato a Ollama, agli store persistenti e a un insieme limitato di
-strumenti. Nessun servizio cloud e' necessario; su scelta, il modello
-conversazionale puo' essere un modello cloud di Ollama, che il daemon locale
-inoltra a `ollama.com`, mentre estrazione delle memorie ed embedding restano
-locali per costruzione.
+strumenti. Nessun servizio cloud e' necessario; su scelta, nel `.env`, il
+modello conversazionale e quello che estrae le memorie possono essere modelli
+cloud di Ollama, che il daemon locale inoltra a `ollama.com`, insieme o
+separatamente. L'embedding resta locale per costruzione.
 
 ## Struttura del codice
 
@@ -25,7 +25,7 @@ ares/
 ├── backup/         snapshot locali: creazione, verifica, restore      (ares backup)
 ├── entities/       audit e fusione delle entita'                      (ares entities)
 ├── sessions/       retention di sessioni e risultati tool             (ares sessions)
-└── ops/            preflight e ispezione a modello spento             (ares preflight, ares inspect)
+└── ops/            preflight, ispezione e migrazione a modello spento (ares preflight, inspect, migrate)
 ```
 
 `tests/` contiene le prove e il loro runner, `docs/` questa documentazione,
@@ -244,6 +244,7 @@ snapshot pre-manutenzione da cui tornare.
 
 ## Configurazione
 
-Le impostazioni versionate sono in `ares/config.py`. Identita' e percorsi locali
-possono essere sovrascritti con le variabili mostrate in `.env.example`; il
-file `.env` del clone non viene pubblicato.
+Le impostazioni versionate sono in `ares/config.py`. Identita', percorsi
+locali e i due modelli - conversazione ed estrazione delle memorie - possono
+essere sovrascritti con le variabili mostrate in `.env.example`; il file
+`.env` del clone non viene pubblicato.

@@ -109,22 +109,27 @@ def e_modello_cloud(nome: str) -> bool:
 def avviso_cloud() -> list[str]:
     """Righe che dicono cosa esce dalla macchina; vuoto se niente esce.
 
-    La prima riga nomina i ruoli cloud e cio' che mandano fuori, la seconda
-    cio' che resta locale. Preflight e chat le stampano tali e quali: un
-    avviso che riguarda dove finiscono le parole deve dire la stessa cosa
-    ovunque lo si legga.
+    Nominano i ruoli cloud, cio' che mandano fuori e cio' che resta locale.
+    Preflight e chat le stampano tali e quali: un avviso che riguarda dove
+    finiscono le parole deve dire la stessa cosa ovunque lo si legga. E deve
+    dire tutto: con la conversazione in cloud non escono solo "prompt e
+    risposte", ma ogni cosa che il modello riceve - i file che legge,
+    l'output dei comandi, profilo e memorie iniettati nel contesto, le
+    conversazioni passate che rilegge.
     """
     conversazione = e_modello_cloud(MAIN_MODEL)
     estrazione = e_modello_cloud(LEARNING_MODEL)
     if conversazione and estrazione:
         return [
-            "Conversazione ed estrazione delle memorie sono cloud: prompt, risposte e memorie",
-            "escono dalla macchina verso ollama.com. Solo l'embedding resta locale.",
+            "Conversazione ed estrazione delle memorie sono cloud: prompt, risposte, file letti, output dei",
+            "comandi, memorie e conversazioni rilette escono dalla macchina verso ollama.com.",
+            "Solo l'embedding resta locale.",
         ]
     if conversazione:
         return [
-            "Il modello conversazionale e' cloud: prompt e risposte escono dalla macchina",
-            "verso ollama.com. Estrazione delle memorie ed embedding restano locali.",
+            "Il modello conversazionale e' cloud: prompt, risposte, file letti, output dei comandi, memorie",
+            "iniettate e conversazioni rilette escono dalla macchina verso ollama.com.",
+            "Estrazione delle memorie ed embedding restano locali.",
         ]
     if estrazione:
         return [
