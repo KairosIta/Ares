@@ -523,8 +523,9 @@ class CliRenderer:
         cartella: str | None = None,
         ramo: str | None = None,
         istruzioni: str | None = None,
+        modo: str | None = None,
     ) -> None:
-        """Il riquadro d'avvio. `cartella`, `ramo` e `istruzioni` compaiono solo se ci sono.
+        """Il riquadro d'avvio. `cartella`, `ramo`, `istruzioni` e `modo` compaiono solo se ci sono.
 
         La cartella e' la prima riga dopo il modello perche' e' la cosa che
         cambia da un avvio all'altro, e la sola che, sbagliata, fa danni.
@@ -542,6 +543,9 @@ class CliRenderer:
             dati.add_row(_testo("cartella", "ares.muted"), dove)
         if istruzioni:
             dati.add_row(_testo("istruzioni", "ares.muted"), _testo(istruzioni, "ares.text"))
+        if modo:
+            stile = "ares.warning" if modo == "auto" else "ares.text"
+            dati.add_row(_testo("modalita'", "ares.muted"), _testo(modo, stile))
         dati.add_row(_testo("sessione", "ares.muted"), _testo(sessione, "ares.text"))
         dati.add_row(_testo("utente", "ares.muted"), _testo(utente, "ares.text"))
         corpo = Group(

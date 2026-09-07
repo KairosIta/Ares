@@ -31,11 +31,14 @@ spazio controllato sul disco senza richiedere API cloud.
   conoscenza riutilizzabile attraverso SQLite e LanceDB.
 - **Apprendimento affidabile:** l’estrazione avviene sul run completo, anche
   dopo una conferma e `continue_run`, con retry mirato sul contesto.
-- **Strumenti controllati:** cronologia, ricerca, quaderno privato e la
-  cartella da cui lanci `ares` come spazio di lavoro. Leggere, elencare e
-  cercare non chiedono niente; scrivere, modificare, spostare, cancellare ed
-  eseguire comandi chiedono conferma uno per uno, con il contenuto per
-  intero, e c'è un avviso prima di aprire una cartella rischiosa.
+- **Strumenti controllati, in quattro modalità:** cronologia, ricerca,
+  quaderno privato e la cartella da cui lanci `ares` come spazio di lavoro.
+  In `manuale` leggere, elencare e cercare non chiedono niente e tutto ciò
+  che lascia una traccia sul disco chiede conferma, con il contenuto per
+  intero; `modifiche` scrive da sola, `piano` legge soltanto, `auto` non
+  chiede mai. `ares --modo` la sceglie, `/modo` la cambia a metà
+  conversazione, e Ares sa in quale si trova. C'è un avviso prima di aprire
+  una cartella rischiosa.
 - **Memoria visibile e revocabile:** sotto ogni risposta compare cosa è
   entrato in profilo e memorie, sia dagli strumenti del modello sia
   dall'estrazione automatica, con il testo intero, e la CLI chiede se
@@ -220,10 +223,24 @@ perché un archivio vuoto accanto a uno pieno li sdoppierebbe.
 
 Ares lavora nella cartella da cui lo lanci, come Claude Code o Codex: entra
 nel progetto e scrivi `ares`. Il banner mostra la cartella e, se è un
-repository, il ramo. Gli strumenti sui file non escono da lì; leggere,
-elencare e cercare non chiedono niente, tutto ciò che lascia una traccia sul
-disco — scrivere, modificare, spostare, cancellare, eseguire un comando —
-chiede conferma uno per uno, mostrando per intero cosa sta per succedere.
+repository, il ramo. Gli strumenti sui file non escono da lì, e quanto Ares
+fa da solo lo decide la modalità, come in Claude Code:
+
+| Modalità    | Da solo                                   | Con conferma                                  |
+| ----------- | ----------------------------------------- | --------------------------------------------- |
+| `manuale`   | leggere, elencare, cercare                | scrivere, modificare, spostare, cancellare, eseguire |
+| `modifiche` | anche scrivere e modificare               | spostare, cancellare, eseguire                |
+| `piano`     | leggere, elencare, cercare                | niente: gli altri strumenti non ci sono       |
+| `auto`      | tutto                                     | niente                                        |
+
+`manuale` è il valore distribuito: ciò che Ares legge — un file, l'output di
+un comando, lo stesso `ARES.md` — può contenere un'istruzione, e una
+scrittura che nessuno guarda può riscrivere uno script o un Makefile. La
+richiesta di conferma mostra per intero cosa sta per succedere. `ares --modo
+modifiche` sceglie per una sessione, `/modo piano` cambia a metà
+conversazione sulla stessa sessione, e il modello sa in quale modalità si
+trova. `auto` si sceglie solo con `ares --modo auto`, il banner lo dice in
+rosso e non si combina con `-p`.
 Se la cartella è rischiosa — la home intera,
 la radice del disco, una directory di sistema, una che contiene lo stato o il
 codice di Ares — te lo dice e chiede di riscrivere il percorso prima di

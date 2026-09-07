@@ -56,6 +56,7 @@ def chat(
     session: str | None = None,
     user: str = config.DEFAULT_USER_ID,
     workspace: Path | None = None,
+    modo: config.Modo = config.MODO_PREDEFINITO,
     debug: bool = False,
     metriche: bool = False,
 ) -> int:
@@ -71,12 +72,16 @@ def chat(
         session: un nome fisso per la sessione, invece di una conversazione nuova.
         user: identificativo dell'utente.
         workspace: la cartella su cui lavorare, se non e' quella corrente.
+        modo: quanto Ares fa da solo: manuale chiede per ogni traccia sul disco, modifiche scrive da solo,
+            piano legge soltanto, auto non chiede mai.
         debug: mostra le chiamate al modello.
         metriche: mostra il costo di ogni turno: finestra occupata, token, secondi.
     """
     from ares.cli.chat import avvia
 
-    return avvia(session=session, user=user, workspace=workspace, debug=debug, metriche=metriche, prompt=prompt)
+    return avvia(
+        session=session, user=user, workspace=workspace, debug=debug, metriche=metriche, prompt=prompt, modo=modo
+    )
 
 
 @app.command
@@ -85,6 +90,7 @@ def resume(
     scegli: bool = False,
     user: str = config.DEFAULT_USER_ID,
     workspace: Path | None = None,
+    modo: config.Modo = config.MODO_PREDEFINITO,
     debug: bool = False,
     metriche: bool = False,
 ) -> int:
@@ -98,12 +104,16 @@ def resume(
         scegli: mostra le conversazioni di questa cartella e ne fa scegliere una.
         user: identificativo dell'utente.
         workspace: la cartella su cui lavorare, se non e' quella corrente.
+        modo: quanto Ares fa da solo: manuale chiede per ogni traccia sul disco, modifiche scrive da solo,
+            piano legge soltanto, auto non chiede mai.
         debug: mostra le chiamate al modello.
         metriche: mostra il costo di ogni turno: finestra occupata, token, secondi.
     """
     from ares.cli.chat import avvia
 
-    return avvia(user=user, workspace=workspace, debug=debug, metriche=metriche, riprendi=True, scegli=scegli)
+    return avvia(
+        user=user, workspace=workspace, debug=debug, metriche=metriche, riprendi=True, scegli=scegli, modo=modo
+    )
 
 
 @app.command

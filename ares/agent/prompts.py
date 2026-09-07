@@ -38,6 +38,24 @@ def _elenco(voci: list[tuple[str, str]]) -> str:
     return ", ".join(verbo + " (" + nome + ")" for nome, verbo in voci)
 
 
+# Cosa ogni modalita' chiede al modello, oltre alle due liste che il paragrafo
+# sugli strumenti gia' traduce. Le chiavi sono quelle di `config.MODALITA`.
+DESCRIZIONE_MODALITA = {
+    "manuale": "leggi da solo, tutto cio' che lascia una traccia sul disco lo autorizza la persona.",
+    "modifiche": "scrivi e modifichi file da solo; spostare, cancellare ed eseguire li autorizza la persona.",
+    "piano": "sola lettura: gli strumenti che lasciano traccia non ci sono. Proponi e spiega, non fare; "
+    "se serve un cambiamento descrivi esattamente cosa faresti, e la persona cambiera' modalita' con /modo.",
+    "auto": "nessuna conferma, ogni strumento gira subito: rileggi due volte cio' che stai per scrivere o "
+    "eseguire, perche' nessuno lo vede prima.",
+}
+
+
+def istruzioni_sulla_modalita(modo: str) -> str:
+    """La riga della scheda sulla modalita' corrente."""
+    config.liste_modalita(modo)
+    return "- Modalita' " + modo + ": " + DESCRIZIONE_MODALITA.get(modo, "") + " Si cambia con /modo."
+
+
 def _shell() -> tuple[str, str]:
     """Il nome della shell di questo sistema e l'esempio per lanciarle una riga."""
     if os.name == "nt":
@@ -84,7 +102,9 @@ def descrizione() -> str:
     )
 
 
-def istruzioni_sull_ambiente(*, user_id: str, session_id: str, radice_lavoro=None) -> list[str]:
+def istruzioni_sull_ambiente(
+    *, user_id: str, session_id: str, radice_lavoro=None, modo: str = config.MODO_PREDEFINITO
+) -> list[str]:
     """La scheda di questo avvio: quali modelli, quanto contesto, quale sistema, chi e dove.
 
     Tutto letto da `config` e dal sistema, niente scritto a mano: una riga
@@ -134,10 +154,12 @@ def istruzioni_sull_ambiente(*, user_id: str, session_id: str, radice_lavoro=Non
         + ". I comandi che lanci girano con i permessi dell'utente, senza sandbox.",
         "- Utente: " + user_id + ". Conversazione: " + session_id + "." + dove,
     ]
+    if radice_lavoro is not None:
+        righe.append(istruzioni_sulla_modalita(modo))
     return ["\n".join(righe)]
 
 
-def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
+def istruzioni_sugli_strumenti(radice_lavoro=None, modo: str = config.MODO_PREDEFINITO) -> list[str]:
     """Restituisce soltanto istruzioni per strumenti presenti nel cablaggio."""
     dette = []
     if config.LEARN_USER_MEMORY and config.MEMORY_AGENT_TOOLS:
@@ -173,8 +195,9 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
             "num_runs se ti bastano i primi scambi."
         )
     if radice_lavoro is not None:
-        silenziosi = strumenti_spazio(config.WORKSPACE_ALLOWED)
-        confermati = strumenti_spazio(config.WORKSPACE_CONFIRM)
+        liste = config.liste_modalita(modo)
+        silenziosi = strumenti_spazio(liste[0])
+        confermati = strumenti_spazio(liste[1])
         dette.append(
             "Lavori nella cartella da cui l'utente ti ha avviato, " + str(radice_lavoro) + ": "
             "e' il suo progetto, con i suoi file, non uno spazio tuo. Gli "
@@ -203,7 +226,7 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
                 "redirezioni, piu' comandi insieme - usa " + _esempio_shell() + ". "
                 "Per leggere, elencare e cercare hai gli strumenti dedicati: la "
                 "shell serve per cio' che loro non sanno fare."
-                if "shell" in config.WORKSPACE_ALLOWED + config.WORKSPACE_CONFIRM
+                if "shell" in liste[0] + liste[1]
                 else ""
             )
         )
@@ -294,7 +317,7 @@ def istruzioni_sul_quaderno() -> list[str]:
     ]
 
 
-def istruzioni_senza_terminale(radice_lavoro=None) -> list[str]:
+def istruzioni_senza_terminale(radice_lavoro=None, modo: str = config.MODO_PREDEFINITO) -> list[str]:
     """Cosa cambia in `ares -p`: nessuno risponde, e niente entra in memoria.
 
     Le conferme valgono no perche' non c'e' chi le dia; dirlo al modello
@@ -303,7 +326,7 @@ def istruzioni_senza_terminale(radice_lavoro=None) -> list[str]:
     entra in profilo e memorie viene mostrato e confermato da chi legge, e
     in una pipe non legge nessuno.
     """
-    confermati = strumenti_spazio(config.WORKSPACE_CONFIRM) if radice_lavoro is not None else []
+    confermati = strumenti_spazio(config.liste_modalita(modo)[1]) if radice_lavoro is not None else []
     testo = (
         "Questo e' un avvio con `ares -p`: un turno solo, lanciato da uno script o "
         "da una pipe, e nessuno puo' rispondere a una tua domanda. "

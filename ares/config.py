@@ -12,6 +12,7 @@ l'archivio lo apre davvero.
 import os
 import shutil
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -587,23 +588,51 @@ WORKSPACE_ISTRUZIONI_MAX_BYTE = 32_000
 # scriviamo noi.
 WORKSPACE_PREFIX = "workspace_"
 
-# Due liste che si escludono: cio' che e' in `allowed` gira in silenzio, cio'
-# che e' in `confirm` mette il turno in pausa e aspetta un si', cio' che non
-# e' in nessuna delle due non viene nemmeno mostrato al modello.
+# Le modalita', come quelle di Claude Code. Ognuna e' una partizione degli
+# otto strumenti dello spazio di lavoro in due liste: cio' che e' nella prima
+# gira in silenzio, cio' che e' nella seconda mette il turno in pausa e
+# aspetta un si', cio' che non e' in nessuna delle due non viene nemmeno
+# mostrato al modello. Il paragrafo del prompt che le descrive e' generato da
+# qui, quindi una modalita' nuova o cambiata non lascia indietro le istruzioni.
 #
-# La riga di confine e' "lascia una traccia sul disco": leggere, elencare e
-# cercare no, e girano in silenzio; tutto il resto si'. Scrivere e modificare
-# stavano di la', con l'idea che un file nuovo nella propria directory non
-# fosse distruttivo. Ma cio' che il modello legge - un file del progetto,
-# l'output di un comando, lo stesso `ARES.md` - puo' contenere un'istruzione,
-# e un'istruzione che scrive senza che nessuno guardi puo' riscrivere
-# `ARES.md`, uno script o un Makefile: non distrugge oggi, esegue domani. La
-# conferma mostra il contenuto per intero, come Claude Code mostra la
-# modifica prima di applicarla. WORKSPACE_READ_BEFORE_WRITE resta: e' l'altra
-# rete, contro il modello che riscrive da zero un file che si e' immaginato.
+#   manuale    leggere, elencare e cercare in silenzio; tutto cio' che lascia
+#              una traccia sul disco chiede conferma. La riga di confine e'
+#              proprio quella: cio' che il modello legge - un file del
+#              progetto, l'output di un comando, lo stesso ARES.md - puo'
+#              contenere un'istruzione, e una scrittura che nessuno guarda
+#              puo' riscrivere ARES.md, uno script o un Makefile: non
+#              distrugge oggi, esegue domani. La conferma mostra il contenuto
+#              per intero, come Claude Code mostra la modifica prima di
+#              applicarla.
+#   modifiche  come "accept edits": scrivere e modificare in silenzio;
+#              spostare, cancellare ed eseguire con conferma. Per chi scrive
+#              codice e legge il diff dopo.
+#   piano      sola lettura: gli strumenti che lasciano traccia non ci sono,
+#              e il prompt chiede al modello di proporre, non di fare.
+#   auto       nessuna conferma. Solo con `ares --modo auto`, mai qui come
+#              valore predefinito e mai con `-p`: una pipe con un testo
+#              ostile eseguirebbe comandi senza che nessuno guardi.
 #
-WORKSPACE_ALLOWED = ["read", "list", "search"]
-WORKSPACE_CONFIRM = ["write", "edit", "move", "delete", "shell"]
+# `ares --modo` sceglie per una sessione, `/modo` cambia a meta' conversazione
+# ricostruendo l'agente sulla stessa sessione. WORKSPACE_READ_BEFORE_WRITE
+# vale in ogni modalita': e' l'altra rete, contro il modello che riscrive da
+# zero un file che si e' immaginato.
+Modo = Literal["manuale", "modifiche", "piano", "auto"]
+MODALITA: dict[str, tuple[list[str], list[str]]] = {
+    "manuale": (["read", "list", "search"], ["write", "edit", "move", "delete", "shell"]),
+    "modifiche": (["read", "list", "search", "write", "edit"], ["move", "delete", "shell"]),
+    "piano": (["read", "list", "search"], []),
+    "auto": (["read", "list", "search", "write", "edit", "move", "delete", "shell"], []),
+}
+MODO_PREDEFINITO: Modo = "manuale"
+
+
+def liste_modalita(modo: str) -> tuple[list[str], list[str]]:
+    """Le due liste - silenziosi, con conferma - della modalita', o ValueError con i nomi validi."""
+    if modo not in MODALITA:
+        raise ValueError("modalita' sconosciuta: " + modo + ". Valide: " + ", ".join(MODALITA))
+    return MODALITA[modo]
+
 
 # Blocca la scrittura su un file esistente finche' l'agente non lo ha letto
 # in questa sessione. E' la rete per il caso in cui il modello si immagini il

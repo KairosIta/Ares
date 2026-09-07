@@ -146,8 +146,8 @@ class AresWorkspace(Workspace):
         self.add_instructions = False
 
 
-def build_workspace() -> AresWorkspace:
-    """Costruisce lo spazio di lavoro sulla cartella scelta all'avvio.
+def build_workspace(modo: str = config.MODO_PREDEFINITO) -> AresWorkspace:
+    """Costruisce lo spazio di lavoro sulla cartella scelta all'avvio, nella modalita' data.
 
     La cartella e' quella dell'utente, decisa e autorizzata da
     `cli/cartella.py` prima di arrivare qui: i rischi - la home, il disco
@@ -158,10 +158,11 @@ def build_workspace() -> AresWorkspace:
     radice = config.WORKSPACE_DIR.resolve()
     if not radice.is_dir():
         raise ValueError("La cartella di lavoro " + str(radice) + " non esiste.")
+    silenziosi, confermati = config.liste_modalita(modo)
     return AresWorkspace(
         radice,
         prefisso=config.WORKSPACE_PREFIX,
-        allowed=config.WORKSPACE_ALLOWED,
-        confirm=config.WORKSPACE_CONFIRM,
+        allowed=silenziosi,
+        confirm=confermati,
         require_read_before_write=config.WORKSPACE_READ_BEFORE_WRITE,
     )

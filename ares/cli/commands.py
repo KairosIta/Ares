@@ -28,6 +28,7 @@ class StatoChat:
     user_id: str
     debug: bool = False
     metriche: bool = False
+    modo: str = config.MODO_PREDEFINITO
 
 
 # ---------------------------------------------------------------------------
@@ -120,10 +121,47 @@ def _comando_sessione(stato: StatoChat, argomento: str):
     if nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
-    stato.agent = build_assistant(user_id=stato.user_id, session_id=nome, debug=stato.debug)
+    stato.agent = build_assistant(user_id=stato.user_id, session_id=nome, debug=stato.debug, modo=stato.modo)
     stato.session_id = nome
     UI.pair("Sessione", nome, style="ares.title")
     UI.line("Il contesto e' quello di questa sessione; profilo e memorie non cambiano.", style="ares.muted")
+
+
+def _comando_modo(stato: StatoChat, argomento: str):
+    """Mostra la modalita' corrente o ne sceglie un'altra, ricostruendo l'agente sulla stessa sessione.
+
+    Le liste degli strumenti sono fissate alla costruzione dello spazio di
+    lavoro, e il prompt le descrive: cambiare modalita' vuol dire rifare
+    l'agente, che costa un decimo di secondo e non tocca la sessione.
+    """
+    alias = ("read", "list", "search", "write", "edit", "move", "delete", "shell")
+    if not argomento:
+        UI.pair("Modalita' corrente", stato.modo)
+        for nome, (silenziosi, confermati) in config.MODALITA.items():
+            nascosti = [a for a in alias if a not in silenziosi and a not in confermati]
+            riga = "  " + nome.ljust(10) + " da soli: " + ", ".join(silenziosi)
+            riga += "; con conferma: " + (", ".join(confermati) or "niente")
+            if nascosti:
+                riga += "; assenti: " + ", ".join(nascosti)
+            UI.line(riga, style="ares.muted")
+        UI.line("/modo <nome> cambia; auto non si sceglie da qui ma con `ares --modo auto`.", style="ares.muted")
+        return
+    nome = argomento.split()[0]
+    if nome == "auto":
+        UI.line("La modalita' auto si sceglie solo all'avvio, con `ares --modo auto`.", style="ares.warning")
+        return
+    try:
+        config.liste_modalita(nome)
+    except ValueError as errore:
+        UI.line(str(errore), style="ares.error")
+        return
+    if nome == stato.modo:
+        UI.line("Sei gia' in modalita' '" + nome + "'.", style="ares.muted")
+        return
+    stato.agent = build_assistant(user_id=stato.user_id, session_id=stato.session_id, debug=stato.debug, modo=nome)
+    stato.modo = nome
+    UI.pair("Modalita'", nome, style="ares.title")
+    UI.line("Stessa sessione, strumenti e prompt della modalita' nuova.", style="ares.muted")
 
 
 def _comando_debug(stato: StatoChat, argomento: str):
@@ -239,6 +277,7 @@ COMANDI = (
     ("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
     ("/file", (), "i file scritti dall'agente", _comando_file),
     ("/cartella", ("/lavoro",), "la cartella di lavoro: percorso, git, ARES.md", _comando_cartella),
+    ("/modo", (), "la modalita' corrente; /modo <nome> passa a manuale, modifiche o piano", _comando_modo),
     ("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
     ("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),
     ("/esci", ("/quit", "/exit"), "termina la sessione", _comando_esci),
