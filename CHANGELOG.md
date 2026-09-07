@@ -8,6 +8,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Ares sa dove si trova e che cosa e'.** Il prompt si apre con una scheda
+  letta dalla configurazione di questo avvio e dal sistema, non scritta a
+  mano: quale modello lo fa parlare e se gira in locale o su `ollama.com`,
+  quale modello estrae profilo e memorie dopo ogni risposta, l'embedder che
+  resta locale, la finestra di contesto in token e quanti scambi ha in vista,
+  sistema operativo e shell, utente, conversazione, cartella di lavoro e
+  ramo git. La descrizione segue i modelli: "nessuna conversazione esce di
+  qui" compare solo se e' vera, altrimenti dice in una riga quale ruolo sta
+  su `ollama.com` e che la persona l'ha scelto. Su Windows l'esempio per
+  lanciare una riga intera e' `['powershell', '-Command', ...]` e non
+  `bash -lc`. La lettura del ramo git da `HEAD` passa da `state/git.py`,
+  cosi' `agent/` non importa `cli/`; le istruzioni non danno piu' un genere
+  all'utente;
 - **`ares inspect --prompt`** stampa il system message intero che la chat
   manderebbe al modello da questa cartella, senza aprire un turno: la
   descrizione e le istruzioni di Ares, poi cio' che Agno aggiunge da se' -

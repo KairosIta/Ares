@@ -5,10 +5,112 @@ cosi' come lo comporrebbe per un turno: e' cio' che `ares inspect --prompt`
 stampa, ed e' l'unico modo di leggere davvero cio' che il modello riceve.
 """
 
+import os
+import platform
 from pathlib import Path
 from typing import Any
 
 from ares import config
+from ares.state.git import ramo_git
+
+
+def _shell() -> tuple[str, str]:
+    """Il nome della shell di questo sistema e l'esempio per lanciarle una riga."""
+    if os.name == "nt":
+        return "PowerShell", "['powershell', '-Command', 'la riga']"
+    return "bash", "['bash', '-lc', 'la riga']"
+
+
+def _esempio_shell() -> str:
+    return _shell()[1]
+
+
+def _ruolo(modello: str, *, locale: str, cloud: str) -> str:
+    """Il nome del modello e cio' che comporta, secondo il tag."""
+    return modello + ", " + (cloud if config.e_modello_cloud(modello) else locale)
+
+
+def descrizione() -> str:
+    """Chi e' Ares, e dove gira davvero.
+
+    La frase sulla privacy e' una promessa, e una promessa che il modello
+    ripete all'utente deve essere vera: con un modello cloud nel `.env` la
+    descrizione dice invece cosa attraversa `ollama.com`, in una riga, e che
+    la scelta e' stata della persona. Il dettaglio sta nella scheda di
+    `istruzioni_sull_ambiente`; qui c'e' l'identita'.
+    """
+    inizio = "Sei Ares, l'assistente personale di una sola persona. "
+    fine = " Ricordi da una conversazione all'altra, e cio' che sai di questa persona l'hai imparato parlandole."
+    conversazione = config.e_modello_cloud(config.MAIN_MODEL)
+    estrazione = config.e_modello_cloud(config.LEARNING_MODEL)
+    if not conversazione and not estrazione:
+        return (
+            inizio + "Giri interamente sulla sua macchina: nessuna delle vostre conversazioni "
+            "esce di qui, e non c'e' nessun servizio remoto dietro di te." + fine
+        )
+    if conversazione and estrazione:
+        remoto = "il modello che ti fa parlare e quello che estrae le memorie stanno"
+    elif conversazione:
+        remoto = "il modello che ti fa parlare sta"
+    else:
+        remoto = "il modello che estrae le memorie dai vostri turni sta"
+    return (
+        inizio + "Il tuo stato vive sulla sua macchina, ma " + remoto + " su ollama.com: cio' che passa "
+        "di li' attraversa un servizio remoto, e la persona lo sa perche' l'ha scelto." + fine
+    )
+
+
+def istruzioni_sull_ambiente(*, user_id: str, session_id: str, radice_lavoro=None) -> list[str]:
+    """La scheda di questo avvio: quali modelli, quanto contesto, quale sistema, chi e dove.
+
+    Tutto letto da `config` e dal sistema, niente scritto a mano: una riga
+    che dicesse "9B locale" resterebbe vera nel file e falsa nel `.env`. Un
+    modello che sa di essere un modello cloud non rassicura l'utente sulla
+    privacy; uno che sa quanti token ha in vista non promette di ricordare
+    cio' che e' gia' uscito dalla finestra; uno che sa la shell non scrive
+    `bash` su Windows.
+    """
+    sistema, _ = _shell()
+    dove = ""
+    if radice_lavoro is not None:
+        ramo = ramo_git(Path(radice_lavoro))
+        dove = " Cartella di lavoro: " + str(radice_lavoro) + (", ramo git " + ramo + "." if ramo else ".")
+    righe = [
+        "Dove sei e con che cosa lavori, letto dalla configurazione di questo avvio:",
+        "- Il modello che ti fa parlare e' "
+        + _ruolo(
+            config.MAIN_MODEL,
+            locale="in locale: gira su questa macchina tramite Ollama, e niente di cio' che leggi o scrivi la lascia.",
+            cloud="un modello cloud: il daemon Ollama di questa macchina lo inoltra a ollama.com, quindi questo "
+            "prompt, la conversazione, i file che apri, l'output dei comandi e le memorie che ti vengono "
+            "mostrate passano da un server remoto.",
+        ),
+        "- Profilo, memorie e contesto di sessione non li scrivi tu: li estrae dopo ogni tua risposta "
+        + (
+            "lo stesso modello."
+            if config.LEARNING_MODEL == config.MAIN_MODEL
+            else _ruolo(
+                config.LEARNING_MODEL,
+                locale="in locale.",
+                cloud="un modello cloud: il testo dei turni e le memorie gia' salvate passano da ollama.com.",
+            )
+        ),
+        "- Le intuizioni sono indicizzate da " + config.EMBEDDER_MODEL + ", che gira sempre in locale.",
+        "- La tua finestra di contesto e' di "
+        + str(config.NUM_CTX)
+        + " token. In vista hai gli ultimi "
+        + str(config.NUM_HISTORY_RUNS)
+        + " scambi di questa conversazione; il resto e' in archivio e non lo ricordi finche' non lo rileggi.",
+        "- Sistema: "
+        + platform.system()
+        + " "
+        + platform.release()
+        + ", shell "
+        + sistema
+        + ". I comandi che lanci girano con i permessi dell'utente, senza sandbox.",
+        "- Utente: " + user_id + ". Conversazione: " + session_id + "." + dove,
+    ]
+    return ["\n".join(righe)]
 
 
 def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
@@ -16,7 +118,7 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
     dette = []
     if config.LEARN_USER_MEMORY and config.MEMORY_AGENT_TOOLS:
         dette.append(
-            "Se una memoria su di lui e' sbagliata, superata o scritta in "
+            "Se una memoria sulla persona con cui parli e' sbagliata, superata o scritta in "
             "inglese, correggila con update_user_memory invece di limitarti a "
             "dirlo: descrivi a parole cosa aggiungere, cambiare o togliere."
         )
@@ -60,12 +162,12 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
             "workspace_run_command vuole il comando spezzato in una lista di "
             "stringhe, una per parola: ['ls', '-la'], non ['ls -la']. Non "
             "passa da una shell, quindi per una riga intera - pipe, "
-            "redirezioni, piu' comandi insieme - usa "
-            "['bash', '-lc', 'la riga']. Per leggere, elencare e cercare hai "
+            "redirezioni, piu' comandi insieme - usa " + _esempio_shell() + ". "
+            "Per leggere, elencare e cercare hai "
             "gli strumenti dedicati, che non chiedono niente a nessuno: la "
             "shell serve per cio' che loro non sanno fare. Prima di modificare un file "
             "leggilo. Cancellare, spostare ed eseguire comandi li deve "
-            "autorizzare l'utente: il turno si ferma e lui decide. Se "
+            "autorizzare l'utente: il turno si ferma finche' non risponde. Se "
             "rifiuta, non cercare una strada diversa per fare la stessa cosa: "
             "chiedi."
         )

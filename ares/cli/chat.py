@@ -64,6 +64,7 @@ from ares.cli.render import (
 )
 from ares.cli.ui import UI
 from ares.ops import migrazione
+from ares.state.git import ramo_git
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
 
@@ -346,7 +347,7 @@ def _esegui_chat(
         sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
         utente=user,
         cartella=str(radice) if radice is not None else None,
-        ramo=cartella.ramo_git(radice) if radice is not None else None,
+        ramo=ramo_git(radice) if radice is not None else None,
         istruzioni=istruzioni,
     )
 

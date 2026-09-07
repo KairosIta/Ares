@@ -15,7 +15,13 @@ from ares.agent.learning import (
     build_learning_machine,
     build_session_context_store,
 )
-from ares.agent.prompts import istruzioni_dalla_cartella, istruzioni_sugli_strumenti, istruzioni_sulle_conversazioni
+from ares.agent.prompts import (
+    descrizione,
+    istruzioni_dalla_cartella,
+    istruzioni_sugli_strumenti,
+    istruzioni_sull_ambiente,
+    istruzioni_sulle_conversazioni,
+)
 from ares.agent.runtime import (
     AresWorkspace,
     build_chat_model,
@@ -77,13 +83,7 @@ def build_assistant(
     return Agent(
         name="Ares",
         add_name_to_context=True,
-        description=(
-            "Sei Ares, l'assistente personale di una sola persona. Giri "
-            "interamente sulla sua macchina: nessuna delle vostre conversazioni "
-            "esce di qui, e non c'e' nessun servizio remoto dietro di te. "
-            "Ricordi da una conversazione all'altra, e cio' che sai di lei l'hai "
-            "imparato parlandole."
-        ),
+        description=descrizione(),
         model=build_chat_model(),
         db=db,
         user_id=user_id,
@@ -92,6 +92,9 @@ def build_assistant(
         tools=[fs.tools()] + ([spazio] if spazio is not None else []),
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
         instructions=[
+            *istruzioni_sull_ambiente(
+                user_id=user_id, session_id=session_id, radice_lavoro=spazio.root if spazio is not None else None
+            ),
             "Rispondi in italiano, sempre, qualunque sia la lingua della domanda.",
             "Adatta il livello di dettaglio a cio' che sai dell'utente: non "
             "spiegare le basi di un ambito in cui e' gia' competente.",

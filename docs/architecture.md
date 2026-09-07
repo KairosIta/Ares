@@ -59,8 +59,7 @@ e la chat si ferma finche' non e' successo.
   la radice del disco, la home, una directory di sistema, una che contiene
   lo stato o il codice di Ares - e li fa confermare con la stessa conferma
   scritta; senza terminale una cartella rischiosa passa solo se nominata
-  con `--workspace`. Legge anche il ramo git da `.git/HEAD`, senza lanciare
-  git, scrive lo scheletro di `ARES.md` per `ares init`, nomina le
+  con `--workspace`. Scrive lo scheletro di `ARES.md` per `ares init`, nomina le
   conversazioni nuove con cartella e momento e presenta l'elenco numerato di
   `ares resume --scegli`;
 - `editor.py` gestisce editor, completamento, input multilinea e cronologia
@@ -78,7 +77,12 @@ e la chat si ferma finche' non e' successo.
 - `assistant.py` e' la facciata che assembla l'agente e conserva gli import
   pubblici; `runtime.py` costruisce modelli, archivi e strumenti,
   `learning.py` configura gli store e il post-hook sul run completo,
-  `prompts.py` compone soltanto le istruzioni coerenti con i flag e vi
+  `prompts.py` apre il prompt con una scheda letta da `config` e dal
+  sistema - quale modello fa parlare Ares e se e' locale o cloud, quale
+  estrae le memorie, l'embedder, la finestra di contesto, sistema e shell,
+  utente, conversazione, cartella e ramo - e sceglie la descrizione
+  secondo i modelli, cosi' la promessa sulla privacy compare solo quando
+  e' vera; poi compone soltanto le istruzioni coerenti con i flag e vi
   aggiunge, se c'e', l'`ARES.md` della cartella di lavoro - le regole del
   progetto scritte da chi ci lavora, troncate oltre un tetto e dichiarate
   tali al modello - e le ultime conversazioni nate nella stessa cartella,
@@ -110,6 +114,9 @@ e la chat si ferma finche' non e' successo.
   di qui e quelle senza cartella, `ares resume` solo quelle di qui;
 - `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato, su
   cui `platform_files.py` uniforma le primitive fra POSIX e Windows.
+- `git.py` legge il ramo corrente da `.git/HEAD`, anche in un worktree, senza
+  lanciare git: serve al banner e alla scheda del prompt, che non devono
+  aspettare un processo ne' fallire dove git non c'e'.
 
 ### Strumenti operativi
 

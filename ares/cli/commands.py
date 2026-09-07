@@ -9,6 +9,7 @@ from ares.agent.assistant import build_assistant, build_filesystem
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili
+from ares.state.git import ramo_git
 from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
 
 
@@ -189,7 +190,7 @@ def _comando_cartella(stato: StatoChat, argomento: str):
         return
     radice = config.WORKSPACE_DIR
     UI.pair("percorso", str(radice), style="ares.cyan")
-    ramo = cartella.ramo_git(radice)
+    ramo = ramo_git(radice)
     if ramo:
         modificati = cartella.file_modificati(radice)
         if modificati is None:
