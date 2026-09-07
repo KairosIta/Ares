@@ -135,8 +135,16 @@ def apprendi_a_run_completato(
     )
 
 
-def build_learning_machine(db: SqliteDb, knowledge: Knowledge | None, user_id: str) -> AresLearningMachine:
-    """Compone gli store attivi secondo i flag in config."""
+def build_learning_machine(
+    db: SqliteDb, knowledge: Knowledge | None, user_id: str, *, strumenti: bool = True
+) -> AresLearningMachine:
+    """Compone gli store attivi secondo i flag in config.
+
+    Con `strumenti=False` gli store restano - il contesto che iniettano nel
+    prompt e' cio' che Ares sa dell'utente - ma non danno al modello gli
+    strumenti per scriverci: e' `ares -p`, dove nessuno legge cio' che
+    entrerebbe in memoria.
+    """
     learning_model = build_learning_model()
 
     user_profile: UserProfileConfig | bool = False
@@ -161,7 +169,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge | None, user_id: s
             model=learning_model,
             schema=AresMemories if config.DATE_MEMORIE else None,
             max_updates_per_run=config.MAX_UPDATES_PER_RUN,
-            enable_agent_tools=config.MEMORY_AGENT_TOOLS,
+            enable_agent_tools=config.MEMORY_AGENT_TOOLS and strumenti,
             instructions=(
                 "Scrivi ogni memoria in italiano, qualunque sia la lingua di questa istruzione. "
                 "Registra osservazioni che non entrano in un campo strutturato: "
@@ -180,6 +188,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge | None, user_id: s
         entity_memory = EntityMemoryConfig(
             model=learning_model,
             namespace=namespace_entita(user_id),
+            enable_agent_tools=strumenti,
         )
 
     learned_knowledge: LearnedKnowledgeConfig | bool = False
@@ -189,6 +198,7 @@ def build_learning_machine(db: SqliteDb, knowledge: Knowledge | None, user_id: s
             model=learning_model,
             mode=LearningMode.AGENTIC,
             namespace=namespace_utente(user_id),
+            enable_agent_tools=strumenti,
         )
 
     return AresLearningMachine(

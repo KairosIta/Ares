@@ -237,9 +237,13 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
     """`ares -p "..."`: un turno, la risposta, fine. Stdin in pipe si aggiunge al testo.
 
     Niente banner e niente avvisi d'avvio: in una pipe conta la risposta.
-    L'apprendimento avviene come in chat; le conferme non hanno nessuno che
-    risponda e valgono no, cosi' uno strumento sensibile non passa mai da un
-    comando lanciato da uno script.
+    Le conferme non hanno nessuno che risponda e valgono no, cosi' uno
+    strumento sensibile non passa mai da un comando lanciato da uno script;
+    e per la stessa ragione niente entra in memoria: l'eco che mostra cio'
+    che e' stato scritto e la domanda se tenerlo hanno bisogno di qualcuno
+    che legga, e qui non c'e'. L'agente nasce senza post-hook e senza
+    strumenti di memoria (`build_assistant(interattivo=False)`), e il
+    prompt glielo dice.
     """
     if not sys.stdin.isatty():
         try:
@@ -311,7 +315,7 @@ def _esegui_chat(
             return 1
 
     configura_log_agno(debug)
-    agent = build_assistant(user_id=user, session_id=session, debug=debug)
+    agent = build_assistant(user_id=user, session_id=session, debug=debug, interattivo=prompt is None)
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
     # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa

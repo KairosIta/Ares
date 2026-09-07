@@ -33,6 +33,38 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `diff`. Il testo mostra anche quanto del prompt e' scritto da Agno in
   inglese, ed e' il punto di partenza per riscriverlo.
 
+- **Ares sa cosa puo' fare da solo e cosa no.** Il paragrafo sullo spazio
+  di lavoro e' generato dalle due liste di `config.py`: nomina uno per uno
+  gli strumenti che girano in silenzio e quelli che fermano il turno, cosi'
+  una lista che cambia non lascia indietro le istruzioni. In `ares -p` un
+  avviso dice che nessuno risponde, quali strumenti verrebbero rifiutati e
+  che niente entra in memoria.
+
+### Changed
+
+- **Scrivere e modificare un file chiedono conferma.** Stavano fra gli
+  strumenti silenziosi, con l'idea che un file nuovo nella propria cartella
+  non fosse distruttivo. Ma cio' che il modello legge - un file del
+  progetto, l'output di un comando, lo stesso `ARES.md` - puo' contenere
+  un'istruzione, e una scrittura che nessuno guarda puo' riscrivere
+  `ARES.md`, uno script o un Makefile: non distrugge oggi, esegue domani.
+  La richiesta mostra il contenuto per intero, come gia' faceva con i
+  comandi. `WORKSPACE_ALLOWED` tiene leggere, elencare e cercare;
+  `WORKSPACE_CONFIRM` tutto cio' che lascia una traccia sul disco;
+- **`ares -p` non scrive in memoria.** Prima l'apprendimento avveniva come
+  in chat, e la domanda "tenere in memoria?" senza nessuno che rispondesse
+  valeva si': uno script o una pipe con un testo ostile scrivevano profilo
+  e memorie in modo durevole. Ora l'agente nasce senza il post-hook che
+  estrae e senza gli strumenti che scrivono negli store
+  (`build_assistant(interattivo=False)`); cio' che Ares sa gia' entra nel
+  contesto come sempre;
+- **`ARES.md` entra come dati, non come ordini.** L'intestazione lo
+  presenta come le regole del progetto scritte da chi ci lavora, da
+  applicare finche' non contraddicono l'utente e mai per eseguire scritture
+  o comandi che l'utente non ha chiesto; il testo sta fra una riga di
+  inizio e una di fine. "Seguile" davanti a un testo altrui era la forma
+  esatta di un'iniezione.
+
 ### Fixed
 
 - **Su Windows Ares riceve l'ora con il fuso.** `zoneinfo` non ha un
@@ -40,8 +72,6 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   segnalava con un WARNING e metteva nel prompt un'ora senza fuso. `tzdata`
   entra fra le dipendenze. Il WARNING, stampato da Rich su stdout, e' stato
   anche cio' che ha fatto fallire la prova di `--prompt` sul runner Windows.
-
-### Changed
 
 - `configura_log_agno` e i nomi dei logger di Agno stanno in `cli/log.py`,
   che non importa niente di Ares: `chat.py` e `commands.py` lo importano da

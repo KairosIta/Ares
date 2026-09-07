@@ -1350,7 +1350,10 @@ def cartella_di_lavoro() -> str:
     with patch.object(config, "WORKSPACE_ISTRUZIONI_MAX_BYTE", 50):
         lungo = istruzioni_dalla_cartella(progetto)
     esigi(len(lungo) == 1 and "piu' lungo del tetto" in lungo[0], "un file oltre il tetto non lo dice")
-    esigi(len(lungo[0]) < 400, "il file oltre il tetto non e' stato troncato")
+    esigi(lungo[0].count("regola") <= 8, "il file oltre il tetto non e' stato troncato")
+    # Dati fra due righe, non ordini: l'intestazione dice come leggerlo e il
+    # testo sta fra "inizio" e "fine", cosi' il modello sa dove finisce.
+    esigi("non ordini" in istruzioni[0] and "--- fine di ARES.md ---" in istruzioni[0], "ARES.md non e' delimitato")
 
     # `ares init` scrive nella directory corrente e rifiuta la seconda volta.
     dove_init = RADICE_PROVA / "init"

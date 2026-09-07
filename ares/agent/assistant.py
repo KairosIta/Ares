@@ -18,6 +18,7 @@ from ares.agent.learning import (
 from ares.agent.prompts import (
     descrizione,
     istruzioni_dalla_cartella,
+    istruzioni_senza_terminale,
     istruzioni_sugli_strumenti,
     istruzioni_sull_ambiente,
     istruzioni_sulle_conversazioni,
@@ -57,6 +58,7 @@ def build_assistant(
     user_id: str = config.DEFAULT_USER_ID,
     session_id: str = "principale",
     debug: bool = False,
+    interattivo: bool = True,
 ) -> Agent:
     """Assembla l'assistente completo senza nascondere dipendenze globali.
 
@@ -65,6 +67,11 @@ def build_assistant(
     ripresa, ed e' cio' che `ares resume` e `/sessioni` leggono. Le altre
     conversazioni della stessa cartella entrano nelle istruzioni per id,
     poche e dalla piu' recente.
+
+    `interattivo=False` e' `ares -p`: nessuno legge l'eco ne' risponde a una
+    conferma, quindi il turno non scrive in memoria - niente post-hook, niente
+    strumenti di memoria - e il modello lo sa dal prompt. Cio' che Ares sa
+    gia' entra nel contesto come sempre.
     """
     db = build_db()
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
@@ -95,6 +102,7 @@ def build_assistant(
             *istruzioni_sull_ambiente(
                 user_id=user_id, session_id=session_id, radice_lavoro=spazio.root if spazio is not None else None
             ),
+            *([] if interattivo else istruzioni_senza_terminale(spazio.root if spazio is not None else None)),
             "Rispondi in italiano, sempre, qualunque sia la lingua della domanda.",
             "Adatta il livello di dettaglio a cio' che sai dell'utente: non "
             "spiegare le basi di un ambito in cui e' gia' competente.",
@@ -111,8 +119,8 @@ def build_assistant(
             "ha portato a quella risposta lo e'.",
             fs.instructions(),
         ],
-        learning=build_learning_machine(db=db, knowledge=knowledge, user_id=user_id),
-        post_hooks=[apprendi_a_run_completato],
+        learning=build_learning_machine(db=db, knowledge=knowledge, user_id=user_id, strumenti=interattivo),
+        post_hooks=[apprendi_a_run_completato] if interattivo else [],
         add_learnings_to_context=True,
         add_history_to_context=True,
         num_history_runs=config.NUM_HISTORY_RUNS,

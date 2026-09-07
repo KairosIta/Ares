@@ -586,14 +586,19 @@ WORKSPACE_PREFIX = "workspace_"
 # che e' in `confirm` mette il turno in pausa e aspetta un si', cio' che non
 # e' in nessuna delle due non viene nemmeno mostrato al modello.
 #
-# La riga di confine e' "distruttivo o pericoloso": scrivere un file nuovo
-# nella propria directory non lo e', cancellare e spostare lo sono, e la
-# shell lo e' sempre perche' e' l'unico strumento che esce dal recinto.
-# L'unica scrittura davvero distruttiva - sovrascrivere un file che esiste -
-# la copre WORKSPACE_READ_BEFORE_WRITE qui sotto.
+# La riga di confine e' "lascia una traccia sul disco": leggere, elencare e
+# cercare no, e girano in silenzio; tutto il resto si'. Scrivere e modificare
+# stavano di la', con l'idea che un file nuovo nella propria directory non
+# fosse distruttivo. Ma cio' che il modello legge - un file del progetto,
+# l'output di un comando, lo stesso `ARES.md` - puo' contenere un'istruzione,
+# e un'istruzione che scrive senza che nessuno guardi puo' riscrivere
+# `ARES.md`, uno script o un Makefile: non distrugge oggi, esegue domani. La
+# conferma mostra il contenuto per intero, come Claude Code mostra la
+# modifica prima di applicarla. WORKSPACE_READ_BEFORE_WRITE resta: e' l'altra
+# rete, contro il modello che riscrive da zero un file che si e' immaginato.
 #
-WORKSPACE_ALLOWED = ["read", "list", "search", "write", "edit"]
-WORKSPACE_CONFIRM = ["move", "delete", "shell"]
+WORKSPACE_ALLOWED = ["read", "list", "search"]
+WORKSPACE_CONFIRM = ["write", "edit", "move", "delete", "shell"]
 
 # Blocca la scrittura su un file esistente finche' l'agente non lo ha letto
 # in questa sessione. E' la rete per il caso in cui il modello si immagini il

@@ -32,8 +32,10 @@ spazio controllato sul disco senza richiedere API cloud.
 - **Apprendimento affidabile:** l’estrazione avviene sul run completo, anche
   dopo una conferma e `continue_run`, con retry mirato sul contesto.
 - **Strumenti controllati:** cronologia, ricerca, quaderno privato e la
-  cartella da cui lanci `ares` come spazio di lavoro, con conferma per le
-  operazioni sensibili e un avviso prima di aprire una cartella rischiosa.
+  cartella da cui lanci `ares` come spazio di lavoro. Leggere, elencare e
+  cercare non chiedono niente; scrivere, modificare, spostare, cancellare ed
+  eseguire comandi chiedono conferma uno per uno, con il contenuto per
+  intero, e c'è un avviso prima di aprire una cartella rischiosa.
 - **Memoria visibile e revocabile:** sotto ogni risposta compare cosa è
   entrato in profilo e memorie, sia dagli strumenti del modello sia
   dall'estrazione automatica, con il testo intero, e la CLI chiede se
@@ -215,8 +217,11 @@ perché un archivio vuoto accanto a uno pieno li sdoppierebbe.
 
 Ares lavora nella cartella da cui lo lanci, come Claude Code o Codex: entra
 nel progetto e scrivi `ares`. Il banner mostra la cartella e, se è un
-repository, il ramo. Gli strumenti sui file non escono da lì; i comandi shell
-chiedono conferma uno per uno. Se la cartella è rischiosa — la home intera,
+repository, il ramo. Gli strumenti sui file non escono da lì; leggere,
+elencare e cercare non chiedono niente, tutto ciò che lascia una traccia sul
+disco — scrivere, modificare, spostare, cancellare, eseguire un comando —
+chiede conferma uno per uno, mostrando per intero cosa sta per succedere.
+Se la cartella è rischiosa — la home intera,
 la radice del disco, una directory di sistema, una che contiene lo stato o il
 codice di Ares — te lo dice e chiede di riscrivere il percorso prima di
 partire; da uno script senza terminale una cartella così si apre solo
@@ -229,8 +234,10 @@ ares --workspace ~/progetti/demo
 
 Se nella cartella c'è un `ARES.md`, Ares lo legge prima del primo turno: è
 il posto per le convenzioni del progetto, cosa non toccare, come si lanciano
-le prove. `ares init` ne scrive uno scheletro nella cartella corrente e non
-tocca un file che esiste già.
+le prove. Lo riceve come regole del progetto, delimitate, non come ordini
+tuoi: le applica finché non contraddicono ciò che gli chiedi, e nulla che
+scriva o lanci comandi parte per conto del file. `ares init` ne scrive uno
+scheletro nella cartella corrente e non tocca un file che esiste già.
 
 Ogni `ares` apre una conversazione nuova, che nasce nella cartella e la
 ricorda: profilo e memorie ci sono comunque, perché sono tuoi e non della
@@ -252,8 +259,10 @@ ares --session progetto-demo
 ```
 
 Per una risposta sola, anche dentro una pipe, `-p`: stdin si aggiunge alla
-domanda e le operazioni che chiederebbero conferma vengono rifiutate, perché
-non c'è nessuno a rispondere.
+domanda, le operazioni che chiederebbero conferma vengono rifiutate e niente
+entra in memoria, perché non c'è nessuno a rispondere né a leggere cosa
+sarebbe entrato. Ares lo sa dal prompt: ciò che già ricorda di te c'è, ciò
+che impara in quel turno finisce con la risposta.
 
 ```bash
 git diff | ares -p "scrivi il messaggio di commit"

@@ -82,10 +82,13 @@ e la chat si ferma finche' non e' successo.
   estrae le memorie, l'embedder, la finestra di contesto, sistema e shell,
   utente, conversazione, cartella e ramo - e sceglie la descrizione
   secondo i modelli, cosi' la promessa sulla privacy compare solo quando
-  e' vera; poi compone soltanto le istruzioni coerenti con i flag e vi
+  e' vera; genera dalle due liste di `config` l'elenco di cio' che gira in
+  silenzio e di cio' che chiede conferma, dice a `ares -p` che nessuno
+  risponde e niente entra in memoria; poi compone soltanto le istruzioni
+  coerenti con i flag e vi
   aggiunge, se c'e', l'`ARES.md` della cartella di lavoro - le regole del
-  progetto scritte da chi ci lavora, troncate oltre un tetto e dichiarate
-  tali al modello - e le ultime conversazioni nate nella stessa cartella,
+  progetto scritte da chi ci lavora, delimitate e presentate come dati e non
+  come ordini, troncate oltre un tetto e dichiarate tali al modello - e le ultime conversazioni nate nella stessa cartella,
   con l'id da passare a `read_past_session`, perche' `search_past_sessions`
   non sa dove una sessione e' nata;
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli

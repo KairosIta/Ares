@@ -54,6 +54,14 @@ dell’utente che ha avviato il processo e può accedere alla rete. Il modello,
 i prompt e le conferme riducono il rischio operativo ma non costituiscono un
 confine di sicurezza.
 
+Tutto ciò che il modello legge — un file del progetto, l'output di un
+comando, lo stesso `ARES.md` — può contenere un'istruzione. Per questo ogni
+strumento che lascia una traccia sul disco (scrivere, modificare, spostare,
+cancellare, eseguire) chiede conferma mostrando per intero cosa sta per
+fare, e `ARES.md` entra nel prompt come regole del progetto delimitate, non
+come ordini. In `ares -p` non c'è nessuno a rispondere: le conferme valgono
+no e il turno non scrive in memoria, né da solo né con gli strumenti.
+
 La memoria durevole si scrive prima della conferma, non dopo. Profilo e
 memorie vengono scritti sia dagli strumenti che il modello chiama sia
 dall'estrazione automatica dopo ogni risposta, e ciò che entra viene
