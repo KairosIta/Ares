@@ -645,6 +645,67 @@ def identita(agent) -> str:
     return agent.name + " si presenta in " + str(len(prompt)) + " caratteri di system message"
 
 
+def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
+    """Il modello sa quali modelli e' , quanto contesto ha, su che sistema gira e chi ha davanti.
+
+    La scheda e' la prima istruzione e viene letta da `config` e dal sistema:
+    qui si controlla che ogni valore ci arrivi davvero, e che la descrizione
+    e la scheda cambino quando un modello e' cloud. La frase "nessuna
+    conversazione esce di qui" e' una promessa che il modello ripete: deve
+    comparire solo quando e' vera.
+    """
+    import platform
+
+    from ares.agent import prompts
+
+    scheda = agent.instructions[0]
+    esigi(isinstance(scheda, str) and scheda.startswith("Dove sei"), "la scheda non e' la prima istruzione")
+    for valore, nome in (
+        (config.MAIN_MODEL, "MAIN_MODEL"),
+        (config.EMBEDDER_MODEL, "EMBEDDER_MODEL"),
+        (str(config.NUM_CTX), "NUM_CTX"),
+        (str(config.NUM_HISTORY_RUNS), "NUM_HISTORY_RUNS"),
+        (platform.system(), "il sistema"),
+        (user_id, "l'utente"),
+        (session_id, "la sessione"),
+    ):
+        esigi(valore in scheda, "la scheda non dice " + nome + ": " + repr(valore))
+    if config.LEARNING_MODEL == config.MAIN_MODEL:
+        esigi("lo stesso modello" in scheda, "con un modello solo la scheda non lo dice")
+    else:
+        esigi(config.LEARNING_MODEL in scheda, "la scheda non dice LEARNING_MODEL")
+    if config.WORKSPACE:
+        esigi(str(config.WORKSPACE_DIR.resolve()) in scheda, "la scheda non dice la cartella di lavoro")
+
+    # Locale e cloud, a prescindere dal `.env` di questa macchina.
+    with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
+        locale = prompts.descrizione()
+        scheda_locale = prompts.istruzioni_sull_ambiente(user_id=user_id, session_id=session_id)[0]
+    esigi("esce di qui" in locale and "ollama.com" not in locale, "in locale la descrizione parla di cloud")
+    esigi("in locale" in scheda_locale and "server remoto" not in scheda_locale, "in locale la scheda parla di cloud")
+    with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
+        cloud = prompts.descrizione()
+        scheda_cloud = prompts.istruzioni_sull_ambiente(user_id=user_id, session_id=session_id)[0]
+    esigi(
+        "esce di qui" not in cloud and "ti fa parlare sta su ollama.com" in cloud,
+        "con la conversazione in cloud la descrizione promette privacy",
+    )
+    esigi("server remoto" in scheda_cloud and "qwen3:9b, in locale" in scheda_cloud, "la scheda non distingue i ruoli")
+    with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "gpt-oss:120b-cloud"):
+        estrazione = prompts.descrizione()
+    esigi("estrae le memorie dai vostri turni sta su ollama.com" in estrazione, "l'estrazione in cloud non e' detta")
+
+    # La shell segue il sistema: `bash -lc` non esiste su Windows.
+    with patch.object(os, "name", "nt"):
+        finestre = prompts.istruzioni_sull_ambiente(user_id=user_id, session_id=session_id)[0]
+        strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(config.WORKSPACE_DIR))
+    esigi("shell PowerShell" in finestre and "'powershell'" in strumenti_nt, "su Windows il prompt parla di bash")
+    with patch.object(os, "name", "posix"):
+        strumenti_posix = " ".join(prompts.istruzioni_sugli_strumenti(config.WORKSPACE_DIR))
+    esigi("'bash', '-lc'" in strumenti_posix, "su POSIX il prompt non suggerisce bash")
+    return "modelli, contesto, sistema, utente e cartella nella scheda; descrizione e scheda seguono il cloud"
+
+
 def strumenti(agent, user_id: str) -> str:
     """Gli strumenti che Ares dovrebbe avere arrivano davvero al modello.
 
@@ -1632,6 +1693,7 @@ def main() -> int:
             ("schemi importabili  ", lambda: schemi_importabili(lm)),
             ("lettori tolleranti  ", lambda: lettori_tolleranti(args.user)),
             ("identita            ", lambda: identita(agent)),
+            ("ambiente nel prompt ", lambda: ambiente_nel_prompt(agent, args.user, args.session)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
             ("protezione contesto ", lambda: protezione_contesto(agent, args.user)),
             ("spazio di lavoro    ", lambda: spazio_di_lavoro(agent, args.user)),

@@ -86,6 +86,7 @@ from ares.cli.editor import (  # noqa: E402
 )
 from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
 from ares.state import platform_files  # noqa: E402
+from ares.state.git import ramo_git  # noqa: E402
 
 
 class _MessaggioFinto:
@@ -1307,15 +1308,15 @@ def cartella_di_lavoro() -> str:
     (repo / ".git").mkdir(parents=True)
     (repo / "src").mkdir()
     (repo / ".git" / "HEAD").write_text("ref: refs/heads/prova\n", encoding="utf-8")
-    esigi(cartella.ramo_git(repo) == "prova", "il ramo non viene letto da HEAD")
-    esigi(cartella.ramo_git(repo / "src") == "prova", "una sottocartella non risale al repository")
+    esigi(ramo_git(repo) == "prova", "il ramo non viene letto da HEAD")
+    esigi(ramo_git(repo / "src") == "prova", "una sottocartella non risale al repository")
     (repo / ".git" / "HEAD").write_text("0123456789abcdef0123456789abcdef01234567\n", encoding="utf-8")
-    esigi(cartella.ramo_git(repo) == "01234567", "una testa staccata non mostra l'inizio del commit")
+    esigi(ramo_git(repo) == "01234567", "una testa staccata non mostra l'inizio del commit")
     albero = RADICE_PROVA / "albero"
     albero.mkdir()
     (albero / ".git").write_text("gitdir: " + str(repo / ".git") + "\n", encoding="utf-8")
-    esigi(cartella.ramo_git(albero) == "01234567", "un worktree non segue il file .git")
-    esigi(cartella.ramo_git(lavoro) is None, "una cartella fuori da git ha un ramo")
+    esigi(ramo_git(albero) == "01234567", "un worktree non segue il file .git")
+    esigi(ramo_git(lavoro) is None, "una cartella fuori da git ha un ramo")
     esigi(cartella.file_modificati(lavoro) is None, "fuori da git il conteggio non e' None")
     if shutil.which("git"):
         vero = RADICE_PROVA / "vero"
