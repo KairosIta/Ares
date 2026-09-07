@@ -119,7 +119,10 @@ metriche degli strumenti, rendering Rich su pipe e su un terminale simulato
 con i controlli filtrati, core del turno con eventi fabbricati, log di Agno,
 cronologia privata, editor con completamento e multilinea, Ctrl-C/D,
 comandi locali e la cartella di lavoro: i percorsi rischiosi, i tre esiti
-dell'autorizzazione, il ramo letto da `.git/HEAD`, `ARES.md` e `ares init`.
+dell'autorizzazione, il ramo letto da `.git/HEAD`, `ARES.md` e `ares init`;
+e le conversazioni per cartella su un database finto: il filtro che tiene
+quelle senza cartella, l'id nuovo, l'istruzione al modello e la scelta
+numerata di `ares resume --scegli`.
 Stava nello smoke, che era diventato il posto dove finiva
 ogni prova offline; la divisione segue ciò che serve per girare.
 `sessioni` attraversa un vero `Agent.run()` con modello deterministico e
@@ -140,8 +143,11 @@ proprio se ha scritto.
 `backup` copre snapshot, checksum, restore e prune; `entita` l'audit e la
 fusione. `cli` prova i comandi con cui Ares si usa davvero: il preflight
 contro un server Ollama finto nei tre esiti, l'ispezione degli archivi, i
-sottocomandi di `ares.backup` con i loro annullamenti, e la REPL intera in un
-processo separato con stdin da una pipe.
+sottocomandi di `ares.backup` con i loro annullamenti, la REPL intera in un
+processo separato con stdin da una pipe, e l'avvio senza `--session`: la
+conversazione nuova nominata dalla cartella, `resume` a vuoto e sull'ultima
+di qui con sessioni seminate nel database vero, `--scegli`, e `-p` con stdin
+in pipe.
 
 Nessuna genera risposte con il modello. `cli_test.py` lo rende esplicito
 puntando `config.OLLAMA_HOST` a un porto chiuso: su una macchina di sviluppo

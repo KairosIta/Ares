@@ -1378,6 +1378,109 @@ def cartella_di_lavoro() -> str:
     return "scelta, rischi, tre esiti dell'autorizzazione, git da HEAD, ARES.md, init e banner"
 
 
+def conversazioni_per_cartella() -> str:
+    """Le conversazioni legate alla cartella: filtro, id nuovo, istruzioni e scelta.
+
+    Il database e' finto e restituisce sessioni fabbricate con i metadati che
+    `build_assistant` scrive: quello che si prova e' il filtro, non SQLite.
+    Una sessione senza cartella deve restare visibile in `/sessioni` e
+    sparire da `resume`, perche' e' di prima che le cartelle esistessero.
+    """
+    from datetime import datetime
+
+    from ares.agent.prompts import istruzioni_sulle_conversazioni
+    from ares.cli import cartella
+    from ares.state.stores import cartella_sessione, leggi_sessioni, righe_sessione, sessioni_della_cartella
+
+    class Messaggio:
+        def __init__(self, role, content):
+            self.role = role
+            self.content = content
+
+    class Run:
+        def __init__(self, messages):
+            self.messages = messages
+
+    class Sessione:
+        def __init__(self, session_id, dove=None, quando=1_700_000_000, runs=()):
+            self.session_id = session_id
+            self.user_id = "u"
+            self.metadata = {"cartella": dove} if dove else None
+            self.updated_at = quando
+            self.created_at = quando
+            self.runs = list(runs)
+
+    class Db:
+        def __init__(self, sessioni):
+            self.sessioni = sessioni
+            self.chiamate: list[dict] = []
+
+        def get_sessions(self, **argomenti):
+            self.chiamate.append(argomenti)
+            return list(self.sessioni)
+
+        def get_session(self, session_id, **_argomenti):
+            return next((s for s in self.sessioni if s.session_id == session_id), None)
+
+    class Agente:
+        def __init__(self, db):
+            self.db = db
+
+    qui, altrove = "/progetti/qui", "/progetti/altrove"
+    prima = Sessione("qui-1", qui, runs=[Run([Messaggio("user", "prima domanda qui")])])
+    db = Db([Sessione("qui-2", qui), Sessione("altrove-1", altrove), Sessione("vecchia"), prima])
+    agente = Agente(db)
+
+    def nomi(sessioni) -> list[str]:
+        return [s.session_id for s in sessioni]
+
+    esigi(nomi(leggi_sessioni(agente, "u")) == ["qui-2", "altrove-1", "vecchia", "qui-1"], "senza cartella si filtra")
+    esigi(
+        nomi(leggi_sessioni(agente, "u", cartella=qui)) == ["qui-2", "vecchia", "qui-1"],
+        "il filtro per cartella non tiene quelle di qui e quelle senza cartella",
+    )
+    esigi(nomi(leggi_sessioni(agente, "u", query="QUI", cartella=qui)) == ["qui-2", "qui-1"], "filtro e testo insieme")
+    esigi(nomi(sessioni_della_cartella(db, "u", qui)) == ["qui-2", "qui-1"], "resume vede sessioni non di qui")
+    esigi(nomi(sessioni_della_cartella(db, "u", qui, escludi="qui-2")) == ["qui-1"], "escludi non esclude")
+    esigi(db.chiamate[-1].get("include_runs") is False, "l'elenco per la ripresa carica i run di tutte")
+    esigi(cartella_sessione(Sessione("x")) is None and cartella_sessione(prima) == qui, "cartella_sessione")
+    righe = righe_sessione(prima, con_cartella=True)
+    esigi(any("cartella: " + qui in r for r in righe), "con_cartella non la mostra: " + repr(righe))
+    esigi(not any("cartella:" in r for r in righe_sessione(prima)), "la cartella compare anche senza chiederla")
+
+    momento = datetime(2026, 9, 7, 9, 15, 30)
+    ident = cartella.nuovo_id_sessione(Path("/x/Mio Progetto_2"), momento)
+    esigi(ident == "mio-progetto-2-20260907-091530", "id nuovo inatteso: " + ident)
+    esigi(cartella.nuovo_id_sessione(Path("/"), momento) == "cartella-20260907-091530", "la radice non ha un ripiego")
+
+    testo = istruzioni_sulle_conversazioni([prima], cartella=qui)
+    esigi(len(testo) == 1, "le conversazioni precedenti non danno una istruzione sola")
+    esigi(
+        all(p in testo[0] for p in ("qui-1", "prima domanda qui", "read_past_session", qui, "1 scambio")),
+        "l'istruzione non ha id, inizio, strumento e cartella: " + testo[0],
+    )
+    esigi(istruzioni_sulle_conversazioni([], cartella=qui) == [], "senza precedenti c'e' un'istruzione")
+
+    def scelta(risposta) -> str | None:
+        def finto_input(_etichetta: str = "") -> str:
+            if isinstance(risposta, BaseException):
+                raise risposta
+            return risposta
+
+        with (
+            patch.object(sys, "stdin", io.StringIO()),
+            patch("builtins.input", finto_input),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return cartella.scegli_sessione([prima, Sessione("qui-2", qui)])
+
+    esigi(scelta("2") == "qui-2", "il numero scelto non apre quella sessione")
+    esigi(scelta("1") == "qui-1", "il primo numero non apre la prima")
+    for rinuncia in ("", "7", "x", "0", KeyboardInterrupt()):
+        esigi(scelta(rinuncia) is None, "una risposta non valida ha scelto qualcosa: " + repr(rinuncia))
+    return "filtro per cartella, sessioni senza cartella, id nuovo, istruzione al modello e scelta numerata"
+
+
 def main() -> int:
     avvio = time.monotonic()
     # La cronologia privata sta nell'archivio, che nella chat esiste perche'
@@ -1402,6 +1505,7 @@ def main() -> int:
             ("stato della chat    ", stato_della_chat),
             ("conferme scritte    ", conferme_scritte),
             ("cartella di lavoro  ", cartella_di_lavoro),
+            ("conversazioni       ", conversazioni_per_cartella),
         )
     )
     print()

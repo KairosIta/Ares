@@ -812,6 +812,12 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
         "la prova sta usando lo spazio di lavoro vero: " + str(config.WORKSPACE_DIR),
     )
     esigi(config.WORKSPACE_DIR.is_dir(), "lo spazio di lavoro non e' stato creato")
+    # La cartella viaggia con la sessione: Agno copia `metadata` nella
+    # sessione nuova, ed e' cio' che `ares resume` e `/sessioni` rileggono.
+    esigi(
+        agent.metadata == {"cartella": str(config.WORKSPACE_DIR.resolve())},
+        "l'agente non registra la cartella nei metadati: " + repr(agent.metadata),
+    )
 
     assert agent.learning_machine is not None
     sessione = AgentSession(session_id="prova-spazio", user_id=user_id)

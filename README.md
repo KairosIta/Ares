@@ -217,10 +217,31 @@ il posto per le convenzioni del progetto, cosa non toccare, come si lanciano
 le prove. `ares init` ne scrive uno scheletro nella cartella corrente e non
 tocca un file che esiste già.
 
-Per aprire una sessione separata:
+Ogni `ares` apre una conversazione nuova, che nasce nella cartella e la
+ricorda: profilo e memorie ci sono comunque, perché sono tuoi e non della
+conversazione, mentre obiettivo, piano e avanzamento partono vuoti. Per
+tornare dove eri:
+
+```bash
+.venv/bin/ares resume            # l'ultima conversazione nata in questa cartella
+.venv/bin/ares resume --scegli   # la scegli da un elenco numerato
+```
+
+Le conversazioni di altre cartelle non c'entrano: `/sessioni` mostra quelle
+di qui, `/sessioni tutte` le altre, e anche Ares riceve all'avvio le ultime di
+questa cartella, con l'id, così "dove eravamo rimasti" funziona anche in una
+conversazione nuova. Un nome fisso resta possibile con `--session`:
 
 ```bash
 .venv/bin/ares --session progetto-demo
+```
+
+Per una risposta sola, anche dentro una pipe, `-p`: stdin si aggiunge alla
+domanda e le operazioni che chiederebbero conferma vengono rifiutate, perché
+non c'è nessuno a rispondere.
+
+```bash
+git diff | .venv/bin/ares -p "scrivi il messaggio di commit"
 ```
 
 Su Windows il comando equivalente è:
@@ -235,7 +256,7 @@ le frecce percorrono la cronologia e i suggerimenti riprendono le domande
 precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
 `/sessioni`, `/entita`, `/file` e `/cartella`, che mostra percorso, ramo,
 file modificati e se c'è un `ARES.md`. Tre cambiano la sessione in corso
-senza riavviare: `/sessione <nome>` passa a un'altra sessione, `/metriche`
+senza riavviare: `/sessione <id>` passa a un'altra conversazione, `/metriche`
 accende il costo di ogni turno, `/debug` le chiamate al modello.
 
 ## Verifica

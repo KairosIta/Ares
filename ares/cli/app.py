@@ -1,8 +1,10 @@
 """Il comando `ares`, con la chat come default e la manutenzione sotto.
 
-    ares                      apre la chat nella cartella corrente
+    ares                      una conversazione nuova nella cartella corrente
+    ares resume               riprende l'ultima conversazione di questa cartella
+    ares -p "domanda"         una risposta e basta, anche in una pipe
     ares --workspace ~/prog   apre la chat su un'altra cartella
-    ares --session progetto   una sessione separata
+    ares --session progetto   una sessione con un nome fisso
     ares init                 scrive un ARES.md di partenza nella cartella
     ares backup list          gli snapshot
     ares sessions status      le sessioni in archivio
@@ -23,6 +25,9 @@ list`, e passa dalla stessa App perche' l'aiuto dica la forma nuova.
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Annotated
+
+from cyclopts import Parameter
 
 from ares import config
 from ares.cli.comando import nuova_app
@@ -46,21 +51,23 @@ for _nome, _modulo, _aiuto in SOTTOCOMANDI:
 @app.default
 def chat(
     *,
-    session: str = "principale",
+    prompt: Annotated[str | None, Parameter(name=("--prompt", "-p"))] = None,
+    session: str | None = None,
     user: str = config.DEFAULT_USER_ID,
     workspace: Path | None = None,
     debug: bool = False,
     metriche: bool = False,
 ) -> int:
-    """Apre la chat con Ares, nella cartella da cui lo lanci.
+    """Apre una conversazione nuova con Ares, nella cartella da cui lo lanci.
 
     Ares lavora sui file della cartella corrente, come un collaboratore che
-    si siede nel tuo progetto. Ogni sessione ha il proprio contesto:
-    obiettivo, piano, avanzamento. Il profilo e le memorie sono per utente e
-    attraversano tutte le sessioni.
+    si siede nel tuo progetto. Ogni conversazione nasce li' e ha il proprio
+    contesto - obiettivo, piano, avanzamento - che `ares resume` riapre. Il
+    profilo e le memorie sono per utente e ci sono in ogni conversazione.
 
     Args:
-        session: identificativo della sessione.
+        prompt: una domanda sola: risponde ed esce; in una pipe, stdin si aggiunge alla domanda.
+        session: un nome fisso per la sessione, invece di una conversazione nuova.
         user: identificativo dell'utente.
         workspace: la cartella su cui lavorare, se non e' quella corrente.
         debug: mostra le chiamate al modello.
@@ -68,7 +75,34 @@ def chat(
     """
     from ares.cli.chat import avvia
 
-    return avvia(session=session, user=user, workspace=workspace, debug=debug, metriche=metriche)
+    return avvia(session=session, user=user, workspace=workspace, debug=debug, metriche=metriche, prompt=prompt)
+
+
+@app.command
+def resume(
+    *,
+    scegli: bool = False,
+    user: str = config.DEFAULT_USER_ID,
+    workspace: Path | None = None,
+    debug: bool = False,
+    metriche: bool = False,
+) -> int:
+    """Riprende l'ultima conversazione nata in questa cartella.
+
+    Tornare su un progetto vuol dire ritrovare obiettivo, piano e avanzamento
+    dove li avevi lasciati. Senza conversazioni in questa cartella esce con 1:
+    `ares` da solo ne apre una nuova.
+
+    Args:
+        scegli: mostra le conversazioni di questa cartella e ne fa scegliere una.
+        user: identificativo dell'utente.
+        workspace: la cartella su cui lavorare, se non e' quella corrente.
+        debug: mostra le chiamate al modello.
+        metriche: mostra il costo di ogni turno: finestra occupata, token, secondi.
+    """
+    from ares.cli.chat import avvia
+
+    return avvia(user=user, workspace=workspace, debug=debug, metriche=metriche, riprendi=True, scegli=scegli)
 
 
 @app.command

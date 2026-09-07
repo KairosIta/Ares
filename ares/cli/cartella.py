@@ -13,13 +13,18 @@ che `ares init` scrive.
 """
 
 import os
+import re
 import subprocess
 import sys
+from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from ares import config
-from ares.cli.conferma import conferma_scritta
+from ares.cli.conferma import conferma_scritta, domanda
 from ares.cli.ui import UI
+from ares.state.stores import prima_domanda, quando_sessione
 
 # Le directory di sistema dove un `workspace_delete` o un `bash -lc` hanno
 # un raggio che nessun progetto ha. Su Windows si leggono dall'ambiente, che
@@ -173,6 +178,56 @@ def file_modificati(percorso: Path) -> int | None:
     if esito.returncode != 0:
         return None
     return sum(1 for riga in esito.stdout.splitlines() if riga.strip())
+
+
+# ---------------------------------------------------------------------------
+# Le conversazioni di una cartella
+# ---------------------------------------------------------------------------
+
+
+def nuovo_id_sessione(radice: Path, adesso: datetime | None = None) -> str:
+    """L'identificativo di una conversazione nuova: la cartella e il momento.
+
+    Leggibile in `/sessioni` e in `ares sessions status` senza decodificare
+    niente: `ares-20260907-091530` dice dove e quando. I secondi bastano a
+    distinguere due avvii nella stessa cartella; il nome viene ridotto a
+    lettere, cifre e trattini perche' finisce in una riga di comando.
+    """
+    nome = re.sub(r"[^a-z0-9]+", "-", radice.name.casefold()).strip("-") or "cartella"
+    momento = (adesso or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    return nome[:40] + "-" + momento
+
+
+def scegli_sessione(sessioni: Sequence[Any]) -> str | None:
+    """Un elenco numerato delle conversazioni, e il numero scelto. None se si rinuncia.
+
+    Riga vuota, Ctrl-C e un numero che non c'e' valgono rinuncia: e' `ares
+    resume --scegli`, e chi non trova quello che cerca deve poter uscire
+    senza aprire una conversazione a caso.
+    """
+    righe = []
+    for indice, sessione in enumerate(sessioni, start=1):
+        scambi = len(getattr(sessione, "runs", None) or [])
+        righe.append(
+            (
+                str(indice),
+                str(getattr(sessione, "session_id", "?")),
+                quando_sessione(sessione),
+                str(scambi),
+                prima_domanda(sessione, larghezza=60),
+            )
+        )
+    UI.table(
+        (("n", "ares.cyan", "right"), "sessione", "ultima modifica", ("scambi", "ares.text", "right"), "inizio"),
+        righe,
+    )
+    UI.blank()
+    risposta = domanda("Quale riprendo? (numero, vuoto per rinunciare) > ").strip()
+    if not risposta.isdigit() or not 1 <= int(risposta) <= len(sessioni):
+        if risposta:
+            UI.line("Nessuna conversazione con quel numero.", style="ares.muted")
+        return None
+    return str(getattr(sessioni[int(risposta) - 1], "session_id", ""))
 
 
 # ---------------------------------------------------------------------------

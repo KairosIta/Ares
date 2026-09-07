@@ -258,6 +258,13 @@ PAST_SESSION_RUNS_PREVIEW = 2
 # questo l'altezza di un terminale. Cio' che avanza viene contato, non taciuto.
 SESSIONI_ELENCO = 20
 
+# Ogni conversazione registra la cartella in cui e' nata, e all'avvio il
+# modello riceve le ultime di quella cartella - id, data, prima domanda -
+# cosi' "dove eravamo rimasti" funziona anche senza `ares resume`:
+# `read_past_session` le rilegge per id. Poche, perche' stanno nel prompt di
+# ogni turno; il resto lo trova `search_past_sessions`.
+SESSIONI_RECENTI_NEL_PROMPT = 5
+
 # Quante entita' chiedere allo store quando `/entita <testo>` cerca. La
 # ricerca del framework e' larga - verifica la query contro *tutti* i valori
 # dell'entita', namespace e date comprese - quindi `stores.leggi_entita` ne
@@ -295,7 +302,9 @@ SESSION_RETENTION_DAYS = 180
 # Il prune per eta' non tocca le conversazioni nominate qui. Una cancellazione
 # puntuale resta possibile, con anteprima, backup e conferma, perche' una
 # protezione esplicita deve impedire gli automatismi, non rendere il dato
-# incancellabile. La sessione predefinita e' il solo valore protetto di serie.
+# incancellabile. `principale` era la sessione predefinita prima che le
+# conversazioni nascessero per cartella; resta protetta perche' chi la usava
+# ci ha dentro mesi di contesto, e `--session principale` la riapre ancora.
 SESSIONI_PROTETTE = ("principale",)
 
 # ---------------------------------------------------------------------------
