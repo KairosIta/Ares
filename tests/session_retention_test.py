@@ -9,7 +9,6 @@ import gc
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -17,7 +16,7 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("session-retention-test")
 
@@ -333,7 +332,7 @@ def main() -> int:
         return 1
     finally:
         if riuscita:
-            shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+            pulisci(RADICE_PROVA)
         else:
             print("Archivio della prova conservato:", RADICE_PROVA)
 

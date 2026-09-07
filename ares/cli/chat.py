@@ -2,13 +2,19 @@
 REPL interattivo
 ================
 Uso:
-    ares                       sessione predefinita
+    ares                       nella cartella corrente, sessione predefinita
+    ares --workspace ~/prog    su un'altra cartella
     ares --session progetto-x  sessione separata
     ares --debug               mostra le chiamate al modello
     ares --metriche            costo di ogni turno
 
 Le opzioni le dichiara `cli/app.py`, che e' il comando `ares` intero: qui
 c'e' il corpo della chat, che si importa solo quando la chat parte.
+
+La cartella da cui si lancia `ares` e' quella su cui Ares lavora. Prima di
+aprirla `cli/cartella.py` la guarda: se e' la home, il disco intero o una
+directory che contiene lo stato di Ares lo dice e chiede una conferma
+scritta. E' l'unico punto in cui l'avvio puo' fermarsi prima del banner.
 
 Ogni sessione ha il proprio contesto: obiettivo, piano, avanzamento. Il
 profilo e le memorie invece sono per utente, quindi attraversano tutte le
@@ -25,6 +31,7 @@ divergite.
 """
 
 import logging
+from pathlib import Path
 
 from agno.run.agent import RunOutput
 
@@ -33,6 +40,7 @@ from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
+from ares.cli import cartella
 from ares.cli.commands import COMANDI, StatoChat, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
 from ares.cli.editor import CliInput
 from ares.cli.render import (
@@ -190,10 +198,33 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
-def _esegui_chat(*, session: str, user: str, debug: bool = False, metriche: bool = False) -> None:
-    # Prima di tutto cio' che scrive: la cronologia della REPL nasce dentro
-    # tmp/, che quindi deve esistere gia' privata quando `CliInput` ci
-    # scrive. `--help` non arriva qui: esce dentro Cyclopts.
+def _esegui_chat(
+    *,
+    session: str,
+    user: str,
+    debug: bool = False,
+    metriche: bool = False,
+    workspace: Path | None = None,
+) -> int:
+    """La chat. Restituisce il codice di uscita: 1 se la cartella non si apre, 0 altrimenti."""
+    # La cartella prima di ogni altra cosa, perche' e' l'unico passo che puo'
+    # dire no: un avvio rifiutato non deve aver toccato niente, nemmeno la
+    # directory dello stato. `workspace` e' `--workspace`; senza, e' quella
+    # da cui si e' lanciato `ares`, e `config` la ha gia' letta.
+    radice: Path | None = None
+    if config.WORKSPACE:
+        try:
+            radice = cartella.scegli(workspace)
+        except ValueError as errore:
+            UI.line(str(errore), style="ares.error")
+            return 1
+        if not cartella.autorizza(radice, esplicito=workspace is not None):
+            return 1
+        config.WORKSPACE_DIR = radice
+
+    # Poi cio' che scrive: la cronologia della REPL nasce dentro tmp/, che
+    # quindi deve esistere gia' privata quando `CliInput` ci scrive. `--help`
+    # non arriva qui: esce dentro Cyclopts.
     config.prepara_archivio()
 
     configura_log_agno(debug)
@@ -222,7 +253,17 @@ def _esegui_chat(*, session: str, user: str, debug: bool = False, metriche: bool
             style="ares.warning",
         )
 
-    UI.banner(modello=config.MAIN_MODEL, sessione=session, utente=user)
+    istruzioni = None
+    if radice is not None and cartella.file_istruzioni(radice).is_file():
+        istruzioni = config.WORKSPACE_ISTRUZIONI
+    UI.banner(
+        modello=config.MAIN_MODEL,
+        sessione=session,
+        utente=user,
+        cartella=str(radice) if radice is not None else None,
+        ramo=cartella.ramo_git(radice) if radice is not None else None,
+        istruzioni=istruzioni,
+    )
 
     # Un modello cloud si vede dal nome, ma il nome non dice cosa comporta.
     # Ogni sessione, non solo la prima: e' la stessa logica del promemoria
@@ -281,24 +322,40 @@ def _esegui_chat(*, session: str, user: str, debug: bool = False, metriche: bool
         UI.blank()
 
     UI.line("A presto.", style="ares.title")
+    return 0
 
 
-def avvia(*, session: str, user: str, debug: bool = False, metriche: bool = False) -> None:
-    """La chat con la rete intorno: il lock e i due modi in cui l'avvio non parte."""
+def avvia(
+    *,
+    session: str,
+    user: str,
+    debug: bool = False,
+    metriche: bool = False,
+    workspace: Path | None = None,
+) -> int:
+    """La chat con la rete intorno: il lock e i tre modi in cui l'avvio non parte.
+
+    Restituisce il codice di uscita. Una cartella rifiutata e un archivio
+    occupato valgono 1, perche' uno script che lancia `ares` deve poterlo
+    vedere; un Ctrl-C durante l'avvio vale 0, perche' l'ha deciso l'utente.
+    """
     try:
         # Lock condiviso per tutta la vita del processo. Piu' chat possono
         # convivere; backup e restore, che chiedono il lock esclusivo, no.
         with lock_stato(esclusivo=False):
-            _esegui_chat(session=session, user=user, debug=debug, metriche=metriche)
+            esito = _esegui_chat(session=session, user=user, debug=debug, metriche=metriche, workspace=workspace)
+            return esito if isinstance(esito, int) else 0
     except StatoOccupato as errore:
         UI.line("Impossibile avviare Ares: " + str(errore), style="ares.error")
         UI.line("Attendi che backup o restore terminino e riprova.", style="ares.muted")
+        return 1
     except KeyboardInterrupt:
         # Dentro la chat il Ctrl-C e' gia' gestito - dal prompt esce, da un
         # turno lo interrompe. Resta scoperta la costruzione dell'agente, che
         # apre database e indice: li' un traceback sarebbe l'unica traccia.
         UI.blank()
         UI.line("Avvio interrotto.", style="ares.warning")
+        return 0
 
 
 def main() -> None:

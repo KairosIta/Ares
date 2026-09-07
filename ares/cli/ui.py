@@ -514,11 +514,34 @@ class CliRenderer:
     def speaker(self, nome: str, *, style: str) -> None:
         self.console.print(_testo(nome, style))
 
-    def banner(self, *, modello: str, sessione: str, utente: str) -> None:
+    def banner(
+        self,
+        *,
+        modello: str,
+        sessione: str,
+        utente: str,
+        cartella: str | None = None,
+        ramo: str | None = None,
+        istruzioni: str | None = None,
+    ) -> None:
+        """Il riquadro d'avvio. `cartella`, `ramo` e `istruzioni` compaiono solo se ci sono.
+
+        La cartella e' la prima riga dopo il modello perche' e' la cosa che
+        cambia da un avvio all'altro, e la sola che, sbagliata, fa danni.
+        """
         dati = Table.grid(padding=(0, 2))
         dati.add_column(style="ares.muted", no_wrap=True)
         dati.add_column(style="ares.text")
         dati.add_row(_testo("modello", "ares.muted"), _testo(modello, "ares.text"))
+        if cartella is not None:
+            # Un percorso non ha spazi: senza `fold` Rich lo troncherebbe
+            # con i puntini, e un percorso a meta' non si controlla.
+            dove = Text(cartella, style="ares.cyan", overflow="fold")
+            if ramo:
+                dove.append("  " + ramo, style="ares.muted")
+            dati.add_row(_testo("cartella", "ares.muted"), dove)
+        if istruzioni:
+            dati.add_row(_testo("istruzioni", "ares.muted"), _testo(istruzioni, "ares.text"))
         dati.add_row(_testo("sessione", "ares.muted"), _testo(sessione, "ares.text"))
         dati.add_row(_testo("utente", "ares.muted"), _testo(utente, "ares.text"))
         corpo = Group(

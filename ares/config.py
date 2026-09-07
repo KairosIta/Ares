@@ -510,11 +510,13 @@ CRONOLOGIA_RIGHE = 2000
 # Spazio di lavoro sul disco
 # ---------------------------------------------------------------------------
 
-# Una directory sola, fuori dal progetto e fuori da tmp/, dove Ares puo'
-# clonare repository e lavorarci. Sta accanto al progetto invece che dentro
-# per due motivi: cio' che ci finisce non e' codice di questo repo e non deve
-# comparire in `git status`, e un agente che puo' scrivere nella directory in
-# cui vive puo' riscrivere se stesso.
+# La directory di lavoro e' quella da cui si lancia `ares`, come per Claude
+# Code o Codex: si apre una cartella, si scrive `ares`, e Ares lavora li'.
+# Prima era una directory fissa accanto al progetto, uno spazio di Ares dove
+# clonare cose; ora e' il progetto dell'utente, con i suoi file. `--workspace`
+# la sceglie esplicitamente, e `cli/cartella.py` la guarda prima di aprirla:
+# la radice del disco, la home intera, una directory di sistema o una che
+# contiene lo stato di Ares si aprono solo dopo una conferma scritta.
 #
 # Il confine e' quello che Agno chiama, nel docstring di Workspace, "a
 # path-scoping boundary, not a process sandbox": gli strumenti sui file non
@@ -522,8 +524,26 @@ CRONOLOGIA_RIGHE = 2000
 # leggere l'ambiente, aprire la rete. Cio' che regge il confine e' la
 # conferma umana, non il codice: per questo la shell sta fra le azioni da
 # confermare e non fra quelle libere.
+#
+# Il valore qui e' il default letto all'import; la chat lo riscrive all'avvio
+# con la cartella scelta e autorizzata. Se la directory corrente non esiste
+# piu' - cancellata da sotto la shell - si ripiega sulla home, che la
+# verifica dei rischi fermera' con un avviso invece di un traceback.
+# Risolto subito: su Windows la directory corrente puo' arrivare con i nomi
+# corti (`RUNNER~1`), e lo stesso percorso scritto in due modi e' la strada
+# per un confronto che fallisce.
 WORKSPACE = True
-WORKSPACE_DIR = Path(os.environ.get("ARES_WORKSPACE") or BASE_DIR.parent / "ares-lavoro")
+try:
+    WORKSPACE_DIR = Path(os.getcwd()).resolve()
+except FileNotFoundError:
+    WORKSPACE_DIR = Path.home()
+
+# Il file che, se c'e' nella cartella di lavoro, entra nelle istruzioni del
+# turno: convenzioni del progetto, cosa non toccare, come si lanciano le
+# prove. `ares init` ne scrive uno scheletro. Il tetto evita che un file
+# enorme occupi da solo la finestra del modello.
+WORKSPACE_ISTRUZIONI = "ARES.md"
+WORKSPACE_ISTRUZIONI_MAX_BYTE = 32_000
 
 # Il prefisso non e' cosmetico. Il FileSystem privato espone gia' read_file,
 # write_file, list_files, move_file e search_content: registrando Workspace

@@ -15,7 +15,7 @@ from ares.agent.learning import (
     build_learning_machine,
     build_session_context_store,
 )
-from ares.agent.prompts import istruzioni_sugli_strumenti
+from ares.agent.prompts import istruzioni_dalla_cartella, istruzioni_sugli_strumenti
 from ares.agent.runtime import (
     AresWorkspace,
     build_chat_model,
@@ -84,6 +84,7 @@ def build_assistant(
             "risposta e' quello che rende la memoria affidabile.",
             "Se non sai una cosa, dillo invece di ricostruirla per verosimiglianza.",
             *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None),
+            *istruzioni_dalla_cartella(spazio.root if spazio is not None else None),
             "Quando salvi un'intuizione, scrivila in italiano, e salvala solo se "
             "sara' utile in una conversazione futura su un argomento diverso. Una "
             "risposta a una domanda specifica non e' un'intuizione; il criterio che "

@@ -1,7 +1,9 @@
 """Il comando `ares`, con la chat come default e la manutenzione sotto.
 
-    ares                      apre la chat
+    ares                      apre la chat nella cartella corrente
+    ares --workspace ~/prog   apre la chat su un'altra cartella
     ares --session progetto   una sessione separata
+    ares init                 scrive un ARES.md di partenza nella cartella
     ares backup list          gli snapshot
     ares sessions status      le sessioni in archivio
     ares entities audit       i duplicati fra le entita'
@@ -20,9 +22,11 @@ list`, e passa dalla stessa App perche' l'aiuto dica la forma nuova.
 
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from ares import config
 from ares.cli.comando import nuova_app
+from ares.cli.ui import UI
 
 app = nuova_app("ares", "Assistente personale locale su Agno e Ollama", radice=True)
 
@@ -44,23 +48,50 @@ def chat(
     *,
     session: str = "principale",
     user: str = config.DEFAULT_USER_ID,
+    workspace: Path | None = None,
     debug: bool = False,
     metriche: bool = False,
-) -> None:
-    """Apre la chat con Ares.
+) -> int:
+    """Apre la chat con Ares, nella cartella da cui lo lanci.
 
-    Ogni sessione ha il proprio contesto: obiettivo, piano, avanzamento. Il
-    profilo e le memorie sono per utente e attraversano tutte le sessioni.
+    Ares lavora sui file della cartella corrente, come un collaboratore che
+    si siede nel tuo progetto. Ogni sessione ha il proprio contesto:
+    obiettivo, piano, avanzamento. Il profilo e le memorie sono per utente e
+    attraversano tutte le sessioni.
 
     Args:
         session: identificativo della sessione.
         user: identificativo dell'utente.
+        workspace: la cartella su cui lavorare, se non e' quella corrente.
         debug: mostra le chiamate al modello.
         metriche: mostra il costo di ogni turno: finestra occupata, token, secondi.
     """
     from ares.cli.chat import avvia
 
-    avvia(session=session, user=user, debug=debug, metriche=metriche)
+    return avvia(session=session, user=user, workspace=workspace, debug=debug, metriche=metriche)
+
+
+@app.command
+def init() -> int:
+    """Scrive un ARES.md di partenza nella cartella corrente.
+
+    Ares lo legge all'avvio quando lavora qui: convenzioni del progetto, cosa
+    non toccare, come si lanciano le prove. Un file che esiste gia' non viene
+    toccato.
+    """
+    from ares.cli import cartella
+
+    try:
+        destinazione = cartella.scrivi_scheletro(Path.cwd())
+    except FileExistsError as errore:
+        UI.err("ERRORE: " + str(errore))
+        return 1
+    except OSError as errore:
+        UI.err("ERRORE: impossibile scrivere " + config.WORKSPACE_ISTRUZIONI + ": " + str(errore))
+        return 1
+    UI.pair("Scritto", str(destinazione), style="ares.title")
+    UI.line("Compilalo con le regole del progetto: Ares lo leggera' al prossimo avvio qui.", style="ares.muted")
+    return 0
 
 
 def esegui(sottocomando: str, argomenti: Sequence[str] | None = None) -> int:

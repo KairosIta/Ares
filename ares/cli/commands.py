@@ -6,6 +6,7 @@ from typing import Any
 
 from ares import config
 from ares.agent.assistant import build_assistant, build_filesystem
+from ares.cli import cartella
 from ares.cli.ui import UI, byte_leggibili
 from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
 
@@ -159,18 +160,40 @@ def _comando_file(stato: StatoChat, argomento: str):
     UI.table(("file", ("byte", "ares.text", "right")), ((str(f.path), byte_leggibili(f.size_bytes)) for f in elenco))
 
 
-def _comando_lavoro(stato: StatoChat, argomento: str):
-    UI.heading("Workspace")
+def _comando_cartella(stato: StatoChat, argomento: str):
+    """Dove Ares sta lavorando, e in che stato e' il progetto.
+
+    Serve prima di dire si' a un comando shell: il percorso, il ramo, quanti
+    file sono gia' modificati, se c'e' un ARES.md che il modello sta seguendo
+    e gli stessi avvisi dell'avvio, perche' una cartella rischiosa lo resta
+    anche dopo la conferma.
+    """
+    UI.heading("Cartella di lavoro")
     if not config.WORKSPACE:
         UI.line("Lo spazio di lavoro e' spento in config.py.", style="ares.muted")
         return
     radice = config.WORKSPACE_DIR
-    UI.line(str(radice), style="ares.cyan")
-    voci = sorted(radice.iterdir()) if radice.exists() else []
-    if not voci:
-        UI.line("(vuota)", style="ares.muted")
-    for voce in voci:
-        UI.line("- " + voce.name + ("/" if voce.is_dir() else ""))
+    UI.pair("percorso", str(radice), style="ares.cyan")
+    ramo = cartella.ramo_git(radice)
+    if ramo:
+        modificati = cartella.file_modificati(radice)
+        if modificati is None:
+            stato_git = "stato non leggibile"
+        elif modificati:
+            stato_git = str(modificati) + (" file modificato" if modificati == 1 else " file modificati")
+        else:
+            stato_git = "pulito"
+        UI.pair("git", ramo + ", " + stato_git)
+    else:
+        UI.pair("git", "non e' un repository", style="ares.muted")
+    if cartella.file_istruzioni(radice).is_file():
+        UI.pair("istruzioni", config.WORKSPACE_ISTRUZIONI + ", letto all'avvio")
+    else:
+        UI.pair(
+            "istruzioni", "nessun " + config.WORKSPACE_ISTRUZIONI + "; `ares init` ne scrive uno", style="ares.muted"
+        )
+    for motivo in cartella.rischi(radice):
+        UI.line("attenzione: la cartella " + motivo, style="ares.warning")
 
 
 def _comando_esci(stato: StatoChat, argomento: str):
@@ -184,7 +207,8 @@ def _comando_esci(stato: StatoChat, argomento: str):
 # piu' contraddirsi.
 #
 # Gli alias restano fuori dall'elenco a schermo e dal TAB, ma si scrivono e si
-# abbreviano come gli altri: sono superstiti inglesi, non comandi da imparare.
+# abbreviano come gli altri: sono superstiti inglesi, o il nome che un comando
+# aveva prima, non comandi da imparare.
 #
 # `/sessione` e `/sessioni` condividono il prefisso fino all'ultima lettera:
 # `/sess` e' ambiguo e lo resta di proposito, perche' uno elenca e l'altro
@@ -198,7 +222,7 @@ COMANDI = (
     ("/sessione", (), "la sessione corrente; /sessione <nome> passa a un'altra", _comando_sessione),
     ("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
     ("/file", (), "i file scritti dall'agente", _comando_file),
-    ("/lavoro", (), "la directory di lavoro sul disco", _comando_lavoro),
+    ("/cartella", ("/lavoro",), "la cartella di lavoro: percorso, git, ARES.md", _comando_cartella),
     ("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
     ("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),
     ("/esci", ("/quit", "/exit"), "termina la sessione", _comando_esci),

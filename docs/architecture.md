@@ -47,6 +47,13 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 - `conferma.py` e' la conferma scritta dei comandi di manutenzione - la
   frase esatta da riscrivere prima di un restore, un prune o una fusione -
   con l'editor della chat sul terminale e `input()` in una pipe;
+- `cartella.py` decide dove Ares lavora: la directory da cui si lancia
+  `ares`, o quella di `--workspace`. Prima di aprirla ne elenca i rischi -
+  la radice del disco, la home, una directory di sistema, una che contiene
+  lo stato o il codice di Ares - e li fa confermare con la stessa conferma
+  scritta; senza terminale una cartella rischiosa passa solo se nominata
+  con `--workspace`. Legge anche il ramo git da `.git/HEAD`, senza lanciare
+  git, e scrive lo scheletro di `ARES.md` per `ares init`;
 - `editor.py` gestisce editor, completamento, input multilinea e cronologia
   privata della REPL;
 - `ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i controlli
@@ -62,7 +69,10 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 - `assistant.py` e' la facciata che assembla l'agente e conserva gli import
   pubblici; `runtime.py` costruisce modelli, archivi e strumenti,
   `learning.py` configura gli store e il post-hook sul run completo,
-  `prompts.py` compone soltanto le istruzioni coerenti con i flag;
+  `prompts.py` compone soltanto le istruzioni coerenti con i flag e vi
+  aggiunge, se c'e', l'`ARES.md` della cartella di lavoro: le regole del
+  progetto scritte da chi ci lavora, troncate oltre un tetto e dichiarate
+  tali al modello;
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt;
 - `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
@@ -127,8 +137,11 @@ run finale, evitando di perdere il contenuto prodotto dopo una conferma.
 
 ## Confini di sicurezza
 
-Gli strumenti per i file sono limitati a una directory di lavoro, ma questo
-confine non e' una sandbox di processo. I comandi shell possono accedere alle
+Gli strumenti per i file sono limitati alla cartella di lavoro, che e' la
+directory da cui si lancia `ares`, ma questo confine non e' una sandbox di
+processo. Una cartella troppo larga - la home, il disco - allarga il raggio
+di ogni strumento, ed e' per questo che `cli/cartella.py` la fa confermare
+per iscritto prima del banner. I comandi shell possono accedere alle
 risorse dell'host e alla rete, quindi richiedono conferma esplicita. La
 conferma mostra il comando intero e, sotto, righe di attenzione per cio' che
 va oltre la directory: passa da una shell, tocca percorsi fuori dalla
