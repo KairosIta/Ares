@@ -61,7 +61,7 @@ from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
 
-from _comune import NON_CONCLUSIVO, esegui, esigi, prepara_ambiente
+from _comune import NON_CONCLUSIVO, esegui, esigi, prepara_ambiente, pulisci
 
 # I percorsi vanno scelti prima di importare config, che crea TMP_DIR
 # all'import; e `build_workspace` crea la directory di lavoro, che senza
@@ -157,7 +157,7 @@ def stato_archivio_reale() -> list:
     scrive per mestiere, ma in un'altra directory. Cio' che va dimostrato non
     e' che non scriva, e' che non scriva li'.
     """
-    reale = config.BASE_DIR / "tmp"
+    reale = config.ARES_HOME / "stato"
     if not reale.exists():
         return []
     return sorted(
@@ -805,11 +805,19 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
         )
         return NON_CONCLUSIVO + "WORKSPACE e' spento in config.py, e nessuna istruzione lo nomina"
 
+    # Tutti e due risolti: su Windows la temp ha il nome corto (`RUNNER~1`)
+    # e `config` la conserva espansa.
     esigi(
-        str(config.WORKSPACE_DIR).startswith(tempfile.gettempdir()),
+        config.WORKSPACE_DIR.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()),
         "la prova sta usando lo spazio di lavoro vero: " + str(config.WORKSPACE_DIR),
     )
     esigi(config.WORKSPACE_DIR.is_dir(), "lo spazio di lavoro non e' stato creato")
+    # La cartella viaggia con la sessione: Agno copia `metadata` nella
+    # sessione nuova, ed e' cio' che `ares resume` e `/sessioni` rileggono.
+    esigi(
+        agent.metadata == {"cartella": str(config.WORKSPACE_DIR.resolve())},
+        "l'agente non registra la cartella nei metadati: " + repr(agent.metadata),
+    )
 
     assert agent.learning_machine is not None
     sessione = AgentSession(session_id="prova-spazio", user_id=user_id)
@@ -848,16 +856,16 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
     comuni = del_quaderno & set(attesi)
     esigi(not comuni, "lo spazio di lavoro e il quaderno privato si contendono: " + ", ".join(sorted(comuni)))
 
-    # La guardia sulla radice, provata facendola scattare: una radice che
-    # contiene il progetto deve fermare la costruzione, non passare.
+    # La cartella e' quella dell'utente e non si crea: una che non esiste e'
+    # un refuso, e costruirci sopra un workspace vuoto lo nasconderebbe.
     scelta_vera = config.WORKSPACE_DIR
-    config.WORKSPACE_DIR = config.BASE_DIR
+    config.WORKSPACE_DIR = scelta_vera / "non-esiste"
     try:
         build_workspace()
     except ValueError:
         pass
     else:
-        esigi(False, "una radice che contiene il progetto non ha fermato build_workspace")
+        esigi(False, "una cartella inesistente non ha fermato build_workspace")
     finally:
         config.WORKSPACE_DIR = scelta_vera
 
@@ -1375,15 +1383,18 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     esigi(FILE_SEMINATO[0] in uscita, "/file non elenca il quaderno: " + repr(uscita))
     esigi("byte" in uscita, "/file non dice la dimensione: " + repr(uscita))
 
+    uscita = esegui_comando("/cartella")
+    esigi(str(config.WORKSPACE_DIR) in uscita, "/cartella non nomina la directory: " + repr(uscita))
+    esigi("nessun ARES.md" in uscita, "/cartella non dice che manca ARES.md: " + repr(uscita))
     uscita = esegui_comando("/lavoro")
-    esigi(str(config.WORKSPACE_DIR) in uscita, "/lavoro non nomina la directory: " + repr(uscita))
+    esigi(str(config.WORKSPACE_DIR) in uscita, "/lavoro, il vecchio nome, non e' piu' un alias: " + repr(uscita))
     acceso = config.WORKSPACE
     config.WORKSPACE = False
     try:
-        uscita = esegui_comando("/lavoro")
+        uscita = esegui_comando("/cartella")
     finally:
         config.WORKSPACE = acceso
-    esigi("spento" in uscita, "/lavoro con il workspace spento non lo dice: " + repr(uscita))
+    esigi("spento" in uscita, "/cartella con il workspace spento non lo dice: " + repr(uscita))
 
     uscita = esegui_comando("/aiuto")
     esigi("/profilo" in uscita and "/esci" in uscita, "/aiuto non elenca i comandi: " + repr(uscita))
@@ -1566,11 +1577,11 @@ def import_senza_effetti() -> str:
 def archivio_vero_intatto(prima: list) -> str:
     """La prova non ha letto ne' scritto l'archivio vero."""
     esigi(
-        not config.DB_FILE.startswith(str(config.BASE_DIR / "tmp")),
+        not config.DB_FILE.startswith(str(config.ARES_HOME / "stato")),
         "l'archivio della prova coincide con quello vero: " + config.DB_FILE,
     )
     esigi(stato_archivio_reale() == prima, "l'archivio vero e' cambiato durante la prova")
-    return str(len(prima)) + " file in tmp/, invariati"
+    return str(len(prima)) + " file nello stato vero, invariati"
 
 
 # ---------------------------------------------------------------------------
@@ -1650,7 +1661,7 @@ def main() -> int:
     if args.conserva or falliti:
         print("Archivio della prova conservato:", ARCHIVIO_PROVA)
     else:
-        shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+        pulisci(RADICE_PROVA)
     if non_conclusivi:
         print()
         print("Non concludenti:")

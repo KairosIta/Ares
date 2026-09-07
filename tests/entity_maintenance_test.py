@@ -3,12 +3,11 @@
 import copy
 import json
 import os
-import shutil
 import subprocess
 import sys
 from dataclasses import replace
 
-from _comune import esigi, fallimento, prepara_ambiente
+from _comune import esigi, fallimento, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("entity-maintenance-test")
 
@@ -544,7 +543,7 @@ def main() -> int:
         fallimento(errore)
         return 1
     finally:
-        shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+        pulisci(RADICE_PROVA)
 
 
 if __name__ == "__main__":

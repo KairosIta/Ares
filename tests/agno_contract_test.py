@@ -55,13 +55,12 @@ e' proprio se ha scritto.
 
 import asyncio
 import json
-import shutil
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 # I percorsi vanno scelti prima di importare config, che li legge una volta
 # sola all'import.
@@ -492,7 +491,7 @@ def main() -> int:
         return 1
     finally:
         if riuscita:
-            shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+            pulisci(RADICE_PROVA)
         else:
             print("Archivio della prova conservato:", RADICE_PROVA)
 

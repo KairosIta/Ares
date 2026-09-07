@@ -10,6 +10,7 @@ l'archivio lo apre davvero.
 """
 
 import os
+import shutil
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -258,6 +259,13 @@ PAST_SESSION_RUNS_PREVIEW = 2
 # questo l'altezza di un terminale. Cio' che avanza viene contato, non taciuto.
 SESSIONI_ELENCO = 20
 
+# Ogni conversazione registra la cartella in cui e' nata, e all'avvio il
+# modello riceve le ultime di quella cartella - id, data, prima domanda -
+# cosi' "dove eravamo rimasti" funziona anche senza `ares resume`:
+# `read_past_session` le rilegge per id. Poche, perche' stanno nel prompt di
+# ogni turno; il resto lo trova `search_past_sessions`.
+SESSIONI_RECENTI_NEL_PROMPT = 5
+
 # Quante entita' chiedere allo store quando `/entita <testo>` cerca. La
 # ricerca del framework e' larga - verifica la query contro *tutti* i valori
 # dell'entita', namespace e date comprese - quindi `stores.leggi_entita` ne
@@ -295,7 +303,9 @@ SESSION_RETENTION_DAYS = 180
 # Il prune per eta' non tocca le conversazioni nominate qui. Una cancellazione
 # puntuale resta possibile, con anteprima, backup e conferma, perche' una
 # protezione esplicita deve impedire gli automatismi, non rendere il dato
-# incancellabile. La sessione predefinita e' il solo valore protetto di serie.
+# incancellabile. `principale` era la sessione predefinita prima che le
+# conversazioni nascessero per cartella; resta protetta perche' chi la usava
+# ci ha dentro mesi di contesto, e `--session principale` la riapre ancora.
 SESSIONI_PROTETTE = ("principale",)
 
 # ---------------------------------------------------------------------------
@@ -408,10 +418,22 @@ CONFERMA_APPRENDIMENTI = True
 # Percorsi
 # ---------------------------------------------------------------------------
 
-# Dove vive lo stato appreso. ARES_TMP lo sposta altrove, e serve alle prove
-# che devono girare su un archivio usa-e-getta. Va letta qui e non nei singoli
+# Dove vive tutto cio' che Ares impara e conserva: `~/.ares`, come `~/.ssh`.
+# Prima stava dentro il clone, in `tmp/`, e andava bene finche' `ares` si
+# lanciava da li'. Con il comando sul PATH e una cartella di lavoro diversa a
+# ogni avvio lo stato deve avere un posto che non dipenda da dove si e'
+# scaricato il codice. `ARES_HOME` lo sposta in blocco; `ARES_TMP` e
+# `ARES_BACKUP_DIR` spostano le due parti da sole, ed e' cio' che usano le
+# prove per girare su un archivio usa-e-getta. Letti qui e non nei singoli
 # percorsi: e' una decisione sola.
-TMP_DIR = Path(os.environ.get("ARES_TMP") or BASE_DIR / "tmp")
+ARES_HOME = Path(os.environ.get("ARES_HOME") or Path.home() / ".ares")
+TMP_DIR = Path(os.environ.get("ARES_TMP") or ARES_HOME / "stato")
+
+# Dove stavano prima. Li legge `ops/migrazione.py`, che li sposta una volta
+# sola; la chat si ferma finche' ci sono dati li' e niente nel posto nuovo,
+# perche' partire con uno stato vuoto accanto a uno pieno li sdoppierebbe.
+VECCHIO_TMP_DIR = BASE_DIR / "tmp"
+VECCHIO_BACKUP_DIR = BASE_DIR.parent / "ares-backup"
 # Il nome del file conserva quello che il progetto aveva prima del rilascio
 # pubblico, mentre le classi sono state rinominate. Non e' una svista: questo
 # nome sta nella tupla `DATABASE` di backup/integrity.py e quindi nell'insieme di file
@@ -449,17 +471,22 @@ def prepara_archivio() -> Path:
     """
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     rendi_privato(TMP_DIR)
+    # Anche `~/.ares`, quando lo stato ci sta dentro: e' la directory che si
+    # attraversa per arrivare a tutto il resto, backup compresi.
+    if TMP_DIR.parent == ARES_HOME:
+        rendi_privato(ARES_HOME)
     return TMP_DIR
 
 
-# Snapshot locali dello stato appreso. Fuori da tmp/, perche' un backup dentro
-# cio' che deve salvare verrebbe copiato ricorsivamente e sparirebbe insieme
-# all'originale; fuori anche dal workspace, che Ares puo' modificare. La
-# variabile d'ambiente rende le prove interamente usa-e-getta.
-BACKUP_DIR = Path(os.environ.get("ARES_BACKUP_DIR") or BASE_DIR.parent / "ares-backup")
+# Snapshot locali dello stato appreso. Accanto allo stato e non dentro,
+# perche' un backup dentro cio' che deve salvare verrebbe copiato
+# ricorsivamente e sparirebbe insieme all'originale. La variabile d'ambiente
+# rende le prove interamente usa-e-getta.
+BACKUP_DIR = Path(os.environ.get("ARES_BACKUP_DIR") or ARES_HOME / "backup")
 
-# Lock fratello di tmp/, non al suo interno: il restore sostituisce l'intera
-# directory dello stato e il file che coordina l'operazione deve restare fermo.
+# Lock fratello della directory dello stato, non al suo interno: il restore
+# sostituisce l'intera directory e il file che coordina l'operazione deve
+# restare fermo.
 STATE_LOCK_FILE = TMP_DIR.with_name(TMP_DIR.name + ".lock")
 
 # Solo il valore suggerito dalla CLI. Nessuno snapshot viene cancellato
@@ -510,11 +537,13 @@ CRONOLOGIA_RIGHE = 2000
 # Spazio di lavoro sul disco
 # ---------------------------------------------------------------------------
 
-# Una directory sola, fuori dal progetto e fuori da tmp/, dove Ares puo'
-# clonare repository e lavorarci. Sta accanto al progetto invece che dentro
-# per due motivi: cio' che ci finisce non e' codice di questo repo e non deve
-# comparire in `git status`, e un agente che puo' scrivere nella directory in
-# cui vive puo' riscrivere se stesso.
+# La directory di lavoro e' quella da cui si lancia `ares`, come per Claude
+# Code o Codex: si apre una cartella, si scrive `ares`, e Ares lavora li'.
+# Prima era una directory fissa accanto al progetto, uno spazio di Ares dove
+# clonare cose; ora e' il progetto dell'utente, con i suoi file. `--workspace`
+# la sceglie esplicitamente, e `cli/cartella.py` la guarda prima di aprirla:
+# la radice del disco, la home intera, una directory di sistema o una che
+# contiene lo stato di Ares si aprono solo dopo una conferma scritta.
 #
 # Il confine e' quello che Agno chiama, nel docstring di Workspace, "a
 # path-scoping boundary, not a process sandbox": gli strumenti sui file non
@@ -522,8 +551,26 @@ CRONOLOGIA_RIGHE = 2000
 # leggere l'ambiente, aprire la rete. Cio' che regge il confine e' la
 # conferma umana, non il codice: per questo la shell sta fra le azioni da
 # confermare e non fra quelle libere.
+#
+# Il valore qui e' il default letto all'import; la chat lo riscrive all'avvio
+# con la cartella scelta e autorizzata. Se la directory corrente non esiste
+# piu' - cancellata da sotto la shell - si ripiega sulla home, che la
+# verifica dei rischi fermera' con un avviso invece di un traceback.
+# Risolto subito: su Windows la directory corrente puo' arrivare con i nomi
+# corti (`RUNNER~1`), e lo stesso percorso scritto in due modi e' la strada
+# per un confronto che fallisce.
 WORKSPACE = True
-WORKSPACE_DIR = Path(os.environ.get("ARES_WORKSPACE") or BASE_DIR.parent / "ares-lavoro")
+try:
+    WORKSPACE_DIR = Path(os.getcwd()).resolve()
+except FileNotFoundError:
+    WORKSPACE_DIR = Path.home()
+
+# Il file che, se c'e' nella cartella di lavoro, entra nelle istruzioni del
+# turno: convenzioni del progetto, cosa non toccare, come si lanciano le
+# prove. `ares init` ne scrive uno scheletro. Il tetto evita che un file
+# enorme occupi da solo la finestra del modello.
+WORKSPACE_ISTRUZIONI = "ARES.md"
+WORKSPACE_ISTRUZIONI_MAX_BYTE = 32_000
 
 # Il prefisso non e' cosmetico. Il FileSystem privato espone gia' read_file,
 # write_file, list_files, move_file e search_content: registrando Workspace
@@ -563,10 +610,12 @@ DEFAULT_USER_ID = os.environ.get("ARES_USER_ID", "default")
 def comando_ares(*parole: str) -> str:
     """Il comando `ares` come lo si scrive da fuori dal venv, con le sue parole.
 
-    `comando_ares("backup", "restore", nome)` da' `.venv/bin/ares backup restore
-    <nome>` su POSIX e `.venv\\Scripts\\ares ...` su Windows. Serve alle righe
-    che suggeriscono un rimedio: la chat che ricorda il backup, il restore
+    `comando_ares("backup", "restore", nome)` da' `ares backup restore <nome>`
+    se il setup ha messo `ares` sul PATH, altrimenti `.venv/bin/ares ...` su
+    POSIX e `.venv\\Scripts\\ares ...` su Windows. Serve alle righe che
+    suggeriscono un rimedio: la chat che ricorda il backup, il restore
     lasciato a meta', la manutenzione che dice da dove tornare.
     """
-    eseguibile = r".venv\Scripts\ares" if os.name == "nt" else ".venv/bin/ares"
+    nel_venv = r".venv\Scripts\ares" if os.name == "nt" else ".venv/bin/ares"
+    eseguibile = "ares" if shutil.which("ares") else nel_venv
     return " ".join((eseguibile, *parole))

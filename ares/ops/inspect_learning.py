@@ -29,7 +29,7 @@ def separatore(titolo: str) -> None:
     UI.heading(titolo)
 
 
-def _ispeziona(user: str, session: str, query: str, file: str | None) -> None:
+def _ispeziona(user: str, session: str | None, query: str, file: str | None) -> None:
     from ares.agent.assistant import build_assistant, build_filesystem
     from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita, stampa_store
 
@@ -49,7 +49,14 @@ def _ispeziona(user: str, session: str, query: str, file: str | None) -> None:
             print(contenuto)
         return
 
-    agent = build_assistant(user_id=user, session_id=session)
+    agent = build_assistant(user_id=user, session_id=session or "principale")
+    if not session:
+        # Senza `--session` si guarda l'ultima conversazione toccata, di
+        # qualunque cartella: e' quella di cui si vuole sapere cosa e' rimasto.
+        from ares.state.stores import leggi_sessioni
+
+        recenti = leggi_sessioni(agent, user_id=user)
+        session = str(recenti[0].session_id) if recenti else "principale"
     lm = agent.learning_machine
     # `build_assistant` passa sempre `learning=`, quindi la macchina c'e'. I
     # singoli store possono invece essere None se spenti in config.py, ed e'
@@ -97,7 +104,7 @@ def _ispeziona(user: str, session: str, query: str, file: str | None) -> None:
 def ispeziona(
     *,
     user: str = config.DEFAULT_USER_ID,
-    session: str = "principale",
+    session: str | None = None,
     query: str = "",
     file: str | None = None,
 ) -> None:
@@ -105,7 +112,7 @@ def ispeziona(
 
     Args:
         user: identificativo dell'utente.
-        session: sessione di cui mostrare il contesto.
+        session: sessione di cui mostrare il contesto; senza, l'ultima toccata.
         query: filtra entita' e intuizioni; le intuizioni per somiglianza.
         file: stampa solo il contenuto di questo file del quaderno privato.
     """

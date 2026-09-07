@@ -29,7 +29,7 @@ import time
 import urllib.error
 from pathlib import Path
 
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 UTENTE_STORE = "prova-intuizioni-store"
 UTENTE_ALTRO = "prova-intuizioni-altro"
@@ -282,28 +282,28 @@ def main(args) -> int:
     print("Backup temporaneo:", RADICE_BACKUP)
     print()
 
-    reale_prima = fotografia(config.BASE_DIR / "tmp")
+    reale_prima = fotografia(config.ARES_HOME / "stato")
     avvio = time.monotonic()
     try:
-        esigi(RADICE_STATO != config.BASE_DIR / "tmp", "la prova punta allo stato reale")
+        esigi(RADICE_STATO != config.ARES_HOME / "stato", "la prova punta allo stato reale")
         try:
             pronti, dettaglio = modelli_pronti()
         except (urllib.error.URLError, OSError) as errore:
             print("SALTATA  Ollama non raggiungibile:", errore)
             if not args.conserva:
-                shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+                pulisci(RADICE_PROVA)
             return 2
         if not pronti:
             print("SALTATA ", dettaglio)
             if not args.conserva:
-                shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+                pulisci(RADICE_PROVA)
             return 2
         ok("modelli", dettaglio)
 
         prova_store()
         prova_agente()
         prova_backup()
-        esigi(fotografia(config.BASE_DIR / "tmp") == reale_prima, "lo stato reale e' cambiato durante la prova")
+        esigi(fotografia(config.ARES_HOME / "stato") == reale_prima, "lo stato reale e' cambiato durante la prova")
         ok("stato reale", str(len(reale_prima)) + " file invariati")
     except Exception as errore:
         fallimento(errore)
@@ -316,7 +316,7 @@ def main(args) -> int:
     if args.conserva:
         print("Stato conservato:", RADICE_PROVA)
     else:
-        shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+        pulisci(RADICE_PROVA)
         print("Stato temporaneo cancellato.")
     print("Nessun fallimento.")
     return 0

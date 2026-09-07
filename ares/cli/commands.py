@@ -6,6 +6,7 @@ from typing import Any
 
 from ares import config
 from ares.agent.assistant import build_assistant, build_filesystem
+from ares.cli import cartella
 from ares.cli.ui import UI, byte_leggibili
 from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
 
@@ -58,11 +59,24 @@ def _comando_contesto(stato: StatoChat, argomento: str):
 
 
 def _comando_sessioni(stato: StatoChat, argomento: str):
-    UI.heading("Sessioni")
-    sessioni = leggi_sessioni(stato.agent, user_id=stato.user_id, query=argomento)
+    """Le conversazioni di questa cartella; `tutte` allarga a ogni cartella.
+
+    Le sessioni nate altrove restano fuori dall'elenco normale perche' sono
+    il lavoro di un altro progetto; quelle senza cartella - di prima che le
+    sessioni ne avessero una - compaiono sempre, altrimenti sparirebbero.
+    """
+    parole = argomento.split()
+    tutte = bool(parole) and parole[0].casefold() == "tutte"
+    if tutte:
+        parole = parole[1:]
+    argomento = " ".join(parole)
+    qui = config.WORKSPACE_DIR if config.WORKSPACE and not tutte else None
+    UI.heading("Sessioni" if qui is None else "Sessioni di questa cartella")
+    sessioni = leggi_sessioni(stato.agent, user_id=stato.user_id, query=argomento, cartella=qui)
     mostrate = sessioni[: config.SESSIONI_ELENCO]
     for s in mostrate:
-        for riga in righe_sessione(s, corrente=(getattr(s, "session_id", None) == stato.session_id)):
+        corrente = getattr(s, "session_id", None) == stato.session_id
+        for riga in righe_sessione(s, corrente=corrente, con_cartella=tutte):
             UI.line(riga)
     if not mostrate:
         if argomento:
@@ -72,6 +86,8 @@ def _comando_sessioni(stato: StatoChat, argomento: str):
     nascoste = len(sessioni) - len(mostrate)
     if nascoste:
         UI.line("(altre " + str(nascoste) + ": /sessioni <testo> filtra per nome)", style="ares.muted")
+    if qui is not None:
+        UI.line("(/sessioni tutte mostra anche quelle nate in altre cartelle)", style="ares.muted")
     if not argomento and all(getattr(s, "session_id", None) != stato.session_id for s in sessioni):
         # La sessione in corso entra in archivio col primo turno salvato.
         # Prima di allora manca dall'elenco, e un'assenza non spiegata si
@@ -159,18 +175,40 @@ def _comando_file(stato: StatoChat, argomento: str):
     UI.table(("file", ("byte", "ares.text", "right")), ((str(f.path), byte_leggibili(f.size_bytes)) for f in elenco))
 
 
-def _comando_lavoro(stato: StatoChat, argomento: str):
-    UI.heading("Workspace")
+def _comando_cartella(stato: StatoChat, argomento: str):
+    """Dove Ares sta lavorando, e in che stato e' il progetto.
+
+    Serve prima di dire si' a un comando shell: il percorso, il ramo, quanti
+    file sono gia' modificati, se c'e' un ARES.md che il modello sta seguendo
+    e gli stessi avvisi dell'avvio, perche' una cartella rischiosa lo resta
+    anche dopo la conferma.
+    """
+    UI.heading("Cartella di lavoro")
     if not config.WORKSPACE:
         UI.line("Lo spazio di lavoro e' spento in config.py.", style="ares.muted")
         return
     radice = config.WORKSPACE_DIR
-    UI.line(str(radice), style="ares.cyan")
-    voci = sorted(radice.iterdir()) if radice.exists() else []
-    if not voci:
-        UI.line("(vuota)", style="ares.muted")
-    for voce in voci:
-        UI.line("- " + voce.name + ("/" if voce.is_dir() else ""))
+    UI.pair("percorso", str(radice), style="ares.cyan")
+    ramo = cartella.ramo_git(radice)
+    if ramo:
+        modificati = cartella.file_modificati(radice)
+        if modificati is None:
+            stato_git = "stato non leggibile"
+        elif modificati:
+            stato_git = str(modificati) + (" file modificato" if modificati == 1 else " file modificati")
+        else:
+            stato_git = "pulito"
+        UI.pair("git", ramo + ", " + stato_git)
+    else:
+        UI.pair("git", "non e' un repository", style="ares.muted")
+    if cartella.file_istruzioni(radice).is_file():
+        UI.pair("istruzioni", config.WORKSPACE_ISTRUZIONI + ", letto all'avvio")
+    else:
+        UI.pair(
+            "istruzioni", "nessun " + config.WORKSPACE_ISTRUZIONI + "; `ares init` ne scrive uno", style="ares.muted"
+        )
+    for motivo in cartella.rischi(radice):
+        UI.line("attenzione: la cartella " + motivo, style="ares.warning")
 
 
 def _comando_esci(stato: StatoChat, argomento: str):
@@ -184,7 +222,8 @@ def _comando_esci(stato: StatoChat, argomento: str):
 # piu' contraddirsi.
 #
 # Gli alias restano fuori dall'elenco a schermo e dal TAB, ma si scrivono e si
-# abbreviano come gli altri: sono superstiti inglesi, non comandi da imparare.
+# abbreviano come gli altri: sono superstiti inglesi, o il nome che un comando
+# aveva prima, non comandi da imparare.
 #
 # `/sessione` e `/sessioni` condividono il prefisso fino all'ultima lettera:
 # `/sess` e' ambiguo e lo resta di proposito, perche' uno elenca e l'altro
@@ -194,11 +233,11 @@ COMANDI = (
     ("/profilo", (), "il profilo utente accumulato", _comando_profilo),
     ("/memorie", (), "le memorie non strutturate", _comando_memorie),
     ("/contesto", (), "obiettivo e avanzamento della sessione", _comando_contesto),
-    ("/sessioni", (), "le conversazioni in archivio; /sessioni <testo> filtra", _comando_sessioni),
+    ("/sessioni", (), "le conversazioni di questa cartella; <testo> filtra, `tutte` allarga", _comando_sessioni),
     ("/sessione", (), "la sessione corrente; /sessione <nome> passa a un'altra", _comando_sessione),
     ("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
     ("/file", (), "i file scritti dall'agente", _comando_file),
-    ("/lavoro", (), "la directory di lavoro sul disco", _comando_lavoro),
+    ("/cartella", ("/lavoro",), "la cartella di lavoro: percorso, git, ARES.md", _comando_cartella),
     ("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
     ("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),
     ("/esci", ("/quit", "/exit"), "termina la sessione", _comando_esci),

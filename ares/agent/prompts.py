@@ -1,5 +1,7 @@
 """Istruzioni dell'agente condizionate alle capacita' realmente abilitate."""
 
+from pathlib import Path
+
 from ares import config
 
 
@@ -40,12 +42,15 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
         )
     if radice_lavoro is not None:
         dette.append(
-            "Hai una directory di lavoro tutta tua, " + str(radice_lavoro) + ": "
-            "gli strumenti che cominciano con workspace_ lavorano li' dentro, "
-            "sul disco vero, ed e' l'unica parte del computer che puoi "
-            "toccare. Gli strumenti senza prefisso - read_file, write_file, "
-            "list_files - sono invece il tuo quaderno privato, che vive in un "
-            "database e non esiste sul disco: non confondere i due posti. "
+            "Lavori nella cartella da cui l'utente ti ha avviato, " + str(radice_lavoro) + ": "
+            "e' il suo progetto, con i suoi file, non uno spazio tuo. Gli "
+            "strumenti che cominciano con workspace_ leggono e scrivono li' "
+            "dentro, sul disco vero, ed e' l'unica parte del computer che puoi "
+            "toccare. Modifica solo cio' che ti viene chiesto: non riordinare, "
+            "non rinominare e non cancellare per pulizia. Gli strumenti senza "
+            "prefisso - read_file, write_file, list_files - sono invece il tuo "
+            "quaderno privato, che vive in un database e non esiste sul disco: "
+            "non confondere i due posti. "
             "workspace_run_command vuole il comando spezzato in una lista di "
             "stringhe, una per parola: ['ls', '-la'], non ['ls -la']. Non "
             "passa da una shell, quindi per una riga intera - pipe, "
@@ -64,3 +69,63 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
             "vista usa get_chat_history, sempre con num_chats."
         )
     return dette
+
+
+def istruzioni_sulle_conversazioni(sessioni, *, cartella) -> list[str]:
+    """Le conversazioni precedenti nate nella stessa cartella, per id.
+
+    `search_past_sessions` elenca le ultime venti sessioni dell'utente senza
+    sapere dove sono nate: in una cartella con dieci progetti accanto, "dove
+    eravamo rimasti" pesca a caso. Qui il modello riceve le poche di questo
+    posto, con l'id da passare a `read_past_session`. Vuoto se non ce ne
+    sono: un'istruzione che dice "nessuna" occuperebbe spazio per niente.
+    """
+    if not sessioni:
+        return []
+    from ares.state.stores import prima_domanda, quando_sessione
+
+    righe = []
+    for sessione in sessioni:
+        scambi = len(getattr(sessione, "runs", None) or [])
+        riga = "- " + str(getattr(sessione, "session_id", "?")) + " (" + quando_sessione(sessione)
+        riga += ", " + str(scambi) + (" scambio" if scambi == 1 else " scambi") + ")"
+        inizio = prima_domanda(sessione, larghezza=120)
+        if inizio:
+            riga += ": " + inizio
+        righe.append(riga)
+    return [
+        "In questa cartella, " + str(cartella) + ", ci sono state altre conversazioni. "
+        "Se l'utente si riferisce a lavoro gia' fatto qui - 'dove eravamo rimasti', "
+        "'come avevamo deciso' - rileggile con read_past_session passando l'id, "
+        "dalla piu' recente:\n" + "\n".join(righe)
+    ]
+
+
+def istruzioni_dalla_cartella(radice_lavoro) -> list[str]:
+    """Il contenuto di `ARES.md` nella cartella di lavoro, se c'e'.
+
+    E' il `CLAUDE.md` di Ares: regole del progetto scritte da chi ci lavora,
+    che entrano nel prompt prima del primo turno. Un file oltre il tetto viene
+    troncato e lo si dice al modello, cosi' non crede di aver letto tutto.
+    Un file illeggibile vale come assente: un permesso negato non deve
+    impedire la chat.
+    """
+    if radice_lavoro is None:
+        return []
+    percorso = Path(radice_lavoro) / config.WORKSPACE_ISTRUZIONI
+    try:
+        grezzo = percorso.read_bytes()
+    except OSError:
+        return []
+    troncato = len(grezzo) > config.WORKSPACE_ISTRUZIONI_MAX_BYTE
+    testo = grezzo[: config.WORKSPACE_ISTRUZIONI_MAX_BYTE].decode("utf-8", errors="replace").strip()
+    if not testo:
+        return []
+    intestazione = (
+        "Chi lavora in questa cartella ha lasciato istruzioni in "
+        + config.WORKSPACE_ISTRUZIONI
+        + ". Seguile finche' non contraddicono cio' che l'utente ti chiede adesso"
+        + ("; il file e' piu' lungo del tetto e qui ne vedi solo l'inizio, dillo se conta" if troncato else "")
+        + ":\n\n"
+    )
+    return [intestazione + testo]

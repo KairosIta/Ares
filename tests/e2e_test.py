@@ -31,7 +31,6 @@ memoria, non che l'archivio conservi qualcosa.
 import argparse
 import logging
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -39,7 +38,7 @@ import time
 import urllib.error
 from contextlib import closing
 
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 # L'archivio della prova va scelto prima di importare config, che legge i
 # percorsi una volta sola: correggere l'ambiente dopo non sposterebbe lo
@@ -153,7 +152,7 @@ def stato_archivio_reale() -> list:
     senza, l'unico modo di sapere che il turno non ha scritto tra i dati veri
     sarebbe fidarsi della variabile d'ambiente.
     """
-    reale = config.BASE_DIR / "tmp"
+    reale = config.ARES_HOME / "stato"
     if not reale.exists():
         return []
     return sorted(
@@ -178,7 +177,7 @@ def main() -> int:
 
     try:
         esigi(
-            not config.DB_FILE.startswith(str(config.BASE_DIR / "tmp")),
+            not config.DB_FILE.startswith(str(config.ARES_HOME / "stato")),
             "l'archivio della prova coincide con quello vero: " + config.DB_FILE,
         )
         ok("archivio separato   ", "i dati veri non vengono ne' letti ne' scritti")
@@ -310,7 +309,7 @@ def main() -> int:
     if args.conserva:
         print("Archivio della prova conservato:", ARCHIVIO_PROVA)
     else:
-        shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+        pulisci(RADICE_PROVA)
         print("Archivio della prova cancellato.")
     print("Nessun fallimento.")
     return 0

@@ -31,8 +31,9 @@ spazio controllato sul disco senza richiedere API cloud.
   conoscenza riutilizzabile attraverso SQLite e LanceDB.
 - **Apprendimento affidabile:** l’estrazione avviene sul run completo, anche
   dopo una conferma e `continue_run`, con retry mirato sul contesto.
-- **Strumenti controllati:** cronologia, ricerca, quaderno privato e workspace
-  su disco con conferma per le operazioni sensibili.
+- **Strumenti controllati:** cronologia, ricerca, quaderno privato e la
+  cartella da cui lanci `ares` come spazio di lavoro, con conferma per le
+  operazioni sensibili e un avviso prima di aprire una cartella rischiosa.
 - **Memoria visibile e revocabile:** sotto ogni risposta compare cosa è
   entrato in profilo e memorie, sia dagli strumenti del modello sia
   dall'estrazione automatica, con il testo intero, e la CLI chiede se
@@ -174,14 +175,14 @@ Su Linux:
 
 ```bash
 ./setup.sh
-.venv/bin/ares
+ares
 ```
 
 Su Windows, da PowerShell:
 
 ```powershell
 .\setup.ps1
-.\.venv\Scripts\ares.exe
+ares
 ```
 
 Se la policy di PowerShell impedisce l’avvio dello script locale, usa una
@@ -189,33 +190,89 @@ sola volta `powershell -ExecutionPolicy Bypass -File .\setup.ps1`.
 
 Se Ollama non è già attivo, avvialo prima con `ollama serve`. Entrambi gli
 script di setup creano il virtualenv, installano esattamente le versioni di
-[`uv.lock`](uv.lock) e Ares stesso, ed eseguono il preflight. Nel venv
-compare il comando `ares`: da solo apre la chat, `ares --help` elenca i
-sottocomandi di manutenzione (`ares backup`, `ares sessions`, `ares entities`,
-`ares preflight`, `ares inspect`). Gli alias `ares-backup`, `ares-sessions`...
-restano e fanno la stessa cosa; `python -m ares` continua a funzionare. Su
-Windows `setup.ps1 -SkipPreflight` prepara soltanto le dipendenze e viene
-usato dalla CI, dove Ollama non è disponibile.
+[`uv.lock`](uv.lock) e Ares stesso, mettono `ares` sul PATH ed eseguono il
+preflight. Da quel momento `ares` si scrive da qualunque cartella: su Linux è
+un link in `~/.local/bin` al comando del venv, su Windows uno shim `ares.cmd`
+in `%USERPROFILE%\.local\bin`; se quella directory non è nel PATH il setup
+dice la riga da aggiungere. Non è un `uv tool install`, che risolverebbe le
+dipendenze da capo senza guardare il lock: il comando globale è esattamente
+l'ambiente bloccato e segue il codice del clone a ogni pull.
 
-Per aprire una sessione separata:
+`ares` da solo apre la chat, `ares --help` elenca i sottocomandi di
+manutenzione (`ares backup`, `ares sessions`, `ares entities`, `ares
+preflight`, `ares inspect`, `ares migrate`). Gli alias `ares-backup`,
+`ares-sessions`... restano e fanno la stessa cosa; `python -m ares` continua a
+funzionare dal clone. Su Windows `setup.ps1 -SkipPreflight` prepara soltanto
+le dipendenze e viene usato dalla CI, dove Ollama non è disponibile.
+
+Tutto ciò che Ares impara vive in `~/.ares`: lo stato in `stato/`, gli
+snapshot in `backup/`, fuori dal clone, che si può spostare o rifare senza
+perdere niente. `ARES_HOME` nel `.env` sposta tutto altrove. Chi aggiorna un
+clone che teneva lo stato in `tmp/` non deve fare niente: il setup chiama
+`ares migrate`, che sposta stato e snapshot in `~/.ares` una volta sola, e la
+chat si rifiuta di partire finché lo stato è ancora nel posto di prima,
+perché un archivio vuoto accanto a uno pieno li sdoppierebbe.
+
+Ares lavora nella cartella da cui lo lanci, come Claude Code o Codex: entra
+nel progetto e scrivi `ares`. Il banner mostra la cartella e, se è un
+repository, il ramo. Gli strumenti sui file non escono da lì; i comandi shell
+chiedono conferma uno per uno. Se la cartella è rischiosa — la home intera,
+la radice del disco, una directory di sistema, una che contiene lo stato o il
+codice di Ares — te lo dice e chiede di riscrivere il percorso prima di
+partire; da uno script senza terminale una cartella così si apre solo
+nominandola con `--workspace`. Per lavorare su un'altra cartella senza
+spostarti:
 
 ```bash
-.venv/bin/ares --session progetto-demo
+ares --workspace ~/progetti/demo
+```
+
+Se nella cartella c'è un `ARES.md`, Ares lo legge prima del primo turno: è
+il posto per le convenzioni del progetto, cosa non toccare, come si lanciano
+le prove. `ares init` ne scrive uno scheletro nella cartella corrente e non
+tocca un file che esiste già.
+
+Ogni `ares` apre una conversazione nuova, che nasce nella cartella e la
+ricorda: profilo e memorie ci sono comunque, perché sono tuoi e non della
+conversazione, mentre obiettivo, piano e avanzamento partono vuoti. Per
+tornare dove eri:
+
+```bash
+ares resume            # l'ultima conversazione nata in questa cartella
+ares resume --scegli   # la scegli da un elenco numerato
+```
+
+Le conversazioni di altre cartelle non c'entrano: `/sessioni` mostra quelle
+di qui, `/sessioni tutte` le altre, e anche Ares riceve all'avvio le ultime di
+questa cartella, con l'id, così "dove eravamo rimasti" funziona anche in una
+conversazione nuova. Un nome fisso resta possibile con `--session`:
+
+```bash
+ares --session progetto-demo
+```
+
+Per una risposta sola, anche dentro una pipe, `-p`: stdin si aggiunge alla
+domanda e le operazioni che chiederebbero conferma vengono rifiutate, perché
+non c'è nessuno a rispondere.
+
+```bash
+git diff | ares -p "scrivi il messaggio di commit"
 ```
 
 Su Windows il comando equivalente è:
 
 ```powershell
-.\.venv\Scripts\ares.exe --session progetto-demo
+ares --session progetto-demo
 ```
 
 Durante la chat `/` apre il menu dei comandi e TAB completa la voce
 selezionata. Invio spedisce il messaggio, `Alt+Invio` aggiunge una nuova riga,
 le frecce percorrono la cronologia e i suggerimenti riprendono le domande
 precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
-`/sessioni`, `/entita`, `/file` e `/lavoro`. Tre cambiano la sessione in
-corso senza riavviare: `/sessione <nome>` passa a un'altra sessione,
-`/metriche` accende il costo di ogni turno, `/debug` le chiamate al modello.
+`/sessioni`, `/entita`, `/file` e `/cartella`, che mostra percorso, ramo,
+file modificati e se c'è un `ARES.md`. Tre cambiano la sessione in corso
+senza riavviare: `/sessione <id>` passa a un'altra conversazione, `/metriche`
+accende il costo di ogni turno, `/debug` le chiamate al modello.
 
 ## Verifica
 
@@ -255,16 +312,16 @@ salta, e da uno script la frase si passa su stdin. Quelli che leggono soltanto a
 ### Backup
 
 ```bash
-.venv/bin/ares backup create
-.venv/bin/ares backup list
-.venv/bin/ares backup verify latest
-.venv/bin/ares backup restore <snapshot>
-.venv/bin/ares backup prune --keep 20
+ares backup create
+ares backup list
+ares backup verify latest
+ares backup restore <snapshot>
+ares backup prune --keep 20
 ```
 
 Gli snapshot vivono per default nella directory `ares-backup` accanto al
-clone, non nel repository. Database, indice vettoriale, cronologia e workspace
-restano esclusi da Git.
+clone, non nel repository. Database, indice vettoriale e cronologia restano
+esclusi da Git.
 
 Il backup resta un comando che dai tu. La chat però se ne accorge: se l'ultimo
 snapshot ha più di `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero
@@ -276,10 +333,10 @@ cioè esattamente ciò che non si fa mentre qualcuno sta aspettando un prompt.
 ### Entità duplicate
 
 ```bash
-.venv/bin/ares entities audit --all
-.venv/bin/ares entities merge \
+ares entities audit --all
+ares entities merge \
   --source project/doppione --into project/canonico
-.venv/bin/ares entities merge \
+ares entities merge \
   --source project/doppione --into project/canonico --apply
 ```
 
@@ -289,10 +346,10 @@ acquisisce il lock esclusivo, crea un backup e domanda una conferma testuale.
 ### Sessioni e risultati tool
 
 ```bash
-.venv/bin/ares sessions status
-.venv/bin/ares sessions prune --older-than 180
-.venv/bin/ares sessions prune --older-than 180 --apply
-.venv/bin/ares sessions delete <session-id> --apply
+ares sessions status
+ares sessions prune --older-than 180
+ares sessions prune --older-than 180 --apply
+ares sessions delete <session-id> --apply
 ```
 
 I risultati offloaded non hanno un TTL indipendente: vivono quanto la loro

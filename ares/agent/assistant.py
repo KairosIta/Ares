@@ -15,7 +15,7 @@ from ares.agent.learning import (
     build_learning_machine,
     build_session_context_store,
 )
-from ares.agent.prompts import istruzioni_sugli_strumenti
+from ares.agent.prompts import istruzioni_dalla_cartella, istruzioni_sugli_strumenti, istruzioni_sulle_conversazioni
 from ares.agent.runtime import (
     AresWorkspace,
     build_chat_model,
@@ -26,6 +26,7 @@ from ares.agent.runtime import (
     build_result_store,
     build_workspace,
 )
+from ares.state.stores import CHIAVE_CARTELLA, con_run, sessioni_della_cartella
 
 __all__ = [
     "AresLearningMachine",
@@ -51,13 +52,27 @@ def build_assistant(
     session_id: str = "principale",
     debug: bool = False,
 ) -> Agent:
-    """Assembla l'assistente completo senza nascondere dipendenze globali."""
+    """Assembla l'assistente completo senza nascondere dipendenze globali.
+
+    Con lo spazio di lavoro acceso la sessione porta con se' la cartella in
+    cui nasce: `metadata` finisce nella sessione nuova e resta com'e' in una
+    ripresa, ed e' cio' che `ares resume` e `/sessioni` leggono. Le altre
+    conversazioni della stessa cartella entrano nelle istruzioni per id,
+    poche e dalla piu' recente.
+    """
     db = build_db()
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
     # store learned_knowledge nel namespace globale del framework.
     knowledge = build_knowledge() if config.LEARN_KNOWLEDGE else None
     fs = build_filesystem(user_id)
     spazio = build_workspace() if config.WORKSPACE else None
+
+    metadata = None
+    precedenti: list = []
+    if spazio is not None:
+        metadata = {CHIAVE_CARTELLA: str(spazio.root)}
+        recenti = sessioni_della_cartella(db, user_id, spazio.root, escludi=session_id)
+        precedenti = [con_run(db, s) for s in recenti[: config.SESSIONI_RECENTI_NEL_PROMPT]]
 
     return Agent(
         name="Ares",
@@ -73,6 +88,7 @@ def build_assistant(
         db=db,
         user_id=user_id,
         session_id=session_id,
+        metadata=metadata,
         tools=[fs.tools()] + ([spazio] if spazio is not None else []),
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
         instructions=[
@@ -84,6 +100,8 @@ def build_assistant(
             "risposta e' quello che rende la memoria affidabile.",
             "Se non sai una cosa, dillo invece di ricostruirla per verosimiglianza.",
             *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None),
+            *istruzioni_dalla_cartella(spazio.root if spazio is not None else None),
+            *istruzioni_sulle_conversazioni(precedenti, cartella=spazio.root if spazio is not None else None),
             "Quando salvi un'intuizione, scrivila in italiano, e salvala solo se "
             "sara' utile in una conversazione futura su un argomento diverso. Una "
             "risposta a una domanda specifica non e' un'intuizione; il criterio che "

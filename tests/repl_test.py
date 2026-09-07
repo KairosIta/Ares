@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from _comune import esegui, esigi, prepara_ambiente
+from _comune import esegui, esigi, prepara_ambiente, pulisci
 
 # La cronologia privata e i lock della REPL vivono nell'archivio: anche
 # senza agente i percorsi vanno decisi prima di importare config.
@@ -1208,6 +1208,279 @@ def conferme_scritte() -> str:
     return "frase esatta, spazi tollerati, vuoto, EOF e Ctrl-C sono un no"
 
 
+def cartella_di_lavoro() -> str:
+    """`cli/cartella.py`: la cartella da cui si lancia `ares` e cio' che se ne legge.
+
+    I rischi si provano su percorsi veri - la radice, la home, la radice
+    della prova che contiene stato e backup - e l'autorizzazione sui suoi
+    tre esiti: nessun rischio, rifiuto senza terminale, passaggio con
+    `--workspace`. Git si legge da un `.git` fabbricato, senza lanciare git,
+    salvo il conteggio dei file modificati, che git lo lancia davvero.
+    """
+    from ares.agent.prompts import istruzioni_dalla_cartella
+    from ares.cli import cartella
+    from ares.cli.app import app
+
+    lavoro = Path.cwd().resolve()
+    esigi(lavoro == (RADICE_PROVA / "lavoro").resolve(), "la prova non parte dalla cartella di lavoro: " + str(lavoro))
+    esigi(config.WORKSPACE_DIR.resolve() == lavoro, "config non ha letto la directory corrente")
+
+    # scegli: la corrente, una data, una inesistente, un file.
+    esigi(cartella.scegli(None) == lavoro, "senza argomento non sceglie la directory corrente")
+    esigi(cartella.scegli(RADICE_PROVA) == RADICE_PROVA.resolve(), "un percorso dato non viene risolto")
+    for sbagliato in (lavoro / "non-esiste", RADICE_PROVA / "stato" / "cronologia_chat.txt"):
+        try:
+            cartella.scegli(sbagliato)
+        except ValueError as errore:
+            esigi("non" in str(errore), "l'errore non dice cosa non va: " + str(errore))
+        else:
+            if sbagliato.exists() or "non-esiste" in str(sbagliato):
+                esigi(False, "scegli ha accettato " + str(sbagliato))
+
+    # rischi: dove non ce ne sono, e dove ce ne sono.
+    esigi(
+        cartella.rischi(lavoro) == [],
+        "la cartella di lavoro della prova risulta rischiosa: " + repr(cartella.rischi(lavoro)),
+    )
+    radice_disco = Path(lavoro.anchor)
+    esigi(any("radice del disco" in m for m in cartella.rischi(radice_disco)), "la radice del disco non e' rischiosa")
+    home = Path.home().resolve()
+    esigi(any("home intera" in m for m in cartella.rischi(home)), "la home non e' rischiosa")
+    if home.parent != radice_disco:
+        esigi(any("contiene la tua home" in m for m in cartella.rischi(home.parent)), "il padre della home non lo e'")
+    motivi = cartella.rischi(RADICE_PROVA)
+    esigi(any("lo stato di Ares" in m for m in motivi), "la radice con dentro lo stato non lo dice: " + repr(motivi))
+    esigi(any("i backup di Ares" in m for m in motivi), "la radice con dentro i backup non lo dice: " + repr(motivi))
+    esigi(
+        any("il codice di Ares" in m for m in cartella.rischi(config.BASE_DIR)),
+        "il clone di Ares non e' segnalato",
+    )
+
+    # autorizza senza terminale: passa se non c'e' rischio, rifiuta una
+    # cartella ereditata dalla shell, prosegue se e' stata nominata apposta.
+    def senza_terminale(percorso: Path, *, esplicito: bool) -> tuple[bool, str, str]:
+        fuori, errori = io.StringIO(), io.StringIO()
+        with (
+            patch.object(sys, "stdin", io.StringIO()),
+            contextlib.redirect_stdout(fuori),
+            contextlib.redirect_stderr(errori),
+        ):
+            esito = cartella.autorizza(percorso, esplicito=esplicito)
+        return esito, fuori.getvalue(), errori.getvalue()
+
+    esito, testo, errore = senza_terminale(lavoro, esplicito=False)
+    esigi(esito is True and testo == "" and errore == "", "una cartella senza rischi parla o non passa")
+    esito, testo, errore = senza_terminale(RADICE_PROVA, esplicito=False)
+    esigi(esito is False, "una cartella rischiosa ereditata passa senza terminale")
+    esigi("Attenzione" in testo and "lo stato di Ares" in testo, "l'avviso non spiega il rischio: " + repr(testo))
+    esigi("--workspace" in errore, "il rifiuto non dice come confermare: " + repr(errore))
+    esito, testo, errore = senza_terminale(RADICE_PROVA, esplicito=True)
+    esigi(esito is True and "Proseguo" in testo, "una cartella rischiosa nominata apposta non passa: " + repr(testo))
+
+    # Con un terminale la parola passa a `conferma_scritta`, con il percorso
+    # come frase da riscrivere.
+    class Terminale(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    chieste: list[str] = []
+
+    def finta_conferma(attesa: str, *, cosa=None) -> bool:
+        chieste.append(attesa)
+        return False
+
+    with (
+        patch.object(sys, "stdin", Terminale()),
+        patch.object(sys, "stdout", Terminale()),
+        patch.object(cartella, "conferma_scritta", finta_conferma),
+    ):
+        # Risolto come lo passa la chat: su Windows la temp arriva col nome
+        # corto, e la conferma deve chiedere il percorso che poi si apre.
+        esito = cartella.autorizza(RADICE_PROVA.resolve(), esplicito=False)
+    esigi(
+        esito is False and chieste == [str(RADICE_PROVA.resolve())],
+        "la conferma non chiede il percorso: " + repr(chieste),
+    )
+
+    # git, letto da HEAD: ramo, testa staccata, worktree, sottocartella, niente.
+    repo = RADICE_PROVA / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "src").mkdir()
+    (repo / ".git" / "HEAD").write_text("ref: refs/heads/prova\n", encoding="utf-8")
+    esigi(cartella.ramo_git(repo) == "prova", "il ramo non viene letto da HEAD")
+    esigi(cartella.ramo_git(repo / "src") == "prova", "una sottocartella non risale al repository")
+    (repo / ".git" / "HEAD").write_text("0123456789abcdef0123456789abcdef01234567\n", encoding="utf-8")
+    esigi(cartella.ramo_git(repo) == "01234567", "una testa staccata non mostra l'inizio del commit")
+    albero = RADICE_PROVA / "albero"
+    albero.mkdir()
+    (albero / ".git").write_text("gitdir: " + str(repo / ".git") + "\n", encoding="utf-8")
+    esigi(cartella.ramo_git(albero) == "01234567", "un worktree non segue il file .git")
+    esigi(cartella.ramo_git(lavoro) is None, "una cartella fuori da git ha un ramo")
+    esigi(cartella.file_modificati(lavoro) is None, "fuori da git il conteggio non e' None")
+    if shutil.which("git"):
+        vero = RADICE_PROVA / "vero"
+        vero.mkdir()
+        import subprocess
+
+        subprocess.run(["git", "init", "-q"], cwd=vero, check=True, capture_output=True)
+        esigi(cartella.file_modificati(vero) == 0, "un repository vuoto ha file modificati")
+        (vero / "nuovo.txt").write_text("x", encoding="utf-8")
+        esigi(cartella.file_modificati(vero) == 1, "un file nuovo non viene contato")
+
+    # ARES.md: assente, presente, vuoto, oltre il tetto; e lo scheletro.
+    esigi(istruzioni_dalla_cartella(lavoro) == [], "senza ARES.md ci sono istruzioni")
+    esigi(istruzioni_dalla_cartella(None) == [], "senza cartella ci sono istruzioni")
+    progetto = RADICE_PROVA / "progetto"
+    progetto.mkdir()
+    scritto = cartella.scrivi_scheletro(progetto)
+    esigi(scritto == progetto / "ARES.md" and scritto.is_file(), "lo scheletro non e' stato scritto")
+    try:
+        cartella.scrivi_scheletro(progetto)
+    except FileExistsError:
+        pass
+    else:
+        esigi(False, "lo scheletro ha sovrascritto un ARES.md esistente")
+    istruzioni = istruzioni_dalla_cartella(progetto)
+    esigi(len(istruzioni) == 1 and "Istruzioni per Ares" in istruzioni[0], "ARES.md non entra nelle istruzioni")
+    esigi("ARES.md" in istruzioni[0] and "troncato" not in istruzioni[0], "un file corto viene detto troncato")
+    scritto.write_text("   \n", encoding="utf-8")
+    esigi(istruzioni_dalla_cartella(progetto) == [], "un ARES.md vuoto produce un'istruzione")
+    scritto.write_text("regola " * 100, encoding="utf-8")
+    with patch.object(config, "WORKSPACE_ISTRUZIONI_MAX_BYTE", 50):
+        lungo = istruzioni_dalla_cartella(progetto)
+    esigi(len(lungo) == 1 and "piu' lungo del tetto" in lungo[0], "un file oltre il tetto non lo dice")
+    esigi(len(lungo[0]) < 400, "il file oltre il tetto non e' stato troncato")
+
+    # `ares init` scrive nella directory corrente e rifiuta la seconda volta.
+    dove_init = RADICE_PROVA / "init"
+    dove_init.mkdir()
+    os.chdir(dove_init)
+    try:
+        fuori, errori = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(fuori), contextlib.redirect_stderr(errori):
+            primo = app(["init"])
+            secondo = app(["init"])
+    finally:
+        os.chdir(lavoro)
+    esigi((primo or 0) == 0 and (dove_init / "ARES.md").is_file(), "ares init non ha scritto ARES.md")
+    esigi(secondo == 1 and "esiste gia'" in errori.getvalue(), "ares init ha riscritto un ARES.md esistente")
+
+    # Il banner: la cartella con il ramo e le istruzioni, e senza.
+    console = Console(file=io.StringIO(), width=100, force_terminal=False)
+    renderer = CliRenderer(console=console)
+    renderer.banner(modello="m", sessione="s", utente="u", cartella=str(lavoro), ramo="main", istruzioni="ARES.md")
+    testo = console.file.getvalue()
+    esigi(str(lavoro) in testo and "main" in testo and "ARES.md" in testo, "il banner non mostra la cartella: " + testo)
+    console = Console(file=io.StringIO(), width=100, force_terminal=False)
+    CliRenderer(console=console).banner(modello="m", sessione="s", utente="u")
+    esigi("cartella" not in console.file.getvalue(), "il banner mostra una cartella che non c'e'")
+
+    return "scelta, rischi, tre esiti dell'autorizzazione, git da HEAD, ARES.md, init e banner"
+
+
+def conversazioni_per_cartella() -> str:
+    """Le conversazioni legate alla cartella: filtro, id nuovo, istruzioni e scelta.
+
+    Il database e' finto e restituisce sessioni fabbricate con i metadati che
+    `build_assistant` scrive: quello che si prova e' il filtro, non SQLite.
+    Una sessione senza cartella deve restare visibile in `/sessioni` e
+    sparire da `resume`, perche' e' di prima che le cartelle esistessero.
+    """
+    from datetime import datetime
+
+    from ares.agent.prompts import istruzioni_sulle_conversazioni
+    from ares.cli import cartella
+    from ares.state.stores import cartella_sessione, leggi_sessioni, righe_sessione, sessioni_della_cartella
+
+    class Messaggio:
+        def __init__(self, role, content):
+            self.role = role
+            self.content = content
+
+    class Run:
+        def __init__(self, messages):
+            self.messages = messages
+
+    class Sessione:
+        def __init__(self, session_id, dove=None, quando=1_700_000_000, runs=()):
+            self.session_id = session_id
+            self.user_id = "u"
+            self.metadata = {"cartella": dove} if dove else None
+            self.updated_at = quando
+            self.created_at = quando
+            self.runs = list(runs)
+
+    class Db:
+        def __init__(self, sessioni):
+            self.sessioni = sessioni
+            self.chiamate: list[dict] = []
+
+        def get_sessions(self, **argomenti):
+            self.chiamate.append(argomenti)
+            return list(self.sessioni)
+
+        def get_session(self, session_id, **_argomenti):
+            return next((s for s in self.sessioni if s.session_id == session_id), None)
+
+    class Agente:
+        def __init__(self, db):
+            self.db = db
+
+    qui, altrove = "/progetti/qui", "/progetti/altrove"
+    prima = Sessione("qui-1", qui, runs=[Run([Messaggio("user", "prima domanda qui")])])
+    db = Db([Sessione("qui-2", qui), Sessione("altrove-1", altrove), Sessione("vecchia"), prima])
+    agente = Agente(db)
+
+    def nomi(sessioni) -> list[str]:
+        return [s.session_id for s in sessioni]
+
+    esigi(nomi(leggi_sessioni(agente, "u")) == ["qui-2", "altrove-1", "vecchia", "qui-1"], "senza cartella si filtra")
+    esigi(
+        nomi(leggi_sessioni(agente, "u", cartella=qui)) == ["qui-2", "vecchia", "qui-1"],
+        "il filtro per cartella non tiene quelle di qui e quelle senza cartella",
+    )
+    esigi(nomi(leggi_sessioni(agente, "u", query="QUI", cartella=qui)) == ["qui-2", "qui-1"], "filtro e testo insieme")
+    esigi(nomi(sessioni_della_cartella(db, "u", qui)) == ["qui-2", "qui-1"], "resume vede sessioni non di qui")
+    esigi(nomi(sessioni_della_cartella(db, "u", qui, escludi="qui-2")) == ["qui-1"], "escludi non esclude")
+    esigi(db.chiamate[-1].get("include_runs") is False, "l'elenco per la ripresa carica i run di tutte")
+    esigi(cartella_sessione(Sessione("x")) is None and cartella_sessione(prima) == qui, "cartella_sessione")
+    righe = righe_sessione(prima, con_cartella=True)
+    esigi(any("cartella: " + qui in r for r in righe), "con_cartella non la mostra: " + repr(righe))
+    esigi(not any("cartella:" in r for r in righe_sessione(prima)), "la cartella compare anche senza chiederla")
+
+    momento = datetime(2026, 9, 7, 9, 15, 30)
+    ident = cartella.nuovo_id_sessione(Path("/x/Mio Progetto_2"), momento)
+    esigi(ident == "mio-progetto-2-20260907-091530", "id nuovo inatteso: " + ident)
+    esigi(cartella.nuovo_id_sessione(Path("/"), momento) == "cartella-20260907-091530", "la radice non ha un ripiego")
+
+    testo = istruzioni_sulle_conversazioni([prima], cartella=qui)
+    esigi(len(testo) == 1, "le conversazioni precedenti non danno una istruzione sola")
+    esigi(
+        all(p in testo[0] for p in ("qui-1", "prima domanda qui", "read_past_session", qui, "1 scambio")),
+        "l'istruzione non ha id, inizio, strumento e cartella: " + testo[0],
+    )
+    esigi(istruzioni_sulle_conversazioni([], cartella=qui) == [], "senza precedenti c'e' un'istruzione")
+
+    def scelta(risposta) -> str | None:
+        def finto_input(_etichetta: str = "") -> str:
+            if isinstance(risposta, BaseException):
+                raise risposta
+            return risposta
+
+        with (
+            patch.object(sys, "stdin", io.StringIO()),
+            patch("builtins.input", finto_input),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return cartella.scegli_sessione([prima, Sessione("qui-2", qui)])
+
+    esigi(scelta("2") == "qui-2", "il numero scelto non apre quella sessione")
+    esigi(scelta("1") == "qui-1", "il primo numero non apre la prima")
+    for rinuncia in ("", "7", "x", "0", KeyboardInterrupt()):
+        esigi(scelta(rinuncia) is None, "una risposta non valida ha scelto qualcosa: " + repr(rinuncia))
+    return "filtro per cartella, sessioni senza cartella, id nuovo, istruzione al modello e scelta numerata"
+
+
 def main() -> int:
     avvio = time.monotonic()
     # La cronologia privata sta nell'archivio, che nella chat esiste perche'
@@ -1231,6 +1504,8 @@ def main() -> int:
             ("comandi             ", comandi),
             ("stato della chat    ", stato_della_chat),
             ("conferme scritte    ", conferme_scritte),
+            ("cartella di lavoro  ", cartella_di_lavoro),
+            ("conversazioni       ", conversazioni_per_cartella),
         )
     )
     print()
@@ -1240,7 +1515,7 @@ def main() -> int:
         print()
         print("FALLITE:", ", ".join(nome.strip() for nome in falliti))
         return 1
-    shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+    pulisci(RADICE_PROVA)
     if non_conclusivi:
         print("Non concludenti:", ", ".join(nome.strip() for nome in non_conclusivi))
     print("Nessun fallimento.")
