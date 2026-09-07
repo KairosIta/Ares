@@ -9,11 +9,15 @@ La versione corrente usa Agno 3.0.5 e comprende memoria persistente,
 apprendimento dopo `continue_run`, backup locale, manutenzione delle entità
 e delle sessioni, REPL Rich/Prompt Toolkit e installazione riproducibile.
 `ares` si lancia da qualunque cartella e lavora lì, con le conversazioni
-legate alla cartella (`ares resume`) e lo stato in `~/.ares`. I risultati tool grandi vengono conservati
-fuori dal prompt e riletti a pagine; la loro retention segue l'intera
-conversazione. Assistente, REPL, backup ed entità sono divisi per
-responsabilità. Lock, CLI, backup e suite principale sono verificati
-automaticamente su Ubuntu e Windows.
+legate alla cartella (`ares resume`) e lo stato in `~/.ares`, in quattro
+modalità — `manuale`, `modifiche`, `piano`, `auto` — che decidono cosa fa
+da solo e cosa chiede. Il prompt è tutto in italiano e dice al modello quali
+modelli usa e se sono locali o cloud, quanto contesto ha, dove si trova e
+come funziona la propria memoria; `ares inspect --prompt` lo stampa. I
+risultati tool grandi vengono conservati fuori dal prompt e riletti a
+pagine; la loro retention segue l'intera conversazione. I codici di uscita
+hanno un significato solo per ogni comando. Lock, CLI, backup e suite
+principale sono verificati automaticamente su Ubuntu e Windows.
 
 ## Evoluzione
 
@@ -23,6 +27,8 @@ automaticamente su Ubuntu e Windows.
   richiede di riscrivere lo store voce per voce, e va provato sul modello di
   dati di Agno prima di promettere che una memoria modificata torni al testo
   precedente e non sparisca;
+- un oggetto dei percorsi costruito a runtime al posto delle costanti di
+  `config.py` lette all'import, primo passo verso prove in-process;
 - profili di configurazione per hardware e finestre di contesto differenti;
 - benchmark ripetibili di latenza, VRAM e affidabilità degli store;
 - copertura automatica più ampia del percorso asincrono;

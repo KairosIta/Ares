@@ -4,12 +4,13 @@ Le modifiche rilevanti di Ares sono raccolte in questo file. Il formato segue
 [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e il progetto
 adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
-## [Unreleased]
+## [0.6.0] - 2026-09-07
 
-Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-07 su Agno 3.0.5,
-3 prove su 3, con `glm-5.3-flash:cloud` in conversazione e
-`deepseek-v4-pro:cloud` in estrazione dal `.env`; il modello conversazionale
-locale non è stato provato in questo giro.
+Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-07 su Agno 3.0.5 e
+LanceDB 0.38.0, 10 prove su 10, sul codice di questa versione, con
+`glm-5.3-flash:cloud` in conversazione e `deepseek-v4-pro:cloud` in
+estrazione dal `.env`; il modello conversazionale locale non è stato provato
+in questo giro.
 
 ### Added
 
