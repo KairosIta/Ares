@@ -9,75 +9,81 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-07 su Agno 3.0.5,
 3 prove su 3, con `glm-5.3-flash:cloud` in conversazione e
 `deepseek-v4-pro:cloud` in estrazione dal `.env`; il modello conversazionale
-locale non e' stato provato in questo giro.
+locale non è stato provato in questo giro.
 
 ### Added
 
-- **Ares sa dove si trova e che cosa e'.** Il prompt si apre con una scheda
+- **Ares sa dove si trova e che cosa è.** Il prompt si apre con una scheda
   letta dalla configurazione di questo avvio e dal sistema, non scritta a
   mano: quale modello lo fa parlare e se gira in locale o su `ollama.com`,
   quale modello estrae profilo e memorie dopo ogni risposta, l'embedder che
   resta locale, la finestra di contesto in token e quanti scambi ha in vista,
   sistema operativo e shell, utente, conversazione, cartella di lavoro e
   ramo git. La descrizione segue i modelli: "nessuna conversazione esce di
-  qui" compare solo se e' vera, altrimenti dice in una riga quale ruolo sta
+  qui" compare solo se è vera, altrimenti dice in una riga quale ruolo sta
   su `ollama.com` e che la persona l'ha scelto. Su Windows l'esempio per
-  lanciare una riga intera e' `['powershell', '-Command', ...]` e non
+  lanciare una riga intera è `['powershell', '-Command', ...]` e non
   `bash -lc`. La lettura del ramo git da `HEAD` passa da `state/git.py`,
-  cosi' `agent/` non importa `cli/`; le istruzioni non danno piu' un genere
+  così `agent/` non importa `cli/`; le istruzioni non danno più un genere
   all'utente;
 - **`ares inspect --prompt`** stampa il system message intero che la chat
   manderebbe al modello da questa cartella, senza aprire un turno: la
-  descrizione e le istruzioni di Ares, poi cio' che Agno aggiunge da se' -
+  descrizione e le istruzioni di Ares, poi ciò che Agno aggiunge da sé -
   le convenzioni del quaderno, le regole della macchina di apprendimento,
-  memorie ed entita' gia' salvate, data e nome. Senza `--session` e' la
+  memorie ed entità già salvate, data e nome. Senza `--session` è la
   conversazione nuova che `ares` aprirebbe adesso; con `--session` quella
   nominata. Prima, l'unico modo di sapere cosa riceveva il modello era
   leggere i pezzi in `prompts.py` e immaginare il resto; una modifica ai
   prompt si giudica ora leggendo questo, e due versioni si confrontano con
-  `diff`. Il testo mostra anche quanto del prompt e' scritto da Agno in
-  inglese, ed e' il punto di partenza per riscriverlo.
+  `diff`. Il testo mostra anche quanto del prompt è scritto da Agno in
+  inglese, ed è il punto di partenza per riscriverlo.
 
 - **La conferma di una scrittura mostra la differenza.** Un `write_file` su
-  un file che esiste gia' lo sostituisce da capo, e il contenuto nuovo per
+  un file che esiste già lo sostituisce da capo, e il contenuto nuovo per
   intero diceva tutto tranne la cosa da guardare: cosa sparisce. La
   richiesta mostra ora il diff unificato riga per riga; un file nuovo resta
   intero, e un percorso fuori dalla radice non viene letto;
-- `ares inspect --prompt --modo piano` stampa il prompt di quella modalita';
-- **Le modalita', come in Claude Code.** `manuale` chiede conferma per
-  tutto cio' che lascia una traccia sul disco ed e' il valore distribuito;
+- `ares inspect --prompt --modo piano` stampa il prompt di quella modalità;
+- **Le modalità, come in Claude Code.** `manuale` chiede conferma per
+  tutto ciò che lascia una traccia sul disco ed è il valore distribuito;
   `modifiche` scrive e modifica file da sola e chiede per spostare,
   cancellare ed eseguire; `piano` legge soltanto, e gli strumenti che
   scrivono non arrivano nemmeno al modello, a cui il prompt chiede di
   proporre; `auto` non chiede mai, si sceglie solo con `ares --modo auto`,
-  il banner lo dice in rosso e non si combina con `-p`. Ogni modalita' e'
+  il banner lo dice in rosso e non si combina con `-p`. Ogni modalità è
   una partizione degli otto strumenti in `config.MODALITA`, e il paragrafo
-  del prompt e la riga nella scheda si generano da li'. `ares --modo` la
-  sceglie per una sessione, `/modo` la cambia a meta' conversazione
+  del prompt e la riga nella scheda si generano da lì. `ares --modo` la
+  sceglie per una sessione, `/modo` la cambia a metà conversazione
   ricostruendo l'agente sulla stessa sessione, e `/sessione` la porta con
-  se'. `WORKSPACE_ALLOWED` e `WORKSPACE_CONFIRM` non esistono piu';
-- **Il prompt e' tutto in italiano, e spiega la memoria.** Agno aggiunge
-  da se' le guide degli store di apprendimento, del quaderno e del
+  sé. `WORKSPACE_ALLOWED` e `WORKSPACE_CONFIRM` non esistono più;
+- **Il prompt è tutto in italiano, e spiega la memoria.** Agno aggiunge
+  da sé le guide degli store di apprendimento, del quaderno e del
   Markdown, in inglese e per un agente di squadra: "conserva gli obiettivi
-  del team perche' ne beneficino altri utenti". Ares deriva memorie, entita'
+  del team perché ne beneficino altri utenti". Ares deriva memorie, entità
   e intuizioni con una guida in italiano per una persona sola, scrive la
   propria per il quaderno privato e la riga sul Markdown, e prima degli
   strumenti dice come funziona la memoria: quali archivi si aggiornano da
-  soli dopo ogni risposta e quali solo con gli strumenti, che cio' che entra
-  in profilo e memorie compare sotto la risposta e si puo' annullare, che
-  cio' che sa viene da conversazioni passate e l'utente di oggi ha la
+  soli dopo ogni risposta e quali solo con gli strumenti, che ciò che entra
+  in profilo e memorie compare sotto la risposta e si può annullare, che
+  ciò che sa viene da conversazioni passate e l'utente di oggi ha la
   precedenza, e che un risultato oltre la soglia si rilegge a pagine. Le
   tre righe che restano in inglese - ora, nome, anteprima dei risultati -
   sono di Agno e non passano da qui;
-- **Ares sa cosa puo' fare da solo e cosa no.** Il paragrafo sullo spazio
-  di lavoro e' generato dalle due liste di `config.py`: nomina uno per uno
-  gli strumenti che girano in silenzio e quelli che fermano il turno, cosi'
+- **Ares sa cosa può fare da solo e cosa no.** Il paragrafo sullo spazio
+  di lavoro è generato dalle due liste di `config.py`: nomina uno per uno
+  gli strumenti che girano in silenzio e quelli che fermano il turno, così
   una lista che cambia non lascia indietro le istruzioni. In `ares -p` un
   avviso dice che nessuno risponde, quali strumenti verrebbero rifiutati e
   che niente entra in memoria.
 
 ### Changed
 
+- **I documenti usano gli accenti.** `CHANGELOG.md`, `ROADMAP.md`,
+  `docs/architecture.md` e `docs/agno.md` erano scritti con l'apostrofo al
+  posto dell'accento, come il codice, mentre README, CONTRIBUTING, SECURITY
+  e la guida ai test avevano gli accenti veri: ora la regola è scritta in
+  CONTRIBUTING - accenti nei Markdown, apostrofo ASCII in codice, commenti,
+  messaggi, prompt e configurazione - e i quattro documenti la seguono;
 - **Le dipendenze fra pacchetti vanno in un verso solo.** `state/archivi.py`
   apre i due SQLite e il deposito dei risultati grandi: stavano in
   `agent/runtime.py`, e `sessions` dipendeva dall'agente per aprire un
@@ -92,66 +98,66 @@ locale non e' stato provato in questo giro.
   vale ovunque: 0 fatto, 1 guasto, 2 rifiutato - argomenti incoerenti,
   conferma negata o sbagliata, manutenzione rifiutata, cartella rifiutata,
   niente da riprendere, `-p` con `auto` - e 3 stato occupato da un altro
-  processo, che uno script puo' riprovare. `esegui_protetto` e' il contorno
+  processo, che uno script può riprovare. `esegui_protetto` è il contorno
   di lock ed errori che sessions, entities e backup usano al posto dei
-  propri. Chi leggeva questi codici da uno script deve aggiornarsi: e' il
-  motivo per cui questa versione e' una minor;
+  propri. Chi leggeva questi codici da uno script deve aggiornarsi: è il
+  motivo per cui questa versione è una minor;
 - **Scrivere e modificare un file chiedono conferma.** Stavano fra gli
   strumenti silenziosi, con l'idea che un file nuovo nella propria cartella
-  non fosse distruttivo. Ma cio' che il modello legge - un file del
-  progetto, l'output di un comando, lo stesso `ARES.md` - puo' contenere
-  un'istruzione, e una scrittura che nessuno guarda puo' riscrivere
+  non fosse distruttivo. Ma ciò che il modello legge - un file del
+  progetto, l'output di un comando, lo stesso `ARES.md` - può contenere
+  un'istruzione, e una scrittura che nessuno guarda può riscrivere
   `ARES.md`, uno script o un Makefile: non distrugge oggi, esegue domani.
-  La richiesta mostra il contenuto per intero, come gia' faceva con i
+  La richiesta mostra il contenuto per intero, come già faceva con i
   comandi. `WORKSPACE_ALLOWED` tiene leggere, elencare e cercare;
-  `WORKSPACE_CONFIRM` tutto cio' che lascia una traccia sul disco;
+  `WORKSPACE_CONFIRM` tutto ciò che lascia una traccia sul disco;
 - **`ares -p` non scrive in memoria.** Prima l'apprendimento avveniva come
   in chat, e la domanda "tenere in memoria?" senza nessuno che rispondesse
-  valeva si': uno script o una pipe con un testo ostile scrivevano profilo
+  valeva sì: uno script o una pipe con un testo ostile scrivevano profilo
   e memorie in modo durevole. Ora l'agente nasce senza il post-hook che
   estrae e senza gli strumenti che scrivono negli store
-  (`build_assistant(interattivo=False)`); cio' che Ares sa gia' entra nel
+  (`build_assistant(interattivo=False)`); ciò che Ares sa già entra nel
   contesto come sempre;
 - **`ARES.md` entra come dati, non come ordini.** L'intestazione lo
   presenta come le regole del progetto scritte da chi ci lavora, da
-  applicare finche' non contraddicono l'utente e mai per eseguire scritture
+  applicare finché non contraddicono l'utente e mai per eseguire scritture
   o comandi che l'utente non ha chiesto; il testo sta fra una riga di
   inizio e una di fine. "Seguile" davanti a un testo altrui era la forma
   esatta di un'iniezione.
 
 ### Fixed
 
-- **La sonda LanceDB e' misurata.** `backup/probe.py` risultava allo 0% pur
+- **La sonda LanceDB è misurata.** `backup/probe.py` risultava allo 0% pur
   girando a ogni `create` e `verify`: la misura di copertura segue il
-  package `ares`, e un file lanciato per percorso e' `__main__` e basta.
+  package `ares`, e un file lanciato per percorso è `__main__` e basta.
   `integrity.py` la lancia come modulo, `-m ares.backup.probe`, e il runner
-  passa `COVERAGE_FILE` assoluto cosi' un figlio non lascia la misura nella
+  passa `COVERAGE_FILE` assoluto così un figlio non lascia la misura nella
   cartella usa-e-getta da cui parte;
-- **L'avviso sul cloud dice tutto cio' che esce.** Con la conversazione in
+- **L'avviso sul cloud dice tutto ciò che esce.** Con la conversazione in
   cloud non escono solo "prompt e risposte": escono i file letti dal
   workspace, l'output dei comandi, profilo e memorie iniettati nel prompt,
   le conversazioni passate rilette. Preflight, banner, SECURITY.md,
   `.env.example` e README lo dicono per intero. `docs/architecture.md` e
   `docs/agno.md` dicevano ancora che l'estrazione delle memorie resta locale
-  per costruzione: da `ARES_LEARNING_MODEL` non e' piu' vero;
+  per costruzione: da `ARES_LEARNING_MODEL` non è più vero;
 - allineamenti documentali: `docs/testing.md` diceva che la copertura in CI
-  gira solo su Ubuntu e che il tetto di una prova offline e' di tre minuti
-  (e' su entrambi i sistemi, e sono sei); il README ripeteva per Windows un
+  gira solo su Ubuntu e che il tetto di una prova offline è di tre minuti
+  (è su entrambi i sistemi, e sono sei); il README ripeteva per Windows un
   blocco identico a quello Linux e non nominava `ARES_BIN_DIR`;
   `CONTRIBUTING.md` chiamava `tmp/` lo stato reale; due refusi nel
   changelog di 0.5.0. Le due prove con Ollama impostavano `ARES_WORKSPACE`,
-  che nessuno legge piu', e rilanciavano il processo figlio con il clone
-  come directory corrente: ora la cartella di prova. `--help` e' provato
+  che nessuno legge più, e rilanciavano il processo figlio con il clone
+  come directory corrente: ora la cartella di prova. `--help` è provato
   su tutti e sette i comandi, `preflight` e `migrate` compresi;
 - **Su Windows Ares riceve l'ora con il fuso.** `zoneinfo` non ha un
   database dei fusi su Windows e `ZoneInfo("Europe/Rome")` falliva: Agno lo
   segnalava con un WARNING e metteva nel prompt un'ora senza fuso. `tzdata`
-  entra fra le dipendenze. Il WARNING, stampato da Rich su stdout, e' stato
-  anche cio' che ha fatto fallire la prova di `--prompt` sul runner Windows.
+  entra fra le dipendenze. Il WARNING, stampato da Rich su stdout, è stato
+  anche ciò che ha fatto fallire la prova di `--prompt` sul runner Windows.
 
 - `configura_log_agno` e i nomi dei logger di Agno stanno in `cli/log.py`,
   che non importa niente di Ares: `chat.py` e `commands.py` lo importano da
-  li' invece che l'uno dall'altro, e `ares inspect --prompt` lo usa per
+  lì invece che l'uno dall'altro, e `ares inspect --prompt` lo usa per
   tenere il log di Agno fuori dal testo che stampa. `cyclopts` compariva due
   volte in `pyproject.toml`; resta la riga con il pavimento.
 
@@ -166,80 +172,80 @@ cioè la configurazione che questa versione distribuisce - sia con
 
 - **Ares lavora nella cartella da cui viene lanciato.** Si entra in un
   progetto e si scrive `ares`, come con Claude Code o Codex: la cartella
-  corrente e' lo spazio di lavoro, oppure lo e' quella di
-  `--workspace PERCORSO`. Non c'e' piu' una directory fissa accanto al clone e
-  `ARES_WORKSPACE` sparisce dal `.env`; una cartella che non esiste e' un
+  corrente è lo spazio di lavoro, oppure lo è quella di
+  `--workspace PERCORSO`. Non c'è più una directory fissa accanto al clone e
+  `ARES_WORKSPACE` sparisce dal `.env`; una cartella che non esiste è un
   errore, non una da creare. Prima di aprire, `cli/cartella.py` elenca i
-  motivi per cui un percorso e' rischioso - radice del disco, home intera,
+  motivi per cui un percorso è rischioso - radice del disco, home intera,
   directory di sistema, una cartella che contiene lo stato, i backup o il
   codice di Ares - e sul terminale chiede di riscriverlo con la stessa
-  conferma scritta della manutenzione; senza terminale una cartella cosi'
+  conferma scritta della manutenzione; senza terminale una cartella così
   passa solo se nominata con `--workspace`, altrimenti l'avvio esce con 1. Le
-  istruzioni dicono al modello che la cartella e' il progetto dell'utente,
-  non uno spazio suo: modifica solo cio' che gli viene chiesto. Il banner
+  istruzioni dicono al modello che la cartella è il progetto dell'utente,
+  non uno spazio suo: modifica solo ciò che gli viene chiesto. Il banner
   mostra cartella e ramo git, letto da `.git/HEAD` senza lanciare git;
-- **`ARES.md`**: se c'e' nella cartella entra nelle istruzioni di ogni turno,
+- **`ARES.md`**: se c'è nella cartella entra nelle istruzioni di ogni turno,
   troncato oltre 32 KB e dichiarato tale al modello. `ares init` ne scrive
   uno scheletro e non tocca un file esistente. `/cartella` sostituisce
   `/lavoro`, che resta alias: percorso, ramo, file modificati, `ARES.md` e
   gli stessi avvisi dell'avvio;
 - **conversazioni legate alla cartella.** Ogni `ares` apre una conversazione
   nuova, nominata dalla cartella e dal momento (`progetto-20260907-103127`):
-  profilo e memorie ci sono comunque perche' sono per utente, obiettivo,
+  profilo e memorie ci sono comunque perché sono per utente, obiettivo,
   piano e avanzamento partono vuoti. La cartella viaggia con la sessione nei
-  `metadata` dell'agente, che Agno copia nella sessione nuova e lascia com'e'
+  `metadata` dell'agente, che Agno copia nella sessione nuova e lascia com'è
   in una ripresa. **`ares resume`** riapre l'ultima conversazione nata in
   questa cartella e dice data, scambi e prima domanda; **`ares resume
   --scegli`** le elenca numerate e ne fa scegliere una. `/sessioni` mostra
-  quelle di questa cartella piu' quelle senza cartella, nate prima di questa
+  quelle di questa cartella più quelle senza cartella, nate prima di questa
   versione; `/sessioni tutte` allarga alle altre cartelle e dice dove sono
   nate. All'avvio il modello riceve le ultime conversazioni della stessa
-  cartella con l'id da passare a `read_past_session`, cosi' "dove eravamo
+  cartella con l'id da passare a `read_past_session`, così "dove eravamo
   rimasti" funziona anche in una conversazione nuova. `--session nome` resta
-  per chi vuole un nome fisso; `principale` e' il ripiego senza spazio di
+  per chi vuole un nome fisso; `principale` è il ripiego senza spazio di
   lavoro e resta protetto dalla retention;
 - **`ares -p "domanda"`** fa un turno ed esce: niente banner, lo stdin in
-  pipe si aggiunge alla domanda, le conferme valgono no perche' nessuno puo'
+  pipe si aggiunge alla domanda, le conferme valgono no perché nessuno può
   rispondere. `git diff | ares -p "scrivi il messaggio di commit"`;
 - **`ares` da qualunque cartella, con lo stato in `~/.ares`.** `setup.sh`
   crea un link in `~/.local/bin` al comando del venv, `setup.ps1` uno shim
   `ares.cmd` in `%USERPROFILE%\.local\bin`; `ARES_BIN_DIR` sceglie un'altra
-  directory e, se non e' nel PATH, il setup dice la riga da aggiungere. Non
-  e' un `uv tool install`, che risolverebbe le dipendenze da capo senza
+  directory e, se non è nel PATH, il setup dice la riga da aggiungere. Non
+  è un `uv tool install`, che risolverebbe le dipendenze da capo senza
   guardare `uv.lock`. Lo stato vive in `~/.ares/stato`, gli snapshot in
-  `~/.ares/backup`, fuori dal clone, che si puo' spostare o rifare senza
+  `~/.ares/backup`, fuori dal clone, che si può spostare o rifare senza
   perdere niente; `ARES_HOME` sposta tutto, `ARES_TMP` e `ARES_BACKUP_DIR`
-  una parte sola. **`ares migrate`** porta li', una volta sola, cio' che una
+  una parte sola. **`ares migrate`** porta lì, una volta sola, ciò che una
   versione precedente teneva in `tmp/` nel clone e in `../ares-backup`:
   rinomina sotto lock esclusivo, idempotente, e non tocca una destinazione
-  che contiene gia' dei dati. I setup lo chiamano, e la chat si ferma con
-  codice 1 finche' lo stato e' ancora nel posto di prima, perche' un archivio
+  che contiene già dei dati. I setup lo chiamano, e la chat si ferma con
+  codice 1 finché lo stato è ancora nel posto di prima, perché un archivio
   vuoto accanto a uno pieno li sdoppierebbe;
 - **un solo comando `ares`** (`cli/app.py`, su Cyclopts): la chat come
   default, `backup`, `sessions`, `entities`, `preflight`, `inspect` e
   `migrate` come sottocomandi, `--help` in italiano disegnato con Rich,
-  `--version`. I sottocomandi si registrano per nome di modulo, cosi'
+  `--version`. I sottocomandi si registrano per nome di modulo, così
   `ares backup list` non importa Agno e parte in un decimo di secondo. Sei
   `argparse.ArgumentParser` scritti a mano spariscono; gli alias
   `ares-backup`, `ares-sessions`... e `python -m ares.*` restano e passano
   dalla stessa App, con firma e codici di uscita di prima;
 - **tabelle Rich e `--json` nei comandi di manutenzione.** Elenchi di
-  snapshot, sessioni, entita', modelli del preflight e file del quaderno in
+  snapshot, sessioni, entità, modelli del preflight e file del quaderno in
   tabella, riepiloghi `chiave: valore`, colori del tema; gli errori vanno su
   stderr. In una pipe la console si allarga alla tabella invece di spezzare
-  le celle a 80 colonne e le righe non vanno a capo, cosi' un nome di
+  le celle a 80 colonne e le righe non vanno a capo, così un nome di
   snapshot si trova con `grep`. `--json` sui comandi che leggono soltanto:
   `backup list`, `backup verify`, `sessions status`, `entities audit`,
   `preflight`;
 - **conferme uniformi** (`cli/conferma.py`): restore, prune, retention delle
-  sessioni e fusione delle entita' chiedono la frase esatta nello stesso
+  sessioni e fusione delle entità chiedono la frase esatta nello stesso
   modo. Sul terminale con l'editor della chat, in una pipe con `input()`,
-  cosi' la frase si passa da stdin; Ctrl-C e fine dell'input valgono no;
+  così la frase si passa da stdin; Ctrl-C e fine dell'input valgono no;
 - **`/sessione`**, **`/metriche`** e **`/debug`** nella chat: la prima mostra
   la sessione corrente e con un nome ricostruisce l'agente su quella senza
   riavviare, le altre due accendono e spengono la riga del costo e i log di
   Agno. I comandi ricevono uno `StatoChat` che il ciclo della REPL rilegge a
-  ogni giro; `/me` e' ora ambiguo fra `/memorie` e `/metriche` e il menu
+  ogni giro; `/me` è ora ambiguo fra `/memorie` e `/metriche` e il menu
   mostra entrambi;
 - `ares inspect` senza `--session` guarda l'ultima conversazione toccata;
 - prove: `cartella di lavoro`, `conversazioni`, `stato della chat` e
@@ -247,12 +253,12 @@ cioè la configurazione che questa versione distribuisce - sia con
   `migrazione` e le varianti `--json` in `cli`; l'agente registra la cartella
   nei metadati in `smoke`. Le prove entrano nella propria cartella con
   `chdir` invece di una variabile d'ambiente e ne escono prima di
-  cancellarla, perche' su Windows la directory corrente non si cancella;
+  cancellarla, perché su Windows la directory corrente non si cancella;
 - anche il modello per l'estrazione delle memorie si sceglie dal `.env`:
   `ARES_LEARNING_MODEL` col tag `:cloud` manda a `ollama.com` il testo dei
-  turni e le memorie gia' salvate, cosi' chi vuole solo modelli cloud puo'
-  averli, con il solo embedder in scheda. E' una riga separata da
-  `ARES_MAIN_MODEL`, perche' affidare fuori cio' che Ares ricorda e' una
+  turni e le memorie già salvate, così chi vuole solo modelli cloud può
+  averli, con il solo embedder in scheda. È una riga separata da
+  `ARES_MAIN_MODEL`, perché affidare fuori ciò che Ares ricorda è una
   scelta diversa dal parlare con un modello remoto, e il valore distribuito
   resta locale. `assistant_runtime` continua a rifiutare un nome cloud per
   l'embedder; preflight e banner della chat leggono lo stesso avviso
@@ -260,23 +266,23 @@ cioè la configurazione che questa versione distribuisce - sia con
 - prove offline sull'estrazione in cloud: costruzione del modello, avviso
   del preflight con la sola estrazione e con entrambi i ruoli cloud, avviso
   della chat;
-- **righe di attenzione nella conferma di un comando.** `run_command` e' il
-  solo strumento che esce dal recinto, e la conferma umana e' il suo unico
-  confine; il comando era gia' mostrato intero, ma riconoscere un `bash -lc`
+- **righe di attenzione nella conferma di un comando.** `run_command` è il
+  solo strumento che esce dal recinto, e la conferma umana è il suo unico
+  confine; il comando era già mostrato intero, ma riconoscere un `bash -lc`
   in coda a venti argomenti o un `/etc/hostname` dentro una riga citata era
   lasciato a chi legge. Sotto gli argomenti compaiono ora, quando ci sono,
   righe che nominano un fatto: passa da una shell, tocca percorsi fuori
   dalla directory, chiede privilegi di amministratore, usa la rete,
   cancella ricorsivamente. La riga passata a una shell viene aperta con
-  `shlex` per guardarci dentro. Non e' un filtro e non blocca niente: una
+  `shlex` per guardarci dentro. Non è un filtro e non blocca niente: una
   lista nera si aggira con un alias, e la decisione resta a chi legge
   (`cli/render.py`, `avvertenze_comando`);
 - **conferma di ciò che entra in memoria durevole.** Quando un turno ha
   scritto in profilo o memorie, dopo l'eco la CLI chiede "Tenere in memoria?
   [S/n]": Invio tiene, `n` riporta i due store a com'erano prima del turno.
   Agno non offre una conferma su questi store - `PROPOSE` vale per le sole
-  intuizioni, `HITL` per nessuno - quindi e' costruita a valle: `echo.py`
-  leggeva gia' i due store prima del turno per calcolare l'eco, e ora
+  intuizioni, `HITL` per nessuno - quindi è costruita a valle: `echo.py`
+  leggeva già i due store prima del turno per calcolare l'eco, e ora
   conserva gli oggetti come li restituiscono gli store (`istantanea`) e li
   riscrive con `save`, o li cancella con `delete` se prima non c'erano
   (`ripristina`). Le API degli store inghiottono i propri errori, quindi
@@ -288,55 +294,55 @@ cioè la configurazione che questa versione distribuisce - sia con
 - workflow **CodeQL** (`.github/workflows/codeql.yml`), query
   `security-extended` su push, PR e una volta a settimana. Ruff e mypy
   leggono ogni riga ma cercano altro; CodeQL segue il dato da dove entra a
-  dove viene usato, che e' la classe pertinente a un progetto che apre
+  dove viene usato, che è la classe pertinente a un progetto che apre
   archivi, compone percorsi e lancia sottoprocessi. Volutamente fuori dai
-  check obbligatori del ruleset su `main`: un suo risultato e' un'ipotesi da
+  check obbligatori del ruleset su `main`: un suo risultato è un'ipotesi da
   leggere, e pretenderlo verde prima di ogni merge trasformerebbe un falso
   positivo in un blocco che si impara ad aggirare;
 - `tests/agno_contract_test.py` sale da due controlli a quattro, e prende le
   due superfici di Agno che restavano scoperte. Il **retry del contesto di
   sessione** - la seconda classe che Ares sovrascrive - era provato dalla
   sola `learning_reliability_test.py`, che vuole Ollama e quindi in CI non
-  gira mai: il ramo piu' delicato dell'apprendimento era verificato solo a
+  gira mai: il ramo più delicato dell'apprendimento era verificato solo a
   mano. Ora un modello a copione lo attraversa offline nei tre casi che
   contano - riuscito al primo colpo, mai riuscito fino al tetto, fallito e
   poi recuperato - sul percorso sincrono e su quello asincrono, e afferma i
   tre fatti di Agno su cui il retry si regge: `extract_and_save` col suo
   nome, `context_updated` azzerato e acceso solo dopo un'esecuzione, e il
   gemello `aextract_and_save`. La divisione con la prova che usa Ollama
-  diventa netta: qui "il retry funziona come scritto", li' "serve davvero, e
+  diventa netta: qui "il retry funziona come scritto", lì "serve davvero, e
   quanto";
 - e, nella stessa prova, **il limite dichiarato sulla memoria durevole
   diventa un'invariante sorvegliata**. `SECURITY.md` e
   `docs/architecture.md` dicono che profilo e memorie si scrivono fuori dal
-  ciclo di conferma; la ragione, verificata sull'API installata, e' che Agno
-  3.0.5 non offre la modalita': `PROPOSE` vale per il solo store delle
+  ciclo di conferma; la ragione, verificata sull'API installata, è che Agno
+  3.0.5 non offre la modalità: `PROPOSE` vale per il solo store delle
   intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano con un
-  warning e `HITL` e' "reserved for future use" su ogni store. La prova lo
-  afferma, cosi' il giorno in cui Agno cambiasse idea la documentazione
+  warning e `HITL` è "reserved for future use" su ogni store. La prova lo
+  afferma, così il giorno in cui Agno cambiasse idea la documentazione
   diventerebbe falsa con una prova rossa invece che in silenzio. La
   correzione dei documenti che lasciavano intendere il contrario -
   `docs/agno.md` proponeva `PROPOSE` come candidato per gli apprendimenti da
   approvare, senza dire su quale store - e la voce di `ROADMAP.md` per la
   conferma da costruire in Ares partono da qui;
-- eco di cio' che entra in memoria (`MOSTRA_APPRENDIMENTI`, acceso di
+- eco di ciò che entra in memoria (`MOSTRA_APPRENDIMENTI`, acceso di
   default). Il modello scrive nella memoria durevole senza conferma, per due
   strade: gli strumenti che chiama (`save_learning`, `remember_about`,
   `update_user_memory`) e l'estrazione automatica dopo la risposta, che
   aggiorna profilo e memorie senza passare da nessuno strumento visibile.
-  Cio' che entra viene reiniettato in ogni sessione futura, e finora l'unica
+  Ciò che entra viene reiniettato in ogni sessione futura, e finora l'unica
   traccia era l'esito di un tool - "Learning saved: titolo" - o niente. Ora
   gli strumenti di memoria mostrano gli argomenti che hanno ricevuto, e
   sotto la risposta compare la differenza fra profilo e memorie prima e
   dopo il turno, con il testo intero; tace quando il turno non ha scritto
   niente. `agent/echo.py` legge gli store con le loro API pubbliche prima e
   dopo, invece di agganciarsi alle funzioni private di Agno che scrivono.
-  Il contesto di sessione resta fuori, perche' cambia a ogni turno per
+  Il contesto di sessione resta fuori, perché cambia a ogni turno per
   costruzione. Prove in `smoke` (`eco apprendimenti`, `scritture in
   memoria`) e in `cli` (`chat turno`);
 - prove del ciclo della REPL in questo processo (`chat turno`, `chat ciclo`,
   `chat avvio` in `tests/cli_test.py`). `chat_repl` prova la REPL da fuori e
-  per restare offline puo' mandarle solo comandi: restava scoperta la meta'
+  per restare offline può mandarle solo comandi: restava scoperta la metà
   che un utente attraversa a ogni frase. Con una `run_turn_cycle` finta al
   posto del modello sono ora provati i quattro esiti di `esegui_turno`
   (turno, pausa irrisolta, Ctrl-C, guasto), la riga vuota che non apre un
@@ -345,10 +351,10 @@ cioè la configurazione che questa versione distribuisce - sia con
   `ares/cli/chat.py` passa dal 61% al 100% di righe e rami, il totale
   dall'86% all'88%;
 - due prove di contratto con Agno, offline, in `tests/agno_contract_test.py`
-  (`contratto` nel runner). Ares da' per vere due cose del framework che
+  (`contratto` nel runner). Ares dà per vere due cose del framework che
   nessuna prova gli chiedeva: che l'estrazione avvenga una volta per turno,
   sul run completo - Agno avvia `LearningMachine.process` prima della
-  chiamata al modello, Ares la azzera e la rifa' nel post-hook, che Agno
+  chiamata al modello, Ares la azzera e la rifà nel post-hook, che Agno
   esegue solo a run non in pausa - e che `run → pausa → continue_run` di
   `turn_core` combaci con la firma e il comportamento di Agno. La prima
   conta le estrazioni vere su un turno con pausa per conferma e verifica
@@ -362,10 +368,10 @@ cioè la configurazione che questa versione distribuisce - sia con
 
 ### Changed
 
-- il backup non vieta piu' di sovrapporsi allo spazio di lavoro: con la
+- il backup non vieta più di sovrapporsi allo spazio di lavoro: con la
   cartella corrente come workspace, `ares backup create` dalla home deve
   funzionare;
-- `config.comando_ares` suggerisce `ares` quando e' sul PATH e il percorso nel
+- `config.comando_ares` suggerisce `ares` quando è sul PATH e il percorso nel
   venv altrimenti; il README usa `ares` ovunque, e i documenti dicono dove
   vivono stato e snapshot;
 - dipendenze aggiornate con i PR di Dependabot: lancedb 0.38.0, openai 3.8.0,
@@ -376,9 +382,9 @@ cioè la configurazione che questa versione distribuisce - sia con
 - la CI misura la copertura anche su Windows. Il runner Windows nasce da
   `setup.ps1`, che installa senza il gruppo dev, e la suite ci girava senza
   misura: i rami Windows di `backup` e `platform_files` risultavano
-  scoperti anche quando quel runner li attraversava, e una regressione li'
+  scoperti anche quando quel runner li attraversava, e una regressione lì
   non l'avrebbe detta nessun numero. Un secondo `uv sync --locked` sullo
-  stesso venv aggiunge `coverage` dopo lo script, che resta provato com'e';
+  stesso venv aggiunge `coverage` dopo lo script, che resta provato com'è;
   il passo delle prove torna uno solo per i due sistemi;
 - i comandi di lettura della REPL passano sull'archivio seminato dello
   smoke (`comandi su archivio`): `/profilo`, `/memorie`, `/contesto`,
@@ -391,7 +397,7 @@ cioè la configurazione che questa versione distribuisce - sia con
   92%, `state/stores.py` dal 79% al 96%, `agent/schemas.py` al 100%;
 - Agno passa da 3.0.1 a 3.0.5. La 3.0.2 con il vincolo `>=3.0.2,<3.1` in
   `pyproject.toml`, le patch successive dal solo `uv.lock`, che ne porta gli
-  hash: ogni patch e' provata sulle superfici che Ares usa e sul ciclo REPL
+  hash: ogni patch è provata sulle superfici che Ares usa e sul ciclo REPL
   completo prima di entrare nel lock. Badge, `docs/agno.md` e `ROADMAP.md`
   dicono la versione del lock, e i commenti che citavano un file rinominato
   o un comportamento verificato su una versione precedente sono allineati;
@@ -399,65 +405,65 @@ cioè la configurazione che questa versione distribuisce - sia con
   dello stato se manca e accende l'embedder per la ricerca fra le
   intuizioni - invece di promettere che non scrive nulla;
 - `SECURITY.md` dichiara supportata la linea 0.4.x: diceva ancora 0.3.x, e un
-  segnalatore ci leggeva che la versione corrente non e' coperta;
+  segnalatore ci leggeva che la versione corrente non è coperta;
 - i vincoli delle dipendenze nel `pyproject.toml` diventano larghi e uniformi.
-  Erano meta' con `==` e meta' senza, senza che la differenza fosse scritta da
-  nessuna parte. Ares e' un'applicazione: `uv.lock` e' committato con le
+  Erano metà con `==` e metà senza, senza che la differenza fosse scritta da
+  nessuna parte. Ares è un'applicazione: `uv.lock` è committato con le
   versioni esatte e i loro hash, e setup e CI installano con
-  `uv sync --locked` - la riproducibilita' stava gia' li' per intero, e il
+  `uv sync --locked` - la riproducibilità stava già lì per intero, e il
   `==` nel pyproject ne era una seconda copia da tenere allineata a mano.
   Resta un solo vincolo stretto, `agno>=3.0.2,<3.1`, con accanto
-  l'incompatibilita' nota che lo motiva. Nessuna versione risolta si e' mossa:
+  l'incompatibilità nota che lo motiva. Nessuna versione risolta si è mossa:
   il diff di `uv.lock` tocca i soli metadati. `CONTRIBUTING.md` dice cosa
   scrivere quando si aggiunge una dipendenza;
 - le prove condividono `tests/_comune.py`: `prepara_ambiente`, che sceglie i
-  percorsi usa-e-getta e rifiuta di farlo se `config` e' gia' importato,
+  percorsi usa-e-getta e rifiuta di farlo se `config` è già importato,
   `esigi`, `ok`, `esegui` e `fallimento`. Erano otto copie che divergevano un
-  poco per volta; il modulo non importa niente di `ares`, ed e' la sola
+  poco per volta; il modulo non importa niente di `ares`, ed è la sola
   garanzia che i percorsi vengano decisi prima che `config` li legga. Un
-  fallimento mostra ora la riga da cui viene, e un'eccezione che non e'
+  fallimento mostra ora la riga da cui viene, e un'eccezione che non è
   un'asserzione porta il traceback: `KeyError: 'id'` senza la riga che l'ha
   sollevato era un fallimento da riprodurre a mano invece che da leggere;
-- `tests/smoke_test.py` si divide: cio' che della REPL si prova senza
+- `tests/smoke_test.py` si divide: ciò che della REPL si prova senza
   costruire l'agente - conferme, rendering Rich e TTY, indicatore di
-  attivita', core del turno, log, cronologia, editor, comandi - sta in
+  attività, core del turno, log, cronologia, editor, comandi - sta in
   `tests/repl_test.py` (`repl` nel runner). Lo smoke era diventato il posto
   dove finiva ogni prova offline, duemilacinquecento righe in cui
   l'assemblaggio dell'agente e il comportamento di un widget stavano nello
-  stesso elenco; la divisione segue cio' che serve per girare.
+  stesso elenco; la divisione segue ciò che serve per girare.
 - **il modello conversazionale distribuito torna locale.** `MAIN_MODEL` era
   `MODELLO_CLOUD` in `config.py`: chi clonava un progetto che si annuncia
   local-first mandava le proprie conversazioni a `ollama.com` senza averlo
-  scelto. Il default e' ora `MODELLO_LOCALE`, e la scelta opposta non passa
-  piu' da una modifica al file versionato - che tornerebbe a divergere a ogni
+  scelto. Il default è ora `MODELLO_LOCALE`, e la scelta opposta non passa
+  più da una modifica al file versionato - che tornerebbe a divergere a ogni
   `git pull` - ma da `ARES_MAIN_MODEL` nel `.env`, accanto alle variabili di
-  percorso che seguivano gia' quella divisione: qui le decisioni versionate,
-  li' cio' che cambia da una macchina all'altra. Il confine non si sposta:
+  percorso che seguivano già quella divisione: qui le decisioni versionate,
+  lì ciò che cambia da una macchina all'altra. Il confine non si sposta:
   `assistant_runtime` continua a rifiutare un nome cloud per estrazione ed
   embedding, qualunque cosa dica l'ambiente. README, `SECURITY.md` e
-  `.env.example` dicono ora qual e' il valore di serie invece di lasciarlo
+  `.env.example` dicono ora qual è il valore di serie invece di lasciarlo
   dedurre;
-- il messaggio d'errore della sonda LanceDB non si avvolge piu' due volte.
+- il messaggio d'errore della sonda LanceDB non si avvolge più due volte.
   `conta_tabelle_lancedb` rilanciava dal proprio gestore anche gli
   `ErroreBackup` che sollevava lei, e "LanceDB illeggibile in /percorso:
   risposta non valida dalla sonda LanceDB" diceva due volte la stessa cosa
   mettendo il dettaglio in fondo. I due errori interni nominano ora il
-  percorso da se' e passano intatti;
+  percorso da sé e passano intatti;
 - `CONTRIBUTING.md` chiede di annotare nel CHANGELOG quando le prove con
   Ollama sono state eseguite. Non girano in CI e non possono - i runner di
   GitHub non hanno una GPU - quindi tre prove su dieci esistono solo se
   qualcuno le lancia, e nessuno se ne accorge se smette. Il resto della
-  catena e' dimostrabile da fuori; questo pezzo no, e allora si dichiara.
+  catena è dimostrabile da fuori; questo pezzo no, e allora si dichiara.
 
 ### Fixed
 
 - il tetto di tempo delle prove offline in `tests/run.py` sale da 180 a 360
   secondi. La prova `cli` lancia una REPL per sottoprocesso e ognuno importa
   Agno: sul runner Windows di GitHub sta fra 150 e 165 secondi, e un runner
-  appena piu' lento la dichiarava bloccata, come e' successo alla CI del
+  appena più lento la dichiarava bloccata, come è successo alla CI del
   bump di ruff. Il tetto resta per distinguere una prova bloccata da una
-  lenta, e ora e' il doppio della misura;
-- i controlli di terminale non passano piu' da nessuna via che mostra testo
+  lenta, e ora è il doppio della misura;
+- i controlli di terminale non passano più da nessuna via che mostra testo
   scelto dal modello o letto dal workspace. Il filtro ANSI copriva solo lo
   stream della risposta: il pannello di conferma, il nome e l'anteprima
   dell'esito di uno strumento, l'errore di un run e le righe dell'eco
@@ -466,18 +472,18 @@ cioè la configurazione che questa versione distribuisce - sia con
   chiedeva di confermare proprio quell'argomento. Ora `_testo` in
   `cli/ui.py`, la via di ogni testo letterale, toglie sequenze e caratteri
   di controllo con lo stesso parser dello stream; `tool_started` e
-  `run_error`, che non passavano di li', lo fanno esplicitamente. La prova
+  `run_error`, che non passavano di lì, lo fanno esplicitamente. La prova
   `renderer Rich` passa un controllo in ognuna di queste vie;
-- un restore interrotto viene detto. Su POSIX il restore e' due rinomine, e
+- un restore interrotto viene detto. Su POSIX il restore è due rinomine, e
   un processo ucciso fra le due lascia accanto allo stato la copia
   `.tmp-precedente-<hex>` e nessuna `tmp/`: al riavvio Ares ricreava uno
   stato vuoto e rispondeva come al primo giorno, senza dirlo. Ora la chat
   all'avvio e `ares-backup list` elencano i residui - la copia precedente e
   una preparazione mai installata sono distinte - e nominano lo snapshot
-  pre-restore con cui tornare indietro, o dicono che il residuo e' l'unica
+  pre-restore con cui tornare indietro, o dicono che il residuo è l'unica
   copia. Nessun residuo viene rimosso da Ares. Nello stesso spirito
   `ares-sessions` dichiara lo stato parziale quando una cancellazione
-  fallisce a meta': quante sessioni sono sparite e quali, lette
+  fallisce a metà: quante sessioni sono sparite e quali, lette
   dall'archivio a guasto avvenuto, quali restano, e lo snapshot
   pre-manutenzione da cui tornare. Prove `residui restore` in `backup`,
   `chat residui` e `sessioni parziale` in `cli`.
@@ -486,7 +492,7 @@ cioè la configurazione che questa versione distribuisce - sia con
 
 ### Added
 
-- il modello conversazionale puo' essere un modello cloud di Ollama
+- il modello conversazionale può essere un modello cloud di Ollama
   (`MODELLO_CLOUD`, predefinito `glm-5.3-flash:cloud`), inoltrato dal daemon
   locale dopo `ollama signin`: nessuna chiave API nell'ambiente e host
   invariato. Estrazione delle memorie ed embedding restano locali e
@@ -497,19 +503,19 @@ cioè la configurazione che questa versione distribuisce - sia con
 
 ### Changed
 
-- `MAIN_MODEL` e `LEARNING_MODEL` non coincidono piu' di default: la
+- `MAIN_MODEL` e `LEARNING_MODEL` non coincidono più di default: la
   conversazione usa il modello cloud, l'estrazione il 9B locale
   (`MODELLO_LOCALE`, ora Qwen3.8-9B-Distill Q8_0);
 - lo smoke test `chiamate locali` verifica il confine per nome oltre che per
   host, e pretende che `OLLAMA_API_KEY` non sia nell'ambiente;
 - l'estrazione delle memorie usa un contesto proprio (`LEARNING_NUM_CTX`,
-  32k) quando `LEARNING_MODEL` e' un modello diverso da `MAIN_MODEL`: il 9B
+  32k) quando `LEARNING_MODEL` è un modello diverso da `MAIN_MODEL`: il 9B
   Q8_0 scende da 14 a 9,3 GB di VRAM. Con lo stesso modello nei due ruoli il
   contesto resta `NUM_CTX`, e lo smoke test `contesto esteso` lo verifica;
 - README, architettura, nota Agno e SECURITY descrivono cosa esce dalla
   macchina con un modello cloud e cosa dichiara la privacy policy di Ollama;
 - i moduli lasciano la radice ed entrano nel package `ares/`, diviso per
-  responsabilita': `agent`, `cli`, `state`, `backup`, `entities`,
+  responsabilità: `agent`, `cli`, `state`, `backup`, `entities`,
   `sessions`, `ops`. I comandi si lanciano con `python -m`: `-m ares` avvia
   la chat, `-m ares.backup`, `-m ares.entities` e `-m ares.sessions`
   sostituiscono i vecchi script, `-m ares.ops.preflight` e
@@ -518,14 +524,14 @@ cioè la configurazione che questa versione distribuisce - sia con
   dove erano;
 - gli `__init__.py` dei sottopackage descrivono in poche righe cosa contiene
   ciascuno, e `docs/architecture.md` apre con la mappa del package.
-- Ares e' un progetto Python con `pyproject.toml` e `uv.lock`: sette file
+- Ares è un progetto Python con `pyproject.toml` e `uv.lock`: sette file
   (`requirements*.in`, `requirements*.txt`, `ruff.toml`, `mypy.ini`,
   `.coveragerc`) diventano due, con gli stessi pin, gli stessi hash e gli
   stessi commenti. `setup.sh`, `setup.ps1` e la CI installano con
   `uv sync --locked`; Dependabot segue `uv.lock`;
 - il venv contiene i comandi `ares`, `ares-backup`, `ares-entities`,
   `ares-sessions`, `ares-preflight` e `ares-inspect`, e Ares stesso in
-  editable: le prove non toccano piu' `sys.path`. `python -m ares` resta
+  editable: le prove non toccano più `sys.path`. `python -m ares` resta
   disponibile;
 - il banner della chat e il manifest degli snapshot riportano la versione del
   package (`ares.__version__`).
@@ -544,13 +550,13 @@ cioè la configurazione che questa versione distribuisce - sia con
 ### Changed
 
 - su POSIX `setup.sh` rende `.env` privato a 0600 quando esiste; il commento
-  sulla copertura non incorpora piu' un conteggio destinato a diventare
+  sulla copertura non incorpora più un conteggio destinato a diventare
   obsoleto;
-- la CI puo' essere avviata manualmente oltre a verificare pull request e
+- la CI può essere avviata manualmente oltre a verificare pull request e
   commit pubblicati su `main`;
 - setup Linux/Windows, CI e istruzioni di sviluppo usano
   `uv pip sync --require-hashes`, rendendo obbligatorio l'hash per ogni
-  dipendenza oltre a verificare quelli gia' presenti;
+  dipendenza oltre a verificare quelli già presenti;
 - documentazione post-release allineata alla linea supportata 0.3.x, ad Agno
   3.0.1, al ResultStore nel diagramma architetturale e alla suite offline
   unificata; roadmap e misura di copertura riflettono lo stato verificato.
@@ -559,17 +565,17 @@ cioè la configurazione che questa versione distribuisce - sia con
 
 ### Added
 
-- `docs/agno.md` separa le capacita' Agno gia' usate da Ares da quelle
+- `docs/agno.md` separa le capacità Agno già usate da Ares da quelle
   disponibili ma non abilitate, e documenta benefici e limiti dell'upgrade;
 - i risultati degli strumenti oltre 16.000 caratteri usano il `ResultStore`
   di Agno 3: l'indice resta nel database principale, il payload resta lossless
-  nel FileSystem gia' coperto dai backup entro la quota del framework e il
+  nel FileSystem già coperto dai backup entro la quota del framework e il
   modello riceve strumenti paginati per leggerlo o cercarlo. Il prompt
   conserva al massimo le ultime dieci tool call storiche senza cancellarle
   dall'archivio;
 - retention delle sessioni legata al loro ciclo di vita, senza TTL capaci di
   spezzare i riferimenti agli offload. `session_maintenance.py` offre status,
-  prune per inattivita' e cancellazione esatta con anteprima, sessioni
+  prune per inattività e cancellazione esatta con anteprima, sessioni
   protette, lock esclusivo, snapshot e verifica della cascata su run, contesto
   appreso, indice e payload. Una prova offline attraversa un vero `Agent.run`,
   il limite Agno di 8 MB e il restore con `kairos.db` e `filesystem.db`;
@@ -624,14 +630,14 @@ cioè la configurazione che questa versione distribuisce - sia con
 - Agno aggiornato da 2.9.0 a 3.0.1 con lock universale rigenerato. I run
   vivono nella tabella normalizzata `agno_runs`; lo smoke test usa l'API
   `upsert_run` e continua a verificare elenco e anteprima delle sessioni;
-- `assistant.py` e' ora una facciata di composizione: modelli, archivi e
+- `assistant.py` è ora una facciata di composizione: modelli, archivi e
   workspace vivono in `assistant_runtime.py`, store e workaround del ciclo di
   apprendimento in `assistant_learning.py`, istruzioni condizionali in
   `assistant_prompts.py`. Gli import pubblici precedenti restano compatibili;
 - le istruzioni distinguono esplicitamente un'intuizione dal quaderno: una
-  richiesta di conservarla usa `search_learnings` e `save_learning`, cosi'
+  richiesta di conservarla usa `search_learnings` e `save_learning`, così
   resta ricercabile nelle sessioni future invece di finire in un file;
-- la prova E2E non importa piu' lo smoke test, che preparava un proprio
+- la prova E2E non importa più lo smoke test, che preparava un proprio
   `ARES_TMP` all'import e faceva scrivere e rileggere due archivi differenti;
 
 - formato, checksum e verifica degli snapshot vivono in

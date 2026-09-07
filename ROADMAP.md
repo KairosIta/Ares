@@ -6,13 +6,13 @@ roadmap privilegia affidabilità, comprensibilità e controllo dell’utente.
 ## Stato attuale
 
 La versione corrente usa Agno 3.0.5 e comprende memoria persistente,
-apprendimento dopo `continue_run`, backup locale, manutenzione delle entita'
+apprendimento dopo `continue_run`, backup locale, manutenzione delle entità
 e delle sessioni, REPL Rich/Prompt Toolkit e installazione riproducibile.
-`ares` si lancia da qualunque cartella e lavora li', con le conversazioni
+`ares` si lancia da qualunque cartella e lavora lì, con le conversazioni
 legate alla cartella (`ares resume`) e lo stato in `~/.ares`. I risultati tool grandi vengono conservati
 fuori dal prompt e riletti a pagine; la loro retention segue l'intera
-conversazione. Assistente, REPL, backup ed entita' sono divisi per
-responsabilita'. Lock, CLI, backup e suite principale sono verificati
+conversazione. Assistente, REPL, backup ed entità sono divisi per
+responsabilità. Lock, CLI, backup e suite principale sono verificati
 automaticamente su Ubuntu e Windows.
 
 ## Evoluzione

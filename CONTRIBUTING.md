@@ -132,6 +132,12 @@ La CI deve restare verde sia su Ubuntu sia su Windows prima del merge.
 - codice e identificatori Python chiari e semplici;
 - interfaccia, documentazione e messaggi utente in italiano;
 - commenti dedicati al perché, non alla traduzione letterale del codice;
+- accenti veri nei documenti Markdown, che si leggono su GitHub: è, ciò,
+  perché. Apostrofo ASCII (`e'`, `cio'`, `perche'`) nel codice, nei
+  commenti, nei messaggi a terminale, nei prompt e nei file di
+  configurazione, dove il repository è nato così e un diff di mille righe
+  di commenti per un accento non vale niente. La riga di confine è il tipo
+  di file, non l'argomento;
 - commit nel formato `tipo: descrizione`, per esempio `fix:`, `feat:`,
   `test:`, `docs:` o `refactor:`.
 
