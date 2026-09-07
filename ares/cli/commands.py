@@ -59,11 +59,24 @@ def _comando_contesto(stato: StatoChat, argomento: str):
 
 
 def _comando_sessioni(stato: StatoChat, argomento: str):
-    UI.heading("Sessioni")
-    sessioni = leggi_sessioni(stato.agent, user_id=stato.user_id, query=argomento)
+    """Le conversazioni di questa cartella; `tutte` allarga a ogni cartella.
+
+    Le sessioni nate altrove restano fuori dall'elenco normale perche' sono
+    il lavoro di un altro progetto; quelle senza cartella - di prima che le
+    sessioni ne avessero una - compaiono sempre, altrimenti sparirebbero.
+    """
+    parole = argomento.split()
+    tutte = bool(parole) and parole[0].casefold() == "tutte"
+    if tutte:
+        parole = parole[1:]
+    argomento = " ".join(parole)
+    qui = config.WORKSPACE_DIR if config.WORKSPACE and not tutte else None
+    UI.heading("Sessioni" if qui is None else "Sessioni di questa cartella")
+    sessioni = leggi_sessioni(stato.agent, user_id=stato.user_id, query=argomento, cartella=qui)
     mostrate = sessioni[: config.SESSIONI_ELENCO]
     for s in mostrate:
-        for riga in righe_sessione(s, corrente=(getattr(s, "session_id", None) == stato.session_id)):
+        corrente = getattr(s, "session_id", None) == stato.session_id
+        for riga in righe_sessione(s, corrente=corrente, con_cartella=tutte):
             UI.line(riga)
     if not mostrate:
         if argomento:
@@ -73,6 +86,8 @@ def _comando_sessioni(stato: StatoChat, argomento: str):
     nascoste = len(sessioni) - len(mostrate)
     if nascoste:
         UI.line("(altre " + str(nascoste) + ": /sessioni <testo> filtra per nome)", style="ares.muted")
+    if qui is not None:
+        UI.line("(/sessioni tutte mostra anche quelle nate in altre cartelle)", style="ares.muted")
     if not argomento and all(getattr(s, "session_id", None) != stato.session_id for s in sessioni):
         # La sessione in corso entra in archivio col primo turno salvato.
         # Prima di allora manca dall'elenco, e un'assenza non spiegata si
@@ -218,7 +233,7 @@ COMANDI = (
     ("/profilo", (), "il profilo utente accumulato", _comando_profilo),
     ("/memorie", (), "le memorie non strutturate", _comando_memorie),
     ("/contesto", (), "obiettivo e avanzamento della sessione", _comando_contesto),
-    ("/sessioni", (), "le conversazioni in archivio; /sessioni <testo> filtra", _comando_sessioni),
+    ("/sessioni", (), "le conversazioni di questa cartella; <testo> filtra, `tutte` allarga", _comando_sessioni),
     ("/sessione", (), "la sessione corrente; /sessione <nome> passa a un'altra", _comando_sessione),
     ("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
     ("/file", (), "i file scritti dall'agente", _comando_file),

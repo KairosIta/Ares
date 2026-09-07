@@ -53,7 +53,9 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
   lo stato o il codice di Ares - e li fa confermare con la stessa conferma
   scritta; senza terminale una cartella rischiosa passa solo se nominata
   con `--workspace`. Legge anche il ramo git da `.git/HEAD`, senza lanciare
-  git, e scrive lo scheletro di `ARES.md` per `ares init`;
+  git, scrive lo scheletro di `ARES.md` per `ares init`, nomina le
+  conversazioni nuove con cartella e momento e presenta l'elenco numerato di
+  `ares resume --scegli`;
 - `editor.py` gestisce editor, completamento, input multilinea e cronologia
   privata della REPL;
 - `ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i controlli
@@ -70,9 +72,11 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
   pubblici; `runtime.py` costruisce modelli, archivi e strumenti,
   `learning.py` configura gli store e il post-hook sul run completo,
   `prompts.py` compone soltanto le istruzioni coerenti con i flag e vi
-  aggiunge, se c'e', l'`ARES.md` della cartella di lavoro: le regole del
+  aggiunge, se c'e', l'`ARES.md` della cartella di lavoro - le regole del
   progetto scritte da chi ci lavora, troncate oltre un tetto e dichiarate
-  tali al modello;
+  tali al modello - e le ultime conversazioni nate nella stessa cartella,
+  con l'id da passare a `read_past_session`, perche' `search_past_sessions`
+  non sa dove una sessione e' nata;
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt;
 - `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
@@ -92,7 +96,11 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 - LanceDB conserva la conoscenza vettoriale con embedding serviti da Ollama;
 - `stores.py` e' l'unico punto da cui si leggono entita', intuizioni e
   sessioni: non scrive mai, e non accende il modello salvo l'embedding della
-  query sulle intuizioni;
+  query sulle intuizioni. Le sessioni portano nei metadati la cartella in
+  cui sono nate - la scrive `build_assistant` passando `metadata=`
+  all'agente, Agno la copia nella sessione nuova e la lascia com'e' in una
+  ripresa - e `stores.py` le filtra per cartella: `/sessioni` tiene quelle
+  di qui e quelle senza cartella, `ares resume` solo quelle di qui;
 - `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato, su
   cui `platform_files.py` uniforma le primitive fra POSIX e Windows.
 

@@ -171,7 +171,37 @@ def leggi_intuizioni(lm: Any, user_id: str, query: str = "", limit: int = 20) ->
     return store.recall(query=query or QUERY_DI_RIPIEGO, user_id=user_id, limit=limit) or []
 
 
-def leggi_sessioni(agent: Any, user_id: str, query: str = "") -> list[Any]:
+# La chiave, nei metadati della sessione, della cartella in cui e' nata.
+# La scrive `build_assistant` passando `metadata=` all'agente: Agno la copia
+# nella sessione nuova e la lascia com'e' in una ripresa. Le sessioni di
+# prima di questa chiave non ne hanno una, e valgono "senza cartella".
+CHIAVE_CARTELLA = "cartella"
+
+
+def cartella_sessione(sessione: Any) -> str | None:
+    """La cartella in cui una sessione e' nata, o None se non ne ha una."""
+    metadata = getattr(sessione, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    valore = metadata.get(CHIAVE_CARTELLA)
+    return str(valore) if valore else None
+
+
+def _sessioni_db(db: Any, user_id: str, *, con_run: bool = True) -> list[Any]:
+    """Tutte le sessioni dell'utente dal database, dalla piu' toccata di recente."""
+    return list(
+        db.get_sessions(
+            session_type=SessionType.AGENT,
+            user_id=user_id,
+            sort_by="updated_at",
+            sort_order="desc",
+            include_runs=con_run,
+        )
+        or []
+    )
+
+
+def leggi_sessioni(agent: Any, user_id: str, query: str = "", cartella: Any = None) -> list[Any]:
     """Le sessioni di questo utente, dalla piu' toccata di recente.
 
     Non passa dagli store di apprendimento: le conversazioni stanno nella
@@ -179,6 +209,10 @@ def leggi_sessioni(agent: Any, user_id: str, query: str = "") -> list[Any]:
     `search_past_sessions`. Quello strumento pero' salta la sessione in corso,
     perche' il modello ce l'ha gia' davanti; qui invece torna, marcata da chi
     stampa: chi legge a schermo non ha nessuna finestra di contesto.
+
+    Con `cartella` restano quelle nate li' e quelle senza cartella: le
+    seconde sono le conversazioni di prima che le sessioni si legassero a una
+    directory, e nasconderle le farebbe sparire da ogni elenco.
 
     Nessun taglio qui. Chi chiama filtra e poi taglia, mai il contrario:
     chiedere al database le prime N e filtrarle dopo nasconderebbe una
@@ -192,19 +226,41 @@ def leggi_sessioni(agent: Any, user_id: str, query: str = "") -> list[Any]:
     db = getattr(agent, "db", None)
     if db is None:
         return []
-    sessioni = (
-        db.get_sessions(
-            session_type=SessionType.AGENT,
-            user_id=user_id,
-            sort_by="updated_at",
-            sort_order="desc",
-        )
-        or []
-    )
+    sessioni = _sessioni_db(db, user_id)
+    if cartella is not None:
+        qui = str(cartella)
+        sessioni = [s for s in sessioni if cartella_sessione(s) in (None, qui)]
     if not query:
-        return list(sessioni)
+        return sessioni
     cercato = query.casefold()
     return [s for s in sessioni if cercato in str(getattr(s, "session_id", "")).casefold()]
+
+
+def sessioni_della_cartella(db: Any, user_id: str, cartella: Any, *, escludi: str | None = None) -> list[Any]:
+    """Le sole sessioni nate in `cartella`, dalla piu' toccata di recente.
+
+    E' la lettura di `ares resume` e dell'elenco che il modello riceve
+    all'avvio: qui una sessione senza cartella non c'entra, perche' riprendere
+    vuol dire tornare al lavoro fatto in questo posto. Senza i run, che per
+    un elenco pesano e non servono; chi vuole la prima domanda rilegge la
+    sessione con `con_run`.
+    """
+    qui = str(cartella)
+    return [
+        s
+        for s in _sessioni_db(db, user_id, con_run=False)
+        if cartella_sessione(s) == qui and getattr(s, "session_id", None) != escludi
+    ]
+
+
+def con_run(db: Any, sessione: Any) -> Any:
+    """La stessa sessione riletta con i suoi run, o com'era se la rilettura fallisce."""
+    intera = db.get_session(
+        session_id=getattr(sessione, "session_id", None),
+        session_type=SessionType.AGENT,
+        user_id=getattr(sessione, "user_id", None),
+    )
+    return intera if intera is not None else sessione
 
 
 def prima_domanda(sessione: Any, larghezza: int = 90) -> str:
@@ -241,17 +297,28 @@ def _testo_messaggio(messaggio: Any) -> str:
     return ""
 
 
-def righe_sessione(sessione: Any, corrente: bool = False) -> list[str]:
-    """Rende una sessione in righe di testo gia' pronte per la stampa."""
+def righe_sessione(sessione: Any, corrente: bool = False, con_cartella: bool = False) -> list[str]:
+    """Rende una sessione in righe di testo gia' pronte per la stampa.
+
+    `con_cartella` aggiunge dove e' nata: serve nell'elenco di tutte le
+    sessioni, dove conversazioni di progetti diversi stanno una sotto l'altra.
+    """
     nome = str(getattr(sessione, "session_id", "?"))
     scambi = len(getattr(sessione, "runs", None) or [])
-    quando = _quando(getattr(sessione, "updated_at", None) or getattr(sessione, "created_at", None))
+    quando = quando_sessione(sessione)
     testa = "- " + nome + ("   (questa)" if corrente else "")
     righe = [testa + "   " + quando + "   " + str(scambi) + (" scambio" if scambi == 1 else " scambi")]
     domanda = prima_domanda(sessione)
     if domanda:
         righe.append("    inizio: " + domanda)
+    if con_cartella:
+        righe.append("    cartella: " + (cartella_sessione(sessione) or "nessuna"))
     return righe
+
+
+def quando_sessione(sessione: Any) -> str:
+    """L'ultima modifica di una sessione, o la creazione, in cifre."""
+    return _quando(getattr(sessione, "updated_at", None) or getattr(sessione, "created_at", None))
 
 
 def _quando(timestamp: Any) -> str:

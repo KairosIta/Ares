@@ -71,6 +71,36 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
     return dette
 
 
+def istruzioni_sulle_conversazioni(sessioni, *, cartella) -> list[str]:
+    """Le conversazioni precedenti nate nella stessa cartella, per id.
+
+    `search_past_sessions` elenca le ultime venti sessioni dell'utente senza
+    sapere dove sono nate: in una cartella con dieci progetti accanto, "dove
+    eravamo rimasti" pesca a caso. Qui il modello riceve le poche di questo
+    posto, con l'id da passare a `read_past_session`. Vuoto se non ce ne
+    sono: un'istruzione che dice "nessuna" occuperebbe spazio per niente.
+    """
+    if not sessioni:
+        return []
+    from ares.state.stores import prima_domanda, quando_sessione
+
+    righe = []
+    for sessione in sessioni:
+        scambi = len(getattr(sessione, "runs", None) or [])
+        riga = "- " + str(getattr(sessione, "session_id", "?")) + " (" + quando_sessione(sessione)
+        riga += ", " + str(scambi) + (" scambio" if scambi == 1 else " scambi") + ")"
+        inizio = prima_domanda(sessione, larghezza=120)
+        if inizio:
+            riga += ": " + inizio
+        righe.append(riga)
+    return [
+        "In questa cartella, " + str(cartella) + ", ci sono state altre conversazioni. "
+        "Se l'utente si riferisce a lavoro gia' fatto qui - 'dove eravamo rimasti', "
+        "'come avevamo deciso' - rileggile con read_past_session passando l'id, "
+        "dalla piu' recente:\n" + "\n".join(righe)
+    ]
+
+
 def istruzioni_dalla_cartella(radice_lavoro) -> list[str]:
     """Il contenuto di `ARES.md` nella cartella di lavoro, se c'e'.
 

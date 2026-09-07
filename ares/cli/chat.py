@@ -2,9 +2,12 @@
 REPL interattivo
 ================
 Uso:
-    ares                       nella cartella corrente, sessione predefinita
+    ares                       nella cartella corrente, conversazione nuova
+    ares resume                riprende l'ultima conversazione di questa cartella
+    ares resume --scegli       la sceglie da un elenco
+    ares -p "domanda"          una risposta e basta; stdin in pipe si aggiunge
     ares --workspace ~/prog    su un'altra cartella
-    ares --session progetto-x  sessione separata
+    ares --session progetto-x  una sessione con un nome fisso
     ares --debug               mostra le chiamate al modello
     ares --metriche            costo di ogni turno
 
@@ -14,11 +17,13 @@ c'e' il corpo della chat, che si importa solo quando la chat parte.
 La cartella da cui si lancia `ares` e' quella su cui Ares lavora. Prima di
 aprirla `cli/cartella.py` la guarda: se e' la home, il disco intero o una
 directory che contiene lo stato di Ares lo dice e chiede una conferma
-scritta. E' l'unico punto in cui l'avvio puo' fermarsi prima del banner.
+scritta. E' il primo dei due punti in cui l'avvio puo' fermarsi prima del
+banner; il secondo e' un `resume` senza niente da riprendere.
 
-Ogni sessione ha il proprio contesto: obiettivo, piano, avanzamento. Il
+Ogni conversazione nasce nella cartella e la ricorda: il contesto -
+obiettivo, piano, avanzamento - e' suo, e `ares resume` lo riapre. Il
 profilo e le memorie invece sono per utente, quindi attraversano tutte le
-sessioni. Usa sessioni diverse per lavori diversi.
+conversazioni, anche una nuova.
 
 Frecce su e giu' ripercorrono cio' che hai gia' scritto, anche di una
 sessione precedente; le frecce laterali correggono la riga senza riscriverla.
@@ -31,6 +36,7 @@ divergite.
 """
 
 import logging
+import sys
 from pathlib import Path
 
 from agno.run.agent import RunOutput
@@ -38,6 +44,7 @@ from agno.run.agent import RunOutput
 from ares import config
 from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
+from ares.agent.runtime import build_db
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
@@ -57,6 +64,7 @@ from ares.cli.render import (
 )
 from ares.cli.ui import UI
 from ares.state.lock import StatoOccupato, lock_stato
+from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
 
 AGNO_LOGGER_NAMES = ("agno", "agno-team", "agno-workflow")
 
@@ -198,15 +206,88 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
+def _sessione_da_aprire(user: str, radice: Path | None, *, riprendi: bool, scegli: bool) -> tuple[str | None, str]:
+    """Quale conversazione aprire quando `--session` non lo dice, e come chiamarla nel banner.
+
+    Senza `resume` ogni avvio e' una conversazione nuova, nominata dalla
+    cartella e dal momento: profilo e memorie ci sono comunque, perche' sono
+    per utente; il contesto - obiettivo, piano, avanzamento - parte vuoto.
+    Con `resume` si torna all'ultima nata in questa cartella, o a una scelta
+    dall'elenco. `None` vuol dire che non c'e' niente da riprendere, ed e'
+    gia' stato detto.
+    """
+    if radice is None:
+        # Senza spazio di lavoro non c'e' una cartella a cui legarsi: resta
+        # il nome di prima, e `resume` non ha da dove riprendere.
+        if riprendi:
+            UI.line("Senza cartella di lavoro non c'e' niente da riprendere: usa --session.", style="ares.error")
+            return None, ""
+        return "principale", ""
+    if not riprendi:
+        return cartella.nuovo_id_sessione(radice), "nuova"
+    precedenti = sessioni_della_cartella(build_db(), user, radice)
+    if not precedenti:
+        UI.line("Nessuna conversazione in questa cartella: `ares` da solo ne apre una nuova.", style="ares.warning")
+        return None, ""
+    if scegli:
+        UI.heading("Conversazioni in " + str(radice))
+        scelta = cartella.scegli_sessione([con_run(build_db(), s) for s in precedenti[: config.SESSIONI_ELENCO]])
+        if scelta is None:
+            UI.line("Nessuna conversazione ripresa.", style="ares.muted")
+        return scelta, "ripresa"
+    ultima = con_run(build_db(), precedenti[0])
+    scambi = len(getattr(ultima, "runs", None) or [])
+    UI.pair("Riprendo", str(ultima.session_id) + "   " + quando_sessione(ultima) + "   " + str(scambi) + " scambi")
+    inizio = prima_domanda(ultima)
+    if inizio:
+        UI.line("    inizio: " + inizio, style="ares.muted")
+    if len(precedenti) > 1:
+        altre = "    altre " + str(len(precedenti) - 1) + " in questa cartella: ares resume --scegli"
+        UI.line(altre, style="ares.muted")
+    return str(ultima.session_id), "ripresa"
+
+
+def _colpo_singolo(stato: StatoChat, testo: str) -> int:
+    """`ares -p "..."`: un turno, la risposta, fine. Stdin in pipe si aggiunge al testo.
+
+    Niente banner e niente avvisi d'avvio: in una pipe conta la risposta.
+    L'apprendimento avviene come in chat; le conferme non hanno nessuno che
+    risponda e valgono no, cosi' uno strumento sensibile non passa mai da un
+    comando lanciato da uno script.
+    """
+    if not sys.stdin.isatty():
+        try:
+            dati = sys.stdin.read().strip()
+        except OSError:
+            dati = ""
+        if dati:
+            testo = testo + "\n\n" + dati
+    input_cli = CliInput(
+        comandi=[],
+        cronologia_file=config.CRONOLOGIA_FILE,
+        cronologia_righe=config.CRONOLOGIA_RIGHE,
+        interactive=False,
+        fallback_input=lambda _etichetta: "",
+    )
+    risposta = esegui_turno(stato.agent, testo, input_cli)
+    if stato.metriche and risposta is not None:
+        for riga in righe_metriche(risposta):
+            UI.metrics(riga)
+    return 0 if risposta is not None else 1
+
+
 def _esegui_chat(
     *,
-    session: str,
+    session: str | None = None,
     user: str,
     debug: bool = False,
     metriche: bool = False,
     workspace: Path | None = None,
+    riprendi: bool = False,
+    scegli: bool = False,
+    prompt: str | None = None,
 ) -> int:
-    """La chat. Restituisce il codice di uscita: 1 se la cartella non si apre, 0 altrimenti."""
+    """La chat. Restituisce il codice di uscita: 1 se cartella o sessione non si aprono, 0 altrimenti."""
     # La cartella prima di ogni altra cosa, perche' e' l'unico passo che puo'
     # dire no: un avvio rifiutato non deve aver toccato niente, nemmeno la
     # directory dello stato. `workspace` e' `--workspace`; senza, e' quella
@@ -227,6 +308,12 @@ def _esegui_chat(
     # non arriva qui: esce dentro Cyclopts.
     config.prepara_archivio()
 
+    etichetta = ""
+    if session is None:
+        session, etichetta = _sessione_da_aprire(user, radice, riprendi=riprendi, scegli=scegli)
+        if session is None:
+            return 1
+
     configura_log_agno(debug)
     agent = build_assistant(user_id=user, session_id=session, debug=debug)
 
@@ -241,6 +328,9 @@ def _esegui_chat(
         debug=debug,
         metriche=config.MOSTRA_METRICHE or metriche,
     )
+
+    if prompt is not None:
+        return _colpo_singolo(stato, prompt)
 
     input_cli = CliInput(
         comandi=[(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI],
@@ -258,7 +348,7 @@ def _esegui_chat(
         istruzioni = config.WORKSPACE_ISTRUZIONI
     UI.banner(
         modello=config.MAIN_MODEL,
-        sessione=session,
+        sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
         utente=user,
         cartella=str(radice) if radice is not None else None,
         ramo=cartella.ramo_git(radice) if radice is not None else None,
@@ -327,23 +417,36 @@ def _esegui_chat(
 
 def avvia(
     *,
-    session: str,
+    session: str | None = None,
     user: str,
     debug: bool = False,
     metriche: bool = False,
     workspace: Path | None = None,
+    riprendi: bool = False,
+    scegli: bool = False,
+    prompt: str | None = None,
 ) -> int:
     """La chat con la rete intorno: il lock e i tre modi in cui l'avvio non parte.
 
-    Restituisce il codice di uscita. Una cartella rifiutata e un archivio
-    occupato valgono 1, perche' uno script che lancia `ares` deve poterlo
-    vedere; un Ctrl-C durante l'avvio vale 0, perche' l'ha deciso l'utente.
+    Restituisce il codice di uscita. Una cartella rifiutata, niente da
+    riprendere e un archivio occupato valgono 1, perche' uno script che
+    lancia `ares` deve poterlo vedere; un Ctrl-C durante l'avvio vale 0,
+    perche' l'ha deciso l'utente.
     """
     try:
         # Lock condiviso per tutta la vita del processo. Piu' chat possono
         # convivere; backup e restore, che chiedono il lock esclusivo, no.
         with lock_stato(esclusivo=False):
-            esito = _esegui_chat(session=session, user=user, debug=debug, metriche=metriche, workspace=workspace)
+            esito = _esegui_chat(
+                session=session,
+                user=user,
+                debug=debug,
+                metriche=metriche,
+                workspace=workspace,
+                riprendi=riprendi,
+                scegli=scegli,
+                prompt=prompt,
+            )
             return esito if isinstance(esito, int) else 0
     except StatoOccupato as errore:
         UI.line("Impossibile avviare Ares: " + str(errore), style="ares.error")

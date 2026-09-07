@@ -880,6 +880,94 @@ def chat_cartella() -> str:
     return "cartella inesistente, rifiutata e scelta con --workspace"
 
 
+def chat_sessioni() -> str:
+    """Senza `--session`: una conversazione nuova, `resume`, `--scegli` e `-p`.
+
+    L'agente e' finto ma il database e' vero: le sessioni da riprendere si
+    seminano con i metadati che `build_assistant` scrive, cosi' la lettura
+    passa da SQLite come nel prodotto. Una sessione nata altrove non deve
+    essere ripresa qui.
+    """
+    from agno.session.agent import AgentSession
+
+    from ares.agent.runtime import build_db
+
+    costruiti: list[dict] = []
+
+    def costruisci(**argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    def avvio(**argomenti) -> tuple[int, str]:
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
+            patch.object(chat, "promemoria_backup", list),
+            patch.object(sys, "stdin", io.StringIO()),
+            redirect_stdout(uscita),
+        ):
+            esito = chat._esegui_chat(user=UTENTE, **argomenti)
+        return esito, _piatto(uscita.getvalue())
+
+    esito, testo = avvio()
+    nome = costruiti[-1]["session_id"]
+    esigi(
+        esito == 0 and nome.startswith(config.WORKSPACE_DIR.name + "-"), "l'id nuovo non viene dalla cartella: " + nome
+    )
+    esigi("(nuova)" in testo, "il banner non dice che la conversazione e' nuova: " + repr(testo))
+
+    esito, testo = avvio(riprendi=True)
+    esigi(esito == 1 and len(costruiti) == 1, "resume senza conversazioni ha aperto qualcosa")
+    esigi("Nessuna conversazione in questa cartella" in testo, "resume a vuoto non lo dice: " + repr(testo))
+
+    # Seminate nel database della suite e tolte alla fine: `sessioni parziale`,
+    # piu' avanti, conta le sessioni dell'archivio e non deve trovarle.
+    db = build_db()
+    qui = str(config.WORKSPACE_DIR)
+    seminate = (
+        ("ripresa-vecchia", 1000, qui),
+        ("ripresa-nuova", 2000, qui),
+        ("altrove", 3000, "/un/altro/progetto"),
+    )
+    try:
+        for identificativo, quando, dove in seminate:
+            db.upsert_session(
+                AgentSession(session_id=identificativo, user_id=UTENTE, metadata={"cartella": dove}, created_at=quando)
+            )
+        esito, testo = avvio(riprendi=True)
+        esigi(esito == 0 and costruiti[-1]["session_id"] == "ripresa-nuova", "resume non riapre l'ultima di qui")
+        esigi("Riprendo" in testo and "(ripresa)" in testo, "resume non dice cosa riprende: " + repr(testo))
+        esigi("altre 1" in testo, "resume non conta le altre conversazioni della cartella: " + repr(testo))
+
+        with patch("builtins.input", lambda _etichetta="": "2"):
+            esito, testo = avvio(riprendi=True, scegli=True)
+        esigi(esito == 0 and costruiti[-1]["session_id"] == "ripresa-vecchia", "--scegli non apre la scelta")
+        with patch("builtins.input", lambda _etichetta="": ""):
+            esito, testo = avvio(riprendi=True, scegli=True)
+        esigi(esito == 1 and "Nessuna conversazione ripresa" in testo, "rinunciare alla scelta apre qualcosa")
+    finally:
+        db.delete_sessions([identificativo for identificativo, _, _ in seminate], user_id=UTENTE)
+
+    turni: list[str] = []
+
+    def ciclo(agent, testo, *, on_event, resolve_pause):
+        turni.append(testo)
+        return FintaRisposta(metriche=FinteMetriche())
+
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "build_assistant", costruisci),
+        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(sys, "stdin", io.StringIO("dati dalla pipe\n")),
+        redirect_stdout(uscita),
+    ):
+        esito = chat._esegui_chat(user=UTENTE, prompt="riassumi")
+    esigi(esito == 0 and turni == ["riassumi\n\ndati dalla pipe"], "-p non unisce domanda e stdin: " + repr(turni))
+    esigi("ARES" not in uscita.getvalue(), "-p stampa il banner")
+    return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin"
+
+
 def chat_residui() -> str:
     """Un restore rimasto a meta' viene detto all'avvio, e solo allora.
 
@@ -1094,6 +1182,7 @@ def main() -> int:
         ok("chat turno", chat_turno())
         ok("chat ciclo", chat_ciclo())
         ok("chat cartella", chat_cartella())
+        ok("chat sessioni", chat_sessioni())
         ok("chat avvio", chat_avvio())
         ok("chat residui", chat_residui())
         # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
