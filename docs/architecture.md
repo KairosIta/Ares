@@ -49,6 +49,8 @@ e la chat si ferma finche' non e' successo.
   comandi locali, il loro dispatch e lo `StatoChat` che `/sessione`,
   `/metriche` e `/debug` modificano a meta' conversazione, mentre
   `render.py` presenta eventi, conferme e metriche del turno;
+- `log.py` zittisce o accende il log di Agno, per la chat, `/debug` e
+  `ares inspect --prompt`; non importa niente di Ares;
 - `conferma.py` e' la conferma scritta dei comandi di manutenzione - la
   frase esatta da riscrivere prima di un restore, un prune o una fusione -
   con l'editor della chat sul terminale e `input()` in una pipe;

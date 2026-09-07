@@ -43,6 +43,7 @@ def _ispeziona(user: str, session: str | None, query: str, file: str | None, pro
     from ares.agent.assistant import build_assistant, build_filesystem
     from ares.agent.prompts import messaggio_di_sistema
     from ares.cli.cartella import nuovo_id_sessione
+    from ares.cli.log import configura_log_agno
     from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita, stampa_store
 
     # Qui e non prima: `--help` esce dentro Cyclopts, e un comando che stampa
@@ -66,6 +67,10 @@ def _ispeziona(user: str, session: str | None, query: str, file: str | None, pro
         # oppure quella nominata: il contesto di sessione e l'elenco delle
         # conversazioni precedenti dipendono da quale si guarda. Verbatim,
         # come `--file`: e' un testo da leggere o da confrontare con `diff`.
+        # Il log INFO di Agno passa da Rich su stdout: davanti al prompt ci
+        # finirebbe "Creating table" su un archivio nuovo. Warning ed errori
+        # restano, ma tolti dallo stdout che qui e' il testo e basta.
+        configura_log_agno(False)
         session = session or nuovo_id_sessione(Path.cwd())
         agent = build_assistant(user_id=user, session_id=session)
         print(messaggio_di_sistema(agent, session_id=session, user_id=user))
