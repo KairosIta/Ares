@@ -6,6 +6,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-07 su Agno 3.0.5,
+3 prove su 3, con `glm-5.3-flash:cloud` in conversazione e
+`deepseek-v4-pro:cloud` in estrazione dal `.env`; il modello conversazionale
+locale non e' stato provato in questo giro.
+
 ### Added
 
 - **Ares sa dove si trova e che cosa e'.** Il prompt si apre con una scheda
