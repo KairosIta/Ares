@@ -430,7 +430,9 @@ def inspect_learning_cli() -> str:
         inspect_learning.main()
     testo = uscita.getvalue()
     esigi(testo.startswith("Sei Ares"), "il prompt non comincia con la descrizione di Ares: " + repr(testo[:200]))
-    esigi(str(Path.cwd()) in testo, "il prompt non nomina la cartella corrente")
+    # Risolta come la conserva `config`: su Windows la temp arriva col nome
+    # corto (`RUNNER~1`) e il prompt porta quello espanso.
+    esigi(str(config.WORKSPACE_DIR.resolve()) in testo, "il prompt non nomina la cartella corrente")
     esigi("<learning_system>" in testo, "il prompt non contiene il blocco della macchina di apprendimento")
     esigi(prima == (file_db.stat().st_mtime_ns, file_db.stat().st_size), "--prompt ha modificato l'archivio")
     return "cinque sezioni, archivio invariato, --file presente e assente, --prompt intero"
