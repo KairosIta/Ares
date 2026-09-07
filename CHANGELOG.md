@@ -300,6 +300,12 @@ cioè la configurazione che questa versione distribuisce - sia con
 
 ### Fixed
 
+- il tetto di tempo delle prove offline in `tests/run.py` sale da 180 a 360
+  secondi. La prova `cli` lancia una REPL per sottoprocesso e ognuno importa
+  Agno: sul runner Windows di GitHub sta fra 150 e 165 secondi, e un runner
+  appena piu' lento la dichiarava bloccata, come e' successo alla CI del
+  bump di ruff. Il tetto resta per distinguere una prova bloccata da una
+  lenta, e ora e' il doppio della misura;
 - i controlli di terminale non passano piu' da nessuna via che mostra testo
   scelto dal modello o letto dal workspace. Il filtro ANSI copriva solo lo
   stream della risposta: il pannello di conferma, il nome e l'anteprima
