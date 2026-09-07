@@ -157,7 +157,7 @@ def stato_archivio_reale() -> list:
     scrive per mestiere, ma in un'altra directory. Cio' che va dimostrato non
     e' che non scriva, e' che non scriva li'.
     """
-    reale = config.BASE_DIR / "tmp"
+    reale = config.ARES_HOME / "stato"
     if not reale.exists():
         return []
     return sorted(
@@ -1577,11 +1577,11 @@ def import_senza_effetti() -> str:
 def archivio_vero_intatto(prima: list) -> str:
     """La prova non ha letto ne' scritto l'archivio vero."""
     esigi(
-        not config.DB_FILE.startswith(str(config.BASE_DIR / "tmp")),
+        not config.DB_FILE.startswith(str(config.ARES_HOME / "stato")),
         "l'archivio della prova coincide con quello vero: " + config.DB_FILE,
     )
     esigi(stato_archivio_reale() == prima, "l'archivio vero e' cambiato durante la prova")
-    return str(len(prima)) + " file in tmp/, invariati"
+    return str(len(prima)) + " file nello stato vero, invariati"
 
 
 # ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+# Lo stato vive in ~/.ares; questi due sono il posto di prima, finche' `ares migrate` non lo sposta.
 tmp/
 tmp.lock
 .venv/

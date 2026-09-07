@@ -63,6 +63,7 @@ from ares.cli.render import (
     righe_scrittura,
 )
 from ares.cli.ui import UI
+from ares.ops import migrazione
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
 
@@ -237,7 +238,8 @@ def _sessione_da_aprire(user: str, radice: Path | None, *, riprendi: bool, scegl
         return scelta, "ripresa"
     ultima = con_run(build_db(), precedenti[0])
     scambi = len(getattr(ultima, "runs", None) or [])
-    UI.pair("Riprendo", str(ultima.session_id) + "   " + quando_sessione(ultima) + "   " + str(scambi) + " scambi")
+    conto = str(scambi) + (" scambio" if scambi == 1 else " scambi")
+    UI.pair("Riprendo", str(ultima.session_id) + "   " + quando_sessione(ultima) + "   " + conto)
     inizio = prima_domanda(ultima)
     if inizio:
         UI.line("    inizio: " + inizio, style="ares.muted")
@@ -287,11 +289,21 @@ def _esegui_chat(
     scegli: bool = False,
     prompt: str | None = None,
 ) -> int:
-    """La chat. Restituisce il codice di uscita: 1 se cartella o sessione non si aprono, 0 altrimenti."""
-    # La cartella prima di ogni altra cosa, perche' e' l'unico passo che puo'
-    # dire no: un avvio rifiutato non deve aver toccato niente, nemmeno la
-    # directory dello stato. `workspace` e' `--workspace`; senza, e' quella
-    # da cui si e' lanciato `ares`, e `config` la ha gia' letta.
+    """La chat. Restituisce il codice di uscita: 1 se stato, cartella o sessione non si aprono, 0 altrimenti."""
+    # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio
+    # vuoto accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
+    # risponderebbe come al primo giorno senza che si capisca perche'.
+    ancora_di_la = migrazione.avviso()
+    if ancora_di_la:
+        UI.line(ancora_di_la[0], style="ares.warning")
+        for riga in ancora_di_la[1:]:
+            UI.line(riga, style="ares.muted")
+        return 1
+
+    # Poi la cartella, perche' e' l'altro passo che puo' dire no: un avvio
+    # rifiutato non deve aver toccato niente, nemmeno la directory dello
+    # stato. `workspace` e' `--workspace`; senza, e' quella da cui si e'
+    # lanciato `ares`, e `config` la ha gia' letta.
     radice: Path | None = None
     if config.WORKSPACE:
         try:

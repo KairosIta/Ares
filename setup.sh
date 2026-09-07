@@ -3,12 +3,14 @@
 # Ricostruzione dell'ambiente
 # ===========================
 # Crea il virtualenv, installa le dipendenze bloccate in uv.lock, installa
-# Ares nel venv e verifica che Ollama sia in piedi con i modelli giusti.
+# Ares nel venv, mette `ares` sul PATH, porta in `~/.ares` lo stato di un
+# clone precedente e verifica che Ollama sia in piedi con i modelli giusti.
 #
 #     ./setup.sh
 #
-# Idempotente: se il venv c'e' gia' lo allinea invece di ricrearlo. Non
-# tocca `tmp/`, dove vive tutto lo stato appreso, ne' gli snapshot locali.
+# Idempotente: se il venv c'e' gia' lo allinea invece di ricrearlo. Lo stato
+# appreso e gli snapshot non vengono toccati, salvo lo spostamento una tantum
+# in `~/.ares` di quelli lasciati dentro il clone da una versione precedente.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -45,6 +47,28 @@ uv sync --locked --no-dev
 # setup.ps1 fa lo stesso controllo: i due percorsi di installazione devono
 # rifiutare lo stesso ambiente incoerente.
 uv pip check --python .venv/bin/python
+
+# `ares` da qualunque cartella: un link in `~/.local/bin` al comando del venv.
+# Un link e non un `uv tool install`, perche' quello risolverebbe le
+# dipendenze da capo senza guardare uv.lock: il comando globale deve essere
+# esattamente l'ambiente bloccato, e seguire il codice del clone a ogni pull.
+# `ARES_BIN_DIR` sceglie un'altra directory.
+BIN_DIR="${ARES_BIN_DIR:-$HOME/.local/bin}"
+mkdir -p "$BIN_DIR"
+ln -sfn "$PWD/.venv/bin/ares" "$BIN_DIR/ares"
+echo "Comando globale: $BIN_DIR/ares"
+case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *)
+        echo "  $BIN_DIR non e' nel PATH. Aggiungi al profilo della shell:"
+        echo "      export PATH=\"$BIN_DIR:\$PATH\""
+        ;;
+esac
+
+# Lo stato di un clone precedente, da `tmp/` e `../ares-backup` a `~/.ares`.
+# Non fa niente se e' gia' li' o se non c'e' niente da spostare.
+echo
+.venv/bin/ares migrate
 
 echo
 if ! .venv/bin/ares preflight; then
