@@ -9,9 +9,9 @@ Uso:
 
 Ogni prova resta uno script eseguibile da solo: questo file non le importa,
 le lancia. Non e' una preferenza di stile. Ognuna prepara il proprio ambiente
-scrivendo `ARES_TMP`, `ARES_BACKUP_DIR` e `ARES_WORKSPACE` *prima* di
-importare `config`, che quelle variabili le legge una volta sola all'import e
-non le rilegge mai piu'. Due prove nello stesso interprete condividerebbero
+scrivendo `ARES_TMP` e `ARES_BACKUP_DIR` ed entrando nella propria cartella
+di lavoro *prima* di importare `config`, che quelle cose le legge una volta
+sola all'import e non le rilegge mai piu'. Due prove nello stesso interprete condividerebbero
 il primo `config` importato, cioe' i percorsi della prima: la seconda
 scriverebbe dove ha preparato la prima, e il giorno in cui una delle due
 sbagliasse variabile scriverebbe nell'archivio vero senza che nessuno se ne

@@ -41,7 +41,7 @@ from unittest.mock import patch
 # I percorsi vanno scelti prima di importare config, che crea TMP_DIR
 # all'import: importarlo e correggere dopo lascerebbe comunque una tmp/ vuota
 # accanto ai dati veri.
-from _comune import esigi, fallimento, ok, prepara_ambiente
+from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("cli-test")
 
@@ -438,11 +438,15 @@ def chat_repl() -> str:
     Ollama irraggiungibile diventa un evento di errore che la REPL stampa,
     e la prova resterebbe verde per il motivo sbagliato.
     """
+    # Il figlio parte dalla cartella di lavoro della prova, come farebbe un
+    # utente che scrive `ares` nel proprio progetto: e' cosi' che la cartella
+    # viene scelta. Da `BASE_DIR` sarebbe una cartella rischiosa - contiene
+    # il codice di Ares - e senza terminale la REPL la rifiuterebbe.
     figlio = subprocess.run(
         [sys.executable, "-m", "ares", "--user", UTENTE, "--session", SESSIONE],
-        cwd=config.BASE_DIR,
+        cwd=config.WORKSPACE_DIR,
         env=os.environ.copy(),
-        input="/aiuto\n\n/entita\n/file\n/sconosciuto comando\n/esci\n",
+        input="/aiuto\n\n/entita\n/file\n/cartella\n/sconosciuto comando\n/esci\n",
         capture_output=True,
         text=True,
         timeout=180,
@@ -453,6 +457,7 @@ def chat_repl() -> str:
     esigi("A presto" in testo, "la REPL non saluta all'uscita")
     esigi("/aiuto" in testo, "l'elenco dei comandi non compare")
     esigi("appunto.md" in testo, "/file non elenca il file scritto dall'agente")
+    esigi(str(config.WORKSPACE_DIR.resolve()) in testo, "il banner o /cartella non nominano la cartella di lavoro")
     esigi("Comando sconosciuto: /sconosciuto" in testo, "il comando ignoto non e' stato riconosciuto come tale")
     # La riga che tiene in piedi la promessa del modulo. Una riga che non
     # comincia con `/` non e' un comando: e' un messaggio, e la REPL lo manda
@@ -814,6 +819,235 @@ def chat_ciclo() -> str:
     return "riga vuota, turno, metriche, avvisi d'avvio e le due uscite dal prompt"
 
 
+def chat_cartella() -> str:
+    """La cartella si decide prima di tutto: se non va, niente agente e niente banner.
+
+    Tre avvii: una cartella che non esiste, una che `autorizza` rifiuta, una
+    buona passata con `--workspace`. Nei primi due l'agente non deve nemmeno
+    essere costruito; nel terzo `config.WORKSPACE_DIR` deve puntare alla
+    cartella scelta e il banner nominarla, con il suo ARES.md.
+    """
+    originale = config.WORKSPACE_DIR
+    costruiti: list[dict] = []
+
+    def costruisci(**argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    uscita = io.StringIO()
+    with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+        esito = chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=Path(originale) / "non-esiste")
+    testo = _piatto(uscita.getvalue())
+    esigi(esito == 1, "una cartella inesistente non esce con 1: " + str(esito))
+    esigi("non esiste" in testo, "una cartella inesistente non viene detta: " + repr(testo))
+    esigi(not costruiti, "l'agente e' stato costruito su una cartella inesistente")
+
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "build_assistant", costruisci),
+        patch.object(chat.cartella, "autorizza", lambda percorso, *, esplicito: False),
+        redirect_stdout(uscita),
+    ):
+        esito = chat._esegui_chat(session=SESSIONE, user=UTENTE)
+    esigi(esito == 1, "una cartella rifiutata non esce con 1: " + str(esito))
+    esigi(not costruiti, "l'agente e' stato costruito su una cartella rifiutata")
+    esigi("ARES" not in uscita.getvalue(), "il banner compare dopo un rifiuto")
+
+    progetto = RADICE_PROVA / "progetto-chat"
+    progetto.mkdir()
+    (progetto / "ARES.md").write_text("Regole del progetto.\n", encoding="utf-8")
+    # `/cartella` stampa il percorso su una riga sola anche in una pipe; il
+    # banner a 80 colonne lo manda a capo se e' lungo, come la temp di Windows.
+    input_cli = FintoInput(["/cartella", KeyboardInterrupt])
+    uscita = io.StringIO()
+    try:
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: input_cli),
+            patch.object(chat, "promemoria_backup", list),
+            redirect_stdout(uscita),
+        ):
+            chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=progetto)
+        scelta = config.WORKSPACE_DIR
+    finally:
+        config.WORKSPACE_DIR = originale
+    testo = _piatto(uscita.getvalue())
+    esigi(scelta == progetto.resolve(), "--workspace non ha cambiato la cartella di lavoro: " + str(scelta))
+    esigi(len(costruiti) == 1, "l'agente non e' stato costruito una volta sola: " + str(len(costruiti)))
+    esigi(str(progetto.resolve()) in testo, "/cartella non nomina la cartella scelta: " + repr(testo))
+    esigi(progetto.name in testo.split("Cartella di lavoro")[0], "il banner non nomina la cartella: " + repr(testo))
+    esigi("ARES.md" in testo, "il banner non dice che c'e' un ARES.md: " + repr(testo))
+    return "cartella inesistente, rifiutata e scelta con --workspace"
+
+
+def chat_sessioni() -> str:
+    """Senza `--session`: una conversazione nuova, `resume`, `--scegli` e `-p`.
+
+    L'agente e' finto ma il database e' vero: le sessioni da riprendere si
+    seminano con i metadati che `build_assistant` scrive, cosi' la lettura
+    passa da SQLite come nel prodotto. Una sessione nata altrove non deve
+    essere ripresa qui.
+    """
+    from agno.session.agent import AgentSession
+
+    from ares.agent.runtime import build_db
+
+    costruiti: list[dict] = []
+
+    def costruisci(**argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    def avvio(**argomenti) -> tuple[int, str]:
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
+            patch.object(chat, "promemoria_backup", list),
+            patch.object(sys, "stdin", io.StringIO()),
+            redirect_stdout(uscita),
+        ):
+            esito = chat._esegui_chat(user=UTENTE, **argomenti)
+        return esito, _piatto(uscita.getvalue())
+
+    esito, testo = avvio()
+    nome = costruiti[-1]["session_id"]
+    esigi(
+        esito == 0 and nome.startswith(config.WORKSPACE_DIR.name + "-"), "l'id nuovo non viene dalla cartella: " + nome
+    )
+    esigi("(nuova)" in testo, "il banner non dice che la conversazione e' nuova: " + repr(testo))
+
+    esito, testo = avvio(riprendi=True)
+    esigi(esito == 1 and len(costruiti) == 1, "resume senza conversazioni ha aperto qualcosa")
+    esigi("Nessuna conversazione in questa cartella" in testo, "resume a vuoto non lo dice: " + repr(testo))
+
+    # Seminate nel database della suite e tolte alla fine: `sessioni parziale`,
+    # piu' avanti, conta le sessioni dell'archivio e non deve trovarle.
+    db = build_db()
+    qui = str(config.WORKSPACE_DIR)
+    seminate = (
+        ("ripresa-vecchia", 1000, qui),
+        ("ripresa-nuova", 2000, qui),
+        ("altrove", 3000, "/un/altro/progetto"),
+    )
+    try:
+        for identificativo, quando, dove in seminate:
+            db.upsert_session(
+                AgentSession(session_id=identificativo, user_id=UTENTE, metadata={"cartella": dove}, created_at=quando)
+            )
+        esito, testo = avvio(riprendi=True)
+        esigi(esito == 0 and costruiti[-1]["session_id"] == "ripresa-nuova", "resume non riapre l'ultima di qui")
+        esigi("Riprendo" in testo and "(ripresa)" in testo, "resume non dice cosa riprende: " + repr(testo))
+        esigi("altre 1" in testo, "resume non conta le altre conversazioni della cartella: " + repr(testo))
+
+        with patch("builtins.input", lambda _etichetta="": "2"):
+            esito, testo = avvio(riprendi=True, scegli=True)
+        esigi(esito == 0 and costruiti[-1]["session_id"] == "ripresa-vecchia", "--scegli non apre la scelta")
+        with patch("builtins.input", lambda _etichetta="": ""):
+            esito, testo = avvio(riprendi=True, scegli=True)
+        esigi(esito == 1 and "Nessuna conversazione ripresa" in testo, "rinunciare alla scelta apre qualcosa")
+    finally:
+        db.delete_sessions([identificativo for identificativo, _, _ in seminate], user_id=UTENTE)
+
+    turni: list[str] = []
+
+    def ciclo(agent, testo, *, on_event, resolve_pause):
+        turni.append(testo)
+        return FintaRisposta(metriche=FinteMetriche())
+
+    uscita = io.StringIO()
+    with (
+        patch.object(chat, "build_assistant", costruisci),
+        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(sys, "stdin", io.StringIO("dati dalla pipe\n")),
+        redirect_stdout(uscita),
+    ):
+        esito = chat._esegui_chat(user=UTENTE, prompt="riassumi")
+    esigi(esito == 0 and turni == ["riassumi\n\ndati dalla pipe"], "-p non unisce domanda e stdin: " + repr(turni))
+    esigi("ARES" not in uscita.getvalue(), "-p stampa il banner")
+    return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin"
+
+
+def migrazione_stato() -> str:
+    """`ares migrate`: lo stato di un clone precedente passa in ~/.ares, e la chat aspetta.
+
+    Vecchio e nuovo sono directory della prova, scambiate in `config` per la
+    durata del controllo. Si prova lo spostamento, l'idempotenza, il rifiuto
+    di toccare una destinazione piena, e che la chat si fermi finche' lo
+    stato e' ancora di la': costruire l'agente su un archivio vuoto accanto a
+    uno pieno e' esattamente cio' che la migrazione esiste per evitare.
+    """
+    from ares.ops import migrazione
+
+    radice = RADICE_PROVA / "migrazione"
+    vecchio_tmp = radice / "clone" / "tmp"
+    vecchio_backup = radice / "ares-backup"
+    casa = radice / "casa" / ".ares"
+    (vecchio_tmp / "lancedb").mkdir(parents=True)
+    (vecchio_tmp / "kairos.db").write_text("db", encoding="utf-8")
+    (vecchio_backup / "snap").mkdir(parents=True)
+    (vecchio_backup / "snap" / "manifest.json").write_text("{}", encoding="utf-8")
+
+    costruiti: list[dict] = []
+
+    def costruisci(**argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    def migra() -> tuple[int, str]:
+        uscita = io.StringIO()
+        with redirect_stdout(uscita), redirect_stderr(uscita):
+            esito = migrazione.migra()
+        return esito, _piatto(uscita.getvalue())
+
+    with patch.multiple(
+        config,
+        ARES_HOME=casa,
+        TMP_DIR=casa / "stato",
+        BACKUP_DIR=casa / "backup",
+        STATE_LOCK_FILE=casa / "stato.lock",
+        VECCHIO_TMP_DIR=vecchio_tmp,
+        VECCHIO_BACKUP_DIR=vecchio_backup,
+    ):
+        righe = migrazione.avviso()
+        esigi(
+            len(righe) == 4 and "migrate" in righe[-1], "l'avviso non elenca le due parti e il rimedio: " + repr(righe)
+        )
+
+        uscita = io.StringIO()
+        with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+            esito = chat._esegui_chat(user=UTENTE)
+        esigi(esito == 1 and not costruiti, "la chat e' partita con lo stato ancora nel posto di prima")
+        esigi("migrate" in uscita.getvalue(), "la chat non dice come spostare lo stato: " + repr(uscita.getvalue()))
+
+        esito, testo = migra()
+        esigi(esito == 0, "la migrazione non e' riuscita: " + testo)
+        esigi("Spostato lo stato" in testo and "Spostato i backup" in testo, "non dice cosa ha spostato: " + testo)
+        esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "il database non e' arrivato")
+        esigi((casa / "stato" / "lancedb").is_dir(), "l'indice non e' arrivato")
+        esigi((casa / "backup" / "snap" / "manifest.json").is_file(), "gli snapshot non sono arrivati")
+        esigi(not vecchio_tmp.exists() and not vecchio_backup.exists(), "il vecchio posto non e' vuoto")
+        esigi(not (vecchio_tmp.parent / "tmp.lock").exists(), "il vecchio lock e' rimasto")
+        if os.name == "posix":
+            esigi((casa.stat().st_mode & 0o777) == 0o700, "~/.ares non e' privata")
+            esigi(((casa / "stato").stat().st_mode & 0o777) == 0o700, "lo stato spostato non e' privato")
+        esigi(migrazione.avviso() == [], "l'avviso resta dopo la migrazione")
+
+        esito, testo = migra()
+        esigi(esito == 0 and "Niente da spostare" in testo, "la seconda migrazione non e' un no-op: " + testo)
+
+        # Il vecchio posto si riempie di nuovo mentre il nuovo e' pieno: non
+        # si tocca niente e lo si dice, e la chat non si ferma.
+        vecchio_tmp.mkdir(parents=True)
+        (vecchio_tmp / "kairos.db").write_text("altro", encoding="utf-8")
+        esito, testo = migra()
+        esigi(esito == 0 and "contiene gia' dei dati" in testo, "un conflitto non viene detto: " + testo)
+        esigi((vecchio_tmp / "kairos.db").exists(), "un conflitto ha spostato o cancellato qualcosa")
+        esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "un conflitto ha sovrascritto")
+        esigi(migrazione.avviso() == [], "un conflitto ferma la chat")
+    return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve"
+
+
 def chat_residui() -> str:
     """Un restore rimasto a meta' viene detto all'avvio, e solo allora.
 
@@ -913,12 +1147,17 @@ def chat_avvio() -> str:
     dell'agente non e' ancora protetta da nulla.
     """
     uscita = io.StringIO()
+    codice = 0
     with (
         patch.object(chat, "lock_stato", lambda esclusivo: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
         redirect_stdout(uscita),
     ):
-        chat.main()
+        try:
+            chat.main()
+        except SystemExit as fine:
+            codice = int(fine.code or 0)
     testo = _piatto(uscita.getvalue())
+    esigi(codice == 1, "un archivio occupato non esce con 1: " + str(codice))
     esigi("Impossibile avviare Ares" in testo, "l'archivio occupato non viene detto")
     esigi("backup in corso" in testo, "il motivo dell'occupazione non compare")
     esigi("riprova" in testo, "non viene suggerito di riprovare")
@@ -928,9 +1167,10 @@ def chat_avvio() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "_esegui_chat", avvio_interrotto), redirect_stdout(uscita):
+        # Nessun SystemExit: un Ctrl-C all'avvio e' una scelta, e vale 0.
         chat.main()
     esigi("Avvio interrotto" in _piatto(uscita.getvalue()), "un Ctrl-C durante l'avvio non viene detto")
-    return "lock condiviso, archivio occupato e Ctrl-C prima della REPL"
+    return "lock condiviso, archivio occupato con uscita 1 e Ctrl-C prima della REPL"
 
 
 def aiuto_senza_effetti() -> str:
@@ -1021,6 +1261,9 @@ def main() -> int:
         ok("chat REPL", chat_repl())
         ok("chat turno", chat_turno())
         ok("chat ciclo", chat_ciclo())
+        ok("chat cartella", chat_cartella())
+        ok("chat sessioni", chat_sessioni())
+        ok("migrazione", migrazione_stato())
         ok("chat avvio", chat_avvio())
         ok("chat residui", chat_residui())
         # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
@@ -1033,7 +1276,7 @@ def main() -> int:
         print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
 
-    shutil.rmtree(RADICE_PROVA, ignore_errors=True)
+    pulisci(RADICE_PROVA)
     print()
     print("Concluso in", round(time.monotonic() - avvio, 2), "s")
     print("Nessun fallimento.")

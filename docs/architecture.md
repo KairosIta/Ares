@@ -30,7 +30,12 @@ ares/
 
 `tests/` contiene le prove e il loro runner, `docs/` questa documentazione,
 la radice i file di configurazione degli strumenti e gli script di setup. Lo
-stato appreso sta in `tmp/`, fuori dal controllo versione.
+stato appreso non sta nel clone: vive in `~/.ares/stato`, con gli snapshot in
+`~/.ares/backup`, cosi' `ares` sul PATH lo trova da qualunque cartella e un
+clone si puo' spostare o rifare senza perdere niente. `ARES_HOME`, `ARES_TMP`
+e `ARES_BACKUP_DIR` lo spostano; `ops/migrazione.py` porta li', una volta
+sola, lo stato che una versione precedente teneva in `tmp/` dentro il clone,
+e la chat si ferma finche' non e' successo.
 
 ## Componenti
 
@@ -47,6 +52,15 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 - `conferma.py` e' la conferma scritta dei comandi di manutenzione - la
   frase esatta da riscrivere prima di un restore, un prune o una fusione -
   con l'editor della chat sul terminale e `input()` in una pipe;
+- `cartella.py` decide dove Ares lavora: la directory da cui si lancia
+  `ares`, o quella di `--workspace`. Prima di aprirla ne elenca i rischi -
+  la radice del disco, la home, una directory di sistema, una che contiene
+  lo stato o il codice di Ares - e li fa confermare con la stessa conferma
+  scritta; senza terminale una cartella rischiosa passa solo se nominata
+  con `--workspace`. Legge anche il ramo git da `.git/HEAD`, senza lanciare
+  git, scrive lo scheletro di `ARES.md` per `ares init`, nomina le
+  conversazioni nuove con cartella e momento e presenta l'elenco numerato di
+  `ares resume --scegli`;
 - `editor.py` gestisce editor, completamento, input multilinea e cronologia
   privata della REPL;
 - `ui.py` rende streaming Markdown, pannelli e tabelle, e filtra i controlli
@@ -62,7 +76,12 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 - `assistant.py` e' la facciata che assembla l'agente e conserva gli import
   pubblici; `runtime.py` costruisce modelli, archivi e strumenti,
   `learning.py` configura gli store e il post-hook sul run completo,
-  `prompts.py` compone soltanto le istruzioni coerenti con i flag;
+  `prompts.py` compone soltanto le istruzioni coerenti con i flag e vi
+  aggiunge, se c'e', l'`ARES.md` della cartella di lavoro - le regole del
+  progetto scritte da chi ci lavora, troncate oltre un tetto e dichiarate
+  tali al modello - e le ultime conversazioni nate nella stessa cartella,
+  con l'id da passare a `read_past_session`, perche' `search_past_sessions`
+  non sa dove una sessione e' nata;
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt;
 - `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
@@ -82,7 +101,11 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
 - LanceDB conserva la conoscenza vettoriale con embedding serviti da Ollama;
 - `stores.py` e' l'unico punto da cui si leggono entita', intuizioni e
   sessioni: non scrive mai, e non accende il modello salvo l'embedding della
-  query sulle intuizioni;
+  query sulle intuizioni. Le sessioni portano nei metadati la cartella in
+  cui sono nate - la scrive `build_assistant` passando `metadata=`
+  all'agente, Agno la copia nella sessione nuova e la lascia com'e' in una
+  ripresa - e `stores.py` le filtra per cartella: `/sessioni` tiene quelle
+  di qui e quelle senza cartella, `ares resume` solo quelle di qui;
 - `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato, su
   cui `platform_files.py` uniforma le primitive fra POSIX e Windows.
 
@@ -92,6 +115,10 @@ stato appreso sta in `tmp/`, fuori dal controllo versione.
   nominati in `config.py` siano scaricati, senza accendere niente e senza
   lasciare niente su disco;
 - `ops/inspect_learning.py` rilegge gli archivi a modello spento;
+- `ops/migrazione.py` e' `ares migrate`: sposta stato e backup dal posto di
+  prima - `tmp/` nel clone, `ares-backup` accanto - a `~/.ares`, sotto lock
+  esclusivo e come rinomina di directory. Idempotente, e non tocca una
+  destinazione che contiene gia' dei dati. I setup lo chiamano;
 - `backup/snapshots.py` coordina creazione, catalogo e restore degli snapshot
   locali; parser, conferme e output vivono in `backup/cli.py`, formato,
   checksum e verifica in `backup/integrity.py`, staging e rollback in
@@ -127,15 +154,19 @@ run finale, evitando di perdere il contenuto prodotto dopo una conferma.
 
 ## Confini di sicurezza
 
-Gli strumenti per i file sono limitati a una directory di lavoro, ma questo
-confine non e' una sandbox di processo. I comandi shell possono accedere alle
+Gli strumenti per i file sono limitati alla cartella di lavoro, che e' la
+directory da cui si lancia `ares`, ma questo confine non e' una sandbox di
+processo. Una cartella troppo larga - la home, il disco - allarga il raggio
+di ogni strumento, ed e' per questo che `cli/cartella.py` la fa confermare
+per iscritto prima del banner. I comandi shell possono accedere alle
 risorse dell'host e alla rete, quindi richiedono conferma esplicita. La
 conferma mostra il comando intero e, sotto, righe di attenzione per cio' che
 va oltre la directory: passa da una shell, tocca percorsi fuori dalla
 directory, chiede privilegi, usa la rete, cancella ricorsivamente
 (`cli/render.py`, `avvertenze_comando`). Non e' un filtro - una lista nera
 si aggira con un alias - ma il pezzo della conferma che dice dove guardare.
-Stato, workspace, backup e `.env` restano fuori dal controllo versione.
+Stato e backup vivono in `~/.ares`, fuori dal clone; `.env` resta nel clone
+ma fuori dal controllo versione.
 
 La memoria durevole non chiede conferma prima di scrivere: `save_learning`,
 `remember_about` e `update_user_memory` scrivono cio' che il modello decide,

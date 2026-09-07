@@ -147,17 +147,17 @@ class AresWorkspace(Workspace):
 
 
 def build_workspace() -> AresWorkspace:
-    """Costruisce lo spazio di lavoro dopo averne verificato i confini."""
+    """Costruisce lo spazio di lavoro sulla cartella scelta all'avvio.
+
+    La cartella e' quella dell'utente, decisa e autorizzata da
+    `cli/cartella.py` prima di arrivare qui: i rischi - la home, il disco
+    intero, lo stato di Ares dentro - li dice quel modulo e li conferma
+    l'utente. Qui si pretende soltanto che esista: crearla vorrebbe dire
+    lavorare in una directory vuota nata da un refuso.
+    """
     radice = config.WORKSPACE_DIR.resolve()
-
-    for nome, percorso in (("il progetto", config.BASE_DIR), ("l'archivio", config.TMP_DIR)):
-        if percorso.resolve().is_relative_to(radice):
-            raise ValueError(
-                "WORKSPACE_DIR contiene " + nome + " (" + str(percorso) + "): "
-                "scegliere una directory che non lo comprenda."
-            )
-
-    radice.mkdir(parents=True, exist_ok=True)
+    if not radice.is_dir():
+        raise ValueError("La cartella di lavoro " + str(radice) + " non esiste.")
     return AresWorkspace(
         radice,
         prefisso=config.WORKSPACE_PREFIX,

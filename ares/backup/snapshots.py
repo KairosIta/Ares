@@ -104,10 +104,12 @@ def _pubblica_snapshot(staging: Path, definitivo: Path) -> None:
 
 def valida_percorsi() -> None:
     """Il backup non puo' contenere o essere contenuto da cio' che protegge."""
+    # La cartella di lavoro non e' nell'elenco: e' quella da cui si lancia
+    # `ares`, e `ares backup create` dalla home non deve fallire perche' la
+    # home contiene i backup. Che Ares lavori dove stanno i suoi backup lo
+    # dice `cli/cartella.py` all'avvio della chat, ed e' li' che si decide.
     backup = config.BACKUP_DIR.resolve()
     vietati = [("lo stato", config.TMP_DIR), ("il progetto", config.BASE_DIR)]
-    if config.WORKSPACE:
-        vietati.append(("il workspace", config.WORKSPACE_DIR))
     for nome, percorso in vietati:
         if _si_sovrappongono(backup, Path(percorso)):
             raise ErroreBackup("BACKUP_DIR si sovrappone con " + nome + " (" + str(Path(percorso).resolve()) + ")")
