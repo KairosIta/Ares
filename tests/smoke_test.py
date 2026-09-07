@@ -93,6 +93,7 @@ from ares.cli.chat import (  # noqa: E402
     StatoChat,
     gestisci_comando,
 )
+from ares.cli.ui import stampa_store  # noqa: E402
 from ares.state.stores import (  # noqa: E402
     leggi_entita,
     leggi_intuizioni,
@@ -102,7 +103,6 @@ from ares.state.stores import (  # noqa: E402
     prima_domanda,
     righe_entita,
     righe_sessione,
-    stampa_store,
 )
 
 # Utente che non esiste in nessun archivio: serve solo a controllare che i

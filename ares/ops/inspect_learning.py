@@ -40,11 +40,13 @@ def separatore(titolo: str) -> None:
 
 
 def _ispeziona(user: str, session: str | None, query: str, file: str | None, prompt: bool) -> None:
-    from ares.agent.assistant import build_assistant, build_filesystem
+    from ares.agent.assistant import build_assistant
     from ares.agent.prompts import messaggio_di_sistema
     from ares.cli.cartella import nuovo_id_sessione
     from ares.cli.log import configura_log_agno
-    from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita, stampa_store
+    from ares.cli.ui import stampa_store
+    from ares.state.archivi import build_filesystem
+    from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita
 
     # Qui e non prima: `--help` esce dentro Cyclopts, e un comando che stampa
     # l'aiuto non deve creare l'archivio che dice di ispezionare.

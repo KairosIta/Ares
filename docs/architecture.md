@@ -77,7 +77,7 @@ e la chat si ferma finche' non e' successo.
 - `turn_core.py` normalizza gli eventi Agno e coordina `run/continue_run`
   senza dipendere dall'interfaccia;
 - `assistant.py` e' la facciata che assembla l'agente e conserva gli import
-  pubblici; `runtime.py` costruisce modelli, archivi e strumenti,
+  pubblici; `runtime.py` costruisce modelli, indice vettoriale e strumenti,
   `learning.py` configura gli store e il post-hook sul run completo, e
   deriva memorie, entita' e intuizioni per scrivere in italiano, e per una
   persona sola, la guida che Agno mette nel prompt in inglese,
@@ -118,9 +118,13 @@ e la chat si ferma finche' non e' successo.
   e indice degli offload; `filesystem.db` conserva il quaderno privato e i
   payload dei risultati tool troppo grandi per restare nel contesto;
 - LanceDB conserva la conoscenza vettoriale con embedding serviti da Ollama;
+- `archivi.py` apre i due SQLite - `kairos.db` e `filesystem.db` - come
+  vanno aperti, privati e con i pragma di Agno gia' materializzati, e
+  costruisce il deposito dei risultati grandi; stava in `agent/runtime.py`,
+  e la retention delle sessioni dipendeva dall'agente per aprire un database;
 - `stores.py` e' l'unico punto da cui si leggono entita', intuizioni e
-  sessioni: non scrive mai, e non accende il modello salvo l'embedding della
-  query sulle intuizioni. Le sessioni portano nei metadati la cartella in
+  sessioni: non scrive mai, non stampa mai, e non accende il modello salvo
+  l'embedding della query sulle intuizioni. Le sessioni portano nei metadati la cartella in
   cui sono nate - la scrive `build_assistant` passando `metadata=`
   all'agente, Agno la copia nella sessione nuova e la lascia com'e' in una
   ripresa - e `stores.py` le filtra per cartella: `/sessioni` tiene quelle

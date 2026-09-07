@@ -622,3 +622,27 @@ class CliRenderer:
 
 
 UI = CliRenderer()
+
+
+def stampa_store(store: Any, etichetta: str, **filtri: Any) -> None:
+    """Stampa uno store, o dice che e' spento invece di sollevare AttributeError.
+
+    Gli store spenti in `config.py` non sono None per errore: la
+    LearningMachine non li costruisce affatto, e `lm.user_profile_store`
+    restituisce None. Chiamarci `.print()` sopra faceva morire `/profilo` con
+    un AttributeError, e `config.py` invita esplicitamente a spegnerli per
+    guadagnare latenza. La guardia sta qui e non nei due lettori perche' li'
+    sarebbe scritta due volte, ed e' gia' successo con `/entita`. Sta in
+    `cli/ui.py` e non in `state/stores.py` perche' stampa: `state/` legge e
+    non deve importare l'interfaccia.
+    """
+    if store is None:
+        UI.line(etichetta + ": store spento in config.py", style="ares.muted")
+        return
+    store.print(**filtri)
+
+
+# Campi che il framework mette e toglie da solo. Restano fuori dalla ricerca:
+# un fatto porta un `id` e due date, e cercarci dentro vuol dire che "2026"
+# trova ogni entita' scritta quest'anno.
+CONTABILITA = ("id", "created_at", "updated_at")
