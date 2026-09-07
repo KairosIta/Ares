@@ -276,8 +276,15 @@ def _esegui_chat(
     riprendi: bool = False,
     scegli: bool = False,
     prompt: str | None = None,
+    modo: str = config.MODO_PREDEFINITO,
 ) -> int:
-    """La chat. Restituisce il codice di uscita: 1 se stato, cartella o sessione non si aprono, 0 altrimenti."""
+    """La chat. Restituisce il codice di uscita: 1 se stato, cartella, sessione o modalita' non vanno, 0 altrimenti."""
+    # `auto` con `-p` e' la combinazione che nessuno deve poter scrivere per
+    # sbaglio: una pipe con un testo ostile eseguirebbe comandi senza che
+    # nessuno guardi. Prima di tutto il resto, cosi' non tocca niente.
+    if prompt is not None and modo == "auto":
+        UI.line("La modalita' auto non si combina con -p: nessuno vedrebbe cosa viene eseguito.", style="ares.error")
+        return 1
     # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio
     # vuoto accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
     # risponderebbe come al primo giorno senza che si capisca perche'.
@@ -315,7 +322,7 @@ def _esegui_chat(
             return 1
 
     configura_log_agno(debug)
-    agent = build_assistant(user_id=user, session_id=session, debug=debug, interattivo=prompt is None)
+    agent = build_assistant(user_id=user, session_id=session, debug=debug, interattivo=prompt is None, modo=modo)
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
     # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa
@@ -327,6 +334,7 @@ def _esegui_chat(
         user_id=user,
         debug=debug,
         metriche=config.MOSTRA_METRICHE or metriche,
+        modo=modo,
     )
 
     if prompt is not None:
@@ -353,7 +361,10 @@ def _esegui_chat(
         cartella=str(radice) if radice is not None else None,
         ramo=ramo_git(radice) if radice is not None else None,
         istruzioni=istruzioni,
+        modo=modo if radice is not None else None,
     )
+    if modo == "auto":
+        UI.line("Modalita' auto: nessuna conferma, ogni strumento gira subito.", style="ares.warning")
 
     # Un modello cloud si vede dal nome, ma il nome non dice cosa comporta.
     # Ogni sessione, non solo la prima: e' la stessa logica del promemoria
@@ -425,6 +436,7 @@ def avvia(
     riprendi: bool = False,
     scegli: bool = False,
     prompt: str | None = None,
+    modo: str = config.MODO_PREDEFINITO,
 ) -> int:
     """La chat con la rete intorno: il lock e i tre modi in cui l'avvio non parte.
 
@@ -446,6 +458,7 @@ def avvia(
                 riprendi=riprendi,
                 scegli=scegli,
                 prompt=prompt,
+                modo=modo,
             )
             return esito if isinstance(esito, int) else 0
     except StatoOccupato as errore:

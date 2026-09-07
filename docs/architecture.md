@@ -84,8 +84,11 @@ e la chat si ferma finche' non e' successo.
   estrae le memorie, l'embedder, la finestra di contesto, sistema e shell,
   utente, conversazione, cartella e ramo - e sceglie la descrizione
   secondo i modelli, cosi' la promessa sulla privacy compare solo quando
-  e' vera; genera dalle due liste di `config` l'elenco di cio' che gira in
-  silenzio e di cio' che chiede conferma, dice a `ares -p` che nessuno
+  e' vera; genera dalle due liste della modalita' corrente - `manuale`,
+  `modifiche`, `piano`, `auto`, partizioni degli otto strumenti dello spazio
+  di lavoro in `config.MODALITA` - l'elenco di cio' che gira in silenzio e di
+  cio' che chiede conferma, e dice al modello in quale modalita' e' e cosa
+  comporta, dice a `ares -p` che nessuno
   risponde e niente entra in memoria; spiega come funziona la memoria - quali
   archivi si aggiornano da soli e quali con gli strumenti, che l'utente vede
   e puo' annullare cio' che entra, come si rileggono i risultati grandi - e

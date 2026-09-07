@@ -986,6 +986,13 @@ def chat_sessioni() -> str:
     # chat normale invece con.
     esigi(costruiti[-1]["interattivo"] is False, "-p costruisce un agente che scrive in memoria")
     esigi(costruiti[0]["interattivo"] is True, "la chat costruisce un agente senza memoria")
+    esigi(costruiti[-1]["modo"] == config.MODO_PREDEFINITO, "-p non passa la modalita' predefinita")
+    # `auto` con `-p` non parte, e non tocca niente: esce prima della cartella.
+    prima = len(costruiti)
+    esito, testo = avvio(prompt="riassumi", modo="auto")
+    esigi(esito == 1 and "auto" in testo and len(costruiti) == prima, "-p --modo auto non viene rifiutato")
+    esito, testo = avvio(modo="piano")
+    esigi(esito == 0 and costruiti[-1]["modo"] == "piano" and "piano" in testo, "--modo piano non arriva al banner")
     return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin senza memoria"
 
 

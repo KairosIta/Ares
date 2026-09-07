@@ -1135,8 +1135,11 @@ def stato_della_chat() -> str:
 
     costruiti: list[tuple[str, bool]] = []
 
-    def costruisci(*, user_id: str, session_id: str, debug: bool) -> AgenteFinto:
+    modi: list[str] = []
+
+    def costruisci(*, user_id: str, session_id: str, debug: bool, modo: str) -> AgenteFinto:
         costruiti.append((session_id, debug))
+        modi.append(modo)
         return AgenteFinto(session_id, debug)
 
     stato = StatoChat(agent=AgenteFinto("principale", False), session_id="principale", user_id="utente")
@@ -1175,7 +1178,26 @@ def stato_della_chat() -> str:
     comando("/sessione progetto-y")
     esigi(costruiti[-1] == ("progetto-y", True), "il cambio di sessione perde il debug: " + repr(costruiti))
     comando("/debug")
-    return "metriche e debug a interruttore, sessione cambiata ricostruendo l'agente"
+
+    # `/modo`: mostra, rifiuta l'ignoto e l'auto, cambia ricostruendo sulla
+    # stessa sessione, e il cambio di sessione porta con se' la modalita'.
+    uscita = comando("/modo")
+    esigi("manuale" in uscita and "piano" in uscita and modi[-1] == "manuale", "/modo non elenca le modalita'")
+    prima = len(costruiti)
+    uscita = comando("/modo turbo")
+    esigi("sconosciuta" in uscita and len(costruiti) == prima, "/modo turbo non viene rifiutato")
+    uscita = comando("/modo auto")
+    esigi("--modo auto" in uscita and len(costruiti) == prima, "/modo auto viene accettato dalla REPL")
+    uscita = comando("/modo manuale")
+    esigi("gia'" in uscita and len(costruiti) == prima, "/modo sulla modalita' corrente ricostruisce")
+    uscita = comando("/modo piano")
+    esigi(
+        stato.modo == "piano" and modi[-1] == "piano" and costruiti[-1][0] == "progetto-y",
+        "/modo piano non ricostruisce",
+    )
+    comando("/sessione progetto-z")
+    esigi(modi[-1] == "piano", "il cambio di sessione perde la modalita'")
+    return "metriche e debug a interruttore, sessione e modalita' cambiate ricostruendo l'agente"
 
 
 def conferme_scritte() -> str:

@@ -38,6 +38,18 @@ locale non e' stato provato in questo giro.
   `diff`. Il testo mostra anche quanto del prompt e' scritto da Agno in
   inglese, ed e' il punto di partenza per riscriverlo.
 
+- **Le modalita', come in Claude Code.** `manuale` chiede conferma per
+  tutto cio' che lascia una traccia sul disco ed e' il valore distribuito;
+  `modifiche` scrive e modifica file da sola e chiede per spostare,
+  cancellare ed eseguire; `piano` legge soltanto, e gli strumenti che
+  scrivono non arrivano nemmeno al modello, a cui il prompt chiede di
+  proporre; `auto` non chiede mai, si sceglie solo con `ares --modo auto`,
+  il banner lo dice in rosso e non si combina con `-p`. Ogni modalita' e'
+  una partizione degli otto strumenti in `config.MODALITA`, e il paragrafo
+  del prompt e la riga nella scheda si generano da li'. `ares --modo` la
+  sceglie per una sessione, `/modo` la cambia a meta' conversazione
+  ricostruendo l'agente sulla stessa sessione, e `/sessione` la porta con
+  se'. `WORKSPACE_ALLOWED` e `WORKSPACE_CONFIRM` non esistono piu';
 - **Il prompt e' tutto in italiano, e spiega la memoria.** Agno aggiunge
   da se' le guide degli store di apprendimento, del quaderno e del
   Markdown, in inglese e per un agente di squadra: "conserva gli obiettivi

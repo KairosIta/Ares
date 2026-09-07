@@ -61,6 +61,7 @@ def build_assistant(
     session_id: str = "principale",
     debug: bool = False,
     interattivo: bool = True,
+    modo: str = config.MODO_PREDEFINITO,
 ) -> Agent:
     """Assembla l'assistente completo senza nascondere dipendenze globali.
 
@@ -74,13 +75,17 @@ def build_assistant(
     conferma, quindi il turno non scrive in memoria - niente post-hook, niente
     strumenti di memoria - e il modello lo sa dal prompt. Cio' che Ares sa
     gia' entra nel contesto come sempre.
+
+    `modo` e' una delle chiavi di `config.MODALITA`: decide quali strumenti
+    dello spazio di lavoro girano da soli, quali chiedono e quali non ci
+    sono, e il prompt lo dice.
     """
     db = build_db()
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
     # store learned_knowledge nel namespace globale del framework.
     knowledge = build_knowledge() if config.LEARN_KNOWLEDGE else None
     fs = build_filesystem(user_id)
-    spazio = build_workspace() if config.WORKSPACE else None
+    spazio = build_workspace(modo) if config.WORKSPACE else None
 
     metadata = None
     precedenti: list = []
@@ -102,9 +107,12 @@ def build_assistant(
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
         instructions=[
             *istruzioni_sull_ambiente(
-                user_id=user_id, session_id=session_id, radice_lavoro=spazio.root if spazio is not None else None
+                user_id=user_id,
+                session_id=session_id,
+                radice_lavoro=spazio.root if spazio is not None else None,
+                modo=modo,
             ),
-            *([] if interattivo else istruzioni_senza_terminale(spazio.root if spazio is not None else None)),
+            *([] if interattivo else istruzioni_senza_terminale(spazio.root if spazio is not None else None, modo)),
             "Rispondi in italiano, sempre, qualunque sia la lingua della domanda.",
             "Adatta il livello di dettaglio a cio' che sai dell'utente: non "
             "spiegare le basi di un ambito in cui e' gia' competente.",
@@ -114,7 +122,7 @@ def build_assistant(
             "Se non sai una cosa, dillo invece di ricostruirla per verosimiglianza.",
             "Formatta le risposte in Markdown.",
             *istruzioni_sulla_memoria(),
-            *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None),
+            *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None, modo),
             *istruzioni_dalla_cartella(spazio.root if spazio is not None else None),
             *istruzioni_sulle_conversazioni(precedenti, cartella=spazio.root if spazio is not None else None),
             "Quando salvi un'intuizione, scrivila in italiano, e salvala solo se "

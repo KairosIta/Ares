@@ -769,6 +769,7 @@ def strumenti(agent, user_id: str) -> str:
     # non concludente perche' il caso peggiore e' proprio quello in cui gli
     # strumenti sono tutti spenti e le istruzioni sono rimaste indietro.
     istruzioni = " ".join(t for t in agent.instructions if isinstance(t, str))
+    silenziosi, confermati = config.liste_modalita(config.MODO_PREDEFINITO)
     for nome in (
         "update_user_memory",
         "search_past_sessions",
@@ -777,7 +778,7 @@ def strumenti(agent, user_id: str) -> str:
         "remember_about",
         "search_learnings",
         "save_learning",
-        *(nome for nome, _ in strumenti_spazio(config.WORKSPACE_ALLOWED + config.WORKSPACE_CONFIRM)),
+        *(nome for nome, _ in strumenti_spazio([*silenziosi, *confermati])),
     ):
         if nome in istruzioni:
             esigi(nome in nomi, "le istruzioni nominano " + nome + ", che non arriva al modello")
@@ -825,6 +826,53 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     return str(len(attesi)) + " blocchi italiani presenti, 5 frasi inglesi di Agno assenti"
 
 
+def modalita() -> str:
+    """Le quattro modalita' sono partizioni degli otto strumenti, e il prompt le segue.
+
+    Per ognuna si costruisce lo spazio di lavoro e si guarda cosa consegna:
+    quali strumenti chiedono conferma, quali non ci sono. Poi le istruzioni:
+    la scheda nomina la modalita', il paragrafo sugli strumenti mette ogni
+    nome nella frase giusta, e in `piano` non nomina niente che scriva.
+    """
+    from agno.tools.workspace import Workspace
+
+    from ares.agent import prompts
+
+    tutti = set(Workspace._ALIASES)
+    esiti = []
+    for nome, (silenziosi, confermati) in config.MODALITA.items():
+        spazio = build_workspace(nome)
+        consegnati = {f.name: f for f in spazio.functions.values()}
+        for alias in tutti:
+            strumento = config.WORKSPACE_PREFIX + Workspace._ALIASES[alias]
+            if alias in silenziosi or alias in confermati:
+                esigi(strumento in consegnati, nome + ": " + strumento + " non arriva al modello")
+                esigi(
+                    bool(consegnati[strumento].requires_confirmation) == (alias in confermati),
+                    nome + ": " + strumento + " ha la conferma sbagliata",
+                )
+            else:
+                esigi(strumento not in consegnati, nome + ": " + strumento + " arriva benche' escluso")
+        scheda = prompts.istruzioni_sull_ambiente(user_id="u", session_id="s", radice_lavoro=spazio.root, modo=nome)[0]
+        esigi("Modalita' " + nome in scheda, nome + ": la scheda non la nomina")
+        paragrafo = " ".join(prompts.istruzioni_sugli_strumenti(spazio.root, nome))
+        for alias in tutti:
+            strumento = config.WORKSPACE_PREFIX + Workspace._ALIASES[alias]
+            esigi(
+                (strumento in paragrafo) == (alias in silenziosi or alias in confermati),
+                nome + ": " + strumento + " nel paragrafo sugli strumenti quando non dovrebbe, o viceversa",
+            )
+        esiti.append(nome + " " + str(len(silenziosi)) + "+" + str(len(confermati)))
+    esigi("Proponi" in prompts.istruzioni_sulla_modalita("piano"), "piano non chiede di proporre")
+    try:
+        config.liste_modalita("turbo")
+    except ValueError as errore:
+        esigi("manuale" in str(errore), "l'errore non elenca le modalita' valide")
+    else:
+        esigi(False, "una modalita' sconosciuta viene accettata")
+    return "consegna, conferme e prompt coerenti per " + ", ".join(esiti)
+
+
 def colpo_singolo(user_id: str, session_id: str) -> str:
     """`ares -p`: cio' che Ares sa entra nel prompt, ma niente puo' scriverci.
 
@@ -869,7 +917,7 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
         "ares -p" in istruzioni and "Niente di questo turno entra in memoria" in istruzioni,
         "il prompt non dice che e' -p",
     )
-    for nome, _ in strumenti_spazio(config.WORKSPACE_CONFIRM):
+    for nome, _ in strumenti_spazio(config.liste_modalita(config.MODO_PREDEFINITO)[1]):
         esigi(nome in istruzioni, "il prompt di -p non nomina " + nome + " fra gli strumenti rifiutati")
     prompt = messaggio_di_sistema(muto, session_id=session_id + "-p", user_id=user_id)
     esigi("<user_memory>" in prompt or "<user_profile>" in prompt, "in -p il contesto di memoria non entra nel prompt")
@@ -989,9 +1037,10 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
     )
     consegnati = {f.name: f for f in funzioni if hasattr(f, "name")}
 
+    silenziosi, confermati = config.liste_modalita(config.MODO_PREDEFINITO)
     attesi = {
-        config.WORKSPACE_PREFIX + Workspace._ALIASES[alias]: alias in config.WORKSPACE_CONFIRM
-        for alias in list(config.WORKSPACE_ALLOWED) + list(config.WORKSPACE_CONFIRM)
+        config.WORKSPACE_PREFIX + Workspace._ALIASES[alias]: alias in confermati
+        for alias in list(silenziosi) + list(confermati)
     }
     for nome, va_confermato in sorted(attesi.items()):
         esigi(nome in consegnati, nome + " non arriva al modello")
@@ -1785,6 +1834,7 @@ def main() -> int:
             ("ambiente nel prompt ", lambda: ambiente_nel_prompt(agent, args.user, args.session)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
             ("prompt in italiano  ", lambda: prompt_in_italiano(agent, args.user, args.session)),
+            ("modalita            ", modalita),
             ("colpo singolo       ", lambda: colpo_singolo(args.user, args.session)),
             ("protezione contesto ", lambda: protezione_contesto(agent, args.user)),
             ("spazio di lavoro    ", lambda: spazio_di_lavoro(agent, args.user)),
