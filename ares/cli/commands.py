@@ -7,6 +7,7 @@ from typing import Any
 from ares import config
 from ares.agent.assistant import build_assistant, build_filesystem
 from ares.cli import cartella
+from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili
 from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione, stampa_store
 
@@ -129,7 +130,6 @@ def _comando_debug(stato: StatoChat, argomento: str):
     stato.debug = not stato.debug
     # Le due leve che `--debug` muove all'avvio: il livello dei log di Agno e
     # la modalita' dell'agente, che decide se stampare i propri passaggi.
-    from ares.cli.chat import configura_log_agno
 
     configura_log_agno(stato.debug)
     if hasattr(stato.agent, "debug_mode"):

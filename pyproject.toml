@@ -69,12 +69,16 @@ dependencies = [
     # Il comando `ares` e i suoi sottocomandi: legge firme e docstring delle
     # funzioni, disegna l'aiuto con Rich e genera il completamento della
     # shell. Sostituisce sei ArgumentParser scritti a mano. Non porta Click.
-    "cyclopts",
+    # Il pavimento e' la versione con cui l'aiuto e' stato disegnato.
+    "cyclopts>=4.24.0",
     # Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
     # aggiunge pywin32 solo su Windows, dove serve per conservare i lock
     # condivisi usati dalle chat concorrenti.
     "portalocker[win32]",
-    "cyclopts>=4.24.0",
+    # Il database dei fusi orari per `zoneinfo`. Linux e macOS lo hanno nel
+    # sistema; Windows no, e senza questo `ZoneInfo("Europe/Rome")` fallisce:
+    # Agno lo segnala con un WARNING e mette nel prompt un'ora senza fuso.
+    "tzdata",
 ]
 
 # I comandi installati nel venv. `ares` e' l'App Cyclopts intera: la chat

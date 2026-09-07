@@ -5,6 +5,7 @@ Uso:
     ares inspect
     ares inspect --session test_1
     ares inspect --file notes/setup.md
+    ares inspect --prompt
 
 Legge gli archivi senza avviare il modello conversazionale e non scrive
 negli store. Due cose vanno dette per intero: come ogni comando che apre
@@ -14,7 +15,16 @@ con l'embedder locale, che e' l'unica inferenza di questo comando e l'unico
 momento in cui un modello entra in memoria. Serve a rispondere alla domanda
 che conta quando un agente dice di ricordare: dove sta questa informazione,
 e la ritrovera' davvero?
+
+`--prompt` risponde a una domanda accanto: cosa riceve il modello prima
+della prima parola dell'utente? Stampa il system message intero, cosi' come
+Agno lo comporrebbe per un turno in questa cartella - istruzioni di Ares,
+istruzioni degli strumenti e della macchina di apprendimento, memorie ed
+entita' gia' salvate - senza aprire il turno. Una modifica ai prompt si
+giudica leggendo questo, non i pezzi in `prompts.py`.
 """
+
+from pathlib import Path
 
 from ares import config
 from ares.cli.comando import nuova_app
@@ -29,8 +39,11 @@ def separatore(titolo: str) -> None:
     UI.heading(titolo)
 
 
-def _ispeziona(user: str, session: str | None, query: str, file: str | None) -> None:
+def _ispeziona(user: str, session: str | None, query: str, file: str | None, prompt: bool) -> None:
     from ares.agent.assistant import build_assistant, build_filesystem
+    from ares.agent.prompts import messaggio_di_sistema
+    from ares.cli.cartella import nuovo_id_sessione
+    from ares.cli.log import configura_log_agno
     from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita, stampa_store
 
     # Qui e non prima: `--help` esce dentro Cyclopts, e un comando che stampa
@@ -47,6 +60,20 @@ def _ispeziona(user: str, session: str | None, query: str, file: str | None) -> 
             # Verbatim, senza passare da Rich: e' il contenuto di un file, e
             # chi lo redirige su un altro file lo vuole identico.
             print(contenuto)
+        return
+
+    if prompt:
+        # La conversazione che `ares` aprirebbe adesso in questa cartella,
+        # oppure quella nominata: il contesto di sessione e l'elenco delle
+        # conversazioni precedenti dipendono da quale si guarda. Verbatim,
+        # come `--file`: e' un testo da leggere o da confrontare con `diff`.
+        # Il log INFO di Agno passa da Rich su stdout: davanti al prompt ci
+        # finirebbe "Creating table" su un archivio nuovo. Warning ed errori
+        # restano, ma tolti dallo stdout che qui e' il testo e basta.
+        configura_log_agno(False)
+        session = session or nuovo_id_sessione(Path.cwd())
+        agent = build_assistant(user_id=user, session_id=session)
+        print(messaggio_di_sistema(agent, session_id=session, user_id=user))
         return
 
     agent = build_assistant(user_id=user, session_id=session or "principale")
@@ -107,6 +134,7 @@ def ispeziona(
     session: str | None = None,
     query: str = "",
     file: str | None = None,
+    prompt: bool = False,
 ) -> None:
     """Profilo, memorie, contesto, entita', intuizioni e file dell'agente.
 
@@ -115,10 +143,11 @@ def ispeziona(
         session: sessione di cui mostrare il contesto; senza, l'ultima toccata.
         query: filtra entita' e intuizioni; le intuizioni per somiglianza.
         file: stampa solo il contenuto di questo file del quaderno privato.
+        prompt: stampa solo il system message che la chat manderebbe al modello da questa cartella.
     """
     try:
         with lock_stato(esclusivo=False):
-            _ispeziona(user, session, query, file)
+            _ispeziona(user, session, query, file, prompt)
     except StatoOccupato as errore:
         UI.err("Impossibile leggere lo stato di Ares: " + str(errore))
         UI.err("Attendi che backup o restore terminino e riprova.", style="ares.muted")

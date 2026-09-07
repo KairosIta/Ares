@@ -35,7 +35,6 @@ completa e bastano le iniziali finche' restano uniche. L'elenco vive in
 divergite.
 """
 
-import logging
 import sys
 from pathlib import Path
 
@@ -50,6 +49,7 @@ from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
 from ares.cli.commands import COMANDI, StatoChat, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
 from ares.cli.editor import CliInput
+from ares.cli.log import AGNO_LOGGER_NAMES, configura_log_agno
 from ares.cli.render import (
     anteprima_risultato,
     chiedi_conferme,
@@ -66,23 +66,6 @@ from ares.cli.ui import UI
 from ares.ops import migrazione
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
-
-AGNO_LOGGER_NAMES = ("agno", "agno-team", "agno-workflow")
-
-
-def configura_log_agno(debug: bool) -> None:
-    """Nasconde il rumore INFO di Agno, salvo quando si chiede il debug.
-
-    Agno riporta il livello del proprio logger a INFO all'inizio di ogni run.
-    La soglia sugli handler non viene invece riscritta e continua quindi a
-    filtrare messaggi interni come ``Found 0 documents`` per tutta la REPL.
-    Warning ed errori restano sempre visibili.
-    """
-    livello = logging.DEBUG if debug else logging.WARNING
-    for nome in AGNO_LOGGER_NAMES:
-        for handler in logging.getLogger(nome).handlers:
-            handler.setLevel(livello)
-
 
 __all__ = (
     "AGNO_LOGGER_NAMES",
