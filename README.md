@@ -14,9 +14,10 @@ Ares conversa, usa strumenti, mantiene memoria fra sessioni e lavora in uno
 spazio controllato sul disco senza richiedere API cloud.
 
 > **English summary:** Ares is a local-first personal AI agent built with
-> Ollama and Agno. It combines persistent memory, tool use, a private
-> workspace, verified local backups and explicit maintenance workflows in a
-> reproducible Python project.
+> Ollama and Agno. It combines persistent memory, tool use in four
+> permission modes, a private workspace, a system prompt that tells the model
+> which models it runs on and what it may do, verified local backups and
+> explicit maintenance workflows in a reproducible Python project.
 
 ## Perché Ares
 
@@ -39,6 +40,12 @@ spazio controllato sul disco senza richiedere API cloud.
   chiede mai. `ares --modo` la sceglie, `/modo` la cambia a metà
   conversazione, e Ares sa in quale si trova. C'è un avviso prima di aprire
   una cartella rischiosa.
+- **Consapevole di sé:** il prompt si apre con una scheda letta dalla
+  configurazione di quell'avvio — quale modello parla e se è locale o cloud,
+  quale estrae le memorie, quanto contesto ha in vista, sistema e shell,
+  cartella, ramo e modalità — e spiega al modello come funziona la propria
+  memoria e cosa può fare da solo. Tutto in italiano, guide di Agno
+  comprese; `ares inspect --prompt` lo stampa per intero.
 - **Memoria visibile e revocabile:** sotto ogni risposta compare cosa è
   entrato in profilo e memorie, sia dagli strumenti del modello sia
   dall'estrazione automatica, con il testo intero, e la CLI chiede se
@@ -136,7 +143,7 @@ ARES_LEARNING_MODEL=glm-5.3-flash:cloud
 che Ares ricorda di te — e pesa di più: ogni estrazione manda al modello il
 testo del turno e le memorie già salvate. Con entrambe le righe nessun peso
 gira in scheda, salvo l'embedder: quello resta locale per costruzione, non
-per configurazione — `assistant_runtime` si rifiuta di costruirlo su un
+per configurazione — `agent/runtime.py` si rifiuta di costruirlo su un
 nome cloud — perché cambiarlo invaliderebbe l'indice già scritto. Il
 preflight e il banner della chat dicono a ogni avvio quali ruoli escono
 dalla macchina. Con la sola conversazione in cloud il modello locale serve
@@ -221,37 +228,42 @@ clone che teneva lo stato in `tmp/` non deve fare niente: il setup chiama
 chat si rifiuta di partire finché lo stato è ancora nel posto di prima,
 perché un archivio vuoto accanto a uno pieno li sdoppierebbe.
 
+## Come si usa
+
+### La cartella e le modalità
+
 Ares lavora nella cartella da cui lo lanci, come Claude Code o Codex: entra
 nel progetto e scrivi `ares`. Il banner mostra la cartella e, se è un
 repository, il ramo. Gli strumenti sui file non escono da lì, e quanto Ares
-fa da solo lo decide la modalità, come in Claude Code:
+fa da solo lo decide la modalità:
 
-| Modalità    | Da solo                                   | Con conferma                                  |
-| ----------- | ----------------------------------------- | --------------------------------------------- |
-| `manuale`   | leggere, elencare, cercare                | scrivere, modificare, spostare, cancellare, eseguire |
-| `modifiche` | anche scrivere e modificare               | spostare, cancellare, eseguire                |
-| `piano`     | leggere, elencare, cercare                | niente: gli altri strumenti non ci sono       |
-| `auto`      | tutto                                     | niente                                        |
+| Modalità    | Da solo                     | Con conferma                                         |
+| ----------- | --------------------------- | ---------------------------------------------------- |
+| `manuale`   | leggere, elencare, cercare  | scrivere, modificare, spostare, cancellare, eseguire |
+| `modifiche` | anche scrivere e modificare | spostare, cancellare, eseguire                       |
+| `piano`     | leggere, elencare, cercare  | niente: gli altri strumenti non ci sono              |
+| `auto`      | tutto                       | niente                                               |
 
 `manuale` è il valore distribuito: ciò che Ares legge — un file, l'output di
 un comando, lo stesso `ARES.md` — può contenere un'istruzione, e una
 scrittura che nessuno guarda può riscrivere uno script o un Makefile. La
 richiesta di conferma mostra per intero cosa sta per succedere, e per un file
-che esiste già la differenza riga per riga. `ares --modo
-modifiche` sceglie per una sessione, `/modo piano` cambia a metà
-conversazione sulla stessa sessione, e il modello sa in quale modalità si
-trova. `auto` si sceglie solo con `ares --modo auto`, il banner lo dice in
-rosso e non si combina con `-p`.
-Se la cartella è rischiosa — la home intera,
-la radice del disco, una directory di sistema, una che contiene lo stato o il
-codice di Ares — te lo dice e chiede di riscrivere il percorso prima di
-partire; da uno script senza terminale una cartella così si apre solo
-nominandola con `--workspace`. Per lavorare su un'altra cartella senza
-spostarti:
+che esiste già la differenza riga per riga. `ares --modo modifiche` sceglie
+per una sessione, `/modo piano` cambia a metà conversazione sulla stessa
+sessione, e il modello sa in quale modalità si trova. `auto` si sceglie solo
+con `ares --modo auto`, il banner lo dice in rosso e non si combina con `-p`.
+
+Se la cartella è rischiosa — la home intera, la radice del disco, una
+directory di sistema, una che contiene lo stato o il codice di Ares — te lo
+dice e chiede di riscrivere il percorso prima di partire; da uno script senza
+terminale una cartella così si apre solo nominandola con `--workspace`. Per
+lavorare su un'altra cartella senza spostarti:
 
 ```bash
 ares --workspace ~/progetti/demo
 ```
+
+### Le regole del progetto
 
 Se nella cartella c'è un `ARES.md`, Ares lo legge prima del primo turno: è
 il posto per le convenzioni del progetto, cosa non toccare, come si lanciano
@@ -259,6 +271,8 @@ le prove. Lo riceve come regole del progetto, delimitate, non come ordini
 tuoi: le applica finché non contraddicono ciò che gli chiedi, e nulla che
 scriva o lanci comandi parte per conto del file. `ares init` ne scrive uno
 scheletro nella cartella corrente e non tocca un file che esiste già.
+
+### Le conversazioni
 
 Ogni `ares` apre una conversazione nuova, che nasce nella cartella e la
 ricorda: profilo e memorie ci sono comunque, perché sono tuoi e non della
@@ -279,6 +293,8 @@ conversazione nuova. Un nome fisso resta possibile con `--session`:
 ares --session progetto-demo
 ```
 
+### Una risposta sola
+
 Per una risposta sola, anche dentro una pipe, `-p`: stdin si aggiunge alla
 domanda, le operazioni che chiederebbero conferma vengono rifiutate e niente
 entra in memoria, perché non c'è nessuno a rispondere né a leggere cosa
@@ -289,14 +305,34 @@ che impara in quel turno finisce con la risposta.
 git diff | ares -p "scrivi il messaggio di commit"
 ```
 
+### La chat
+
 Durante la chat `/` apre il menu dei comandi e TAB completa la voce
 selezionata. Invio spedisce il messaggio, `Alt+Invio` aggiunge una nuova riga,
 le frecce percorrono la cronologia e i suggerimenti riprendono le domande
 precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
 `/sessioni`, `/entita`, `/file` e `/cartella`, che mostra percorso, ramo,
-file modificati e se c'è un `ARES.md`. Tre cambiano la sessione in corso
-senza riavviare: `/sessione <id>` passa a un'altra conversazione, `/metriche`
-accende il costo di ogni turno, `/debug` le chiamate al modello.
+file modificati e se c'è un `ARES.md`. Quattro cambiano la sessione in corso
+senza riavviare: `/sessione <id>` passa a un'altra conversazione, `/modo` a
+un'altra modalità, `/metriche` accende il costo di ogni turno, `/debug` le
+chiamate al modello.
+
+### Cosa Ares sa di sé
+
+Il system message non è un testo fisso: si apre con una scheda letta dalla
+configurazione di quell'avvio — quale modello parla e se gira in locale o su
+`ollama.com`, quale modello estrae profilo e memorie, l'embedder, la finestra
+di contesto e quanti scambi ha in vista, sistema operativo e shell, utente,
+conversazione, cartella, ramo git e modalità — poi spiega al modello come
+funziona la propria memoria, quali archivi si aggiornano da soli e quali con
+gli strumenti, e cosa può fare senza chiedere. Le guide che Agno aggiunge
+per i propri strumenti sono riscritte in italiano, per una persona sola. Per
+leggerlo tutto, esattamente come lo riceve il modello:
+
+```bash
+ares inspect --prompt                # la conversazione che aprirebbe adesso, qui
+ares inspect --prompt --modo piano   # nella modalità piano
+```
 
 ## Verifica
 
@@ -395,15 +431,22 @@ viene conservato.
 ## Località e sicurezza
 
 Stato ed embedding restano locali; non sono richieste chiavi API cloud e la
-telemetria Agno è disabilitata. Possono uscire dalla macchina la
-conversazione, se `ARES_MAIN_MODEL` indica un modello cloud di Ollama, e il
-testo dei turni con le memorie già salvate, se lo indica
-`ARES_LEARNING_MODEL` — nessuno dei due è il valore distribuito. La scelta è
-esplicita nel `.env`, visibile a ogni avvio e verificata dallo smoke test,
-che rifiuta un modello cloud per l'embedder. Installazione e download dei modelli
-richiedono naturalmente accesso alla rete. Inoltre, i comandi shell eseguiti
-nel workspace possono usare la rete quando l’utente li autorizza: Ares è un
-agente locale controllato, non una sandbox di sicurezza.
+telemetria Agno è disabilitata. Può uscire dalla macchina tutto ciò che il
+modello conversazionale riceve — domande e risposte, il prompt con profilo e
+memorie, i file letti, l'output dei comandi, le conversazioni rilette — se
+`ARES_MAIN_MODEL` indica un modello cloud di Ollama, e il testo dei turni con
+le memorie già salvate se lo indica `ARES_LEARNING_MODEL`; nessuno dei due è
+il valore distribuito. La scelta è esplicita nel `.env`, detta a ogni avvio
+dal preflight e dal banner, scritta nel prompt perché il modello non prometta
+una privacy che non può mantenere, e verificata dallo smoke test, che
+rifiuta un modello cloud per l'embedder.
+
+Ciò che il modello legge può contenere un'istruzione: per questo ogni
+strumento che lascia una traccia sul disco chiede conferma nella modalità
+distribuita, `ARES.md` entra nel prompt come regole delimitate e non come
+ordini, e `ares -p` non scrive in memoria. Installazione e download dei
+modelli richiedono accesso alla rete, e i comandi shell autorizzati possono
+usarla: Ares è un agente locale controllato, non una sandbox di sicurezza.
 
 Non committare lo stato appreso, snapshot, `.env` o altri dati personali. Per segnalare
 un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).
