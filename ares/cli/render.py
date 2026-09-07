@@ -195,10 +195,10 @@ def righe_argomento(nome: str, valore) -> list:
     guardato prima di autorizzare `['bash', '-lc', 'rm -rf .']`.
 
     Niente troncamento, in nessun ramo. Gli strumenti che passano di qui sono
-    quelli di `WORKSPACE_CONFIRM` - spostare, cancellare, eseguire - e i loro
-    argomenti sono percorsi e comandi, mai il contenuto di un file. Tagliare
-    la coda di un comando in una richiesta di autorizzazione toglie proprio la
-    parte che decide.
+    quelli di `WORKSPACE_CONFIRM`: percorsi e comandi, e da quando scrivere e
+    modificare chiedono conferma anche il contenuto di un file. E' proprio
+    cio' che l'utente sta autorizzando: tagliare la coda di un comando, o di
+    un file, in una richiesta di autorizzazione toglie la parte che decide.
     """
     if isinstance(valore, list) and all(isinstance(v, str) for v in valore):
         return [

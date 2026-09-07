@@ -982,7 +982,11 @@ def chat_sessioni() -> str:
         esito = chat._esegui_chat(user=UTENTE, prompt="riassumi")
     esigi(esito == 0 and turni == ["riassumi\n\ndati dalla pipe"], "-p non unisce domanda e stdin: " + repr(turni))
     esigi("ARES" not in uscita.getvalue(), "-p stampa il banner")
-    return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin"
+    # Senza nessuno che legga, l'agente nasce senza memoria da scrivere; la
+    # chat normale invece con.
+    esigi(costruiti[-1]["interattivo"] is False, "-p costruisce un agente che scrive in memoria")
+    esigi(costruiti[0]["interattivo"] is True, "la chat costruisce un agente senza memoria")
+    return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin senza memoria"
 
 
 def migrazione_stato() -> str:

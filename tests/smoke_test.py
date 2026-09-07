@@ -87,6 +87,7 @@ from ares.agent.assistant import (  # noqa: E402
     build_workspace,
 )
 from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
+from ares.agent.prompts import strumenti_spazio  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.cli.chat import (  # noqa: E402
     StatoChat,
@@ -776,8 +777,7 @@ def strumenti(agent, user_id: str) -> str:
         "remember_about",
         "search_learnings",
         "save_learning",
-        config.WORKSPACE_PREFIX + "run_command",
-        config.WORKSPACE_PREFIX + "read_file",
+        *(nome for nome, _ in strumenti_spazio(config.WORKSPACE_ALLOWED + config.WORKSPACE_CONFIRM)),
     ):
         if nome in istruzioni:
             esigi(nome in nomi, "le istruzioni nominano " + nome + ", che non arriva al modello")
@@ -789,6 +789,61 @@ def strumenti(agent, user_id: str) -> str:
         esigi(nome in nomi, nome + " non arriva al modello benche' " + flag + " sia acceso")
 
     return str(len(attesi)) + " strumenti su " + str(len(nomi)) + " consegnati: " + ", ".join(sorted(attesi))
+
+
+def colpo_singolo(user_id: str, session_id: str) -> str:
+    """`ares -p`: cio' che Ares sa entra nel prompt, ma niente puo' scriverci.
+
+    Un agente costruito con `interattivo=False` non ha il post-hook che
+    estrae profilo e memorie e non consegna al modello gli strumenti che
+    scrivono negli store; il prompt lo dice, con i nomi degli strumenti che
+    verrebbero rifiutati. Il contesto pero' resta: e' la meta' che serve
+    per rispondere.
+    """
+    from agno.agent import _tools
+    from agno.run.agent import RunOutput
+    from agno.run.base import RunContext
+    from agno.session.agent import AgentSession
+
+    from ares.agent.prompts import messaggio_di_sistema
+
+    muto = build_assistant(user_id=user_id, session_id=session_id + "-p", interattivo=False)
+    esigi(not muto.post_hooks, "in -p il post-hook di apprendimento e' agganciato")
+    assert muto.learning_machine is not None
+    _ = muto.result_store
+    sessione = AgentSession(session_id="prova-colpo", user_id=user_id)
+    voci = _tools.get_tools(
+        agent=muto,
+        run_response=RunOutput(run_id="prova-colpo"),
+        run_context=RunContext(run_id="prova-colpo", user_id=user_id, session_id="prova-colpo"),
+        session=sessione,
+        user_id=user_id,
+    )
+    nomi = set()
+    for voce in voci:
+        if hasattr(voce, "functions"):
+            nomi.update(voce.functions.keys())
+        else:
+            nomi.add(getattr(voce, "name", None) or getattr(voce, "__name__", ""))
+    scrittori = {"update_user_memory", "remember_about", "link_entities", "forget", "save_learning"}
+    esigi(
+        not (scrittori & nomi),
+        "in -p arrivano strumenti che scrivono in memoria: " + ", ".join(sorted(scrittori & nomi)),
+    )
+    istruzioni = " ".join(t for t in muto.instructions if isinstance(t, str))
+    esigi(
+        "ares -p" in istruzioni and "Niente di questo turno entra in memoria" in istruzioni,
+        "il prompt non dice che e' -p",
+    )
+    for nome, _ in strumenti_spazio(config.WORKSPACE_CONFIRM):
+        esigi(nome in istruzioni, "il prompt di -p non nomina " + nome + " fra gli strumenti rifiutati")
+    prompt = messaggio_di_sistema(muto, session_id=session_id + "-p", user_id=user_id)
+    esigi("<user_memory>" in prompt or "<user_profile>" in prompt, "in -p il contesto di memoria non entra nel prompt")
+    return (
+        "senza post-hook e senza "
+        + str(len(scrittori))
+        + " strumenti di scrittura, con il contesto e l'avviso nel prompt"
+    )
 
 
 def protezione_contesto(agent, user_id: str) -> str:
@@ -1695,6 +1750,7 @@ def main() -> int:
             ("identita            ", lambda: identita(agent)),
             ("ambiente nel prompt ", lambda: ambiente_nel_prompt(agent, args.user, args.session)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
+            ("colpo singolo       ", lambda: colpo_singolo(args.user, args.session)),
             ("protezione contesto ", lambda: protezione_contesto(agent, args.user)),
             ("spazio di lavoro    ", lambda: spazio_di_lavoro(agent, args.user)),
             ("tempo               ", lambda: tempo(agent, lm, args.user)),
