@@ -46,14 +46,12 @@ TESTO_STORE = (
 )
 
 PROMPT_SALVATAGGIO = (
-    "Durante la manutenzione delle entita' duplicate abbiamo ricavato un criterio "
-    "generale e riutilizzabile: prima di fondere record persistenti bisogna eseguire "
-    "un audit, mostrare un'anteprima, creare e verificare un backup, applicare tutto "
-    "in una transazione e infine verificare le invarianti e le relazioni. "
-    "Salva ora questo criterio nelle tue intuizioni per conversazioni future. "
-    "Cerca prima eventuali duplicati come richiedono i tuoi strumenti; usa come "
-    "titolo esatto '" + MARCATORE_AGENTE + " manutenzione reversibile' e scrivi "
-    "titolo, intuizione e contesto in italiano."
+    "During maintenance of duplicate entities we learned a general, reusable principle: "
+    "before merging persistent records, perform an audit, show a preview, create and "
+    "verify a backup, apply the changes in a transaction, then verify invariants and relationships. "
+    "Save this principle in your learnings for future conversations. Search for duplicates first "
+    "as your tools require. Include the identifier '" + MARCATORE_AGENTE + "' in the title. "
+    "Reply to me in English."
 )
 
 PROMPT_RIUSO = (
@@ -236,12 +234,15 @@ def prova_agente() -> None:
     lm = agente.learning_machine
     salvate = cerca(lm, UTENTE_AGENTE, MARCATORE_AGENTE)
     esigi(len(salvate) == 1, "Ares non ha lasciato una sola intuizione ricercabile: " + str(len(salvate)))
-    contenuto = testo_intuizione(salvate[0]).lower()
-    esigi(MARCATORE_AGENTE.lower() in contenuto, "Ares non ha rispettato il titolo richiesto")
-    indicatori = {"prima", "audit", "anteprima", "backup", "transazione", "verificare", "relazioni"}
+    voce = salvate[0]
+    esigi(MARCATORE_AGENTE in voce.title, "Ares non ha conservato l'identificativo nel titolo")
+    # Si valuta il corpo salvato, senza aiutare il modello dal messaggio
+    # utente. Audit e backup esistono in entrambe le lingue e non contano.
+    contenuto = voce.learning.lower()
+    indicatori = {"prima", "anteprima", "transazion", "verific", "relazion", "ripristin", "invariant"}
     presenti = {parola for parola in indicatori if parola in contenuto}
     esigi(len(presenti) >= 4, "intuizione non riconoscibile come italiana e completa: " + contenuto)
-    ok("contenuto", "italiano e operativo: " + ", ".join(sorted(presenti)))
+    ok("contenuto", "richiesta inglese, intuizione italiana: " + ", ".join(sorted(presenti)))
 
     nuovo = build_assistant(user_id=UTENTE_AGENTE, session_id=SESSIONE_RIUSO)
     avvio = time.monotonic()

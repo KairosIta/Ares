@@ -8,6 +8,24 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Prompt coerenti con modalità e apprendimento.** La composizione distingue
+  workspace, memoria e quaderno; in `-p` omette istruzioni per strumenti
+  degli store assenti e non reintroduce la guida inglese di Agno. Chiarisce
+  la persistenza di cronologia e quaderno e il contesto richiesto a Ollama.
+  Ares riceve indicazioni su collaborazione, verifica degli esiti e lingua;
+  profilo, memorie e contesto ricevono criteri per distinguere fatti, ipotesi,
+  proposte non accettate e correzioni. La guida delle intuizioni mantiene
+  titolo, contenuto e contesto in italiano anche nelle conversazioni in
+  altre lingue; il test con Ollama non suggerisce più la lingua di
+  salvataggio. Il blocco delle sessioni precedenti rispetta il flag di
+  ricerca. Lo smoke verifica 19 combinazioni, con una conversazione già
+  presente, sul prompt completo e sugli strumenti consegnati. Dettagli in
+  `docs/prompt.md`. Verifiche del 2026-09-07: `tests/run.py --tutte`,
+  10 suite verdi su Agno 3.0.5, con `glm-5.3-flash:cloud` in conversazione
+  e `gemma4:31b-cloud` in estrazione; lint, formattazione e mypy verdi.
+  Questo giro non misura un miglioramento semantico rispetto al prompt
+  precedente e non verifica il modello conversazionale locale.
+
 - **I percorsi sono un oggetto costruito a runtime.** `config.Percorsi` -
   home, stato, backup, cartella di lavoro, utente, con i nomi derivati come
   proprietà - nasce da `leggi_percorsi`, che legge un ambiente e una

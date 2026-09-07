@@ -296,10 +296,12 @@ ares --session progetto-demo
 ### Una risposta sola
 
 Per una risposta sola, anche dentro una pipe, `-p`: stdin si aggiunge alla
-domanda, le operazioni che chiederebbero conferma vengono rifiutate e niente
-entra in memoria, perché non c'è nessuno a rispondere né a leggere cosa
-sarebbe entrato. Ares lo sa dal prompt: ciò che già ricorda di te c'è, ciò
-che impara in quel turno finisce con la risposta.
+domanda, le operazioni che chiederebbero conferma vengono rifiutate e gli
+store di apprendimento non vengono aggiornati, perché non c'è nessuno a
+leggere e confermare cosa sarebbe entrato. Le memorie già presenti restano
+nel contesto. La conversazione viene comunque archiviata e il quaderno è
+persistente: il prompt ne consente la scrittura solo per richieste esplicite
+sul quaderno, senza usarlo per aggirare l'apprendimento disattivato.
 
 ```bash
 git diff | ares -p "scrivi il messaggio di commit"
@@ -333,6 +335,14 @@ leggerlo tutto, esattamente come lo riceve il modello:
 ares inspect --prompt                # la conversazione che aprirebbe adesso, qui
 ares inspect --prompt --modo piano   # nella modalità piano
 ```
+
+Il prompt distingue autorizzazioni sul workspace, memoria e quaderno;
+il contesto richiesto a Ollama è distinto dal limite effettivo del servizio.
+Ares riceve anche indicazioni su collaborazione, verifica degli esiti e
+lingua: italiano predefinito, rispettando traduzioni e testi richiesti in
+altre lingue. I criteri dell'estrattore distinguono fatti, ipotesi e proposte
+non accettate. Composizione, limiti e casi di verifica sono descritti in
+[docs/prompt.md](docs/prompt.md).
 
 ## Verifica
 
