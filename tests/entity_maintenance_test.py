@@ -202,7 +202,7 @@ def main() -> int:
                 timeout=20,
                 check=False,
             )
-        esigi(bloccato.returncode == 2, "l'audit non rispetta il lock esclusivo")
+        esigi(bloccato.returncode == 3, "l'audit non rispetta il lock esclusivo, o non esce con 3")
         esigi("stato di Ares" in bloccato.stderr, "il rifiuto del lock non e' spiegato")
 
         # La fusione rifiuta una scansione incompleta: tolta la riga malformata
@@ -394,7 +394,7 @@ def main() -> int:
                 timeout=20,
                 check=False,
             )
-        esigi(merge_bloccato.returncode == 2, "la fusione non pretende il lock esclusivo")
+        esigi(merge_bloccato.returncode == 3, "la fusione non pretende il lock esclusivo, o non esce con 3")
         esigi(not elenco_snapshot(), "una fusione bloccata ha creato un backup")
 
         anteprima = subprocess.run(
@@ -427,7 +427,7 @@ def main() -> int:
             timeout=20,
             check=False,
         )
-        esigi(annullata.returncode == 1, "conferma sbagliata non annulla la fusione")
+        esigi(annullata.returncode == 2, "conferma sbagliata non annulla la fusione con 2")
         esigi(not elenco_snapshot(), "una fusione annullata ha creato un backup")
 
         # Il secondo UPDATE contiene un set, non serializzabile come JSON: il

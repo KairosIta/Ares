@@ -44,7 +44,9 @@ e la chat si ferma finche' non e' successo.
 - `app.py` e' il comando `ares`: un'App Cyclopts con la chat come default e i
   sottocomandi di manutenzione registrati per nome di modulo, cosi' si
   importano solo quando servono; `comando.py` e' la fabbrica che da' a tutte
-  le App gli stessi titoli e la console di `ui.py`;
+  le App gli stessi titoli e la console di `ui.py`, e tiene la tabella dei
+  codici di uscita - 0 fatto, 1 guasto, 2 rifiutato, 3 occupato - con
+  `esegui_protetto`, il contorno di lock ed errori che ogni manutenzione usa;
 - `chat.py` avvia e coordina la REPL; `commands.py` contiene la tabella dei
   comandi locali, il loro dispatch e lo `StatoChat` che `/sessione`,
   `/metriche` e `/debug` modificano a meta' conversazione, mentre

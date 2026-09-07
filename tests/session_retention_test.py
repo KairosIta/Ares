@@ -237,7 +237,7 @@ def main() -> int:
                 "--yes",
             )
         esigi(
-            bloccata.returncode == 2 and "Chiudi la chat" in bloccata.stderr,
+            bloccata.returncode == 3 and "Chiudi la chat" in bloccata.stderr,
             "prune partito con una chat aperta",
         )
         esigi(

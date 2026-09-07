@@ -72,6 +72,17 @@ locale non e' stato provato in questo giro.
 
 ### Changed
 
+- **Un solo significato per ogni codice di uscita.** Erano cinque wrapper
+  con quattro idee diverse: lo stato occupato valeva 1 in chat, backup e
+  migrate e 2 in sessions ed entities; una conferma sbagliata valeva 1 in
+  una fusione e 2 in un restore. Ora la tabella sta in `cli/comando.py` e
+  vale ovunque: 0 fatto, 1 guasto, 2 rifiutato - argomenti incoerenti,
+  conferma negata o sbagliata, manutenzione rifiutata, cartella rifiutata,
+  niente da riprendere, `-p` con `auto` - e 3 stato occupato da un altro
+  processo, che uno script puo' riprovare. `esegui_protetto` e' il contorno
+  di lock ed errori che sessions, entities e backup usano al posto dei
+  propri. Chi leggeva questi codici da uno script deve aggiornarsi: e' il
+  motivo per cui questa versione e' una minor;
 - **Scrivere e modificare un file chiedono conferma.** Stavano fra gli
   strumenti silenziosi, con l'idea che un file nuovo nella propria cartella
   non fosse distruttivo. Ma cio' che il modello legge - un file del
