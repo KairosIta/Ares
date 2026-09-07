@@ -56,9 +56,12 @@ PROVE = (
 
 # Un test bloccato e' diverso da un test lento: senza un limite il runner non
 # arriva mai al riepilogo e in CI consuma l'intero timeout del job. Le prove
-# offline normalmente finiscono in secondi; quelle con Ollama hanno piu'
-# margine per caricamento del modello, inferenza e GPU meno veloci.
-TIMEOUT_OFFLINE_SECONDI = 180
+# offline finiscono in secondi qui, ma `cli` lancia una REPL per sottoprocesso
+# e ognuno importa Agno: sul runner Windows di GitHub sta fra 150 e 165 s, e
+# con il tetto a 180 un runner appena piu' lento la dichiarava bloccata. Il
+# tetto e' il doppio di quella misura; quelle con Ollama hanno piu' margine
+# per caricamento del modello, inferenza e GPU meno veloci.
+TIMEOUT_OFFLINE_SECONDI = 360
 TIMEOUT_OLLAMA_SECONDI = 900
 
 
