@@ -5,18 +5,18 @@ esecuzione, gli store e le primitive agentiche; Ares decide invece politica
 local-first, modelli Ollama, interfaccia, confini degli strumenti, schema dei
 dati, backup e comportamento dell'apprendimento.
 
-La distinzione evita due errori opposti: duplicare nel progetto cio' che il
-framework fa gia' bene, oppure presentare come caratteristica di Ares una
-capacita' Agno che qui non e' stata configurata e verificata.
+La distinzione evita due errori opposti: duplicare nel progetto ciò che il
+framework fa già bene, oppure presentare come caratteristica di Ares una
+capacità Agno che qui non è stata configurata e verificata.
 
 ## Cosa usa Ares oggi
 
-| Capacita' Agno | Uso concreto in Ares | Decisione del progetto |
+| Capacità Agno | Uso concreto in Ares | Decisione del progetto |
 | --- | --- | --- |
 | `Agent`, run ed eventi streaming | ciclo `run → pausa → continue_run`, output e metriche | `agent/turn_core.py` traduce gli eventi in un contratto indipendente dalla CLI |
 | modello Ollama ed embedder Ollama | l'embedding resta locale; conversazione ed estrazione strutturata possono usare, ciascuna per scelta nel `.env`, un modello cloud di Ollama inoltrato dal daemon | nessun provider diverso da Ollama, nessuna chiave API nell'ambiente: `assistant_runtime` rifiuta un nome cloud per `EMBEDDER_MODEL` |
-| `SqliteDb` | sessioni, run, profilo, memorie, contesto ed entita' | file privati, lock cooperativo e snapshot verificati |
-| Learning Machine | profilo, memoria utente, contesto di sessione, entita' e conoscenza appresa | schema italiano, namespace per utente e post-hook sul run completo |
+| `SqliteDb` | sessioni, run, profilo, memorie, contesto ed entità | file privati, lock cooperativo e snapshot verificati |
+| Learning Machine | profilo, memoria utente, contesto di sessione, entità e conoscenza appresa | schema italiano, namespace per utente e post-hook sul run completo |
 | `Knowledge` + LanceDB | ricerca ibrida nelle intuizioni riutilizzabili | indice incorporato, embedding locale e nessun servizio vettoriale remoto |
 | FileSystem | quaderno persistente verbatim separato dalle memorie curate | database distinto e namespace per utente |
 | Workspace + HITL | lettura, modifica e comandi in una sola directory | nomi `workspace_*`; operazioni sensibili fermano il run e chiedono conferma |
@@ -24,21 +24,21 @@ capacita' Agno che qui non e' stata configurata e verificata.
 | `ResultStore` | risultati tool oltre 16.000 caratteri salvati lossless entro la quota Agno e sostituiti da un'anteprima | indice in `kairos.db`, payload in `filesystem.db`, entrambi inclusi nei backup; retention legata alla sessione |
 
 La [Learning Machine](https://docs.agno.com/learning/overview) di Agno offre
-anche Decision Log, modalita' Propose e curatela degli apprendimenti. Sono
-primitive interessanti, ma non diventano automaticamente funzionalita' di
+anche Decision Log, modalità Propose e curatela degli apprendimenti. Sono
+primitive interessanti, ma non diventano automaticamente funzionalità di
 Ares: richiedono prima una politica utente, una rappresentazione nella CLI e
 copertura nei backup.
 
-Una in particolare non e' disponibile nemmeno volendola. Le modalita' di
+Una in particolare non è disponibile nemmeno volendola. Le modalità di
 apprendimento sono quattro - `ALWAYS`, `AGENTIC`, `PROPOSE`, `HITL` - ma non
-valgono per tutti gli store: `PROPOSE` e' supportato dal solo
+valgono per tutti gli store: `PROPOSE` è supportato dal solo
 `LearnedKnowledgeStore`, mentre `UserProfileStore` e `UserMemoryStore` lo
-rifiutano con un warning, e `HITL` e' dichiarato "reserved for future use;
+rifiutano con un warning, e `HITL` è dichiarato "reserved for future use;
 unsupported by every store". **In Agno 3.0.5 non esiste quindi alcun modo, a
-livello di framework, di far confermare cio' che entra in profilo e
-memorie**: e' un limite del framework, non una scelta di Ares, ed e' la
+livello di framework, di far confermare ciò che entra in profilo e
+memorie**: è un limite del framework, non una scelta di Ares, ed è la
 ragione per cui la sezione "Confini di sicurezza" di
-`docs/architecture.md` dice cio' che dice. Il fatto e' sorvegliato da
+`docs/architecture.md` dice ciò che dice. Il fatto è sorvegliato da
 `tests/agno_contract_test.py`, che diventa rosso il giorno in cui Agno
 cambia idea.
 
@@ -53,41 +53,41 @@ Consulta le [note 3.0.0](https://github.com/agno-agi/agno/releases/tag/v3.0.0)
 e le [note 3.0.1](https://github.com/agno-agi/agno/releases/tag/v3.0.1).
 Le patch successive, fino alla
 [3.0.5](https://github.com/agno-agi/agno/releases/tag/v3.0.5), entrano dal
-solo `uv.lock`: il vincolo in `pyproject.toml` e' `>=3.0.2,<3.1`, e ogni
+solo `uv.lock`: il vincolo in `pyproject.toml` è `>=3.0.2,<3.1`, e ogni
 patch viene provata sulle superfici che Ares usa - le firme di
 `LearningMachine.process` e di `SessionContextStore`, che Ares sovrascrive,
 e il ciclo REPL completo - prima di entrare nel lock.
 
 La major estende anche l'isolamento per utente e rende stabili gli id dei
 toolkit. Ares mantiene i propri namespace espliciti `user/<id>`: per le
-intuizioni questo e' un filtro di metadati custom, non il nuovo argomento
+intuizioni questo è un filtro di metadati custom, non il nuovo argomento
 `user_id` del vector DB. L'indice LanceDB attuale non richiede quindi la
-migrazione delle collezioni per-user descritta da Agno; l'isolamento gia'
+migrazione delle collezioni per-user descritta da Agno; l'isolamento già
 esistente continua a essere verificato dalla suite.
 
-SQLite in Agno 3 usa WAL e puo' creare i sidecar `-wal` e `-shm`. Gli snapshot
+SQLite in Agno 3 usa WAL e può creare i sidecar `-wal` e `-shm`. Gli snapshot
 di Ares non copiano il file aperto alla cieca: usano l'API backup di SQLite
 sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 
 ## Adeguamenti adottati
 
-- **Risultati tool grandi:** `Workspace.read_file` puo' leggere file molto
-  piu' grandi della finestra utile del modello e `get_chat_history` puo'
+- **Risultati tool grandi:** `Workspace.read_file` può leggere file molto
+  più grandi della finestra utile del modello e `get_chat_history` può
   restituire una sessione intera. Oltre 16.000 caratteri Agno conserva il
   contenuto completo e lascia nel messaggio un envelope con anteprima,
   dimensione e id. `read_result` e `search_result` permettono di recuperarlo
-  a pagine senza reinserirlo tutto nel prompt. Il limite di Agno e' 8.000.000
+  a pagine senza reinserirlo tutto nel prompt. Il limite di Agno è 8.000.000
   byte per risultato e 200.000.000 per sessione: oltre la quota il fallback
-  con testa e coda dichiara che il testo completo non e' stato salvato.
+  con testa e coda dichiara che il testo completo non è stato salvato.
 - **Retention coerente:** Ares non assegna un TTL ai singoli risultati,
-  perche' lascerebbe riferimenti non risolvibili nelle sessioni conservate.
+  perché lascerebbe riferimenti non risolvibili nelle sessioni conservate.
   `sessions/maintenance.py` seleziona invece intere conversazioni inattive con
   anteprima, protezioni esplicite, lock e backup. La cancellazione Agno porta
-  con se' run, indice e payload; Ares elimina anche il relativo contesto della
+  con sé run, indice e payload; Ares elimina anche il relativo contesto della
   Learning Machine e verifica entrambi i database.
 - **Storia degli strumenti:** Ares continua a includere cinque turni recenti,
   ma soltanto le ultime dieci tool call storiche. Messaggi e risultati completi
-  restano in SQLite: e' un filtro del contesto, non una retention dei dati.
+  restano in SQLite: è un filtro del contesto, non una retention dei dati.
 - **Run normalizzati:** Ares usa le API v3 per persistere i run e continua a
   consumare `session.runs`, che Agno ricompone dalla tabella dedicata. Non ci
   sono query dirette verso la vecchia colonna JSON.
@@ -98,46 +98,46 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   costruzione per materializzare WAL; gli snapshot SQLite ne preservano il
   journal mode oltre alle pagine.
 
-## Capacita' disponibili ma non abilitate
+## Capacità disponibili ma non abilitate
 
 - **Media offloading:** Ares non accetta ancora immagini, audio o video nella
   CLI; abilitarlo ora creerebbe storage senza un percorso utente che lo usi.
 - **CodeMode:** riduce molti schemi tool a un kernel Python programmabile, ma
   i circa venticinque strumenti di Ares non giustificano un nuovo ambiente di
-  esecuzione. Il workspace con conferme mantiene confini piu' leggibili.
-- **Skills:** il caricamento progressivo di istruzioni e riferimenti locali e'
+  esecuzione. Il workspace con conferme mantiene confini più leggibili.
+- **Skills:** il caricamento progressivo di istruzioni e riferimenti locali è
   promettente per specializzazioni future. L'esecuzione degli script delle
-  skill deve pero' essere integrata col modello di conferme e col confine del
+  skill deve però essere integrata col modello di conferme e col confine del
   workspace prima di essere esposta.
 - **Decision Log:** adatto ad audit e feedback sulle decisioni; per Ares serve
   decidere cosa registrare senza trasformare ogni conversazione in
   telemetria locale rumorosa.
 - **Learning `PROPOSE`:** utilizzabile sul solo `learned_knowledge`, che in
-  Ares e' gia' `AGENTIC` - cioe' un salvataggio che il modello sceglie
-  esplicitamente, lo store meno esposto dei tre. Li' `PROPOSE` non aggiunge
+  Ares è già `AGENTIC` - cioè un salvataggio che il modello sceglie
+  esplicitamente, lo store meno esposto dei tre. Lì `PROPOSE` non aggiunge
   una pausa imposta: aggiunge istruzioni nel prompt che chiedono al modello
-  di proporre e di chiamare `save_learning` solo dopo un si'. E'
+  di proporre e di chiamare `save_learning` solo dopo un sì. È
   un'approvazione "soft", che dipende dall'obbedienza del modello, sullo
-  store che ne aveva meno bisogno. Sugli altri due store la modalita' non
-  esiste (vedi sopra). La conferma sulla memoria durevole e' percio'
+  store che ne aveva meno bisogno. Sugli altri due store la modalità non
+  esiste (vedi sopra). La conferma sulla memoria durevole è perciò
   costruita in Ares, a valle: `echo.py` legge i due store prima del turno e
   li riscrive se l'utente dice di no (`CONFERMA_APPRENDIMENTI`).
-- **Curator:** puo' deduplicare e potare apprendimenti, ma deve passare dallo
-  stesso modello di anteprima, backup e applicazione gia' usato per le
-  entita'.
+- **Curator:** può deduplicare e potare apprendimenti, ma deve passare dallo
+  stesso modello di anteprima, backup e applicazione già usato per le
+  entità.
 - **Session summary e compressione:** richiedono ulteriori inferenze e si
-  sovrappongono al contesto di sessione gia' estratto. Offloading e limiti
+  sovrappongono al contesto di sessione già estratto. Offloading e limiti
   deterministici proteggono la finestra senza una chiamata al modello.
-- **Cache della sessione:** evita letture ripetute dal database ma puo'
+- **Cache della sessione:** evita letture ripetute dal database ma può
   diventare stantia quando due processi Ares aprono la stessa sessione; il
   lock condiviso permette proprio quella concorrenza, quindi resta spenta.
-- **AgentOS, Studio, scheduler, team e workflow:** Agno puo' esporre agenti
-  tramite API e interfacce, eseguire code durevoli e coordinare piu' agenti.
-  Ares oggi e' una CLI personale su un solo host: abilitarli allargherebbe il
-  modello di sicurezza e non e' parte di questo upgrade.
+- **AgentOS, Studio, scheduler, team e workflow:** Agno può esporre agenti
+  tramite API e interfacce, eseguire code durevoli e coordinare più agenti.
+  Ares oggi è una CLI personale su un solo host: abilitarli allargherebbe il
+  modello di sicurezza e non è parte di questo upgrade.
 - **Context Providers e integrazioni remote:** Agno offre connettori e
   accesso live a fonti esterne. Ares resta deliberatamente Ollama-only:
-  l'unico servizio remoto ammesso e' il cloud di Ollama, raggiunto dal
+  l'unico servizio remoto ammesso è il cloud di Ollama, raggiunto dal
   daemon locale, per il modello conversazionale e, su scelta separata nel
   `.env`, per quello che estrae le memorie; mai per l'embedding. Il percorso diretto
   di Agno verso `https://ollama.com` con `api_key` non viene usato.
