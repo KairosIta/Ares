@@ -36,6 +36,7 @@ divergite.
 """
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from agno.run.agent import RunOutput
@@ -313,7 +314,10 @@ def _esegui_chat(
             return ESITO_GUASTO
         if not cartella.autorizza(radice, esplicito=workspace is not None):
             return ESITO_RIFIUTO
-        config.WORKSPACE_DIR = radice
+        # La cartella scelta diventa un campo dei percorsi correnti, dalla
+        # porta sola: `render`, `/cartella` e `build_workspace` la leggono
+        # da li'. Prima era un'assegnazione a `config.WORKSPACE_DIR`.
+        config.imposta_percorsi(replace(config.PERCORSI, lavoro=radice))
 
     # Poi cio' che scrive: la cronologia della REPL nasce dentro tmp/, che
     # quindi deve esistere gia' privata quando `CliInput` ci scrive. `--help`

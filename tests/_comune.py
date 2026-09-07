@@ -10,10 +10,12 @@ fallimento, se il traceback si vedeva o no.
 
 La regola: questo modulo non importa `config` ne' niente di `ares`. E' la
 sola garanzia che `prepara_ambiente` funzioni, perche' `config` legge
-`ARES_TMP`, `ARES_BACKUP_DIR` e la directory corrente una volta all'import.
-Una prova che importasse `config` prima di aver scelto i percorsi
-scriverebbe accanto ai dati veri, e questo modulo non puo' diventare la via
-da cui succede.
+`ARES_TMP`, `ARES_BACKUP_DIR` e la directory corrente quando viene importato
+e li tiene finche' qualcuno non passa da `config.imposta_percorsi`. Una prova
+che importasse `config` prima di aver scelto i percorsi, senza poi passare da
+quella porta, scriverebbe accanto ai dati veri, e questo modulo non puo'
+diventare la via da cui succede. Un processo per prova resta la scelta del
+runner: la porta rende possibile una prova in-process, non la impone.
 """
 
 from __future__ import annotations

@@ -262,3 +262,13 @@ Le impostazioni versionate sono in `ares/config.py`. Identità, percorsi
 locali e i due modelli - conversazione ed estrazione delle memorie - possono
 essere sovrascritti con le variabili mostrate in `.env.example`; il file
 `.env` del clone non viene pubblicato.
+
+I percorsi sono un oggetto, `Percorsi`: home, stato, backup, cartella di
+lavoro e utente, con i nomi derivati - i due SQLite, l'indice, il lock, la
+cronologia - come proprietà. `leggi_percorsi` lo costruisce da un ambiente e
+una directory dati, o da quelli veri, quando viene chiamata; i nomi di
+sempre - `TMP_DIR`, `DB_FILE`, `BACKUP_DIR`, `WORKSPACE_DIR`... - sono viste
+dell'oggetto corrente e `imposta_percorsi` è l'unica porta da cui si
+sostituisce, rilegandoli tutti insieme. La chat ci passa con la cartella
+scelta, e una prova può costruire i propri percorsi su una directory
+usa-e-getta nello stesso interprete.
