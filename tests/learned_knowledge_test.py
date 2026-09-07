@@ -128,11 +128,12 @@ def cerca(lm, user_id: str, query: str) -> list:
 def rileggi_in_processo_nuovo(user_id: str, session_id: str, query: str) -> list[dict]:
     figlio = subprocess.run(
         [sys.executable, "-c", RILETTURA, user_id, session_id, query],
-        cwd=str(config.BASE_DIR),
+        # La cartella di lavoro e' la directory corrente, come nel prodotto:
+        # il figlio parte da quella della prova, non dal clone.
+        cwd=str(RADICE_WORKSPACE),
         env={
             **os.environ,
             "ARES_TMP": str(RADICE_STATO),
-            "ARES_WORKSPACE": str(RADICE_WORKSPACE),
             "ARES_BACKUP_DIR": str(RADICE_BACKUP),
         },
         capture_output=True,

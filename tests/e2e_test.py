@@ -263,8 +263,10 @@ def main() -> int:
         # oggetto ereditato da chi ha scritto.
         figlio = subprocess.run(
             [sys.executable, "-c", RILETTURA, UTENTE, SESSIONE],
-            cwd=str(config.BASE_DIR),
-            env={**os.environ, "ARES_TMP": ARCHIVIO_PROVA, "ARES_WORKSPACE": SPAZIO_PROVA},
+            # La cartella di lavoro e' la directory corrente, come nel
+            # prodotto: il figlio parte da quella della prova, non dal clone.
+            cwd=SPAZIO_PROVA,
+            env={**os.environ, "ARES_TMP": ARCHIVIO_PROVA},
             capture_output=True,
             text=True,
             timeout=180,

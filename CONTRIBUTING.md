@@ -124,7 +124,7 @@ serve a sapere quale ramo non è mai stato eseguito, non a produrre un
 numero da difendere.
 
 Tutte le prove devono usare archivi temporanei. Non leggere, copiare o
-committare lo stato reale in `tmp/`, i workspace o gli snapshot locali.
+committare lo stato reale in `~/.ares`, i workspace o gli snapshot locali.
 La CI deve restare verde sia su Ubuntu sia su Windows prima del merge.
 
 ## Stile

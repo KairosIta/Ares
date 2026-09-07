@@ -119,9 +119,11 @@ ARES_MAIN_MODEL=glm-5.3-flash:cloud
 
 Il daemon locale lo inoltra a `ollama.com` dopo un `ollama signin` una
 tantum: Ares continua a parlare con `localhost`, e nessuna chiave API entra
-nell'ambiente o in `.env`. Con un modello cloud i prompt e le risposte della
-conversazione escono dalla macchina; l'estrazione delle memorie resta locale
-finché non lo decidi tu, con una seconda riga:
+nell'ambiente o in `.env`. Con un modello cloud esce dalla macchina tutto
+ciò che quel modello riceve: le domande e le risposte, il prompt con profilo
+e memorie, i file che legge, l'output dei comandi, le conversazioni passate
+che rilegge. L'estrazione delle memorie resta locale finché non lo decidi
+tu, con una seconda riga:
 
 ```bash
 ARES_LEARNING_MODEL=glm-5.3-flash:cloud
@@ -195,8 +197,9 @@ script di setup creano il virtualenv, installano esattamente le versioni di
 [`uv.lock`](uv.lock) e Ares stesso, mettono `ares` sul PATH ed eseguono il
 preflight. Da quel momento `ares` si scrive da qualunque cartella: su Linux è
 un link in `~/.local/bin` al comando del venv, su Windows uno shim `ares.cmd`
-in `%USERPROFILE%\.local\bin`; se quella directory non è nel PATH il setup
-dice la riga da aggiungere. Non è un `uv tool install`, che risolverebbe le
+in `%USERPROFILE%\.local\bin`; `ARES_BIN_DIR` nell'ambiente della shell
+sceglie un'altra directory, e se quella non è nel PATH il setup dice la riga
+da aggiungere. Non è un `uv tool install`, che risolverebbe le
 dipendenze da capo senza guardare il lock: il comando globale è esattamente
 l'ambiente bloccato e segue il codice del clone a ogni pull.
 
@@ -266,12 +269,6 @@ che impara in quel turno finisce con la risposta.
 
 ```bash
 git diff | ares -p "scrivi il messaggio di commit"
-```
-
-Su Windows il comando equivalente è:
-
-```powershell
-ares --session progetto-demo
 ```
 
 Durante la chat `/` apre il menu dei comandi e TAB completa la voce
