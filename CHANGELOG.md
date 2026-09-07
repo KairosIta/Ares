@@ -4,6 +4,22 @@ Le modifiche rilevanti di Ares sono raccolte in questo file. Il formato segue
 [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/) e il progetto
 adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
+## [Unreleased]
+
+### Added
+
+- **`ares inspect --prompt`** stampa il system message intero che la chat
+  manderebbe al modello da questa cartella, senza aprire un turno: la
+  descrizione e le istruzioni di Ares, poi cio' che Agno aggiunge da se' -
+  le convenzioni del quaderno, le regole della macchina di apprendimento,
+  memorie ed entita' gia' salvate, data e nome. Senza `--session` e' la
+  conversazione nuova che `ares` aprirebbe adesso; con `--session` quella
+  nominata. Prima, l'unico modo di sapere cosa riceveva il modello era
+  leggere i pezzi in `prompts.py` e immaginare il resto; una modifica ai
+  prompt si giudica ora leggendo questo, e due versioni si confrontano con
+  `diff`. Il testo mostra anche quanto del prompt e' scritto da Agno in
+  inglese, ed e' il punto di partenza per riscriverlo.
+
 ## [0.5.0] - 2026-09-07
 
 Prove con Ollama (`tests/run.py --tutte`) verdi il 2026-09-07 su Agno 3.0.5 e

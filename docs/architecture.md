@@ -114,7 +114,10 @@ e la chat si ferma finche' non e' successo.
 - `ops/preflight.py` verifica che il server Ollama risponda e che i modelli
   nominati in `config.py` siano scaricati, senza accendere niente e senza
   lasciare niente su disco;
-- `ops/inspect_learning.py` rilegge gli archivi a modello spento;
+- `ops/inspect_learning.py` rilegge gli archivi a modello spento; con
+  `--prompt` stampa il system message intero che la chat manderebbe al
+  modello da questa cartella, cosi' com'e' dopo che Agno ha aggiunto le
+  proprie istruzioni e le memorie salvate;
 - `ops/migrazione.py` e' `ares migrate`: sposta stato e backup dal posto di
   prima - `tmp/` nel clone, `ares-backup` accanto - a `~/.ares`, sotto lock
   esclusivo e come rinomina di directory. Idempotente, e non tocca una

@@ -1,6 +1,12 @@
-"""Istruzioni dell'agente condizionate alle capacita' realmente abilitate."""
+"""Istruzioni dell'agente condizionate alle capacita' realmente abilitate.
+
+In fondo, `messaggio_di_sistema` chiede ad Agno il system message intero
+cosi' come lo comporrebbe per un turno: e' cio' che `ares inspect --prompt`
+stampa, ed e' l'unico modo di leggere davvero cio' che il modello riceve.
+"""
 
 from pathlib import Path
+from typing import Any
 
 from ares import config
 
@@ -129,3 +135,51 @@ def istruzioni_dalla_cartella(radice_lavoro) -> list[str]:
         + ":\n\n"
     )
     return [intestazione + testo]
+
+
+def messaggio_di_sistema(agent: Any, *, session_id: str, user_id: str) -> str:
+    """Il system message che Agno manderebbe al modello per un turno, verbatim.
+
+    Non basta leggere `description` e `instructions`: Agno aggiunge da se' le
+    istruzioni degli strumenti, quelle della macchina di apprendimento, le
+    memorie e le entita' gia' salvate, la data e il nome. Il solo modo di
+    vedere il testo intero e' fargli fare gli stessi passi di `run()` fino al
+    messaggio, e fermarsi li': inizializzare l'agente, che e' cio' che
+    aggancia gli strumenti di memoria; leggere la sessione, o costruirne una
+    vuota in memoria se non esiste, senza scriverla; risolvere gli strumenti,
+    perche' le loro istruzioni entrano nel messaggio; e chiedere il messaggio.
+
+    Nessun passo chiama il modello. La sessione nuova resta in memoria:
+    e' `run()` a salvarla, e qui `run()` non si chiama. `determine_tools_for_model`
+    e' un interno di Agno, e per questo il vincolo su Agno nel pyproject e' stretto.
+    """
+    from uuid import uuid4
+
+    from agno.agent._tools import determine_tools_for_model
+    from agno.run import RunContext
+    from agno.run.agent import RunOutput
+    from agno.session import AgentSession
+
+    agent.initialize_agent()
+    sessione = agent.get_session(session_id=session_id, user_id=user_id) or AgentSession(
+        session_id=session_id,
+        agent_id=agent.id,
+        user_id=user_id,
+        metadata=dict(agent.metadata) if agent.metadata else None,
+    )
+    contesto = RunContext(run_id=str(uuid4()), session_id=session_id, user_id=user_id, metadata=agent.metadata)
+    esito = RunOutput(run_id=contesto.run_id, session_id=session_id, user_id=user_id)
+    strumenti = agent.get_tools(run_response=esito, run_context=contesto, session=sessione, user_id=user_id)
+    funzioni = determine_tools_for_model(
+        agent,
+        model=agent.model,
+        processed_tools=strumenti,
+        run_response=esito,
+        run_context=contesto,
+        session=sessione,
+    )
+    messaggio = agent.get_system_message(session=sessione, run_context=contesto, tools=funzioni)
+    if messaggio is None:
+        return ""
+    contenuto = messaggio.content
+    return contenuto if isinstance(contenuto, str) else str(contenuto)

@@ -418,7 +418,22 @@ def inspect_learning_cli() -> str:
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
         inspect_learning.main()
     esigi(CONTENUTO_FILE in uscita.getvalue(), "il contenuto del file non viene stampato")
-    return "cinque sezioni, archivio invariato, --file presente e assente"
+
+    # `--prompt` costruisce l'agente e chiede ad Agno il system message senza
+    # aprire un turno. Cio' che conta: il testo e' quello intero - c'e' la
+    # parte scritta da Ares, con la cartella corrente, e c'e' quella che Agno
+    # aggiunge da se' per gli strumenti di apprendimento - e l'archivio resta
+    # com'era, perche' la sessione nuova non va salvata.
+    uscita = io.StringIO()
+    argv = ["ares-inspect", "--user", UTENTE, "--prompt"]
+    with patch.object(sys, "argv", argv), redirect_stdout(uscita):
+        inspect_learning.main()
+    testo = uscita.getvalue()
+    esigi(testo.startswith("Sei Ares"), "il prompt non comincia con la descrizione di Ares")
+    esigi(str(Path.cwd()) in testo, "il prompt non nomina la cartella corrente")
+    esigi("<learning_system>" in testo, "il prompt non contiene il blocco della macchina di apprendimento")
+    esigi(prima == (file_db.stat().st_mtime_ns, file_db.stat().st_size), "--prompt ha modificato l'archivio")
+    return "cinque sezioni, archivio invariato, --file presente e assente, --prompt intero"
 
 
 def chat_repl() -> str:
