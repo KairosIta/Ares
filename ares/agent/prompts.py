@@ -215,6 +215,85 @@ def istruzioni_sugli_strumenti(radice_lavoro=None) -> list[str]:
     return dette
 
 
+def istruzioni_sulla_memoria() -> list[str]:
+    """Come funziona la memoria di Ares, detto al modello prima degli strumenti.
+
+    Agno spiega ogni strumento di memoria, ma non il disegno: che tre store
+    si aggiornano da soli e due no, che l'utente vede cio' che entra e puo'
+    annullarlo, che i risultati grandi non entrano interi. Senza questo il
+    modello annuncia "me lo ricordero'" per cose che si salvano da sole, o
+    risponde da un'anteprima troncata.
+    """
+    automatici = [
+        nome
+        for nome, acceso in (
+            ("il profilo - chi e' la persona, come preferisce le risposte", config.LEARN_USER_PROFILE),
+            ("le memorie - osservazioni su di lei", config.LEARN_USER_MEMORY),
+            ("il contesto di questa conversazione - obiettivo, piano, avanzamento", config.LEARN_SESSION_CONTEXT),
+        )
+        if acceso
+    ]
+    agentici = [
+        nome
+        for nome, acceso in (("le entita'", config.LEARN_ENTITIES), ("le intuizioni", config.LEARN_KNOWLEDGE))
+        if acceso
+    ]
+    righe = []
+    if automatici:
+        righe.append(
+            "La tua memoria, e chi la scrive. Si aggiornano da soli, con un'estrazione dopo ogni tua "
+            "risposta: " + "; ".join(automatici) + ". Non devi scriverli tu e non annunciare che "
+            "'ricorderai' qualcosa: succede da se'."
+        )
+    if agentici:
+        righe.append("Si aggiornano solo con gli strumenti, quando lo decidi: " + " e ".join(agentici) + ".")
+    if config.MOSTRA_APPRENDIMENTI and (config.LEARN_USER_PROFILE or config.LEARN_USER_MEMORY):
+        righe.append(
+            "Cio' che entra in profilo e memorie compare sotto la risposta, per intero, e la persona "
+            + (
+                "puo' rifiutarlo: un no riporta i due archivi a prima del turno. "
+                if config.CONFERMA_APPRENDIMENTI
+                else "lo legge. "
+            )
+        )
+    righe.append(
+        "Cio' che sai gia' e' piu' sotto in questo prompt: viene da conversazioni passate e cio' che "
+        "la persona dice adesso ha la precedenza."
+    )
+    if config.OFFLOAD_TOOL_RESULTS:
+        righe.append(
+            "Un risultato di uno strumento oltre "
+            + str(config.TOOL_RESULT_THRESHOLD_CHARS)
+            + " caratteri non entra intero: ne vedi un'anteprima con un id, e read_result e "
+            "search_result lo rileggono a pagine. Un'anteprima troncata non e' la risposta."
+        )
+    return [" ".join(righe)]
+
+
+def istruzioni_sul_quaderno() -> list[str]:
+    """Il quaderno privato, spiegato in italiano al posto del testo di Agno.
+
+    `FileSystem.instructions()` dice le stesse cose in inglese, per un agente
+    generico. Il contenuto e' quello: cosa metterci, come correggere sul
+    posto, come cercare, come ritirare una nota, cosa non conservare.
+    """
+    return [
+        "Hai un quaderno privato e durevole, che vive nel database e non sul disco: read_file, "
+        "write_file, append_file, replace_lines, list_files, search_content e move_file. Serve "
+        "per la prosa che contera' dopo: decisioni con il loro perche', documenti vivi su un tema, "
+        "note a te stesso. Percorsi relativi, come note/decisioni.md, raggruppati in cartelle. Un "
+        "tema, un file: aggiungi voci datate man mano che le cose evolvono, e quando qualcosa e' "
+        "cambiato correggi sul posto - leggi, poi replace_lines con i numeri di riga che hai visto - "
+        "invece di appendere una contraddizione a cio' che la nota gia' dice. Per trovare qualcosa "
+        "usa prima search_content, che dice file e riga, poi read_file da quella riga, e rispondi "
+        "da cio' che la nota dice. Per ritirare una nota non piu' attuale spostala in archive/ con "
+        "move_file: non svuotarla e non sovrascriverla, la sua storia puo' servire. Conserva "
+        "contenuti distillati, non risultati grezzi, e mai segreti, password o chiavi. I file "
+        "hanno un limite: se una scrittura viene rifiutata dividi il tema o archivia cio' che e' "
+        "finito, senza sovrascrivere una nota che potrebbe servire."
+    ]
+
+
 def istruzioni_senza_terminale(radice_lavoro=None) -> list[str]:
     """Cosa cambia in `ares -p`: nessuno risponde, e niente entra in memoria.
 

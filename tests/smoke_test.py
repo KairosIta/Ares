@@ -791,6 +791,40 @@ def strumenti(agent, user_id: str) -> str:
     return str(len(attesi)) + " strumenti su " + str(len(nomi)) + " consegnati: " + ", ".join(sorted(attesi))
 
 
+def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
+    """Il system message intero e' in italiano, compresa la parte che scrive Agno.
+
+    Agno aggiunge da se' le guide degli store di apprendimento, del quaderno e
+    del Markdown, in inglese e per un agente di squadra. Ares le sostituisce
+    derivando gli store e scrivendo le proprie: qui si legge il messaggio
+    composto davvero e si controlla che le frasi inglesi non ci siano piu' e
+    che gli strumenti restino nominati.
+    """
+    from ares.agent.prompts import messaggio_di_sistema
+
+    prompt = messaggio_di_sistema(agent, session_id=session_id, user_id=user_id)
+    for inglese in (
+        "CRITICAL RULES",
+        "You have entity memory",
+        "Use `update_user_memory`",
+        "You have your own private, durable filesystem",
+        "Use markdown to format",
+    ):
+        esigi(inglese not in prompt, "il prompt contiene ancora la guida inglese di Agno: " + inglese)
+    attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive"]
+    if config.LEARN_KNOWLEDGE:
+        attesi += ["<istruzioni_intuizioni>", "search_learnings", "una persona sola"]
+    if config.LEARN_ENTITIES:
+        attesi += ["<istruzioni_entita>", "remember_about"]
+    if config.LEARN_USER_MEMORY and config.MEMORY_AGENT_TOOLS:
+        attesi += ["<istruzioni_memorie>", "update_user_memory"]
+    if config.OFFLOAD_TOOL_RESULTS:
+        attesi += ["read_result", str(config.TOOL_RESULT_THRESHOLD_CHARS)]
+    for atteso in attesi:
+        esigi(atteso in prompt, "manca dal prompt: " + atteso)
+    return str(len(attesi)) + " blocchi italiani presenti, 5 frasi inglesi di Agno assenti"
+
+
 def colpo_singolo(user_id: str, session_id: str) -> str:
     """`ares -p`: cio' che Ares sa entra nel prompt, ma niente puo' scriverci.
 
@@ -1750,6 +1784,7 @@ def main() -> int:
             ("identita            ", lambda: identita(agent)),
             ("ambiente nel prompt ", lambda: ambiente_nel_prompt(agent, args.user, args.session)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
+            ("prompt in italiano  ", lambda: prompt_in_italiano(agent, args.user, args.session)),
             ("colpo singolo       ", lambda: colpo_singolo(args.user, args.session)),
             ("protezione contesto ", lambda: protezione_contesto(agent, args.user)),
             ("spazio di lavoro    ", lambda: spazio_di_lavoro(agent, args.user)),
