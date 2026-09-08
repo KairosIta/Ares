@@ -31,6 +31,13 @@ CRITERI_ESTRAZIONE = (
     "in una preferenza stabile. Conserva le qualifiche e l'incertezza espresse; "
     "non aggiungere deduzioni non confermate. Una correzione esplicita sostituisce l'informazione "
     "superata, senza lasciare entrambe come attuali; conserva gli altri fatti ancora validi. "
+    "Per ogni attivita' distingui valutazione, decisione, programma futuro, avvio e completamento. "
+    "'Ho deciso di realizzare X' conferma la decisione, non che l'utente stia gia' realizzando X. "
+    "'Comincero' domani' e' un programma, non un avvio avvenuto; il passare del tempo da solo "
+    "non conferma l'esecuzione. Se l'avvio non e' confermato, resta sconosciuto: non dedurre "
+    "nemmeno che l'attivita' non sia iniziata. Aggiorna lo stato solo con elementi che sostengono "
+    "il cambiamento. Se l'avvio e' gia' noto, ribadire la decisione o l'obiettivo non lo annulla: "
+    "conserva quel fatto salvo una rettifica esplicita. "
     "La data in cui apprendi un evento non e' necessariamente la data in cui e' accaduto. "
 )
 
@@ -196,7 +203,10 @@ def build_session_context_store(db: SqliteDb, model: Ollama) -> AresSessionConte
             enable_planning=True,
             max_updates_per_run=config.MAX_UPDATES_PER_RUN,
             instructions=CRITERI_ESTRAZIONE + "Nel contesto di sessione distingui obiettivo, piano proposto, "
-            "decisioni accettate e avanzamento verificato. Un'azione tentata o fallita non e' completata.",
+            "decisioni accettate e avanzamento verificato. Un'azione tentata o fallita non e' completata. "
+            "Nel riepilogo descrivi un programma futuro come programma: non aggiungere 'non ancora "
+            "avviata' o 'non ha iniziato' se l'utente non lo ha dichiarato. In progress inserisci "
+            "solo avanzamenti sostenuti dal turno, non obiettivi o intenzioni.",
         )
     )
 

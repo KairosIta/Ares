@@ -369,6 +369,13 @@ importare la configurazione.
 La distinzione fra test offline ed E2E è descritta nella
 [guida ai test](docs/testing.md).
 
+Per misurare cosa viene ricordato e recuperato su dialoghi sintetici:
+`.venv/bin/python -m evals.memory_quality --ripetizioni 3`. Il
+[benchmark della memoria](docs/memory-quality.md) copre ipotesi, finzione,
+accettazione, correzioni, preferenze temporanee, recupero in una nuova
+sessione, abbandono di idee o piani e distinzione fra decisione e avvio del
+lavoro, con rapporti JSON e Markdown e stato isolato.
+
 ## Operazioni
 
 I comandi di manutenzione mostrano tabelle sul terminale e testo piatto in

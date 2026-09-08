@@ -53,7 +53,18 @@ e contesto di sessione. Specifica che:
 - qualifiche e incertezza espresse vanno conservate;
 - una correzione esplicita sostituisce il fatto superato e conserva gli
   altri fatti validi;
+- valutazione, decisione, programma futuro, avvio e completamento sono
+  distinti: «ho deciso di realizzarlo» non diventa «lo sto realizzando»;
+- un avvio non confermato resta sconosciuto, senza dedurre neppure che il
+  lavoro non sia iniziato; il trascorrere del tempo non prova l'esecuzione;
+- ribadire una decisione o un obiettivo non annulla un avvio già confermato,
+  salvo una rettifica esplicita;
 - data di acquisizione e data dell'evento non coincidono necessariamente.
+
+Il campo `current_focus` del profilo descrive progetti e obiettivi
+conservandone lo stato dichiarato. La sua descrizione entra nelle istruzioni
+di estrazione; il tipo rimane una stringa. Anche il prompt conversazionale
+richiede di mantenere queste distinzioni quando usa o aggiorna i ricordi.
 
 Ogni store aggiunge il proprio scopo. Il contesto di sessione distingue
 anche azioni tentate, fallite e completate. Entità e intuizioni sono scritte
@@ -89,6 +100,13 @@ lo stesso modello, includendo almeno questi casi:
 | Ares propone backup quotidiani, senza accettazione | Nessuna decisione già presa sui backup |
 | Una preferenza stabile viene corretta | La versione precedente non resta attuale |
 | «Solo per questa risposta, tre parole» | Nessuna nuova preferenza generale di brevità |
+| «Ho deciso di realizzare ORIONE-42» | Decisione conservata; avvio sconosciuto |
+| «Comincerò domani» | Programma futuro, senza avvio dato per avvenuto |
+| «Ho iniziato», seguito da una decisione ribadita | Avvio confermato ancora recuperabile |
 
 La formulazione del prompt orienta il modello. Autorizzazioni, persistenza
 e disponibilità degli strumenti restano responsabilità del codice.
+Le nuove regole non riscrivono automaticamente i ricordi esistenti:
+correggere un fatto già salvato richiede una fonte o una rettifica che lo
+giustifichi. Il [benchmark della memoria](memory-quality.md) conserva il
+confronto su archivi sintetici nuovi prima e dopo la modifica.

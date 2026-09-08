@@ -49,6 +49,7 @@ PROVE = (
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
     ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),
+    ("valutazione", "memory_quality_test.py", False, "verdetti, prove, isolamento e guasti del benchmark"),
     ("affidabilita", "learning_reliability_test.py", True, "retry dell'estrazione del contesto"),
     ("intuizioni", "learned_knowledge_test.py", True, "salvataggio e riuso delle intuizioni"),
     ("e2e", "e2e_test.py", True, "un turno completo e la rilettura da un altro processo"),

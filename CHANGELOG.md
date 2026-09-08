@@ -6,25 +6,38 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **Benchmark della qualità della memoria.** Nove scenari sintetici coprono
+  ipotesi, personaggi inventati, proposte, correzioni, preferenze temporanee,
+  recupero, abbandono di idee e piani e distinzione fra decisione e avvio.
+  L'estrazione reale e il recupero da sessioni nuove usano archivi isolati;
+  diciannove fasi per ripetizione producono rapporti JSON/Markdown con
+  evidenze, modelli e hash dei sorgenti. I controlli sulle citazioni leggono
+  le voci originali; le prove di aggiornamento richiedono il ricordo
+  precedente pertinente. Timeout e Ctrl+C conservano i risultati parziali.
+  La suite offline `valutazione` comprende 25 controlli. Protocollo, misure
+  e limiti sono in [Qualità della memoria](docs/memory-quality.md).
+
+### Fixed
+
+- **Decisioni e programmi non diventano attività già iniziate.** Estrazione,
+  profilo, riepiloghi e recupero distinguono lo stato dichiarato. Un avvio
+  sconosciuto non diventa una mancata partenza certa; ribadire una decisione
+  non cancella un avvio già confermato. Nessuna migrazione degli archivi.
+- **Prompt coerenti con gli strumenti disponibili.** Workspace, memoria e
+  quaderno hanno istruzioni distinte; in `-p` non compaiono strumenti degli
+  store assenti. La ricerca nelle sessioni precedenti rispetta il proprio
+  flag. Le intuizioni mantengono titolo, contenuto e contesto in italiano
+  anche quando la conversazione è in un'altra lingua.
+
 ### Changed
 
-- **Prompt coerenti con modalità e apprendimento.** La composizione distingue
-  workspace, memoria e quaderno; in `-p` omette istruzioni per strumenti
-  degli store assenti e non reintroduce la guida inglese di Agno. Chiarisce
-  la persistenza di cronologia e quaderno e il contesto richiesto a Ollama.
-  Ares riceve indicazioni su collaborazione, verifica degli esiti e lingua;
-  profilo, memorie e contesto ricevono criteri per distinguere fatti, ipotesi,
-  proposte non accettate e correzioni. La guida delle intuizioni mantiene
-  titolo, contenuto e contesto in italiano anche nelle conversazioni in
-  altre lingue; il test con Ollama non suggerisce più la lingua di
-  salvataggio. Il blocco delle sessioni precedenti rispetta il flag di
-  ricerca. Lo smoke verifica 19 combinazioni, con una conversazione già
-  presente, sul prompt completo e sugli strumenti consegnati. Dettagli in
-  `docs/prompt.md`. Verifiche del 2026-09-07: `tests/run.py --tutte`,
-  10 suite verdi su Agno 3.0.5, con `glm-5.3-flash:cloud` in conversazione
-  e `gemma4:31b-cloud` in estrazione; lint, formattazione e mypy verdi.
-  Questo giro non misura un miglioramento semantico rispetto al prompt
-  precedente e non verifica il modello conversazionale locale.
+- **Criteri espliciti per collaborazione e memoria.** Il prompt chiarisce
+  capacità, persistenza e verifica degli esiti; l'apprendimento distingue
+  fatti, ipotesi, proposte accettate e correzioni. Lo smoke verifica il
+  prompt completo e gli strumenti in 19 combinazioni. Dettagli in
+  [Prompt di Ares](docs/prompt.md).
 
 - **I percorsi sono un oggetto costruito a runtime.** `config.Percorsi` -
   home, stato, backup, cartella di lavoro, utente, con i nomi derivati come
@@ -802,7 +815,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/KairosIta/Ares/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/KairosIta/Ares/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/KairosIta/Ares/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/KairosIta/Ares/compare/v0.3.0...v0.3.1

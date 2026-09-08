@@ -26,3 +26,6 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Rapporti locali del benchmark con dialoghi sintetici.
+/artifacts/memory-quality/
