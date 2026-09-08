@@ -6,6 +6,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+Verifica locale del 2026-09-08 su Agno 3.0.5: `tests/run.py --tutte`
+supera 10 suite su 11 con `hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0`
+in entrambi i ruoli; `intuizioni` fallisce sulla lingua salvata. La misura
+mirata della memoria ha 1 fase superata, 1 fallita e 4 non conclusive.
+La CI è verde su Ubuntu e Windows, ma i controlli locali di rilascio non
+sono superati. Evidenze e limiti in [Qualità della memoria](docs/memory-quality.md).
+
 ### Added
 
 - **Benchmark della qualità della memoria.** Nove scenari sintetici coprono

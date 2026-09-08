@@ -363,3 +363,74 @@ trascorsi.
 Il confronto fra modifiche va fatto mantenendo gli stessi casi, modelli e
 opzioni, conservando entrambi i rapporti e confrontando anche le prove
 testuali: poche ripetizioni non eliminano la variabilità dei modelli.
+
+## Verifica locale prima della v0.6.1, 8 settembre 2026
+
+Il modello locale di serie, `hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0`,
+è stato usato sia per la conversazione sia per l'estrazione, con Agno 3.0.5
+ed embedder locale `nomic-embed-text-v2-moe`. La CI della PR #62 e del merge
+`a7a593b` è verde su Ubuntu e Windows. La verifica locale ha invece
+rilevato limiti che impediscono di dichiarare superati i controlli di
+rilascio.
+
+### Suite con Ollama
+
+`tests/run.py --tutte` ha superato dieci suite su undici in 133,4 secondi.
+La suite `intuizioni` fallisce perché, davanti alla richiesta di salvare
+un criterio durante una conversazione inglese, il modello conserva il
+contenuto in inglese. Il messaggio dell'utente non suggerisce la lingua
+interna dell'archivio: la regola deve provenire dalle istruzioni di Ares.
+
+Sono stati provati chiarimenti nella descrizione dei parametri dello
+strumento e nella sequenza operativa del prompt. Hanno mostrato anche una
+ricerca nel quaderno al posto di `search_learnings` e l'omissione della
+ricerca nella sessione di riuso. Una prova intermedia ha salvato il criterio
+in italiano, ma il giro completo finale è nuovamente fallito sulla lingua:
+dieci suite su undici in 125,2 secondi. Questi ritocchi non sono stati
+integrati, perché non hanno risolto il comportamento. I test non sono
+stati indeboliti né i tentativi falliti riclassificati.
+
+Log locali: `/tmp/ares-v061-local-suites-20260908.log`,
+`/tmp/ares-v061-local-intuizioni-fix-20260908.log`,
+`/tmp/ares-v061-local-intuizioni-guida-20260908.log` e
+`/tmp/ares-v061-local-suites-finale-20260908.log`. La variante finale è
+conservata in `artifacts/memory-quality/v061-prompt-experiments-20260908.patch`.
+
+### Decisione, avvio e correzione
+
+Una ripetizione dei casi `avvio` e `correzione`, con timeout di 600 secondi
+per caso, ha prodotto il rapporto locale
+`artifacts/memory-quality/v061-locale-20260908.json` e il relativo Markdown.
+La misura è stata eseguita con i ritocchi sperimentali alle intuizioni
+ancora presenti nei sorgenti: questo benchmark disattiva quello store e
+usa una sonda non interattiva, quindi quelle istruzioni non entrano nel
+percorso misurato. Gli hash nel rapporto identificano la variante eseguita.
+
+| Caso | Fasi | Superate | Fallite | Non conclusive | Errori |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Avvio | 4 | 0 | 1 | 3 | 0 |
+| Correzione | 2 | 1 | 0 | 1 | 0 |
+| Totale | 6 | 1 | 1 | 4 | 0 |
+
+Il codice d'uscita è **2**. La lettura delle evidenze mostra:
+
+- dopo l'avvio esplicito, `current_focus` contiene `ORIONE-42: iniziato`;
+  ribadire la decisione lo sostituisce con `ORIONE-42: deciso`. La sonda
+  finale risponde con valore nullo e perde così l'avvio già confermato;
+- i quattro esiti non conclusivi derivano da risposte vuote oppure testo
+  aggiunto al JSON. Non sono successi: dopo l'avvio esplicito e nella prima
+  preferenza, anche la parte JSON non recupera il fatto disponibile;
+- già nella prima estrazione, il profilo attribuisce all'utente il nome del
+  progetto, una professione e uno stack tecnologico non dichiarati. Il
+  riepilogo del programma futuro aggiunge che il lavoro non è iniziato,
+  senza una dichiarazione che lo sostenga;
+- la correzione da risposte sintetiche a dettagliate viene conservata e
+  recuperata correttamente.
+
+I conteggi automatici non misurano tutti i contenuti non supportati dello
+store: gli elementi inventati nel profilo sono una constatazione manuale,
+non ulteriori fasi del benchmark. Questa prova non confronta il modello
+locale con il codice precedente e non consente di attribuire tutti i limiti
+alle modifiche della v0.6.1. Dimostra però che i risultati cloud non possono
+essere estesi al modello locale senza una verifica specifica. Il rilascio
+resta da rivalutare alla luce di questi risultati.
