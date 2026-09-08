@@ -20,6 +20,27 @@ from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
 from ares.state.stores import namespace_entita, namespace_utente
 
+# Queste istruzioni vanno all'estrattore, che vede anche le parole
+# dell'assistente: una proposta plausibile non deve diventare un fatto
+# dell'utente. Il prompt conversazionale da solo non governa questo passo.
+CRITERI_ESTRAZIONE = (
+    "Scrivi in italiano. Estrai solo informazioni sostenute dal testo, rispettando chi le ha dette. "
+    "Esempi, citazioni, ipotesi e giochi di ruolo non sono fatti sull'utente. "
+    "Le proposte dell'assistente non sono decisioni accettate: serve una conferma dell'utente. "
+    "Non trasformare una possibilita' in un fatto certo o una richiesta per il compito corrente "
+    "in una preferenza stabile. Conserva le qualifiche e l'incertezza espresse; "
+    "non aggiungere deduzioni non confermate. Una correzione esplicita sostituisce l'informazione "
+    "superata, senza lasciare entrambe come attuali; conserva gli altri fatti ancora validi. "
+    "Per ogni attivita' distingui valutazione, decisione, programma futuro, avvio e completamento. "
+    "'Ho deciso di realizzare X' conferma la decisione, non che l'utente stia gia' realizzando X. "
+    "'Comincero' domani' e' un programma, non un avvio avvenuto; il passare del tempo da solo "
+    "non conferma l'esecuzione. Se l'avvio non e' confermato, resta sconosciuto: non dedurre "
+    "nemmeno che l'attivita' non sia iniziata. Aggiorna lo stato solo con elementi che sostengono "
+    "il cambiamento. Se l'avvio e' gia' noto, ribadire la decisione o l'obiettivo non lo annulla: "
+    "conserva quel fatto salvo una rettifica esplicita. "
+    "La data in cui apprendi un evento non e' necessariamente la data in cui e' accaduto. "
+)
+
 
 class AresLearningMachine(LearningMachine):
     """Estrae apprendimenti soltanto quando il run e' davvero concluso.
@@ -108,8 +129,7 @@ class AresUserMemoryStore(UserMemoryStore):
         return (
             "<istruzioni_memorie>\n"
             "Le memorie sono osservazioni sulla persona con cui parli: abitudini, vincoli, "
-            "opinioni, cose provate e scartate. Si aggiornano da sole dopo ogni tua risposta, "
-            "e cio' che entra viene mostrato alla persona, che puo' annullarlo. "
+            "opinioni, cose provate e scartate. "
             "update_user_memory serve quando ti chiede esplicitamente di ricordare, correggere "
             "o dimenticare qualcosa, o quando una memoria che vedi qui sotto e' sbagliata o "
             "superata: descrivi a parole cosa aggiungere, cambiare o togliere, in italiano.\n"
@@ -147,18 +167,27 @@ class AresLearnedKnowledgeStore(LearnedKnowledgeStore):
     """
 
     def instructions(self) -> str:
-        if self.config.mode != LearningMode.AGENTIC or not self.config.enable_agent_tools:
+        # Agno restituisce le istruzioni AGENTIC anche con gli strumenti
+        # spenti. In -p riapparivano cosi' ordini di salvare e regole di team.
+        if not self.config.enable_agent_tools:
+            return ""
+        if self.config.mode != LearningMode.AGENTIC:
             return super().instructions()
         return (
             "<istruzioni_intuizioni>\n"
             "Le intuizioni sono criteri riutilizzabili imparati lavorando, cercabili per "
             "somiglianza. Non si aggiornano da sole. search_learnings(query) le cerca: usalo "
             "prima di rispondere a una domanda di metodo, di scelta o di convenzione, e sempre "
-            "prima di salvarne una, per non duplicarla. save_learning(title, learning, context, "
-            "tags) ne salva una: quando la persona lo chiede esplicitamente - ricorda, salva, "
+            "prima di salvarne una, per non duplicarla. Quando usi save_learning(title, learning, context, "
+            "tags), scrivi titolo, intuizione e contesto in italiano, anche se la risposta "
+            "richiesta e' in un'altra lingua; mantieni invariati nomi tecnici e identificativi. "
+            "Salva un criterio "
+            "quando la persona lo chiede esplicitamente - ricorda, salva, "
             "tieni a mente - o quando hai scoperto da solo qualcosa di non ovvio, riutilizzabile "
             "e abbastanza concreto da applicarsi. Non salvare fatti grezzi, preferenze della "
-            "persona - quelle sono memorie - o doppioni. Qui c'e' una persona sola: non esistono "
+            "persona - quelle sono memorie - o doppioni. Conserva il criterio e le condizioni "
+            "in cui vale, non la sola risposta al caso specifico; distingui una procedura "
+            "verificata da un'idea ancora da provare. Qui c'e' una persona sola: non esistono "
             "regole di squadra da conservare per altri.\n"
             "</istruzioni_intuizioni>"
         )
@@ -173,7 +202,11 @@ def build_session_context_store(db: SqliteDb, model: Ollama) -> AresSessionConte
             model=model,
             enable_planning=True,
             max_updates_per_run=config.MAX_UPDATES_PER_RUN,
-            instructions="Scrivi ogni campo in italiano, qualunque sia la lingua di questa istruzione.",
+            instructions=CRITERI_ESTRAZIONE + "Nel contesto di sessione distingui obiettivo, piano proposto, "
+            "decisioni accettate e avanzamento verificato. Un'azione tentata o fallita non e' completata. "
+            "Nel riepilogo descrivi un programma futuro come programma: non aggiungere 'non ancora "
+            "avviata' o 'non ha iniziato' se l'utente non lo ha dichiarato. In progress inserisci "
+            "solo avanzamenti sostenuti dal turno, non obiettivi o intenzioni.",
         )
     )
 
@@ -227,8 +260,7 @@ def build_learning_machine(
             model=learning_model,
             max_updates_per_run=config.MAX_UPDATES_PER_RUN,
             instructions=(
-                "Scrivi ogni campo in italiano, qualunque sia la lingua di questa istruzione. "
-                "Cattura solo cio' che resta vero oltre questa conversazione. "
+                CRITERI_ESTRAZIONE + "Cattura solo cio' che resta vero oltre questa conversazione. "
                 "Le preferenze durature e il contesto professionale vanno nel profilo; "
                 "cio' che l'utente vuole in questo momento no."
             ),
@@ -247,8 +279,7 @@ def build_learning_machine(
             max_updates_per_run=config.MAX_UPDATES_PER_RUN,
             enable_agent_tools=config.MEMORY_AGENT_TOOLS and strumenti,
             instructions=(
-                "Scrivi ogni memoria in italiano, qualunque sia la lingua di questa istruzione. "
-                "Registra osservazioni che non entrano in un campo strutturato: "
+                CRITERI_ESTRAZIONE + "Registra osservazioni che non entrano in un campo strutturato: "
                 "abitudini, vincoli, opinioni espresse, cose che l'utente ha provato "
                 "e scartato. Ogni memoria deve essere comprensibile da sola, senza "
                 "la conversazione che l'ha generata."

@@ -90,8 +90,9 @@ e la chat si ferma finché non è successo.
   `modifiche`, `piano`, `auto`, partizioni degli otto strumenti dello spazio
   di lavoro in `config.MODALITA` - l'elenco di ciò che gira in silenzio e di
   ciò che chiede conferma, e dice al modello in quale modalità è e cosa
-  comporta, dice a `ares -p` che nessuno
-  risponde e niente entra in memoria; spiega come funziona la memoria - quali
+  comporta, dice a `ares -p` che nessuno risponde e gli store non apprendono,
+  distinguendoli dalla cronologia archiviata e dal quaderno persistente;
+  spiega come funziona la memoria - quali
   archivi si aggiornano da soli e quali con gli strumenti, che l'utente vede
   e può annullare ciò che entra, come si rileggono i risultati grandi - e
   il quaderno privato, in italiano al posto del testo di Agno; poi compone

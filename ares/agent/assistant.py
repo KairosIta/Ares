@@ -18,6 +18,7 @@ from ares.agent.learning import (
 from ares.agent.prompts import (
     descrizione,
     istruzioni_dalla_cartella,
+    istruzioni_di_collaborazione,
     istruzioni_senza_terminale,
     istruzioni_sugli_strumenti,
     istruzioni_sul_quaderno,
@@ -71,10 +72,9 @@ def build_assistant(
     conversazioni della stessa cartella entrano nelle istruzioni per id,
     poche e dalla piu' recente.
 
-    `interattivo=False` e' `ares -p`: nessuno legge l'eco ne' risponde a una
-    conferma, quindi il turno non scrive in memoria - niente post-hook, niente
-    strumenti di memoria - e il modello lo sa dal prompt. Cio' che Ares sa
-    gia' entra nel contesto come sempre.
+    `interattivo=False` e' `ares -p`: niente post-hook ne' strumenti degli
+    store di apprendimento. Il contesto gia' appreso entra come sempre;
+    cronologia e quaderno restano persistenti, e il prompt lo distingue.
 
     `modo` e' una delle chiavi di `config.MODALITA`: decide quali strumenti
     dello spazio di lavoro girano da soli, quali chiedono e quali non ci
@@ -91,13 +91,14 @@ def build_assistant(
     precedenti: list = []
     if spazio is not None:
         metadata = {CHIAVE_CARTELLA: str(spazio.root)}
-        recenti = sessioni_della_cartella(db, user_id, spazio.root, escludi=session_id)
-        precedenti = [con_run(db, s) for s in recenti[: config.SESSIONI_RECENTI_NEL_PROMPT]]
+        if config.SEARCH_PAST_SESSIONS:
+            recenti = sessioni_della_cartella(db, user_id, spazio.root, escludi=session_id)
+            precedenti = [con_run(db, s) for s in recenti[: config.SESSIONI_RECENTI_NEL_PROMPT]]
 
     return Agent(
         name="Ares",
         add_name_to_context=True,
-        description=descrizione(),
+        description=descrizione(interattivo=interattivo),
         model=build_chat_model(),
         db=db,
         user_id=user_id,
@@ -111,24 +112,14 @@ def build_assistant(
                 session_id=session_id,
                 radice_lavoro=spazio.root if spazio is not None else None,
                 modo=modo,
+                interattivo=interattivo,
             ),
             *([] if interattivo else istruzioni_senza_terminale(spazio.root if spazio is not None else None, modo)),
-            "Rispondi in italiano, sempre, qualunque sia la lingua della domanda.",
-            "Adatta il livello di dettaglio a cio' che sai dell'utente: non "
-            "spiegare le basi di un ambito in cui e' gia' competente.",
-            "Quando una risposta dipende da qualcosa che l'utente ti ha detto "
-            "in passato, dillo esplicitamente. Vedere da dove viene una "
-            "risposta e' quello che rende la memoria affidabile.",
-            "Se non sai una cosa, dillo invece di ricostruirla per verosimiglianza.",
-            "Formatta le risposte in Markdown.",
-            *istruzioni_sulla_memoria(),
-            *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None, modo),
+            *istruzioni_di_collaborazione(interattivo=interattivo),
+            *istruzioni_sulla_memoria(interattivo=interattivo),
+            *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None, modo, interattivo=interattivo),
             *istruzioni_dalla_cartella(spazio.root if spazio is not None else None),
             *istruzioni_sulle_conversazioni(precedenti, cartella=spazio.root if spazio is not None else None),
-            "Quando salvi un'intuizione, scrivila in italiano, e salvala solo se "
-            "sara' utile in una conversazione futura su un argomento diverso. Una "
-            "risposta a una domanda specifica non e' un'intuizione; il criterio che "
-            "ha portato a quella risposta lo e'.",
             *istruzioni_sul_quaderno(),
         ],
         learning=build_learning_machine(db=db, knowledge=knowledge, user_id=user_id, strumenti=interattivo),

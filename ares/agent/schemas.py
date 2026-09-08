@@ -84,7 +84,14 @@ class AresProfile(UserProfile):
     )
     current_focus: str | None = field(
         default=None,
-        metadata={"description": "Su cosa l'utente sta lavorando in questo periodo"},
+        metadata={
+            "description": (
+                "Progetti e obiettivi attuali dell'utente, conservando lo stato dichiarato: "
+                "in valutazione, deciso, programmato o iniziato. Una decisione non implica "
+                "lavoro gia' in corso; un avvio sconosciuto non significa che il lavoro non "
+                "sia iniziato. Mantieni un avvio gia' confermato se viene solo ribadito l'obiettivo."
+            )
+        },
     )
 
 

@@ -4,6 +4,12 @@ La suite separa le verifiche offline dalle prove che richiedono Ollama. Ogni
 test reindirizza stato, backup e workspace verso directory temporanee, senza
 toccare i dati del clone in uso.
 
+La [valutazione semantica della memoria](memory-quality.md) è un comando
+separato dalle regressioni: usa i modelli reali su dialoghi fissi e conserva
+le prove dei verdetti. I suoi controlli offline sono registrati nel runner
+come `valutazione`; la misura con Ollama si avvia esplicitamente con
+`python -m evals.memory_quality`, anche quando si usa `tests/run.py --tutte`.
+
 ## Runner
 
 ```bash

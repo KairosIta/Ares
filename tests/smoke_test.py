@@ -814,7 +814,12 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
         esigi(inglese not in prompt, "il prompt contiene ancora la guida inglese di Agno: " + inglese)
     attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive"]
     if config.LEARN_KNOWLEDGE:
-        attesi += ["<istruzioni_intuizioni>", "search_learnings", "una persona sola"]
+        attesi += [
+            "<istruzioni_intuizioni>",
+            "search_learnings",
+            "una persona sola",
+            "titolo, intuizione e contesto in italiano",
+        ]
     if config.LEARN_ENTITIES:
         attesi += ["<istruzioni_entita>", "remember_about"]
     if config.LEARN_USER_MEMORY and config.MEMORY_AGENT_TOOLS:
@@ -914,18 +919,109 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
     )
     istruzioni = " ".join(t for t in muto.instructions if isinstance(t, str))
     esigi(
-        "ares -p" in istruzioni and "Niente di questo turno entra in memoria" in istruzioni,
+        "ares -p" in istruzioni and "L'apprendimento e' disattivato" in istruzioni,
         "il prompt non dice che e' -p",
     )
     for nome, _ in strumenti_spazio(config.liste_modalita(config.MODO_PREDEFINITO)[1]):
         esigi(nome in istruzioni, "il prompt di -p non nomina " + nome + " fra gli strumenti rifiutati")
     prompt = messaggio_di_sistema(muto, session_id=session_id + "-p", user_id=user_id)
     esigi("<user_memory>" in prompt or "<user_profile>" in prompt, "in -p il contesto di memoria non entra nel prompt")
+    for nome in scrittori | {"search_learnings", "search_entities"}:
+        esigi(nome not in prompt, "in -p il prompt ordina di usare uno strumento assente: " + nome)
+    esigi("CRITICAL RULES" not in prompt, "in -p riappare la guida inglese delle intuizioni")
+    esigi("Si aggiornano da soli" not in prompt, "in -p il prompt promette estrazione automatica")
+    esigi("write_file" in nomi and "quaderno resta persistente" in prompt, "in -p il quaderno e' descritto male")
     return (
         "senza post-hook e senza "
         + str(len(scrittori))
         + " strumenti di scrittura, con il contesto e l'avviso nel prompt"
     )
+
+
+def prompt_e_capacita() -> str:
+    """Il prompt composto non prescrive strumenti assenti, anche a flag spenti.
+
+    Ogni utente ha una conversazione precedente nella cartella: a store
+    vuoti il blocco storico non entra mai nel prompt e il flag spento
+    sembra rispettato anche se il modello riceverebbe un tool assente.
+    """
+    from contextlib import ExitStack
+
+    from agno.run.agent import RunOutput
+    from agno.run.base import RunContext
+    from agno.session.agent import AgentSession
+
+    from ares.agent.prompts import messaggio_di_sistema
+
+    opzionali = {
+        "update_user_memory",
+        "remember_about",
+        "link_entities",
+        "forget",
+        "search_entities",
+        "search_learnings",
+        "save_learning",
+        "search_past_sessions",
+        "read_past_session",
+        "get_chat_history",
+        "read_result",
+        "search_result",
+        *(nome for nome, _ in strumenti_spazio(["read", "list", "search", "write", "edit", "move", "delete", "shell"])),
+    }
+    flag = (
+        "LEARN_USER_PROFILE",
+        "LEARN_USER_MEMORY",
+        "LEARN_SESSION_CONTEXT",
+        "LEARN_ENTITIES",
+        "LEARN_KNOWLEDGE",
+        "MEMORY_AGENT_TOOLS",
+        "WORKSPACE",
+        "OFFLOAD_TOOL_RESULTS",
+        "SEARCH_PAST_SESSIONS",
+        "READ_CHAT_HISTORY",
+    )
+    casi = [(modo, interattivo, ()) for modo in config.MODALITA for interattivo in (True, False)]
+    casi += [("manuale", True, (nome,)) for nome in flag]
+    casi.append(("manuale", True, flag))
+    db = build_db()
+    for indice, (modo, interattivo, spenti) in enumerate(casi):
+        with ExitStack() as stack:
+            for nome in spenti:
+                stack.enter_context(patch.object(config, nome, False))
+            utente = "prompt-capacita-" + str(indice)
+            precedente = _sessione_finta(
+                "precedente-" + utente, 1234567890, "Decidiamo come organizzare il progetto.", utente
+            )
+            precedente.metadata = {"cartella": str(config.WORKSPACE_DIR.resolve())}
+            db.upsert_session(precedente)
+            agente = build_assistant(user_id=utente, session_id=utente, modo=modo, interattivo=interattivo)
+            prompt = messaggio_di_sistema(agente, session_id=utente, user_id=utente)
+            esigi(
+                (precedente.session_id in prompt) == (config.WORKSPACE and config.SEARCH_PAST_SESSIONS),
+                f"caso {indice}: il blocco delle conversazioni non segue la disponibilita' della ricerca",
+            )
+            voci = agente.get_tools(
+                run_response=RunOutput(run_id=utente),
+                run_context=RunContext(run_id=utente, user_id=utente, session_id=utente),
+                session=AgentSession(session_id=utente, user_id=utente),
+                user_id=utente,
+            )
+            disponibili = set()
+            for voce in voci:
+                if hasattr(voce, "functions"):
+                    disponibili.update(voce.functions)
+                else:
+                    disponibili.add(getattr(voce, "name", None) or getattr(voce, "__name__", ""))
+            for nome in opzionali - disponibili:
+                esigi(nome not in prompt, f"caso {indice} {modo}: istruzioni per {nome} assente")
+            esigi("CRITICAL RULES" not in prompt, f"caso {indice}: guida inglese di Agno")
+            if not interattivo:
+                esigi("Si aggiornano da soli" not in prompt, f"caso {indice}: estrazione promessa in -p")
+            if modo == "piano" and config.WORKSPACE:
+                esigi("Memoria e quaderno seguono le regole" in prompt, "piano promette sola lettura globale")
+            if not config.LEARN_KNOWLEDGE:
+                esigi("Le intuizioni sono indicizzate" not in prompt, "indice annunciato con flag spento")
+    return str(len(casi)) + " prompt composti coerenti con modalita', interattivita' e strumenti consegnati"
 
 
 def protezione_contesto(agent, user_id: str) -> str:
@@ -1881,6 +1977,7 @@ def main() -> int:
             ("prompt in italiano  ", lambda: prompt_in_italiano(agent, args.user, args.session)),
             ("modalita            ", modalita),
             ("colpo singolo       ", lambda: colpo_singolo(args.user, args.session)),
+            ("prompt e capacita'  ", prompt_e_capacita),
             ("protezione contesto ", lambda: protezione_contesto(agent, args.user)),
             ("spazio di lavoro    ", lambda: spazio_di_lavoro(agent, args.user)),
             ("tempo               ", lambda: tempo(agent, lm, args.user)),

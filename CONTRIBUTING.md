@@ -103,7 +103,7 @@ Il runner elenca le prove con `--help` e ne esegue una sola con
 Quelle con Ollama non girano in CI, e non è una dimenticanza: i runner di
 GitHub non hanno una GPU, e una suite che scarica un modello da 9 GB a ogni
 push non sarebbe una verifica ma un costo. La conseguenza però va accettata
-per intero: **tre prove su dieci esistono solo se qualcuno le lancia**, e
+per intero: **tre prove su undici esistono solo se qualcuno le lancia**, e
 nessuno se ne accorge se smette di farlo. Perciò, quando le esegui prima di
 un bump di Agno o di un rilascio, **scrivilo nella voce del CHANGELOG**, con
 la data e la versione di Agno su cui sono passate:
