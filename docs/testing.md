@@ -22,14 +22,22 @@ come `valutazione`; la misura con Ollama si avvia esplicitamente con
 `tests/run.py` non importa le prove: le lancia, una per processo. Non è una
 preferenza di stile. Ogni prova scrive `ARES_TMP` e `ARES_BACKUP_DIR` ed
 entra nella propria cartella di lavoro usa-e-getta **prima** di importare
-`config`, che quelle cose le legge una volta sola all'import e non le rilegge
-mai più. La cartella di lavoro non ha una variabile d'ambiente perché nel
-prodotto è la directory corrente, quella da cui si scrive `ares`: le prove
-fanno lo stesso gesto con `chdir`. Due prove nello
-stesso interprete condividerebbero il primo `config` importato — cioè i
-percorsi della prima — e il giorno in cui una sbagliasse variabile
-scriverebbe nell'archivio vero senza che nessuno se ne accorga. Un processo
-per prova rende quell'errore impossibile invece che improbabile.
+`config`, che all'import lega i propri nomi — `TMP_DIR`, `DB_FILE`,
+`BACKUP_DIR` e gli altri — ai percorsi letti in quell'istante. La cartella di
+lavoro non ha una variabile d'ambiente perché nel prodotto è la directory
+corrente, quella da cui si scrive `ares`: le prove fanno lo stesso gesto con
+`chdir`.
+
+Da `config.Percorsi` quei nomi non sono più decisi per sempre:
+`imposta_percorsi` li sostituisce tutti insieme a processo avviato, e una
+prova può quindi costruire i propri percorsi nello stesso interprete. Il
+processo separato resta comunque, perché la sostituzione riguarda i nomi e non
+ciò che li ha già letti: un lock aperto, uno store costruito, un percorso
+copiato in una variabile. Due prove nello stesso interprete condividerebbero
+il primo `config` importato — cioè i percorsi della prima — e il giorno in cui
+una sbagliasse variabile scriverebbe nell'archivio vero senza che nessuno se
+ne accorga. Un processo per prova rende quell'errore impossibile invece che
+improbabile.
 
 Quel gesto, e le poche righe che ogni prova ripeteva uguali, stanno in
 `tests/_comune.py`: `prepara_ambiente` sceglie i percorsi usa-e-getta e
@@ -65,13 +73,17 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura è intorno all'88%. `cli/chat.py` era il
+Con le sole prove offline la misura è intorno al 90%. `cli/chat.py` era il
 modulo più scoperto, al 61%, quando il turno conversazionale si attraversava
 solo con Ollama; da quando `chat turno` lo percorre con un `run_turn_cycle`
-finto è al 100%. I comandi locali che leggono gli archivi — `/profilo`,
+finto è al 92%. I comandi locali che leggono gli archivi — `/profilo`,
 `/memorie`, `/entita`, `/file`, `/cartella` — passano in `comandi su archivio`
-nello smoke, sul seme: `cli/commands.py` era al 76% ed è al 92%. Il meno
-coperto oggi è `cli/ui.py`, all'81%: i rami del terminale senza TTY.
+nello smoke, sul seme: `cli/commands.py` era al 76% ed è all'89%. Fra i moduli
+grandi il meno coperto resta `cli/ui.py`, all'83%: i rami del terminale senza
+TTY. La percentuale più bassa in assoluto è quella di `cli/comando.py`, al
+76%, e sono sei righe: i rami che traducono un'eccezione prevista nel codice
+d'uscita — stato occupato, rifiuto, guasto — che le prove provocano su alcuni
+comandi e non su ognuno.
 
 La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
 le prove ne lanciano parecchi — la CLI di `ares.entities` sei volte,
@@ -123,7 +135,7 @@ Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
 .venv/bin/python tests/run.py
 ```
 
-Sono sette. `smoke` costruisce l'agente e semina gli store, e controlla
+Sono otto. `smoke` costruisce l'agente e semina gli store, e controlla
 assemblaggio, isolamento, lock, propagazione simulata del run completo alla
 macchina di apprendimento e l'eco di ciò che entra in memoria. `repl` prova
 ciò che della chat gira senza l'agente: conferme lette e applicate, esito e
@@ -153,7 +165,15 @@ store di apprendimento sono spenti e si conta il passaggio, non ciò che
 scriverebbe; il terzo lo store lo costruisce davvero, perché lì la domanda è
 proprio se ha scritto.
 `backup` copre snapshot, checksum, restore e prune; `entita` l'audit e la
-fusione. `cli` prova i comandi con cui Ares si usa davvero: il preflight
+fusione. `valutazione` prova il benchmark della qualità della memoria senza
+accendere un modello: ventinove controlli sui verdetti — che una citazione
+negativa, ritagliata o contraddetta non passi, che un recupero pretenda
+un'evidenza durevole e non il contesto della sessione, che un dato inventato
+fallisca invece di restare non conclusivo — più l'isolamento degli archivi
+del worker e i guasti, cioè timeout, Ctrl+C e processo senza rapporto, che
+devono conservare le fasi già scritte. È la prova che il misuratore non
+produce successi senza prove, e gira in due decimi di secondo perché i
+dialoghi sono già scritti. `cli` prova i comandi con cui Ares si usa davvero: il preflight
 contro un server Ollama finto nei tre esiti, l'ispezione degli archivi, i
 sottocomandi di `ares.backup` con i loro annullamenti, la REPL intera in un
 processo separato con stdin da una pipe, e l'avvio senza `--session`: la
@@ -182,7 +202,7 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse sette prove, con la misura, sia su Ubuntu sia su
+La CI esegue le stesse otto prove, con la misura, sia su Ubuntu sia su
 Windows. Sul runner Windows l'ambiente nasce direttamente da
 `setup.ps1 -SkipPreflight`, così la CI verifica anche il percorso
 d'installazione senza richiedere Ollama; un secondo `uv sync --locked` sullo
