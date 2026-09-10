@@ -108,6 +108,90 @@ class QualitaMemoriaTest(unittest.TestCase):
                 mq.valuta(fase, risposta("iniziato", "confermato", testo), dopo, prima)["stato"], "superato"
             )
 
+    def test_avvio_citato_in_forma_equivalente_e_una_prova(self):
+        """La citazione che dice l'avvio senza dire "iniziato" sostiene il valore.
+
+        E' il testo che il modello ha prodotto davvero: la memoria unisce la
+        decisione e l'avvio in una frase, e la sonda cita la seconda meta'.
+        Prima della dichiarazione sulla fase questo usciva non conclusivo,
+        cioe' una risposta corretta con la sua citazione verbatim non contava
+        ne' come successo ne' come difetto.
+        """
+        durevole = (
+            "Ha deciso di realizzare ORIONE-42, il suo unico progetto personale attuale; "
+            "ha confermato l'avvio dei lavori."
+        )
+        citazione = "ha confermato l'avvio dei lavori"
+        for fase in mq.CASI["avvio"][2:]:
+            prima = memoria(
+                "Ha iniziato a lavorare a ORIONE-42." if fase.avvio_precedente else "Il progetto e' ORIONE-42."
+            )
+            with self.subTest(fase=fase.nome):
+                esito = mq.valuta(fase, risposta("iniziato", "confermato", citazione), memoria(durevole), prima)
+                self.assertEqual(esito["stato"], "superato")
+
+    def test_la_forma_equivalente_non_scavalca_le_altre_guardie(self):
+        """L'equivalenza dice come si puo' citare, non sostituisce le prove.
+
+        Restano da superare: la citazione deve stare negli store, il contesto
+        originale non deve negare, e tre parole sono il minimo perche' una
+        citazione sostenga da se'.
+        """
+        fase = mq.CASI["avvio"][2]
+        citazione = "ha confermato l'avvio dei lavori"
+        sonda = risposta("iniziato", "confermato", citazione)
+        prima = memoria("Il progetto e' ORIONE-42.")
+
+        # Non negli store: la sonda cita una frase che nessuno ha scritto.
+        self.assertEqual(
+            mq.valuta(fase, sonda, memoria("Ha deciso di realizzare ORIONE-42."), prima)["stato"], "non_conclusivo"
+        )
+        # Negata nel contesto originale.
+        for testo in (
+            "Non ha confermato l'avvio dei lavori.",
+            "Forse ha confermato l'avvio dei lavori.",
+            "Non e' vero che ha confermato l'avvio dei lavori.",
+        ):
+            with self.subTest(testo=testo):
+                self.assertEqual(mq.valuta(fase, sonda, memoria(testo), prima)["stato"], "da_revisionare")
+        # Troppo breve per sostenere da se'.
+        self.assertEqual(
+            mq.valuta(fase, risposta("iniziato", "confermato", "l'avvio"), memoria("Conferma l'avvio."), prima)[
+                "stato"
+            ],
+            "non_conclusivo",
+        )
+
+    def test_gli_altri_casi_continuano_a_pretendere_il_termine(self):
+        """L'equivalenza vale dove e' dichiarata, non per tutte le fasi.
+
+        `recupero` non dichiara nulla, quindi una citazione che parla del
+        dato senza contenerlo resta non conclusiva come prima: la correzione
+        non ha allentato la regola generale.
+        """
+        fase = mq.CASI["recupero"][0]
+        self.assertIsNone(fase.evidenza_equivalente)
+        testo = "Il progetto personale ha un nome in codice."
+        esito = mq.valuta(fase, risposta("AURORA-73", "confermato", testo), memoria(testo))
+        self.assertEqual(esito["stato"], "non_conclusivo")
+
+    def test_ogni_fase_di_ogni_caso_finisce_nel_rapporto(self):
+        """Il rapporto deve poter contenere qualunque fase dichiarata.
+
+        Il campo `evidenza_equivalente` e' un'espressione compilata, che
+        `json.dumps` non sa scrivere: senza conversione il worker moriva con
+        codice 1 mentre salvava, e non a fine caso ma alla prima fase che la
+        dichiarava - perdendo anche le fasi gia' misurate. Le prove sul
+        verdetto non lo vedevano, perche' non passano dal rapporto.
+        """
+        for nome, fasi in mq.CASI.items():
+            for fase in fasi:
+                with self.subTest(caso=nome, fase=fase.nome):
+                    dati = mq.dialogo_serializzabile(fase)
+                    json.dumps(dati)
+                    atteso = fase.evidenza_equivalente.pattern if fase.evidenza_equivalente else None
+                    self.assertEqual(dati["evidenza_equivalente"], atteso)
+
     def test_dato_inventato_fallisce(self):
         fase = mq.CASI["ipotesi"][0]
         esito = mq.valuta(fase, risposta("Milano", "confermato", "Milano"), {})

@@ -350,6 +350,131 @@ dei rapporti originali e del valutatore, i vecchi e nuovi conteggi e le
 valutazioni per fase. I rapporti storici e le tabelle precedenti restano
 invariati.
 
+## Correzione del legame valore-citazione, 10 settembre 2026
+
+Il valutatore chiedeva che la citazione contenesse il valore atteso alla
+lettera. Per il caso `avvio` il valore è `iniziato`, e una memoria che dice
+«ha confermato l'avvio dei lavori» lo sostiene senza contenerlo: la risposta
+usciva **non conclusiva** pur essendo corretta e pur citando verbatim lo
+store. La stessa frase era però già riconosciuta come prova d'avvio da
+`AVVIO_AFFERMATO`, che serve alla precondizione di `avvio_confermato`. Lo
+strumento si contraddiceva: prova per la precondizione, non prova per la
+citazione. È il limite annotato nel confronto dell'8 settembre («È un limite
+del controllo sulle citazioni»).
+
+La correzione non allenta la regola generale. Ogni fase dichiara come il
+proprio valore può essere citato, con il campo `evidenza_equivalente`, e solo
+le due fasi che attendono `iniziato` lo dichiarano, riusando l'espressione che
+il file già conteneva. Le altre diciassette fasi delle nove casistiche
+continuano a pretendere il termine. Restano intatte tutte le altre guardie: la citazione deve trovarsi
+verbatim negli store, il contesto originale non deve negare o dubitare, tre
+parole sono il minimo, e il valore non può comparire come frammento di
+un'altra parola. I testi su cui si cerca ambiguità sono ora quelli che
+sostengono il valore e non i soli che lo contengono alla lettera: con una
+forma equivalente quella lista restava vuota e la guardia non guardava nulla.
+
+Tre prove offline nuove coprono la modifica: che la forma equivalente conti
+come prova, che non scavalchi le altre guardie, e che i casi che non la
+dichiarano continuino a pretendere il termine. Mutando la correzione cadono
+cinque asserzioni.
+
+Una quarta prova nasce da un difetto che le prime tre non vedevano.
+L'espressione dichiarata è un oggetto compilato, e il rapporto la salva
+insieme al resto del dialogo: alla prima fase che la dichiarava il worker
+moriva con codice 1 mentre scriveva il JSON, perdendo anche le fasi già
+misurate. Le prove sul verdetto non passano dal rapporto, quindi restavano
+verdi. Il rapporto conserva ora il testo dell'espressione - è evidenza, e va
+riletta - e la prova nuova serializza ogni fase di ogni caso. I controlli del
+valutatore passano da 25 a **29**.
+
+### Rivalutazione dei rapporti salvati
+
+Come per le correzioni dell'8 settembre, i dieci rapporti già salvati sono
+stati rivalutati offline con il valutatore nuovo, per **116 fasi**. Nessuna
+nuova inferenza. Undici verdetti cambiano, tutti nella stessa direzione e
+tutti sulle fasi `iniziato` e `decisione_ribadita`; nessun `fallito` e nessun
+`da_revisionare` si muove, e nessun `superato` regredisce.
+
+| Misura | Fasi | Superate prima | Superate dopo | Non conclusive prima | Non conclusive dopo |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `avvio-finale-20260908` (cloud) | 12 | 8 | 12 | 4 | 0 |
+| `avvio-dopo-20260908` (cloud) | 12 | 5 | 11 | 7 | 1 |
+| `audit-20260910` (cloud) | 6 | 2 | 3 | 3 | 2 |
+| `v061-locale-20260908` (locale) | 6 | 1 | 1 | 4 | 4 |
+| Altri sei rapporti | 80 | 55 | 55 | 4 | 4 |
+| Totale | 116 | 71 | 82 | 22 | 11 |
+
+Il primo risultato è la verifica della correzione: la misura finale dell'8
+settembre passa a 12 fasi superate su 12, cioè il verdetto automatico
+raggiunge la lettura manuale che quel confronto aveva già registrato, invece
+di essere allineato a mano. Il rapporto locale della v0.6.1 resta **identico**:
+i suoi quattro esiti non conclusivi hanno un'altra causa, quindi il limite del
+modello locale non è stato toccato da questa modifica.
+
+Le undici fasi ancora non conclusive hanno due cause, entrambe della sonda e
+non della memoria:
+
+- **nove** perché il modello aggiunge prosa attorno al JSON, mentre `valuta`
+  lo accetta solo come blocco recintato e isolato;
+- **due** perché la citazione omette il punto finale che il renderer di Agno
+  mette prima della data: lo store dice «...ha confermato l'avvio dei
+  lavori. [2026-09-10]» e la sonda cita «...ha confermato l'avvio dei lavori
+  [2026-09-10]». Il controllo verbatim è la garanzia contro le citazioni
+  inventate e non è stato modificato per questo.
+
+Artefatto: `artifacts/memory-quality/equivalenza-rivalutazione-20260910.json`,
+con gli hash dei rapporti originali e del valutatore, i conteggi vecchi e
+nuovi e il verdetto per fase. I rapporti storici e le tabelle precedenti
+restano invariati.
+
+## Modello locale dopo la correzione, 10 settembre 2026
+
+Misura di registrazione, non un tentativo di correzione: gli stessi due casi
+dell'8 settembre, una ripetizione, timeout di 600 secondi per caso, con
+`hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0` nei due ruoli e Agno 3.0.5.
+Serve a separare ciò che è del codice da ciò che è del modello, ora che il
+valutatore non produce più falsi non conclusivi sull'avvio. Rapporto:
+`artifacts/memory-quality/locale-post-equivalenza-20260910.json`.
+
+| Caso | Fasi | Superate | Fallite | Non conclusive | Errori |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Avvio | 4 | 0 | 2 | 2 | 0 |
+| Correzione | 2 | 0 | 0 | 2 | 0 |
+| Totale | 6 | 0 | 2 | 4 | 0 |
+
+L'esito è peggiore del giro dell'8 settembre, che sugli stessi casi dava 1
+superata, 1 fallita e 4 non conclusive. Una ripetizione sola non stabilisce
+una tendenza - la variabilità del modello resta il limite dichiarato del
+protocollo - ma i due difetti già documentati si ripresentano, e il primo in
+forma più netta:
+
+- **contenuti non dichiarati nel profilo.** In tutte e quattro le fasi
+  dell'avvio il profilo attribuisce all'utente una professione
+  («Sviluppatore software») e uno stack di nove tecnologie («Python,
+  JavaScript, React, Node.js, Docker, Kubernetes, AWS, Git, Linux»). Il
+  dialogo sintetico non nomina nessuna delle due cose: parla solo di
+  ORIONE-42. Sono contenuti inventati che entrano in memoria durevole e
+  verrebbero reiniettati in ogni sessione futura. Come nelle misure
+  precedenti questa è una constatazione manuale sullo store, non una fase
+  del benchmark: i conteggi automatici non la vedono;
+- **l'avvio confermato non sopravvive alla decisione ribadita.**
+  `current_focus` arriva a `ORIONE-42: iniziato` dopo l'avvio esplicito e
+  torna a `ORIONE-42: deciso` quando la decisione viene ribadita. Le due fasi
+  escono **fallite**, non conclusive: la sonda non recupera un dato che era
+  confermato. È lo stesso comportamento descritto per l'8 settembre.
+
+Le due fasi della correzione, superate con i modelli cloud, qui restano non
+conclusive perché la citazione non è verificabile negli store, e il profilo
+resta `Unknown`: con questo modello l'estrazione non ha scritto nulla di
+utile su cui interrogare.
+
+Il confronto con la misura cloud dello stesso giorno - stesso codice, stessi
+dialoghi, stessi criteri - è quindi di 3 fasi superate su 6 contro 0 su 6. La
+conclusione dell'8 settembre resta valida e va rafforzata: **i risultati
+cloud non si estendono al modello locale di serie**, e la qualità della
+memoria con quel modello non è allo stato in cui la si possa dichiarare
+verificata.
+
 ## Limiti del protocollo
 
 La misura attuale isola estrazione e recupero su dialoghi brevi. Non copre
