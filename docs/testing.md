@@ -80,10 +80,21 @@ finto è al 92%. I comandi locali che leggono gli archivi — `/profilo`,
 `/memorie`, `/entita`, `/file`, `/cartella` — passano in `comandi su archivio`
 nello smoke, sul seme: `cli/commands.py` era al 76% ed è all'89%. Fra i moduli
 grandi il meno coperto resta `cli/ui.py`, all'83%: i rami del terminale senza
-TTY. La percentuale più bassa in assoluto è quella di `cli/comando.py`, al
-76%, e sono sei righe: i rami che traducono un'eccezione prevista nel codice
-d'uscita — stato occupato, rifiuto, guasto — che le prove provocano su alcuni
-comandi e non su ognuno.
+TTY. La percentuale più bassa in assoluto è quella di `cli/conferma.py`, al
+77%, e sono sei righe: la domanda posta con l'editor di Prompt Toolkit, che
+esiste solo quando stdin e stdout sono un terminale. Sotto misura non lo sono
+mai, e la prova passa dal ripiego `input()` — che è anche il modo in cui una
+conferma si dà da uno script.
+
+`cli/comando.py` era il caso opposto, al 76%: lì le sei righe scoperte erano
+la tabella dei codici d'uscita, cioè i rami che traducono un'eccezione
+prevista in 1, 2 o 3. Il 3 lo provocavano già `sessioni` ed `entita` con il
+lock; il 2 era asserito solo dove nasce da un `return` e non da un'eccezione,
+e il 1 da nessuna parte. Ora `sessioni` chiede la cancellazione di una
+sessione inesistente — un rifiuto che arriva come eccezione — e un prune con
+la directory dei backup occupata da un file, che è un guasto del disco e vale
+1; `cli` chiede uno snapshot con lo stato già preso. Il modulo è al 100%, e
+ognuno dei quattro codici ha una prova che lo produce per la sua strada.
 
 La misura segue anche i processi figli, e senza questo mentirebbe in difetto:
 le prove ne lanciano parecchi — la CLI di `ares.entities` sei volte,
@@ -164,8 +175,12 @@ Il modello è lo stesso copione deterministico. Nei primi due controlli gli
 store di apprendimento sono spenti e si conta il passaggio, non ciò che
 scriverebbe; il terzo lo store lo costruisce davvero, perché lì la domanda è
 proprio se ha scritto.
-`backup` copre snapshot, checksum, restore e prune; `entita` l'audit e la
-fusione. `valutazione` prova il benchmark della qualità della memoria senza
+`backup` copre snapshot, checksum, restore e prune, e insieme al protocollo
+della sonda LanceDB — simulato, per provare come il genitore traduce ciò che
+riceve — esegue anche la sonda vera con `-m ares.backup.probe`: è l'unico
+modo di sapere che il figlio dica davvero ciò che il genitore crede, e che il
+modulo sia ancora avviabile in un altro interprete. `entita` copre l'audit e
+la fusione. `valutazione` prova il benchmark della qualità della memoria senza
 accendere un modello: ventinove controlli sui verdetti — che una citazione
 negativa, ritagliata o contraddetta non passi, che un recupero pretenda
 un'evidenza durevole e non il contesto della sessione, che un dato inventato
@@ -202,10 +217,10 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse otto prove, con la misura, sia su Ubuntu sia su
-Windows. Sul runner Windows l'ambiente nasce direttamente da
-`setup.ps1 -SkipPreflight`, così la CI verifica anche il percorso
-d'installazione senza richiedere Ollama; un secondo `uv sync --locked` sullo
+La CI esegue le stesse otto prove, con la misura, su Ubuntu con Python 3.12
+e 3.13 e su Windows con la 3.12. Sul runner Windows l'ambiente nasce
+direttamente da `setup.ps1 -SkipPreflight`, così la CI verifica anche il
+percorso d'installazione senza richiedere Ollama; un secondo `uv sync --locked` sullo
 stesso venv aggiunge poi `coverage`, che lo script di proposito non installa.
 Misurare anche lì non è ridondante: i rami Windows di `backup` e
 `platform_files` esistono per quel sistema, e misurati solo su Ubuntu
@@ -228,10 +243,14 @@ I comandi mostrano il percorso Linux. Su Windows sostituisci
 
 ## CI
 
-GitHub Actions esegue due job. `Analisi statica` gira una volta su Ubuntu con
-ruff e mypy; `tests` installa le dipendenze bloccate, verifica lo script di
-setup, compila il codice e lancia `tests/run.py --copertura` su Ubuntu e
-Windows: la copertura di un progetto non dipende dal sistema, ma i rami
+GitHub Actions esegue due job, il secondo in tre varianti. `Analisi statica`
+gira una volta su Ubuntu con ruff e mypy; `tests` installa le dipendenze
+bloccate, verifica lo script di setup, compila il codice e lancia
+`tests/run.py --copertura` su Ubuntu con Python 3.12 e 3.13 e su Windows con
+la 3.12: la copertura di un progetto non dipende dal sistema, ma i rami
 Windows di `backup` e `platform_files` esistono per quel sistema e misurati
-solo su Ubuntu risultavano scoperti. Le prove con Ollama restano intenzionalmente locali perché
+solo su Ubuntu risultavano scoperti. La variante 3.13 è l'altro estremo di
+`requires-python` e non è fra i controlli obbligatori del ruleset: è un
+canarino sull'interprete, come CodeQL e `Audit` lo sono sul codice e sulle
+dipendenze. Le prove con Ollama restano intenzionalmente locali perché
 richiedono modelli e hardware dedicato.

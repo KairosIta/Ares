@@ -6,7 +6,58 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
-Niente ancora dopo la 0.6.1.
+Ciò che l'audit del 2026-09-10 ha trovato e che lasciava una traccia nel
+repository: due promesse senza una prova che le difendesse — la tabella dei
+codici d'uscita e il protocollo della sonda LanceDB — il vincolo su Python,
+che era l'unico `<` del `pyproject.toml` senza la ragione scritta accanto, e
+un parametro che nessun chiamante poteva usare.
+
+### Added
+
+- **I codici d'uscita 1 e 2 hanno una prova che li produce.** La tabella di
+  `cli/comando.py` — 0 fatto, 1 guasto, 2 rifiutato, 3 occupato — è il
+  contratto su cui uno script chiamante decide se riprovare o fermarsi, ed è
+  documentata in [Architettura](docs/architecture.md). Il 3 era già asserito
+  da `entita` e `sessioni` con il lock preso; il 2 solo dove nasce da un
+  `return`, mai dove arriva come eccezione; il 1 da nessuna parte. Ora
+  `sessioni` chiede la cancellazione di una sessione inesistente, che è un
+  rifiuto sollevato sotto il lock, e un prune con la directory dei backup
+  occupata da un file, che è un guasto del disco: la prova verifica il codice
+  e, soprattutto, che il prune si fermi prima di cancellare, perché lo
+  snapshot che non è riuscito era la rete. `cli` chiede uno snapshot con lo
+  stato già preso da un'altra finestra. `cli/comando.py` passa dal 76% al
+  100%.
+- **La sonda LanceDB viene eseguita davvero.** Il protocollo fra `integrity`
+  e `backup/probe.py` era provato con `subprocess.run` sostituito: dimostrava
+  come il genitore traduce ciò che riceve, non che il figlio dica davvero
+  quello. Ora `backup` lancia `-m ares.backup.probe` e verifica i tre esiti
+  veri — 2 per un uso sbagliato, 1 con il motivo su stderr per un archivio
+  che non si apre, `{}` per una directory assente — e poi la catena intera
+  senza niente di simulato. Se un giorno il modulo non fosse più avviabile in
+  un altro interprete, le prove con la sostituzione resterebbero verdi.
+  `backup/probe.py` passa dal 79% al 100%.
+- **Python 3.13 nella matrice della CI.** Su Ubuntu, accanto alla 3.12, con
+  le stesse otto prove e la stessa misura. Non è fra i controlli obbligatori
+  del ruleset, come CodeQL e `Audit` e per lo stesso motivo: è un canarino
+  sull'interprete, e ciò che trova va letto quando compare.
+
+### Changed
+
+- **`requires-python` diventa `>=3.12,<3.14`.** Era `<3.13`, ed era l'unico
+  vincolo del file senza il motivo accanto — proprio la regola che il
+  `pyproject.toml` enuncia per le dipendenze due righe più sotto. La verifica
+  ha detto che non c'era un motivo: su 3.13 le otto prove offline passano,
+  ruff e mypy non hanno rilievi, e rigenerare il lock per l'intervallo
+  allargato non cambia una sola versione risolta. Il pavimento resta 3.12,
+  che è ciò che `setup.sh`, `setup.ps1` e `.python-version` installano e su
+  cui mypy controlla i tipi; il tetto ora dice una cosa vera, cioè che la
+  3.14 non l'ha provata nessuno.
+- **`codice_di` perde il parametro `rifiuti`.** L'unico chiamante gli passava
+  sempre una tupla vuota, e `isinstance(errore, ())` è falso sempre: quel
+  ramo non poteva essere preso. Non era un caso d'uso da riempire — nel
+  backup un rifiuto non è mai un'eccezione, ma una risposta sbagliata alla
+  conferma, che la funzione traduce da sé. Chi ha rifiuti che arrivano come
+  eccezioni passa da `esegui_protetto`, che li nomina.
 
 ## [0.6.1] - 2026-09-10
 
