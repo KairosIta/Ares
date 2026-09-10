@@ -351,7 +351,7 @@ I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
 `.venv/bin/python` con `.\.venv\Scripts\python.exe`.
 
 ```bash
-# Le prove offline: cablaggio, retention, backup/restore, entità e CLI
+# Le prove offline: cablaggio, retention, backup/restore, entità, CLI e valutazione
 .venv/bin/python tests/run.py
 
 # Anche quelle che accendono Ollama, incluso un turno completo

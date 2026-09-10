@@ -29,6 +29,15 @@ principale sono verificati automaticamente su Ubuntu e Windows.
   precedente e non sparisca;
 - prove in-process: `config.imposta_percorsi` lo permette, il runner lancia
   ancora un processo per prova per l'isolamento che garantisce;
+- **sonda del benchmark robusta alla prosa attorno al JSON.** Dopo la
+  correzione del legame valore-citazione, delle undici fasi ancora non
+  conclusive nei rapporti salvati nove lo sono perché il modello accompagna
+  il JSON con una frase, e il valutatore lo accetta solo come blocco isolato.
+  Nove fasi su 116 non misurano quindi la memoria ma la forma della risposta.
+  Estrarre il primo oggetto JSON dal testo va deciso guardando cosa si perde:
+  una risposta che contraddice in prosa ciò che afferma nel JSON non è un
+  successo, e oggi quel caso esce non conclusivo invece che silenziosamente
+  superato;
 - profili di configurazione per hardware e finestre di contesto differenti;
 - benchmark ripetibili di latenza, VRAM e affidabilità degli store;
 - copertura automatica più ampia del percorso asincrono;

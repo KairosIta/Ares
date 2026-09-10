@@ -38,6 +38,14 @@ pacchetto che non corrisponde sia una futura dipendenza priva di hash. Un pin
 dice quale versione installare, un hash dice quale file: senza, la
 ripubblicazione di una versione già esistente su PyPI passerebbe inosservata.
 
+Versione bloccata e artefatto verificato non dicono però se quella versione
+*ha un avviso pubblicato*: è una domanda sul mondo, non sul lock. Il workflow
+`Audit` la fa a ogni push e pull request e una volta la settimana, esportando
+dall'`uv.lock` l'elenco esatto delle dipendenze — gruppo di sviluppo compreso
+— e confrontandolo con gli advisory noti. Come CodeQL resta fuori dai
+controlli obbligatori: ciò che trova va letto quando compare, e si corregge
+con un `uv lock` deciso leggendo l'avviso.
+
 Sono particolarmente rilevanti vulnerabilità che permettono:
 
 - accesso fuori dal workspace configurato;

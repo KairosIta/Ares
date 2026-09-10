@@ -1,0 +1,86 @@
+# Vulnerabilita' note nelle dipendenze
+# ====================================
+# `uv.lock` blocca versione e artefatto, e `uv sync --locked` verifica gli
+# hash: l'installazione e' riproducibile e non sostituibile. Nessuna delle due
+# cose dice pero' se la versione bloccata *ha un avviso pubblicato*. Dependabot
+# guarda se esiste una versione piu' nuova, CodeQL guarda il codice di Ares:
+# nessuno dei due legge gli advisory sull'albero che stiamo installando. E'
+# quello che fa questo workflow.
+#
+# Volutamente fuori dai controlli obbligatori del ruleset su `main`, come
+# CodeQL e per lo stesso motivo. Un avviso pubblicato e' una notizia sul mondo,
+# non una regressione del commit che lo incontra: pretenderlo verde prima di
+# ogni merge fermerebbe una PR di documentazione per una CVE in una
+# dipendenza transitiva, e un blocco del genere si impara ad aggirare. Cio'
+# che trova va letto quando compare, e la correzione e' un `uv lock` deciso
+# leggendo l'avviso.
+#
+# Non e' aggiunto a `ci.yml` perche' li' la sua utilita' vera - il giro
+# settimanale - avrebbe portato con se' anche prove e analisi statica: il
+# codice sta fermo, gli advisory no, e un file che nessuno tocca da settimane
+# puo' diventare vulnerabile senza un commit.
+
+name: Audit
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dipendenze:
+    name: Vulnerabilita' note
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Installa uv
+        run: python -m pip install --disable-pip-version-check uv==0.12.2
+
+      # L'elenco esatto che il lock impone, dipendenze diverse per sistema
+      # comprese, senza costruire il venv: qui non serve importare niente, e
+      # `--frozen` legge il lock invece di risolvere di nuovo. Il gruppo dev
+      # entra come in `uv sync`, percio' ruff, mypy e coverage sono auditati
+      # anche loro. `--no-emit-project` toglie `ares` stesso, che non sta su
+      # un indice e non ha advisory.
+      - name: Elenca le dipendenze bloccate
+        run: |
+          uv export --frozen --no-emit-project --no-hashes \
+            --format requirements-txt -o dipendenze.txt
+          grep -cE '^[a-zA-Z0-9]' dipendenze.txt
+
+      # `--no-deps` perche' l'elenco e' gia' risolto e completo: senza,
+      # pip-audit ririsolverebbe l'albero e potrebbe guardare versioni che qui
+      # non si installano. Lo strumento e' pinnato alla versione con cui il
+      # passo e' stato scritto, come le action: `uvx pip-audit` prenderebbe
+      # l'ultima pubblicata, e uno strumento che cambia da solo e' la stessa
+      # cosa da cui il lock ci difende.
+      #
+      # I due WARNING che consigliano gli hash sono attesi e non sono un
+      # difetto della configurazione: qui non si installa niente, si confronta
+      # un elenco di versioni con gli advisory, e un hash direbbe quale file
+      # scaricare. Gli hash servono a `uv sync --locked`, dove l'installazione
+      # avviene davvero, e li' ci sono.
+      - name: Cerca advisory pubblicati
+        run: uvx pip-audit@2.10.1 --progress-spinner off --no-deps -r dipendenze.txt

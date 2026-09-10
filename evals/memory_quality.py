@@ -39,6 +39,17 @@ class Fase:
     sessione: str = "apprendimento"
     memoria_precedente: tuple[str, ...] = ()
     avvio_precedente: str | None = None
+    # Come il valore atteso puo' essere citato, quando non lo si cita alla
+    # lettera. Il legame fra valore e citazione chiede di norma il termine
+    # esatto: e' cio' che impedisce di spacciare per prova una frase che parla
+    # d'altro. Per l'avvio quel termine non e' l'unico modo di dirlo - una
+    # memoria che riporta "ha confermato l'avvio dei lavori" sostiene il
+    # valore "iniziato" senza contenerlo - e senza questo campo una risposta
+    # corretta con la sua citazione verbatim restava non conclusiva. Va
+    # dichiarato sulla fase, non allentato per tutti: le altre diciassette fasi
+    # continuano a pretendere il termine, e la forma ammessa qui e' scritta
+    # accanto al caso invece di essere dedotta dal valutatore.
+    evidenza_equivalente: re.Pattern[str] | None = None
 
 
 # Le due traiettorie divergono solo all'inizio: una possibilita' puo' non
@@ -70,6 +81,19 @@ DOPO_ABBANDONO = (
 DOMANDA_AVVIO = (
     "Ho gia' iniziato a lavorare al mio progetto personale? Nel valore usa 'iniziato' se l'avvio "
     "e' confermato, 'non iniziato' se e' confermato che non ho iniziato, oppure null se non lo sai."
+)
+
+# Le forme con cui uno store dichiara un avvio avvenuto. Sta qui, sopra i
+# casi, perche' serve a due cose che devono restare d'accordo: la precondizione
+# di `avvio_confermato`, che chiede se l'avvio risulta dallo stato di prima, e
+# la citazione ammessa dalle fasi che attendono "iniziato". Quando le due
+# vivevano separate la stessa frase era prova per la prima e non per la
+# seconda, e una risposta corretta usciva non conclusiva.
+AVVIO_AFFERMATO = re.compile(
+    r"\bha\s+(?:(?:gia'|già|effettivamente)\s+)?iniziato\s+a\s+(?:lavorare|lavorarci|realizzare)\b"
+    r"|\bha\s+(?:iniziato|avviato)\s+(?:il\s+)?(?:lavoro|progetto|[a-z]+-\d+)\b"
+    r"|\bha\s+(?:confermato|dichiarato|comunicato)\s+l['’]avvio\s+(?:dei\s+lavori|del\s+lavoro|del\s+progetto)\b"
+    r"|\bha\s+(?:confermato|dichiarato|comunicato)\s+di\s+aver\s+iniziato\s+a\s+(?:lavorare|lavorarci|realizzare)\b"
 )
 
 
@@ -201,6 +225,7 @@ CASI = {
             ("iniziato",),
             sessione="lavoro",
             memoria_precedente=("ORIONE-42",),
+            evidenza_equivalente=AVVIO_AFFERMATO,
         ),
         Fase(
             "decisione_ribadita",
@@ -211,6 +236,7 @@ CASI = {
             sessione="conferma",
             memoria_precedente=("ORIONE-42",),
             avvio_precedente="ORIONE-42",
+            evidenza_equivalente=AVVIO_AFFERMATO,
         ),
     ),
 }
@@ -263,35 +289,48 @@ AMBIGUITA = re.compile(
     r"not|never|unknown|might|may|would)\b"
 )
 FUTURO_AVVIO = re.compile(r"\b(?:domani|pianificat\w*|programmat\w*|previst\w*|futur\w*|intenzion\w*)\b")
-AVVIO_AFFERMATO = re.compile(
-    r"\bha\s+(?:(?:gia'|già|effettivamente)\s+)?iniziato\s+a\s+(?:lavorare|lavorarci|realizzare)\b"
-    r"|\bha\s+(?:iniziato|avviato)\s+(?:il\s+)?(?:lavoro|progetto|[a-z]+-\d+)\b"
-    r"|\bha\s+(?:confermato|dichiarato|comunicato)\s+l['’]avvio\s+(?:dei\s+lavori|del\s+lavoro|del\s+progetto)\b"
-    r"|\bha\s+(?:confermato|dichiarato|comunicato)\s+di\s+aver\s+iniziato\s+a\s+(?:lavorare|lavorarci|realizzare)\b"
-)
 
 
 def contiene(testo: str, valore: str) -> bool:
     return re.search(r"(?<!\w)" + re.escape(valore) + r"(?!\w)", testo) is not None
 
 
+def cita_il_valore(testo: str, valore: str, equivalente: re.Pattern[str] | None, *, intero: bool = False) -> bool:
+    """Il testo sostiene il valore: lo contiene, o ne contiene la forma dichiarata.
+
+    `intero` distingue le due domande che si fanno alla stessa citazione. La
+    prima e' se il valore ci sia; la seconda, dopo aver risalito la memoria
+    originale, e' se ci sia come parola e non come pezzo di un'altra - il
+    valore "inizi" dentro "iniziativa" non prova niente. L'equivalenza
+    dichiarata e' la stessa in entrambe: e' un'espressione con i propri
+    confini di parola, quindi non ha bisogno della distinzione.
+    """
+    letterale = contiene(testo, valore) if intero else valore in testo
+    return letterale or bool(equivalente and equivalente.search(testo))
+
+
 def ambiguo(testo: str) -> bool:
     return bool(AMBIGUITA.search(testo) or "?" in testo)
 
 
-def problema_citazione(evidenza: str, valore: str, stato: dict) -> str | None:
+def problema_citazione(
+    evidenza: str, valore: str, stato: dict, equivalente: re.Pattern[str] | None = None
+) -> str | None:
     # Il controllo verbatim ha gia' verificato anche l'eventuale data del
     # renderer. Per risalire alla memoria originale togliamo solo quel suffisso.
     nucleo = re.sub(r"\s+\[\d{4}-\d{2}-\d{2}\]$", "", evidenza)
     originali = [normalizza(t) for t in contenuti_durevoli(stato)]
     if not any(nucleo in t for t in originali):
         return "La citazione non e' riconducibile a un contenuto originale dello store."
-    pertinenti = [t for t in originali if contiene(t, valore)]
+    # I testi su cui si cerca ambiguita' sono quelli che sostengono il valore,
+    # non i soli che lo contengono alla lettera: con una forma equivalente la
+    # lista restava vuota e la guardia sulle negazioni non guardava niente.
+    pertinenti = [t for t in originali if cita_il_valore(t, valore, equivalente, intero=True)]
     if any(ambiguo(t) for t in pertinenti):
         return "Il contesto originale del valore contiene negazioni, incertezza o domande."
     if len(re.findall(r"[\w]+(?:[-'][\w]+)*", nucleo)) < 3:
         return "La citazione e' troppo breve per sostenere da sola l'affermazione."
-    if not contiene(nucleo, valore):
+    if not cita_il_valore(nucleo, valore, equivalente, intero=True):
         return "Il valore compare solo come frammento di un'altra parola o identificativo."
     return None
 
@@ -316,6 +355,21 @@ def avvio_confermato(stato: dict, progetto: str) -> bool:
     return any(prove)
 
 
+def dialogo_serializzabile(fase: Fase) -> dict:
+    """La fase come dizionario, con l'equivalenza ammessa scritta per esteso.
+
+    `asdict` restituirebbe l'oggetto compilato di `evidenza_equivalente`, che
+    `json.dumps` non sa scrivere: il rapporto e' evidenza e deve contenere cio'
+    che la fase ha dichiarato, non un riferimento a un oggetto in memoria. Ne
+    conserviamo percio' il testo, che e' anche l'unica forma leggibile da chi
+    rilegge il rapporto.
+    """
+    dati = asdict(fase)
+    ammessa = dati.get("evidenza_equivalente")
+    dati["evidenza_equivalente"] = ammessa.pattern if ammessa is not None else None
+    return dati
+
+
 def valuta(fase: Fase, risposta: str, stato: dict, prima: dict | None = None) -> dict:
     """Un dato atteso senza evidenza non passa; citare un termine ambiguo non prova un errore."""
     try:
@@ -338,12 +392,16 @@ def valuta(fase: Fase, risposta: str, stato: dict, prima: dict | None = None) ->
         if dati["certezza"] != "confermato" or normalizza(valore or "") not in map(normalizza, fase.attesi):
             return {"stato": "fallito", "motivo": "Il dato confermato non viene recuperato correttamente."}
         evidenza = normalizza(dati["evidenza"] or "")
-        if not evidenza or evidenza not in testo or normalizza(valore) not in evidenza:
+        if (
+            not evidenza
+            or evidenza not in testo
+            or not cita_il_valore(evidenza, normalizza(valore), fase.evidenza_equivalente)
+        ):
             return {
                 "stato": "non_conclusivo",
                 "motivo": "La risposta attesa non ha una citazione verificabile negli store.",
             }
-        problema = problema_citazione(evidenza, normalizza(valore), stato)
+        problema = problema_citazione(evidenza, normalizza(valore), stato, fase.evidenza_equivalente)
     elif valore is not None or dati["certezza"] == "confermato":
         return {"stato": "fallito", "motivo": "La sonda restituisce un dato personale non confermato."}
     precedenti = normalizza(testi_durevoli(prima or {}))
@@ -522,7 +580,7 @@ def _worker(caso: str, risultato: Path) -> None:
         avvio = time.monotonic()
         voce: dict[str, Any] = {
             "nome": fase.nome,
-            "dialogo": asdict(fase),
+            "dialogo": dialogo_serializzabile(fase),
             "prima": fotografia(fase.sessione),
             "valutazione": {"stato": "errore", "motivo": "Fase interrotta prima del completamento."},
         }
