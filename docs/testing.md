@@ -179,8 +179,13 @@ proprio se ha scritto.
 della sonda LanceDB — simulato, per provare come il genitore traduce ciò che
 riceve — esegue anche la sonda vera con `-m ares.backup.probe`: è l'unico
 modo di sapere che il figlio dica davvero ciò che il genitore crede, e che il
-modulo sia ancora avviabile in un altro interprete. `entita` copre l'audit e
-la fusione. `valutazione` prova il benchmark della qualità della memoria senza
+modulo sia ancora avviabile in un altro interprete. Ciò che prova è ciò che
+il figlio decide da sé — l'uso sbagliato, la traduzione di un'eccezione in un
+codice e un messaggio — e non come fallisce LanceDB: la prima versione
+chiedeva alla sonda di aprire un file al posto di una directory e pretendeva
+un guasto, che su Linux arriva e su Windows no, dove il motore risponde con
+nessuna tabella. Lo ha trovato il runner Windows, ed è il motivo per cui la
+matrice esiste. `entita` copre l'audit e la fusione. `valutazione` prova il benchmark della qualità della memoria senza
 accendere un modello: ventinove controlli sui verdetti — che una citazione
 negativa, ritagliata o contraddetta non passi, che un recupero pretenda
 un'evidenza durevole e non il contesto della sessione, che un dato inventato

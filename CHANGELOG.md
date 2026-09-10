@@ -30,12 +30,21 @@ un parametro che nessun chiamante poteva usare.
 - **La sonda LanceDB viene eseguita davvero.** Il protocollo fra `integrity`
   e `backup/probe.py` era provato con `subprocess.run` sostituito: dimostrava
   come il genitore traduce ciò che riceve, non che il figlio dica davvero
-  quello. Ora `backup` lancia `-m ares.backup.probe` e verifica i tre esiti
-  veri — 2 per un uso sbagliato, 1 con il motivo su stderr per un archivio
-  che non si apre, `{}` per una directory assente — e poi la catena intera
-  senza niente di simulato. Se un giorno il modulo non fosse più avviabile in
-  un altro interprete, le prove con la sostituzione resterebbero verdi.
+  quello. Ora `backup` lancia `-m ares.backup.probe` e verifica ciò che il
+  figlio decide da sé: 2 per un uso sbagliato, `{}` e 0 per una directory
+  assente, e un'eccezione durante la lettura tradotta in 1 con il motivo su
+  stderr e stdout muto. Se un giorno il modulo non fosse più avviabile in un
+  altro interprete, le prove con la sostituzione resterebbero verdi.
   `backup/probe.py` passa dal 79% al 100%.
+
+  Come fallisce LanceDB resta invece fuori dalle asserzioni, e non per
+  pigrizia: la prima versione della prova chiedeva alla sonda di aprire un
+  file al posto di una directory e pretendeva un guasto. Su Linux arriva; su
+  Windows no, dove il motore risponde con nessuna tabella ed esce 0. L'ha
+  trovato il runner Windows in CI. La sicurezza non ci perde — un elenco
+  vuoto dove il manifest dichiara delle tabelle è una discordanza, e il
+  genitore la rifiuta lo stesso — ma un'asserzione sul comportamento del
+  motore nativo prova il motore, non Ares.
 - **Python 3.13 nella matrice della CI.** Su Ubuntu, accanto alla 3.12, con
   le stesse otto prove e la stessa misura. Non è fra i controlli obbligatori
   del ruleset, come CodeQL e `Audit` e per lo stesso motivo: è un canarino

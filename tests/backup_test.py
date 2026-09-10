@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from contextlib import closing, nullcontext, redirect_stdout
+from contextlib import closing, nullcontext, redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -27,7 +27,7 @@ from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 RADICE_PROVA = prepara_ambiente("backup-test")
 
 from ares import config  # noqa: E402
-from ares.backup import files, integrity, restore, snapshots  # noqa: E402
+from ares.backup import files, integrity, probe, restore, snapshots  # noqa: E402
 from ares.backup.snapshots import (  # noqa: E402
     ErroreBackup,
     _installa_restore_per_copia,
@@ -255,12 +255,21 @@ def prova_sonda_reale() -> None:
 
     `prova_errori_sonda` qui sopra dimostra come il genitore traduce cio' che
     riceve, ma glielo fa ricevere da un finto: prova la traduzione, non il
-    contratto. Che il figlio dica davvero cio' che il genitore crede - 2 per
-    un uso sbagliato, 1 e un messaggio su stderr per un archivio che non si
-    apre - si puo' sapere solo eseguendolo. E' anche l'unica parte del
-    backup che gira in un altro interprete: se un giorno il modulo non fosse
-    piu' avviabile con `-m`, tutte le prove con `subprocess.run` sostituito
-    resterebbero verdi.
+    contratto. Che il figlio dica davvero cio' che il genitore crede si puo'
+    sapere solo eseguendolo. E' anche l'unica parte del backup che gira in un
+    altro interprete: se un giorno il modulo non fosse piu' avviabile con
+    `-m`, tutte le prove con `subprocess.run` sostituito resterebbero verdi.
+
+    Cio' che il figlio decide da se' - l'uso sbagliato, la traduzione di
+    un'eccezione in un codice e un messaggio - si prova qui. Cio' che decide
+    LanceDB no, e non per pigrizia: la prima versione di questa prova
+    chiedeva alla sonda di aprire un file al posto di una directory e
+    pretendeva un guasto, che su Linux arriva e su Windows no - li' il
+    motore risponde con nessuna tabella e esce 0. La sicurezza non ci perde,
+    perche' un elenco vuoto dove il manifest dichiara delle tabelle e' una
+    discordanza e il genitore la rifiuta lo stesso; ma un'asserzione sul
+    comportamento del motore nativo prova il motore, non Ares, e cambia da
+    un sistema all'altro senza preavviso.
     """
 
     def sonda(*argomenti: str) -> subprocess.CompletedProcess[str]:
@@ -279,28 +288,36 @@ def prova_sonda_reale() -> None:
         "la sonda senza argomenti non spiega l'uso con 2: " + str(senza_percorso.returncode),
     )
 
-    # Un file dove il genitore si aspetta una directory: il guasto lo produce
-    # il motore nativo, e nessuno lo ha scritto a mano.
-    non_directory = RADICE_PROVA / "lancedb-che-e-un-file"
-    non_directory.write_text("un file dove ci si aspetta un archivio\n", encoding="utf-8")
-    illeggibile = sonda(str(non_directory))
-    esigi(
-        illeggibile.returncode == 1 and illeggibile.stderr.strip() != "",
-        "un archivio illeggibile non esce con 1 e un motivo: " + str(illeggibile.returncode),
-    )
-    esigi(illeggibile.stdout.strip() == "", "la sonda fallita ha stampato comunque qualcosa su stdout")
-
-    # E la catena intera, senza patch: il genitore riconosce il figlio vero.
-    esigi_errore(lambda: integrity.conta_tabelle_lancedb(non_directory), "sonda LanceDB fallita")
+    due_percorsi = sonda("uno", "due")
+    esigi(due_percorsi.returncode == 2, "due percorsi accettati invece di rifiutati con 2")
 
     # Una directory che non esiste non e' un guasto: LanceDB risponde con
     # nessuna tabella. Vale la pena fissarlo, perche' e' cio' che distingue
-    # uno snapshot senza indice da uno con l'indice rotto.
+    # uno snapshot senza indice da uno con l'indice rotto, e perche' e' una
+    # delle poche risposte del motore uguali sui due sistemi.
     assente = sonda(str(RADICE_PROVA / "lancedb-che-non-esiste"))
     esigi(
         assente.returncode == 0 and assente.stdout.strip() == "{}",
         "una directory assente non produce un elenco vuoto: " + assente.stdout + assente.stderr,
     )
+
+    # Il ramo che resta: un'eccezione qualunque durante la lettura diventa 1,
+    # il messaggio su stderr e stdout muto. Qui l'eccezione la si mette a
+    # mano, perche' e' il codice del figlio a essere in prova e non il modo
+    # in cui LanceDB fallisce. In processo, cosi' l'errore e' quello scelto.
+    async def non_si_apre(_percorso: Path) -> dict[str, int]:
+        raise RuntimeError("frammento illeggibile")
+
+    uscita, errori = io.StringIO(), io.StringIO()
+    with (
+        patch.object(probe, "conta_tabelle", non_si_apre),
+        redirect_stdout(uscita),
+        redirect_stderr(errori),
+    ):
+        codice = probe.main([str(RADICE_PROVA)])
+    esigi(codice == 1, "un guasto della lettura non vale 1, ma " + str(codice))
+    esigi("frammento illeggibile" in errori.getvalue(), "la sonda non riporta il motivo su stderr")
+    esigi(uscita.getvalue().strip() == "", "la sonda fallita ha stampato comunque qualcosa su stdout")
 
 
 def prova_rollback_copia() -> None:
@@ -610,7 +627,7 @@ def main() -> int:
         ok("protocollo sonda", "exit code e JSON validati, ordine normalizzato")
 
         prova_sonda_reale()
-        ok("sonda reale", "il figlio eseguito davvero: 2, 1 con motivo, e l'elenco vuoto")
+        ok("sonda reale", "il figlio eseguito davvero: uso sbagliato, elenco vuoto e guasto tradotto")
 
         pubblicazione_staging = RADICE_PROVA / "pubblicazione-staging"
         pubblicazione_finale = RADICE_PROVA / "pubblicazione-finale"
