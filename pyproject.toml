@@ -13,7 +13,17 @@ version = "0.6.1"
 description = "Assistente personale locale su Agno e Ollama"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
+
+# Il pavimento e' la versione che `setup.sh`, `setup.ps1` e `.python-version`
+# installano, ed e' quella su cui mypy controlla i tipi: cio' che si scrive
+# deve valere anche li'. Il tetto obbedisce alla stessa regola delle
+# dipendenze qui sotto - un `<` solo dove c'e' un motivo, e scritto accanto -
+# e il motivo e' che 3.14 non e' provata da nessuno. 3.13 lo e': la CI la
+# esegue su Ubuntu accanto alla 3.12, e allargare il vincolo non ha cambiato
+# una sola versione risolta nel lock. Un tetto senza una ragione scritta
+# resta li' finche' qualcuno non trova il coraggio di toglierlo; questo si
+# alza quando la 3.14 diventa verde.
 
 # Ogni riga e' un pacchetto che questo progetto importa davvero, con il motivo
 # per cui c'e'. Tutto il resto (numpy, pyarrow, httpx, pydantic...) arriva per

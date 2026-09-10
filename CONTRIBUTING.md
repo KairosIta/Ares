@@ -5,7 +5,8 @@ verificabili e motivate da un rischio o da un comportamento osservato.
 
 ## Ambiente
 
-Servono Python 3.12, `uv` e Ollama. Dopo aver scaricato i modelli indicati nel
+Servono Python 3.12 — la versione che gli script di setup installano — o
+3.13, `uv` e Ollama. Dopo aver scaricato i modelli indicati nel
 README, prepara l’ambiente su Linux con:
 
 ```bash

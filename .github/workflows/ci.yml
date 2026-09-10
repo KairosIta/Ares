@@ -58,17 +58,35 @@ jobs:
         run: ./.venv/bin/python -m mypy .
 
   tests:
-    name: Python 3.12 · ${{ matrix.os }}
+    # Il nome porta la versione perche' ora ce n'e' piu' d'una, e resta
+    # identico a prima dove la versione e' 3.12: i due check richiesti dal
+    # ruleset si chiamano ancora "Python 3.12 · ubuntu-24.04" e
+    # "Python 3.12 · windows-latest", e un nome cambiato li avrebbe fatti
+    # risultare mancanti su ogni PR.
+    name: Python ${{ matrix.py }} · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
     strategy:
       fail-fast: false
+      # 3.12 e' la versione che setup installa e che entrambi i sistemi
+      # provano; 3.13 e' l'altro estremo di `requires-python`, e senza un
+      # giro qui quel vincolo direbbe una cosa che nessuno ha verificato.
+      # Su Ubuntu soltanto: cio' che cambia fra 3.12 e 3.13 e' l'interprete,
+      # non il sistema, e le differenze fra i due sistemi le trova gia' la
+      # riga di sopra. E' un canarino, non una guardia: la 3.13 non e' fra i
+      # controlli obbligatori del ruleset, come CodeQL e Audit e per lo
+      # stesso motivo - se un giorno diventa rossa va letta, non aggirata.
       matrix:
         include:
           - os: ubuntu-24.04
+            py: "3.12"
+            python: ./.venv/bin/python
+          - os: ubuntu-24.04
+            py: "3.13"
             python: ./.venv/bin/python
           - os: windows-latest
+            py: "3.12"
             python: ./.venv/Scripts/python.exe
 
     env:
@@ -83,7 +101,7 @@ jobs:
       - name: Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.py }}
 
       - name: Installa uv
         run: python -m pip install --disable-pip-version-check uv==0.12.2
