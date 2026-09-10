@@ -37,13 +37,20 @@ ESITO_RIFIUTO = 2
 ESITO_OCCUPATO = 3
 
 
-def codice_di(errore: BaseException, *, rifiuti: tuple[type[BaseException], ...]) -> int:
-    """Il codice per un'eccezione prevista: occupato, rifiuto o guasto."""
-    if isinstance(errore, StatoOccupato):
-        return ESITO_OCCUPATO
-    if isinstance(errore, rifiuti):
-        return ESITO_RIFIUTO
-    return ESITO_GUASTO
+def codice_di(errore: BaseException) -> int:
+    """Il codice di un'eccezione gia' riconosciuta come prevista: occupato o guasto.
+
+    Il rifiuto non passa di qui. C'era un parametro `rifiuti` per dire quali
+    eccezioni valessero 2, e l'unico chiamante - il contorno del backup - gli
+    ha sempre passato una tupla vuota: `isinstance(errore, ())` e' falso
+    sempre, quindi quel ramo non poteva essere preso. Non e' una svista da
+    riempire con un caso d'uso: nel backup un rifiuto non e' mai
+    un'eccezione. Un restore o un prune annullati sono una risposta scritta
+    male alla conferma, e la funzione che l'ha letta restituisce
+    `ESITO_RIFIUTO` da se'. Chi invece ha rifiuti che arrivano come eccezioni
+    - sessions, entities - passa da `esegui_protetto`, che li nomina.
+    """
+    return ESITO_OCCUPATO if isinstance(errore, StatoOccupato) else ESITO_GUASTO
 
 
 def esegui_protetto(

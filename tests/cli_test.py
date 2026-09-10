@@ -52,7 +52,7 @@ from ares.backup import snapshots  # noqa: E402
 from ares.cli import chat  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
-from ares.state.lock import StatoOccupato  # noqa: E402
+from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
 
 UTENTE = "prova-cli"
 SESSIONE = "cli"
@@ -352,6 +352,17 @@ def backup_cli(_archivio: Path) -> str:
     esigi(esito == 1, "verify di uno snapshot inesistente non e' uscito con 1")
     esigi("ERRORE:" in testo, "verify non spiega perche' ha rifiutato")
 
+    # L'altra meta' della tabella di `cli/comando.py`: uno stato occupato non
+    # e' un guasto. Uno script che riceve 3 puo' riprovare fra un minuto, uno
+    # che riceve 1 no, e la differenza la decide `codice_di`. Il lock
+    # condiviso qui e' la chat aperta di un'altra finestra.
+    quanti = len(snapshots.elenco_snapshot())
+    with lock_stato(esclusivo=False):
+        esito, testo = comando("create")
+    esigi(esito == 3, "un create con lo stato occupato non e' uscito con 3, ma con " + str(esito))
+    esigi("ERRORE:" in testo, "il create bloccato non dice perche'")
+    esigi(len(snapshots.elenco_snapshot()) == quanti, "un create bloccato ha creato uno snapshot")
+
     # La conferma sbagliata non e' un errore: e' un annullamento, e ha un
     # codice suo perche' uno script deve poterlo distinguere da un guasto.
     esito, testo = comando("restore", primo, risposta="qualcos-altro")
@@ -380,7 +391,7 @@ def backup_cli(_archivio: Path) -> str:
     esigi(esito == 0, "prune non riuscito: " + testo)
     esigi(len(snapshots.elenco_snapshot()) == 1, "prune non ha conservato esattamente uno snapshot")
     esigi("Eliminati " + str(prima - 1) in testo, "prune non riporta quanti ne ha eliminati")
-    return "create, list, verify, restore, prune con annullamenti e codici distinti"
+    return "create, list, verify, restore, prune con annullamenti e i codici 0, 1, 2 e 3"
 
 
 def inspect_learning_cli() -> str:
