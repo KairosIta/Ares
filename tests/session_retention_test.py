@@ -120,11 +120,19 @@ def imposta_ultimo_uso(db, session_id: str, timestamp: int) -> None:
         )
 
 
-def esegui_cli(*argomenti: str) -> subprocess.CompletedProcess[str]:
+def esegui_cli(*argomenti: str, ambiente: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """La CLI delle sessioni in un processo suo, con l'ambiente della prova.
+
+    `ambiente` sovrascrive qualche variabile per una chiamata sola: serve a
+    provare un guasto del disco - la directory dei backup che non si puo'
+    creare - senza rompere l'archivio per le chiamate successive.
+    """
+    variabili = os.environ.copy()
+    variabili.update(ambiente or {})
     return subprocess.run(
         [sys.executable, "-m", "ares.sessions", *argomenti],
         cwd=config.BASE_DIR,
-        env=os.environ.copy(),
+        env=variabili,
         capture_output=True,
         text=True,
         timeout=180,
@@ -245,7 +253,44 @@ def main() -> int:
             "prune bloccato ha scritto",
         )
         esigi(not elenco_snapshot(), "prune bloccato ha creato uno snapshot")
-        ok("guardie CLI", "delete protetta esplicita, --yes vincolato e lock esclusivo")
+
+        # Un rifiuto che arriva come eccezione, non come `return`: `--yes` da
+        # solo lo decide la firma del comando, un id inesistente lo scopre
+        # `trova_sessione` sotto il lock. Sono due strade diverse per lo
+        # stesso 2, e finora era provata solo la prima.
+        inesistente = esegui_cli("delete", "sessione-che-non-esiste", "--user", UTENTE)
+        esigi(
+            inesistente.returncode == 2 and "Rifiutato:" in inesistente.stderr,
+            "un id inesistente non esce con 2: " + str(inesistente.returncode) + " " + inesistente.stderr,
+        )
+
+        # Un guasto, che e' un'altra cosa ancora: la directory dei backup e'
+        # in realta' un file, quindi lo snapshot che precede ogni
+        # cancellazione non si puo' creare. Vale 1 e non 3, perche' riprovare
+        # non serve finche' quel file sta li'. Cio' che conta oltre al codice
+        # e' la riga dopo: il prune si ferma prima di cancellare. Lo snapshot
+        # e' la rete, e senza rete non si salta.
+        non_directory = RADICE_PROVA / "backup-non-e-una-directory"
+        non_directory.write_text("un file dove ci si aspetta una cartella\n", encoding="utf-8")
+        guasta = esegui_cli(
+            "prune",
+            "--user",
+            UTENTE,
+            "--older-than",
+            "180",
+            "--apply",
+            "--yes",
+            ambiente={"ARES_BACKUP_DIR": str(non_directory)},
+        )
+        esigi(
+            guasta.returncode == 1 and "ERRORE:" in guasta.stderr,
+            "un backup impossibile non esce con 1: " + str(guasta.returncode) + " " + guasta.stderr,
+        )
+        esigi(
+            principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None,
+            "il prune ha cancellato senza essere riuscito a fare lo snapshot",
+        )
+        ok("guardie CLI", "delete protetta, --yes vincolato, e i codici 1, 2 e 3 dal contorno comune")
 
         applicazione = esegui_cli("prune", "--user", UTENTE, "--older-than", "180", "--apply", "--yes")
         esigi(applicazione.returncode == 0, "prune fallito: " + applicazione.stderr + applicazione.stdout)

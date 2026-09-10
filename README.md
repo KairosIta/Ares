@@ -2,7 +2,7 @@
 
 ![Ares — Local-first AI agent](docs/assets/ares-social-preview.png)
 
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.12 | 3.13](https://img.shields.io/badge/Python-3.12%20%7C%203.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/runtime-Ollama-white.svg)](https://ollama.com/)
 [![Agno 3.0.5](https://img.shields.io/badge/framework-Agno%203.0.5-6C5CE7.svg)](https://www.agno.com/)
 [![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4C8BF5.svg)](#requisiti)
@@ -91,7 +91,8 @@ chiamarne gli strumenti.
 ## Requisiti
 
 - Linux o Windows; la CI verifica Ubuntu 24.04 e `windows-latest`;
-- Python 3.12, installabile automaticamente da `uv`;
+- Python 3.12 o 3.13; `setup.sh` e `setup.ps1` installano la 3.12 con `uv`,
+  che è quella provata su entrambi i sistemi;
 - [`uv`](https://docs.astral.sh/uv/);
 - [Ollama](https://ollama.com/) in ascolto su `localhost:11434`;
 - spazio sufficiente per i modelli configurati.

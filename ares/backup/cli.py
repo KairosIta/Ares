@@ -72,7 +72,7 @@ def _protetto(funzione):
             return funzione(*argomenti, **opzioni)
         except (integrity.ErroreBackup, StatoOccupato, OSError) as errore:
             UI.err("ERRORE: " + str(errore))
-            return codice_di(errore, rifiuti=())
+            return codice_di(errore)
 
     return involucro
 
