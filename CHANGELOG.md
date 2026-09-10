@@ -6,12 +6,34 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
-Verifica locale del 2026-09-08 su Agno 3.0.5: `tests/run.py --tutte`
-supera 10 suite su 11 con `hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0`
-in entrambi i ruoli; `intuizioni` fallisce sulla lingua salvata. La misura
-mirata della memoria ha 1 fase superata, 1 fallita e 4 non conclusive.
-La CI è verde su Ubuntu e Windows, ma i controlli locali di rilascio non
-sono superati. Evidenze e limiti in [Qualità della memoria](docs/memory-quality.md).
+Niente ancora dopo la 0.6.1.
+
+## [0.6.1] - 2026-09-10
+
+Verifica locale del 2026-09-10 su Agno 3.0.5: `tests/run.py --tutte` supera
+11 suite su 11 in 131,6 s, con `glm-5.3-flash:cloud` come modello
+conversazionale, `gemma4:31b-cloud` per l'apprendimento e l'embedder locale.
+`ruff check`, `ruff format --check` e `mypy` non hanno rilievi; le prove
+offline misurano il 90% fra righe e rami. La CI è verde su Ubuntu e Windows.
+
+Il giro dell'8 settembre ne superava 10 su 11: con
+`hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0` in entrambi i ruoli,
+`intuizioni` falliva sulla lingua dell'intuizione salvata. Fra i due giri non
+c'è un commit di codice - solo documentazione - quindi quel fallimento è del
+modello locale, non del percorso di salvataggio: vale come limite del modello
+scelto e va riprovato quando cambia, non come difetto aperto di questa
+versione.
+
+Resta invece dichiarato, e rimisurato il 10 settembre, il limite della
+qualità della memoria con il modello locale di serie. Sugli stessi due casi e
+con lo stesso codice: **3 fasi superate su 6 con i modelli cloud, 0 su 6 con
+`hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0` nei due ruoli**. Con quel
+modello il profilo attribuisce all'utente una professione e uno stack che il
+dialogo non nomina, e l'avvio già confermato non sopravvive a una decisione
+ribadita. Il rapporto locale dell'8 settembre, rivalutato con il valutatore
+corretto di questa versione, dà verdetti identici: il limite è del modello e
+non dello strumento. Una ripetizione non stabilisce una tendenza. Evidenze,
+tabelle e limiti in [Qualità della memoria](docs/memory-quality.md).
 
 ### Added
 
@@ -23,8 +45,17 @@ sono superati. Evidenze e limiti in [Qualità della memoria](docs/memory-quality
   evidenze, modelli e hash dei sorgenti. I controlli sulle citazioni leggono
   le voci originali; le prove di aggiornamento richiedono il ricordo
   precedente pertinente. Timeout e Ctrl+C conservano i risultati parziali.
-  La suite offline `valutazione` comprende 25 controlli. Protocollo, misure
+  La suite offline `valutazione` comprende 29 controlli. Protocollo, misure
   e limiti sono in [Qualità della memoria](docs/memory-quality.md).
+- **Ricerca degli advisory sulle dipendenze bloccate.** Il workflow `Audit`
+  esporta dall'`uv.lock` l'elenco esatto delle dipendenze, gruppo di sviluppo
+  compreso, e lo confronta con le vulnerabilità note, a ogni push e pull
+  request e il lunedì mattina. Versione bloccata e hash verificato non dicono
+  se quella versione ha un avviso pubblicato, e né Dependabot né CodeQL
+  rispondono a quella domanda. Come CodeQL resta fuori dai controlli
+  obbligatori: un avviso è una notizia sul mondo, non una regressione del
+  commit che lo incontra. Alla prima esecuzione: nessuna vulnerabilità nota
+  su 66 pacchetti.
 
 ### Fixed
 
@@ -37,6 +68,20 @@ sono superati. Evidenze e limiti in [Qualità della memoria](docs/memory-quality
   store assenti. La ricerca nelle sessioni precedenti rispetta il proprio
   flag. Le intuizioni mantengono titolo, contenuto e contesto in italiano
   anche quando la conversazione è in un'altra lingua.
+- **Il valutatore non scarta più una citazione corretta dell'avvio.** Il
+  legame fra valore atteso e citazione pretendeva il termine alla lettera,
+  mentre una memoria che dice «ha confermato l'avvio dei lavori» sostiene il
+  valore `iniziato` senza contenerlo: la risposta usciva non conclusiva pur
+  citando verbatim lo store, e la stessa frase era già riconosciuta come
+  prova d'avvio dalla precondizione. Ogni fase dichiara ora la forma ammessa
+  per il proprio valore; le altre diciassette fasi continuano a pretendere il
+  termine, e verbatim, ambiguità, lunghezza minima e frammento restano
+  invariati. Rivalutati offline i dieci rapporti salvati, 116 fasi: cambiano
+  undici verdetti, tutti da non conclusivo a superato sulle due fasi
+  interessate, e la misura cloud dell'8 settembre passa a 12 superate su 12,
+  raggiungendo la lettura manuale già registrata. Il rapporto salva il testo
+  dell'espressione dichiarata: era un oggetto compilato e il worker moriva
+  scrivendo il JSON, perdendo le fasi già misurate.
 
 ### Changed
 
@@ -822,7 +867,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/KairosIta/Ares/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/KairosIta/Ares/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/KairosIta/Ares/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/KairosIta/Ares/compare/v0.3.1...v0.4.0
