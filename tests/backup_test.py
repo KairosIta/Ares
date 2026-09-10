@@ -250,6 +250,59 @@ def prova_errori_sonda() -> None:
         )
 
 
+def prova_sonda_reale() -> None:
+    """Il figlio vero, con niente di sostituito.
+
+    `prova_errori_sonda` qui sopra dimostra come il genitore traduce cio' che
+    riceve, ma glielo fa ricevere da un finto: prova la traduzione, non il
+    contratto. Che il figlio dica davvero cio' che il genitore crede - 2 per
+    un uso sbagliato, 1 e un messaggio su stderr per un archivio che non si
+    apre - si puo' sapere solo eseguendolo. E' anche l'unica parte del
+    backup che gira in un altro interprete: se un giorno il modulo non fosse
+    piu' avviabile con `-m`, tutte le prove con `subprocess.run` sostituito
+    resterebbero verdi.
+    """
+
+    def sonda(*argomenti: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "ares.backup.probe", *argomenti],
+            cwd=config.BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    senza_percorso = sonda()
+    esigi(
+        senza_percorso.returncode == 2 and "uso:" in senza_percorso.stderr,
+        "la sonda senza argomenti non spiega l'uso con 2: " + str(senza_percorso.returncode),
+    )
+
+    # Un file dove il genitore si aspetta una directory: il guasto lo produce
+    # il motore nativo, e nessuno lo ha scritto a mano.
+    non_directory = RADICE_PROVA / "lancedb-che-e-un-file"
+    non_directory.write_text("un file dove ci si aspetta un archivio\n", encoding="utf-8")
+    illeggibile = sonda(str(non_directory))
+    esigi(
+        illeggibile.returncode == 1 and illeggibile.stderr.strip() != "",
+        "un archivio illeggibile non esce con 1 e un motivo: " + str(illeggibile.returncode),
+    )
+    esigi(illeggibile.stdout.strip() == "", "la sonda fallita ha stampato comunque qualcosa su stdout")
+
+    # E la catena intera, senza patch: il genitore riconosce il figlio vero.
+    esigi_errore(lambda: integrity.conta_tabelle_lancedb(non_directory), "sonda LanceDB fallita")
+
+    # Una directory che non esiste non e' un guasto: LanceDB risponde con
+    # nessuna tabella. Vale la pena fissarlo, perche' e' cio' che distingue
+    # uno snapshot senza indice da uno con l'indice rotto.
+    assente = sonda(str(RADICE_PROVA / "lancedb-che-non-esiste"))
+    esigi(
+        assente.returncode == 0 and assente.stdout.strip() == "{}",
+        "una directory assente non produce un elenco vuoto: " + assente.stdout + assente.stderr,
+    )
+
+
 def prova_rollback_copia() -> None:
     """Il fallback a copia ripristina il vecchio stato, e segnala un doppio guasto."""
     copia_vera = shutil.copytree
@@ -555,6 +608,9 @@ def main() -> int:
 
         prova_errori_sonda()
         ok("protocollo sonda", "exit code e JSON validati, ordine normalizzato")
+
+        prova_sonda_reale()
+        ok("sonda reale", "il figlio eseguito davvero: 2, 1 con motivo, e l'elenco vuoto")
 
         pubblicazione_staging = RADICE_PROVA / "pubblicazione-staging"
         pubblicazione_finale = RADICE_PROVA / "pubblicazione-finale"
