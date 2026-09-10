@@ -29,3 +29,7 @@ Thumbs.db
 
 # Rapporti locali del benchmark con dialoghi sintetici.
 /artifacts/memory-quality/
+
+# L'elenco che `uv export` genera per l'audit delle dipendenze: si rigenera
+# dal lock a ogni giro e non va tenuto allineato a mano.
+/dipendenze.txt
