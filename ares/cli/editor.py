@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application.current import get_app
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
@@ -220,6 +221,7 @@ ARES_INPUT_STYLE = Style.from_dict(
         "completion-menu.meta.completion": "bg:#202020 #9a9a9a",
         "completion-menu.meta.completion.current": "bg:#6d3b32 #f4d4ce",
         "bottom-toolbar": "noreverse ansibrightblack",
+        "bottom-toolbar.stato": "noreverse #69ddea",
     }
 )
 
@@ -313,11 +315,16 @@ class CliInput:
         output: Output | None = None,
         fallback_input: Callable[[str], str] = builtins.input,
         argomenti: Mapping[str, Candidati] | None = None,
+        stato: Callable[[], str] | None = None,
     ) -> None:
         if interactive is None:
             interactive = bool(sys.stdin.isatty() and sys.stdout.isatty())
         self.interactive = interactive
         self.fallback_input = fallback_input
+        # Cosa scrivere a sinistra nella barra sotto il prompt: modalita',
+        # sessione, finestra. Si chiama a ogni ridisegno, cosi' dopo `/modo`
+        # o un turno la barra e' gia' aggiornata.
+        self._stato = stato
         self.history_warning: str | None = None
         try:
             self.history: History = CronologiaSicura(cronologia_file, cronologia_righe)
@@ -365,14 +372,29 @@ class CliInput:
     def _messaggio() -> StyleAndTextTuples:
         return [("class:prompt.user", "Tu"), ("class:prompt.marker", " › ")]
 
-    @staticmethod
-    def _strumenti() -> StyleAndTextTuples:
-        return [
-            (
-                "class:bottom-toolbar",
-                " Invio invia · Alt+Invio va a capo · / comandi · ↑↓ cronologia · Ctrl-C svuota · Ctrl-D esce ",
-            )
-        ]
+    TASTI = "Invio invia · Alt+Invio va a capo · / comandi · ↑↓ cronologia · Ctrl-C svuota · Ctrl-D esce"
+    TASTI_BREVI = "/ comandi · Ctrl-C svuota · Ctrl-D esce"
+
+    def _barra(self) -> StyleAndTextTuples:
+        """La barra in basso: lo stato a sinistra, i tasti a destra finche' ci stanno.
+
+        Su un terminale stretto i tasti si accorciano e poi spariscono: lo
+        stato e' cio' che cambia, i tasti sono nel banner.
+        """
+        stato = self._stato() if self._stato is not None else ""
+        if not stato:
+            return [("class:bottom-toolbar", " " + self.TASTI + " ")]
+        try:
+            larghezza = get_app().output.get_size().columns
+        except Exception:
+            larghezza = 80
+        frammenti: StyleAndTextTuples = [("class:bottom-toolbar.stato", " " + stato)]
+        for tasti in (self.TASTI, self.TASTI_BREVI):
+            if len(stato) + len(tasti) + 5 <= larghezza:
+                frammenti.append(("class:bottom-toolbar", "   " + tasti))
+                break
+        frammenti.append(("class:bottom-toolbar", " "))
+        return frammenti
 
     def prompt(self) -> str:
         if self._sessione is None:
@@ -385,7 +407,7 @@ class CliInput:
         return self._sessione.prompt(
             self._messaggio(),
             placeholder="Scrivi ad Ares oppure / per i comandi",
-            bottom_toolbar=self._strumenti,
+            bottom_toolbar=self._barra,
         )
 
     def ask(self, etichetta: str, *, muted: bool = False) -> str:

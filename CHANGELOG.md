@@ -79,6 +79,43 @@ un parametro che nessun chiamante poteva usare.
 
 ### Changed
 
+- **`ares --help` mette prima ciò che si usa.** I comandi erano in ordine
+  alfabetico e `resume` era settimo; ora vengono `resume` e `init`, poi la
+  manutenzione nell'ordine in cui la si incontra. La riga sotto l'uso non è
+  più una frase sola: è il docstring della chat, con la descrizione e sette
+  esempi, perché l'App radice non ha più un `help` proprio e Cyclopts mostra
+  quello del comando di default. I flag spenti non dicono più `[default:
+  False]`, in nessun comando: gli altri default restano, perché `--modo
+  manuale` e `--keep 20` sono informazioni.
+- **La barra sotto il prompt dice modalità, sessione e finestra occupata.**
+  Prima era l'elenco fisso dei tasti; ora a sinistra c'è lo stato, che si
+  aggiorna da sé dopo `/modo`, `/sessione` e ogni turno, e la finestra in
+  percentuale è quella dell'ultimo turno, così non serve accendere
+  `/metriche` per sapere quanto contesto resta. I tasti stanno a destra
+  finché ci stanno, poi si accorciano, poi restano nel banner.
+- **`/modo` è una tabella.** Le righe erano composte a mano e a cento
+  colonne quella di `piano` si spezzava dentro l'elenco degli strumenti
+  assenti; la lista degli otto strumenti era scritta una seconda volta nel
+  comando, e ora viene da `config.MODALITA`, dalla modalità che li ha tutti.
+- **Il banner parla italiano:** "assistente locale" al posto dell'unica
+  frase inglese dell'interfaccia.
+- **La tabella dei comandi della REPL ha i nomi dei campi.** `COMANDI` era
+  una tupla di tuple letta per indice — `voce[0]`, `voce[1]`, `voce[3]` — e
+  `risolvi_comando` restituiva `tuple`; ora è una tupla di `Comando`, un
+  NamedTuple con nome, alias, descrizione e funzione, e le firme dicono cosa
+  restituiscono. `StatoChat.agent` è un `Agent`, non `Any`, e ha un campo
+  `finestra` per la barra.
+- **`chat` e `resume` condividono le opzioni.** Le cinque comuni — utente,
+  cartella, modalità, debug, metriche — erano ripetute con le stesse
+  docstring; ora sono un dataclass `OpzioniChat` che Cyclopts appiattisce
+  nell'aiuto, indistinguibile da prima per chi legge.
+- **`mostra_evento` è una tabella, non venti `elif`.** Sei eventi aprono
+  un'attesa con la loro etichetta, cinque la chiudono, nove hanno un'azione
+  propria: tre dizionari al posto della catena, con lo stesso comportamento
+  provato dalle stesse prove.
+- **`cli/chat.py` non riesporta più venti nomi** di `render`, `commands` e
+  `log` per compatibilità delle prove: le prove importano dai moduli veri.
+
 - **Ctrl-C al prompt svuota la riga invece di chiudere la chat.** Chiudere
   per un riflesso, con un messaggio lungo a metà, costava il messaggio. Ora
   la riga finisce in cronologia — la freccia in su la riporta — e il prompt

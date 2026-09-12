@@ -321,6 +321,8 @@ modalità, `/sessione ` le conversazioni di questa cartella. Invio spedisce il
 messaggio, `Alt+Invio` aggiunge una nuova riga, `Ctrl-C` svuota la riga
 lasciandola in cronologia, `Ctrl-D` chiude come `/esci`; le frecce
 percorrono la cronologia e i suggerimenti riprendono le domande precedenti.
+La barra sotto il prompt dice modalità, sessione e, dopo il primo turno,
+quanta finestra di contesto è occupata.
 Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`, `/sessioni`,
 `/entita`, `/file` e `/cartella`, che mostra percorso, ramo, file modificati
 e se c'è un `ARES.md`. Quattro cambiano la sessione in corso senza

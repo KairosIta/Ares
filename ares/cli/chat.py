@@ -51,29 +51,10 @@ from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_OCCUPATO, ESITO_RIFIUTO
-from ares.cli.commands import (
-    COMANDI,
-    StatoChat,
-    candidati_argomento,
-    gestisci_comando,
-    nomi_comandi,
-    risolvi_comando,
-    stampa_aiuto,
-)
+from ares.cli.commands import COMANDI, StatoChat, candidati_argomento, gestisci_comando
 from ares.cli.editor import CliInput
-from ares.cli.log import AGNO_LOGGER_NAMES, configura_log_agno
-from ares.cli.render import (
-    anteprima_risultato,
-    chiedi_conferme,
-    finestra_occupata,
-    mostra_evento,
-    mostra_flusso,
-    righe_argomento,
-    righe_esito,
-    righe_metriche,
-    righe_richiesta,
-    righe_scrittura,
-)
+from ares.cli.log import configura_log_agno
+from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
 from ares.cli.ui import UI
 from ares.ops import migrazione
 from ares.state.archivi import build_db
@@ -81,29 +62,20 @@ from ares.state.git import ramo_git
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
 
-__all__ = (
-    "AGNO_LOGGER_NAMES",
-    "COMANDI",
-    "StatoChat",
-    "anteprima_risultato",
-    "avvia",
-    "chiedi_conferme",
-    "configura_log_agno",
-    "esegui_turno",
-    "finestra_occupata",
-    "gestisci_comando",
-    "main",
-    "mostra_evento",
-    "mostra_flusso",
-    "nomi_comandi",
-    "righe_argomento",
-    "righe_esito",
-    "righe_metriche",
-    "righe_richiesta",
-    "righe_scrittura",
-    "risolvi_comando",
-    "stampa_aiuto",
-)
+
+def riga_stato(stato: StatoChat) -> str:
+    """Cio' che la barra sotto il prompt dice: modalita', sessione e finestra occupata.
+
+    La finestra e' quella dell'ultimo turno, in percentuale: e' il numero
+    che dice quanto resta prima che il contesto si riempia, e leggerlo
+    sotto il prompt e' meglio che accendere `/metriche` per vederlo. Manca
+    finche' non c'e' stato un turno.
+    """
+    pezzi = [stato.modo, stato.session_id]
+    quota = quota_finestra(stato.finestra or 0)
+    if quota:
+        pezzi.append("finestra " + quota)
+    return " · ".join(pezzi)
 
 
 def _turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
@@ -394,10 +366,11 @@ def _apri_chat(
         return _colpo_singolo(stato, prompt)
 
     input_cli = CliInput(
-        comandi=[(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI],
+        comandi=[(voce.nome, voce.descrizione) for voce in COMANDI],
         cronologia_file=config.CRONOLOGIA_FILE,
         cronologia_righe=config.CRONOLOGIA_RIGHE,
         argomenti=candidati_argomento(stato),
+        stato=lambda: riga_stato(stato),
     )
     if input_cli.history_warning:
         UI.line(
@@ -471,9 +444,11 @@ def _apri_chat(
             continue
 
         risposta = esegui_turno(stato.agent, testo, input_cli)
-        if stato.metriche and risposta is not None:
-            for riga in righe_metriche(risposta):
-                UI.metrics(riga)
+        if risposta is not None:
+            stato.finestra = finestra_occupata(risposta) or stato.finestra
+            if stato.metriche:
+                for riga in righe_metriche(risposta):
+                    UI.metrics(riga)
         UI.blank()
 
     UI.line("A presto.", style="ares.title")

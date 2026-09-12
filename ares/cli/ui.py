@@ -582,7 +582,7 @@ class CliRenderer:
         dati.add_row(_testo("sessione", "ares.muted"), _testo(sessione, "ares.text"))
         dati.add_row(_testo("utente", "ares.muted"), _testo(utente, "ares.text"))
         corpo = Group(
-            Text.assemble(("ARES", "ares.title"), ("  " + ares.__version__ + "  local-first AI agent", "ares.muted")),
+            Text.assemble(("ARES", "ares.title"), ("  " + ares.__version__ + "  assistente locale", "ares.muted")),
             Text(""),
             dati,
             Text(""),
@@ -600,7 +600,8 @@ class CliRenderer:
             )
         )
 
-    def help(self, comandi: Sequence[tuple]) -> None:
+    def help(self, comandi: Iterable[tuple[str, str]]) -> None:
+        """L'elenco dei comandi della REPL: nome e descrizione, senza gli alias."""
         tabella = Table(
             box=box.SIMPLE,
             show_header=False,
@@ -609,7 +610,7 @@ class CliRenderer:
         )
         tabella.add_column(style="ares.cyan", no_wrap=True)
         tabella.add_column(style="ares.text")
-        for nome, _alias, descrizione, _funzione in comandi:
+        for nome, descrizione in comandi:
             tabella.add_row(_testo(nome, "ares.cyan"), _testo(descrizione, "ares.text"))
         self.heading("Comandi")
         self.console.print(tabella)

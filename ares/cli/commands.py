@@ -4,8 +4,9 @@ import difflib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import NamedTuple
 
+from agno.agent import Agent
 from agno.db.base import SessionType
 
 from ares import config
@@ -36,12 +37,27 @@ class StatoChat:
     mutabile, e' il modo piu' corto di dirlo.
     """
 
-    agent: Any
+    agent: Agent
     session_id: str
     user_id: str
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
+    # Token del prompt dell'ultimo turno, per la barra sotto il prompt: la
+    # scrive il ciclo della chat, la legge la barra a ogni ridisegno.
+    finestra: int | None = None
+
+
+class Comando(NamedTuple):
+    """Una voce della tabella: il nome canonico, gli alias, l'aiuto e la funzione.
+
+    La funzione riceve lo stato e l'argomento; `False` chiude la sessione.
+    """
+
+    nome: str
+    alias: tuple[str, ...]
+    descrizione: str
+    funzione: Callable[[StatoChat, str], bool | None]
 
 
 # ---------------------------------------------------------------------------
@@ -58,23 +74,28 @@ class StatoChat:
 # Chi restituisce False chiude la sessione. Gli altri non restituiscono niente.
 
 
-def _comando_aiuto(stato: StatoChat, argomento: str):
+def _comando_aiuto(stato: StatoChat, argomento: str) -> None:
     stampa_aiuto()
 
 
-def _comando_profilo(stato: StatoChat, argomento: str):
-    stampa_store(stato.agent.learning_machine.user_profile_store, "Profilo", user_id=stato.user_id)
+def _store(stato: StatoChat, nome: str) -> object | None:
+    """Uno store della LearningMachine, o None se manca lei o manca lui: `stampa_store` lo dice."""
+    return getattr(stato.agent.learning_machine, nome, None)
 
 
-def _comando_memorie(stato: StatoChat, argomento: str):
-    stampa_store(stato.agent.learning_machine.user_memory_store, "Memorie", user_id=stato.user_id)
+def _comando_profilo(stato: StatoChat, argomento: str) -> None:
+    stampa_store(_store(stato, "user_profile_store"), "Profilo", user_id=stato.user_id)
 
 
-def _comando_contesto(stato: StatoChat, argomento: str):
-    stampa_store(stato.agent.learning_machine.session_context_store, "Contesto", session_id=stato.session_id)
+def _comando_memorie(stato: StatoChat, argomento: str) -> None:
+    stampa_store(_store(stato, "user_memory_store"), "Memorie", user_id=stato.user_id)
 
 
-def _comando_sessioni(stato: StatoChat, argomento: str):
+def _comando_contesto(stato: StatoChat, argomento: str) -> None:
+    stampa_store(_store(stato, "session_context_store"), "Contesto", session_id=stato.session_id)
+
+
+def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
     """Le conversazioni di questa cartella; `tutte` allarga a ogni cartella.
 
     Le sessioni nate altrove restano fuori dall'elenco normale perche' sono
@@ -119,7 +140,7 @@ def _comando_sessioni(stato: StatoChat, argomento: str):
         )
 
 
-def _comando_sessione(stato: StatoChat, argomento: str):
+def _comando_sessione(stato: StatoChat, argomento: str) -> None:
     """Mostra la sessione corrente o passa a un'altra senza riavviare.
 
     Passare vuol dire ricostruire l'agente: la sessione e' fissata alla sua
@@ -155,23 +176,30 @@ def _comando_sessione(stato: StatoChat, argomento: str):
         UI.line("Il contesto e' quello di questa sessione; profilo e memorie non cambiano.", style="ares.muted")
 
 
-def _comando_modo(stato: StatoChat, argomento: str):
+def _comando_modo(stato: StatoChat, argomento: str) -> None:
     """Mostra la modalita' corrente o ne sceglie un'altra, ricostruendo l'agente sulla stessa sessione.
 
     Le liste degli strumenti sono fissate alla costruzione dello spazio di
     lavoro, e il prompt le descrive: cambiare modalita' vuol dire rifare
     l'agente, che costa un decimo di secondo e non tocca la sessione.
     """
-    alias = ("read", "list", "search", "write", "edit", "move", "delete", "shell")
     if not argomento:
+        # Gli otto strumenti sono quelli che `auto` lascia liberi: e' l'unica
+        # modalita' che li ha tutti, e la lista non va scritta due volte.
+        tutti = config.MODALITA["auto"][0]
         UI.pair("Modalita' corrente", stato.modo)
+        righe = []
         for nome, (silenziosi, confermati) in config.MODALITA.items():
-            nascosti = [a for a in alias if a not in silenziosi and a not in confermati]
-            riga = "  " + nome.ljust(10) + " da soli: " + ", ".join(silenziosi)
-            riga += "; con conferma: " + (", ".join(confermati) or "niente")
-            if nascosti:
-                riga += "; assenti: " + ", ".join(nascosti)
-            UI.line(riga, style="ares.muted")
+            assenti = [a for a in tutti if a not in silenziosi and a not in confermati]
+            righe.append(
+                (
+                    nome + ("  (questa)" if nome == stato.modo else ""),
+                    ", ".join(silenziosi),
+                    ", ".join(confermati) or "niente",
+                    ", ".join(assenti) or "nessuno",
+                )
+            )
+        UI.table(("modalita'", "da soli", "con conferma", "assenti"), righe)
         UI.line("/modo <nome> cambia; auto non si sceglie da qui ma con `ares --modo auto`.", style="ares.muted")
         return
     nome = argomento.split()[0]
@@ -192,7 +220,7 @@ def _comando_modo(stato: StatoChat, argomento: str):
     UI.line("Stessa sessione, strumenti e prompt della modalita' nuova.", style="ares.muted")
 
 
-def _comando_debug(stato: StatoChat, argomento: str):
+def _comando_debug(stato: StatoChat, argomento: str) -> None:
     """Accende o spegne le chiamate al modello a schermo, per il resto della sessione."""
     stato.debug = not stato.debug
     # Le due leve che `--debug` muove all'avvio: il livello dei log di Agno e
@@ -204,7 +232,7 @@ def _comando_debug(stato: StatoChat, argomento: str):
     UI.pair("Debug", "acceso" if stato.debug else "spento", style="ares.title" if stato.debug else "ares.muted")
 
 
-def _comando_metriche(stato: StatoChat, argomento: str):
+def _comando_metriche(stato: StatoChat, argomento: str) -> None:
     """Accende o spegne la riga del costo sotto ogni risposta."""
     stato.metriche = not stato.metriche
     stile = "ares.title" if stato.metriche else "ares.muted"
@@ -213,7 +241,7 @@ def _comando_metriche(stato: StatoChat, argomento: str):
         UI.line("Sotto ogni risposta: finestra occupata, token, secondi.", style="ares.muted")
 
 
-def _comando_entita(stato: StatoChat, argomento: str):
+def _comando_entita(stato: StatoChat, argomento: str) -> None:
     UI.heading("Entita'")
     entita = leggi_entita(stato.agent.learning_machine, user_id=stato.user_id, query=argomento)
     if not entita:
@@ -232,7 +260,7 @@ def _comando_entita(stato: StatoChat, argomento: str):
             UI.line(riga)
 
 
-def _comando_file(stato: StatoChat, argomento: str):
+def _comando_file(stato: StatoChat, argomento: str) -> None:
     UI.heading("Quaderno privato")
     fs = build_filesystem(stato.user_id)
     elenco = fs.list()
@@ -242,7 +270,7 @@ def _comando_file(stato: StatoChat, argomento: str):
     UI.table(("file", ("byte", "ares.text", "right")), ((str(f.path), byte_leggibili(f.size_bytes)) for f in elenco))
 
 
-def _comando_cartella(stato: StatoChat, argomento: str):
+def _comando_cartella(stato: StatoChat, argomento: str) -> None:
     """Dove Ares sta lavorando, e in che stato e' il progetto.
 
     Serve prima di dire si' a un comando shell: il percorso, il ramo, quanti
@@ -278,7 +306,7 @@ def _comando_cartella(stato: StatoChat, argomento: str):
         UI.line("attenzione: la cartella " + motivo, style="ares.warning")
 
 
-def _comando_esporta(stato: StatoChat, argomento: str):
+def _comando_esporta(stato: StatoChat, argomento: str) -> None:
     """La conversazione corrente in un file Markdown, per leggerla o passarla a qualcuno.
 
     Senza argomento il file prende il nome della sessione e nasce nella
@@ -319,7 +347,7 @@ def _comando_esporta(stato: StatoChat, argomento: str):
     )
 
 
-def _comando_esci(stato: StatoChat, argomento: str):
+def _comando_esci(stato: StatoChat, argomento: str) -> bool:
     return False
 
 
@@ -336,31 +364,33 @@ def _comando_esci(stato: StatoChat, argomento: str):
 # `/sessione` e `/sessioni` condividono il prefisso fino all'ultima lettera:
 # `/sess` e' ambiguo e lo resta di proposito, perche' uno elenca e l'altro
 # cambia sessione. Il TAB li mostra entrambi.
-COMANDI = (
-    ("/aiuto", ("/?",), "questo elenco", _comando_aiuto),
-    ("/profilo", (), "il profilo utente accumulato", _comando_profilo),
-    ("/memorie", (), "le memorie non strutturate", _comando_memorie),
-    ("/contesto", (), "obiettivo e avanzamento della sessione", _comando_contesto),
-    ("/sessioni", (), "le conversazioni di questa cartella; <testo> filtra, `tutte` allarga", _comando_sessioni),
-    (
+COMANDI: tuple[Comando, ...] = (
+    Comando("/aiuto", ("/?",), "questo elenco", _comando_aiuto),
+    Comando("/profilo", (), "il profilo utente accumulato", _comando_profilo),
+    Comando("/memorie", (), "le memorie non strutturate", _comando_memorie),
+    Comando("/contesto", (), "obiettivo e avanzamento della sessione", _comando_contesto),
+    Comando("/sessioni", (), "le conversazioni di questa cartella; <testo> filtra, `tutte` allarga", _comando_sessioni),
+    Comando(
         "/sessione",
         (),
         "la sessione corrente; /sessione <nome> passa a un'altra, `nuova` ne apre una",
         _comando_sessione,
     ),
-    ("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
-    ("/file", (), "i file scritti dall'agente", _comando_file),
-    ("/cartella", ("/lavoro",), "la cartella di lavoro: percorso, git, ARES.md", _comando_cartella),
-    ("/modo", (), "la modalita' corrente; /modo <nome> passa a manuale, modifiche o piano", _comando_modo),
-    ("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
-    ("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),
-    ("/esporta", (), "scrive la conversazione in un file Markdown; /esporta <file> sceglie il nome", _comando_esporta),
-    ("/esci", ("/quit", "/exit"), "termina la sessione", _comando_esci),
+    Comando("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
+    Comando("/file", (), "i file scritti dall'agente", _comando_file),
+    Comando("/cartella", ("/lavoro",), "la cartella di lavoro: percorso, git, ARES.md", _comando_cartella),
+    Comando("/modo", (), "la modalita' corrente; /modo <nome> passa a manuale, modifiche o piano", _comando_modo),
+    Comando("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
+    Comando("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),
+    Comando(
+        "/esporta", (), "scrive la conversazione in un file Markdown; /esporta <file> sceglie il nome", _comando_esporta
+    ),
+    Comando("/esci", ("/quit", "/exit"), "termina la sessione", _comando_esci),
 )
 
 
-def nomi_comandi() -> list:
-    return [voce[0] for voce in COMANDI]
+def nomi_comandi() -> list[str]:
+    return [voce.nome for voce in COMANDI]
 
 
 def _candidati_modo() -> list[tuple[str, str]]:
@@ -402,10 +432,10 @@ def candidati_argomento(stato: StatoChat) -> dict[str, Callable[[], list[tuple[s
 
 
 def stampa_aiuto() -> None:
-    UI.help(COMANDI)
+    UI.help((voce.nome, voce.descrizione) for voce in COMANDI)
 
 
-def risolvi_comando(nome: str) -> tuple:
+def risolvi_comando(nome: str) -> tuple[Comando | None, list[str]]:
     """Trova la voce che l'utente intendeva. Ritorna (voce, righe da stampare).
 
     Tre passaggi in quest'ordine, e l'ordine conta: un nome esatto non deve
@@ -414,18 +444,18 @@ def risolvi_comando(nome: str) -> tuple:
     l'ipotesi piu' debole.
     """
     for voce in COMANDI:
-        if nome == voce[0] or nome in voce[1]:
+        if nome == voce.nome or nome in voce.alias:
             return voce, []
 
     candidati = [
-        voce for voce in COMANDI if voce[0].startswith(nome) or any(alias.startswith(nome) for alias in voce[1])
+        voce for voce in COMANDI if voce.nome.startswith(nome) or any(alias.startswith(nome) for alias in voce.alias)
     ]
     if len(candidati) == 1:
         return candidati[0], []
     if candidati:
         # Ambiguo: si mostrano i candidati e non si indovina. Fra `/entita` e
         # `/esci` una scelta sbagliata chiuderebbe la sessione.
-        return None, ["Comando incompleto: " + "  ".join(voce[0] for voce in candidati)]
+        return None, ["Comando incompleto: " + "  ".join(voce.nome for voce in candidati)]
 
     # cutoff alto di proposito: a 0.6 un `/fiel` proponeva anche `/profilo`,
     # e un suggerimento sbagliato costa piu' di nessun suggerimento.
@@ -445,4 +475,4 @@ def gestisci_comando(comando: str, stato: StatoChat) -> bool:
     if voce is None:
         UI.command_problem(righe)
         return True
-    return voce[3](stato, argomento.strip()) is not False
+    return voce.funzione(stato, argomento.strip()) is not False

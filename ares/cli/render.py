@@ -2,7 +2,9 @@
 
 import difflib
 import shlex
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from agno.run.agent import RunOutput
 
@@ -11,73 +13,102 @@ from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
 
+# Gli eventi che aprono un'attesa, con cio' che l'indicatore dice, e quelli
+# che la chiudono. Erano una catena di venti `elif` con lo stesso corpo:
+# una tabella dice la stessa cosa e si legge in un colpo.
+ATTESE: dict[TurnEventKind, str] = {
+    TurnEventKind.PROCESSING_STARTED: "Ares sta preparando il turno...",
+    TurnEventKind.PRE_HOOK_STARTED: "Ares sta preparando il turno...",
+    TurnEventKind.MODEL_STARTED: "Ares sta elaborando...",
+    TurnEventKind.POST_HOOK_STARTED: "Ares sta aggiornando cio' che ricorda...",
+    TurnEventKind.MEMORY_STARTED: "Ares sta aggiornando la memoria...",
+    TurnEventKind.SUMMARY_STARTED: "Ares sta aggiornando il riepilogo...",
+}
+FINI_ATTESA = frozenset(
+    {
+        TurnEventKind.MODEL_COMPLETED,
+        TurnEventKind.PRE_HOOK_COMPLETED,
+        TurnEventKind.POST_HOOK_COMPLETED,
+        TurnEventKind.MEMORY_COMPLETED,
+        TurnEventKind.SUMMARY_COMPLETED,
+    }
+)
+
+
+def _strumento_avviato(flusso, evento: TurnEvent) -> None:
+    flusso.activity_stopped()
+    nome = getattr(evento.tool, "tool_name", None) or "?"
+    flusso.tool_started(nome)
+    flusso.activity_started(nome + " in esecuzione...")
+
+
+def _strumento_concluso(flusso, evento: TurnEvent) -> None:
+    flusso.activity_stopped()
+    # Uno strumento fallito emette Completed **e poi** Error, non l'uno o
+    # l'altro. La guardia evita un esito riuscito prima dell'errore.
+    if getattr(evento.tool, "tool_call_error", False):
+        return
+    if config.MOSTRA_ESITO_STRUMENTI:
+        flusso.tool_result(righe_esito(evento.tool))
+    if config.MOSTRA_APPRENDIMENTI:
+        scrittura = righe_scrittura(evento.tool)
+        if scrittura:
+            flusso.tool_result(scrittura)
+
+
+def _strumento_fallito(flusso, evento: TurnEvent) -> None:
+    flusso.activity_stopped()
+    errore = evento.error or getattr(evento.tool, "result", None) or ""
+    if config.MOSTRA_ESITO_STRUMENTI:
+        flusso.tool_result(righe_esito(evento.tool, errore=errore), errore=True)
+
+
+def _contenuto(flusso, evento: TurnEvent) -> None:
+    if isinstance(evento.content, str):
+        flusso.content(evento.content)
+
+
+def _errore_run(flusso, evento: TurnEvent) -> None:
+    flusso.activity_stopped()
+    flusso.run_error(evento.content)
+
+
+def _annullato(flusso, evento: TurnEvent) -> None:
+    flusso.activity_stopped()
+    flusso.cancelled()
+
+
+def _chiuso(flusso, evento: TurnEvent) -> None:
+    # Una run, una continuazione o l'output conclusivo: il commit qui
+    # garantisce che un'eventuale conferma venga dopo il testo prodotto.
+    flusso.activity_stopped()
+    flusso.flush()
+
+
+AZIONI: dict[TurnEventKind, Callable[[Any, TurnEvent], None]] = {
+    TurnEventKind.TOOL_STARTED: _strumento_avviato,
+    TurnEventKind.TOOL_COMPLETED: _strumento_concluso,
+    TurnEventKind.TOOL_ERROR: _strumento_fallito,
+    TurnEventKind.CONTENT: _contenuto,
+    TurnEventKind.RUN_ERROR: _errore_run,
+    TurnEventKind.RUN_CANCELLED: _annullato,
+    TurnEventKind.RUN_COMPLETED: _chiuso,
+    TurnEventKind.RUN_PAUSED: _chiuso,
+    TurnEventKind.OUTPUT: _chiuso,
+}
+
 
 def mostra_evento(flusso, evento: TurnEvent) -> None:
     """Adatta un evento neutro del core ai componenti della CLI."""
     tipo = evento.kind
-    if tipo is TurnEventKind.PROCESSING_STARTED:
-        flusso.activity_started("Ares sta preparando il turno...")
-    elif tipo is TurnEventKind.MODEL_STARTED:
-        flusso.activity_started("Ares sta elaborando...")
-    elif tipo is TurnEventKind.MODEL_COMPLETED:
+    if tipo in ATTESE:
+        flusso.activity_started(ATTESE[tipo])
+    elif tipo in FINI_ATTESA:
         flusso.activity_stopped()
-    elif tipo is TurnEventKind.PRE_HOOK_STARTED:
-        flusso.activity_started("Ares sta preparando il turno...")
-    elif tipo is TurnEventKind.PRE_HOOK_COMPLETED:
-        flusso.activity_stopped()
-    elif tipo is TurnEventKind.POST_HOOK_STARTED:
-        flusso.activity_started("Ares sta aggiornando cio' che ricorda...")
-    elif tipo is TurnEventKind.POST_HOOK_COMPLETED:
-        flusso.activity_stopped()
-    elif tipo is TurnEventKind.MEMORY_STARTED:
-        flusso.activity_started("Ares sta aggiornando la memoria...")
-    elif tipo is TurnEventKind.MEMORY_COMPLETED:
-        flusso.activity_stopped()
-    elif tipo is TurnEventKind.SUMMARY_STARTED:
-        flusso.activity_started("Ares sta aggiornando il riepilogo...")
-    elif tipo is TurnEventKind.SUMMARY_COMPLETED:
-        flusso.activity_stopped()
-    elif tipo is TurnEventKind.TOOL_STARTED:
-        flusso.activity_stopped()
-        nome = getattr(evento.tool, "tool_name", None) or "?"
-        flusso.tool_started(nome)
-        flusso.activity_started(nome + " in esecuzione...")
-    elif tipo is TurnEventKind.TOOL_COMPLETED:
-        flusso.activity_stopped()
-        # Uno strumento fallito emette Completed **e poi** Error, non l'uno
-        # o l'altro. La guardia evita un esito riuscito prima dell'errore.
-        if not getattr(evento.tool, "tool_call_error", False):
-            if config.MOSTRA_ESITO_STRUMENTI:
-                flusso.tool_result(righe_esito(evento.tool))
-            if config.MOSTRA_APPRENDIMENTI:
-                scrittura = righe_scrittura(evento.tool)
-                if scrittura:
-                    flusso.tool_result(scrittura)
-    elif tipo is TurnEventKind.TOOL_ERROR:
-        flusso.activity_stopped()
-        errore = evento.error or getattr(evento.tool, "result", None) or ""
-        if config.MOSTRA_ESITO_STRUMENTI:
-            flusso.tool_result(
-                righe_esito(evento.tool, errore=errore),
-                errore=True,
-            )
-    elif tipo is TurnEventKind.CONTENT:
-        if isinstance(evento.content, str):
-            flusso.content(evento.content)
-    elif tipo is TurnEventKind.RUN_ERROR:
-        flusso.activity_stopped()
-        flusso.run_error(evento.content)
-    elif tipo is TurnEventKind.RUN_CANCELLED:
-        flusso.activity_stopped()
-        flusso.cancelled()
-    elif tipo in (TurnEventKind.RUN_COMPLETED, TurnEventKind.RUN_PAUSED):
-        flusso.activity_stopped()
-        flusso.flush()
-    elif tipo is TurnEventKind.OUTPUT:
-        flusso.activity_stopped()
-        # L'output conclude una singola run o continuazione. Il commit qui
-        # garantisce che un'eventuale conferma venga dopo il testo prodotto.
-        flusso.flush()
+    else:
+        azione = AZIONI.get(tipo)
+        if azione is not None:
+            azione(flusso, evento)
 
 
 def mostra_flusso(eventi, *, ui=None) -> RunOutput | None:
@@ -471,6 +502,18 @@ def finestra_occupata(risposta) -> int | None:
     return ultimo
 
 
+def quota_finestra(prompt: int) -> str:
+    """La finestra occupata in percentuale, o vuoto se il tetto non e' noto.
+
+    `<1` sotto l'uno per cento, perche' `0%` con qualche centinaio di token
+    dentro sembra un contatore rotto.
+    """
+    if not prompt or not config.NUM_CTX:
+        return ""
+    quota = 100.0 * prompt / config.NUM_CTX
+    return ("<1" if quota < 1 else str(round(quota))) + "%"
+
+
 def righe_metriche(risposta) -> list:
     """Il costo del turno in una riga, o niente se non c'e' niente da dire.
 
@@ -489,16 +532,7 @@ def righe_metriche(risposta) -> list:
     pezzi = []
     prompt = finestra_occupata(risposta)
     if prompt and config.NUM_CTX:
-        quota = 100.0 * prompt / config.NUM_CTX
-        pezzi.append(
-            "finestra "
-            + _token(prompt)
-            + "/"
-            + _token(config.NUM_CTX)
-            + " ("
-            + ("<1" if quota < 1 else str(round(quota)))
-            + "%)"
-        )
+        pezzi.append("finestra " + _token(prompt) + "/" + _token(config.NUM_CTX) + " (" + quota_finestra(prompt) + ")")
     if uscita:
         pezzi.append("risposta " + _token(uscita) + " tok / " + str(round(secondi_risposta, 1)) + " s")
     if appresi:
