@@ -6,14 +6,58 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
-Ciò che l'audit del 2026-09-10 ha trovato e che lasciava una traccia nel
-repository: due promesse senza una prova che le difendesse — la tabella dei
-codici d'uscita e il protocollo della sonda LanceDB — il vincolo su Python,
-che era l'unico `<` del `pyproject.toml` senza la ragione scritta accanto, e
-un parametro che nessun chiamante poteva usare.
+Niente ancora dopo la 0.7.0.
+
+## [0.7.0] - 2026-09-12
+
+La versione della riga di comando. Un esame della CLI del 12 settembre ha
+trovato tre difetti che nessuno aveva visto — l'indicatore d'attesa che non
+diceva mai cosa aspettava, `ares -p` che sporcava stdout, un codice d'uscita
+sbagliato nell'aiuto — e una decina di margini fra uso quotidiano e forma
+del codice; sono entrati in tre pull request, nell'ordine: prima ciò che era
+rotto, poi ciò che cambia la mano sulla tastiera, poi il resto. Prima
+ancora erano entrate le quattro lacune dell'audit del 10 settembre: due
+promesse senza una prova che le difendesse — la tabella dei codici d'uscita
+e il protocollo della sonda LanceDB — il vincolo su Python senza la ragione
+scritta accanto, e un parametro che nessun chiamante poteva usare.
+
+Cambia il comportamento di Ctrl-C al prompt e la forma dell'aiuto: per
+questo è una minor e non una patch.
+
+Verifica locale del 2026-09-12 su Agno 3.0.5: `tests/run.py --tutte` supera
+11 suite su 11 in 109,5 s, con `deepseek-v4.1-flash:cloud` come modello
+conversazionale, `gemma4:31b-cloud` per l'apprendimento e l'embedder locale.
+`ruff check`, `ruff format --check` e `mypy` non hanno rilievi; le prove
+offline misurano il 90% fra righe e rami. Le tre pull request della
+revisione e le quattro lacune dell'audit sono entrate con la CI verde su
+Ubuntu, Python 3.12 e 3.13, e su Windows.
 
 ### Added
 
+- **Il TAB completa anche l'argomento.** Dopo lo spazio, `/modo ` propone
+  le tre modalità che la REPL accetta con la stessa descrizione del suo
+  elenco, e `/sessione ` le conversazioni di questa cartella con data e
+  prima domanda, più `nuova`. I candidati si leggono una volta per prompt e
+  non a ogni tasto, perché `/sessione` li chiede al database e il
+  completamento mentre si scrive chiama il completer a ogni carattere.
+- **`/sessione nuova` apre una conversazione senza uscire.** L'id viene
+  dalla cartella e dal momento, come un altro `ares` lanciato qui; contesto
+  vuoto, profilo e memorie invariati. `nuova` è quindi una parola riservata
+  in quel comando; `ares --session nuova` resta possibile.
+- **`/esporta` scrive la conversazione in Markdown.** Una testata con
+  sessione, utente, cartella, modello e numero di scambi, poi `## Tu` e
+  `## Ares` a turni e una riga con gli strumenti chiamati. Senza argomento
+  il file prende il nome della sessione nella cartella di lavoro e uno che
+  esiste già non si tocca; `/esporta <file>` sovrascrive e lo dice. Agno
+  rimette la storia precedente nei messaggi di ogni run, marcata
+  `from_history`: il filtro c'è, e la prova conta che ogni scambio compaia
+  una volta.
+- **`ares resume -p "..."`.** Un turno solo sull'ultima conversazione nata
+  in questa cartella, con il suo contesto, e poi esce: prima si poteva solo
+  con `--session <nome>`, cioè sapendo l'id. Vale ciò che vale per ogni
+  `-p`: niente memoria da scrivere, conferme rifiutate, su stdout la sola
+  risposta. `--scegli` con `-p` è rifiutato con 2, perché chiede un numero e
+  stdin è la domanda.
 - **I codici d'uscita 1 e 2 hanno una prova che li produce.** La tabella di
   `cli/comando.py` — 0 fatto, 1 guasto, 2 rifiutato, 3 occupato — è il
   contratto su cui uno script chiamante decide se riprovare o fermarsi, ed è
@@ -49,33 +93,6 @@ un parametro che nessun chiamante poteva usare.
   le stesse otto prove e la stessa misura. Non è fra i controlli obbligatori
   del ruleset, come CodeQL e `Audit` e per lo stesso motivo: è un canarino
   sull'interprete, e ciò che trova va letto quando compare.
-
-### Added
-
-- **Il TAB completa anche l'argomento.** Dopo lo spazio, `/modo ` propone
-  le tre modalità che la REPL accetta con la stessa descrizione del suo
-  elenco, e `/sessione ` le conversazioni di questa cartella con data e
-  prima domanda, più `nuova`. I candidati si leggono una volta per prompt e
-  non a ogni tasto, perché `/sessione` li chiede al database e il
-  completamento mentre si scrive chiama il completer a ogni carattere.
-- **`/sessione nuova` apre una conversazione senza uscire.** L'id viene
-  dalla cartella e dal momento, come un altro `ares` lanciato qui; contesto
-  vuoto, profilo e memorie invariati. `nuova` è quindi una parola riservata
-  in quel comando; `ares --session nuova` resta possibile.
-- **`/esporta` scrive la conversazione in Markdown.** Una testata con
-  sessione, utente, cartella, modello e numero di scambi, poi `## Tu` e
-  `## Ares` a turni e una riga con gli strumenti chiamati. Senza argomento
-  il file prende il nome della sessione nella cartella di lavoro e uno che
-  esiste già non si tocca; `/esporta <file>` sovrascrive e lo dice. Agno
-  rimette la storia precedente nei messaggi di ogni run, marcata
-  `from_history`: il filtro c'è, e la prova conta che ogni scambio compaia
-  una volta.
-- **`ares resume -p "..."`.** Un turno solo sull'ultima conversazione nata
-  in questa cartella, con il suo contesto, e poi esce: prima si poteva solo
-  con `--session <nome>`, cioè sapendo l'id. Vale ciò che vale per ogni
-  `-p`: niente memoria da scrivere, conferme rifiutate, su stdout la sola
-  risposta. `--scegli` con `-p` è rifiutato con 2, perché chiede un numero e
-  stdin è la domanda.
 
 ### Changed
 
@@ -115,12 +132,26 @@ un parametro che nessun chiamante poteva usare.
   provato dalle stesse prove.
 - **`cli/chat.py` non riesporta più venti nomi** di `render`, `commands` e
   `log` per compatibilità delle prove: le prove importano dai moduli veri.
-
 - **Ctrl-C al prompt svuota la riga invece di chiudere la chat.** Chiudere
   per un riflesso, con un messaggio lungo a metà, costava il messaggio. Ora
   la riga finisce in cronologia — la freccia in su la riporta — e il prompt
   resta; chiudono `Ctrl-D` e `/esci`. Durante un turno Ctrl-C resta
   l'interruzione. Banner e barra in basso lo dicono.
+- **`requires-python` diventa `>=3.12,<3.14`.** Era `<3.13`, ed era l'unico
+  vincolo del file senza il motivo accanto — proprio la regola che il
+  `pyproject.toml` enuncia per le dipendenze due righe più sotto. La verifica
+  ha detto che non c'era un motivo: su 3.13 le otto prove offline passano,
+  ruff e mypy non hanno rilievi, e rigenerare il lock per l'intervallo
+  allargato non cambia una sola versione risolta. Il pavimento resta 3.12,
+  che è ciò che `setup.sh`, `setup.ps1` e `.python-version` installano e su
+  cui mypy controlla i tipi; il tetto ora dice una cosa vera, cioè che la
+  3.14 non l'ha provata nessuno.
+- **`codice_di` perde il parametro `rifiuti`.** L'unico chiamante gli passava
+  sempre una tupla vuota, e `isinstance(errore, ())` è falso sempre: quel
+  ramo non poteva essere preso. Non era un caso d'uso da riempire — nel
+  backup un rifiuto non è mai un'eccezione, ma una risposta sbagliata alla
+  conferma, che la funzione traduce da sé. Chi ha rifiuti che arrivano come
+  eccezioni passa da `esegui_protetto`, che li nomina.
 
 ### Fixed
 
@@ -147,24 +178,6 @@ un parametro che nessun chiamante poteva usare.
   come dice la tabella di `cli/comando.py`. Il docstring di `cli/chat.py`
   citava anche `chat_commands.COMANDI`, un modulo che non esiste dal
   passaggio al package.
-
-### Changed
-
-- **`requires-python` diventa `>=3.12,<3.14`.** Era `<3.13`, ed era l'unico
-  vincolo del file senza il motivo accanto — proprio la regola che il
-  `pyproject.toml` enuncia per le dipendenze due righe più sotto. La verifica
-  ha detto che non c'era un motivo: su 3.13 le otto prove offline passano,
-  ruff e mypy non hanno rilievi, e rigenerare il lock per l'intervallo
-  allargato non cambia una sola versione risolta. Il pavimento resta 3.12,
-  che è ciò che `setup.sh`, `setup.ps1` e `.python-version` installano e su
-  cui mypy controlla i tipi; il tetto ora dice una cosa vera, cioè che la
-  3.14 non l'ha provata nessuno.
-- **`codice_di` perde il parametro `rifiuti`.** L'unico chiamante gli passava
-  sempre una tupla vuota, e `isinstance(errore, ())` è falso sempre: quel
-  ramo non poteva essere preso. Non era un caso d'uso da riempire — nel
-  backup un rifiuto non è mai un'eccezione, ma una risposta sbagliata alla
-  conferma, che la funzione traduce da sé. Chi ha rifiuti che arrivano come
-  eccezioni passa da `esegui_protetto`, che li nomina.
 
 ## [0.6.1] - 2026-09-10
 
@@ -1025,7 +1038,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/KairosIta/Ares/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/KairosIta/Ares/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/KairosIta/Ares/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/KairosIta/Ares/compare/v0.4.0...v0.5.0

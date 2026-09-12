@@ -16,8 +16,13 @@ modelli usa e se sono locali o cloud, quanto contesto ha, dove si trova e
 come funziona la propria memoria; `ares inspect --prompt` lo stampa. I
 risultati tool grandi vengono conservati fuori dal prompt e riletti a
 pagine; la loro retention segue l'intera conversazione. I codici di uscita
-hanno un significato solo per ogni comando. Lock, CLI, backup e suite
-principale sono verificati automaticamente su Ubuntu e Windows.
+hanno un significato solo per ogni comando. Nella REPL il TAB completa
+comandi e argomenti, Ctrl-C svuota la riga, la barra sotto il prompt dice
+modalità, sessione e finestra occupata, `/sessione nuova` apre una
+conversazione senza uscire e `/esporta` la scrive in Markdown; `ares -p` e
+`ares resume -p` rispondono in una pipe con la sola risposta su stdout.
+Lock, CLI, backup e suite principale sono verificati automaticamente su
+Ubuntu e Windows.
 
 ## Evoluzione
 
