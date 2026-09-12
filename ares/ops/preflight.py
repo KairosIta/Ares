@@ -32,7 +32,7 @@ from typing import Annotated, Any
 from cyclopts import Parameter
 
 from ares import config
-from ares.cli.comando import nuova_app
+from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, nuova_app
 from ares.cli.ui import UI
 
 app = nuova_app("preflight", "Controlla che Ollama risponda e che i modelli ci siano")
@@ -130,14 +130,14 @@ def controlla(*, come_json: Annotated[bool, Parameter(name="--json")] = False) -
     esito = esamina()
     if come_json:
         UI.json(esito)
-        return 0 if esito["pronto"] else 1
+        return ESITO_FATTO if esito["pronto"] else ESITO_GUASTO
 
     UI.pair("Server", esito["server"])
     if not esito["raggiungibile"]:
         UI.line("  non raggiungibile: " + str(esito["errore"]), style="ares.error")
         UI.blank()
         UI.line("Avvia il server con: ollama serve", style="ares.muted")
-        return 1
+        return ESITO_GUASTO
     UI.line("  raggiungibile, " + str(esito["modelli_scaricati"]) + " modelli scaricati", style="ares.success")
     UI.blank()
 
@@ -154,7 +154,7 @@ def controlla(*, come_json: Annotated[bool, Parameter(name="--json")] = False) -
             UI.line("    ollama signin")
         for modello in mancanti:
             UI.line("    ollama pull " + modello)
-        return 1
+        return ESITO_GUASTO
 
     UI.blank()
     if esito["avviso_cloud"]:
@@ -162,7 +162,7 @@ def controlla(*, come_json: Annotated[bool, Parameter(name="--json")] = False) -
             UI.line(riga, style="ares.warning")
         UI.blank()
     UI.line("Ambiente pronto: " + config.comando_ares(), style="ares.success")
-    return 0
+    return ESITO_FATTO
 
 
 def main(argomenti: Sequence[str] | None = None) -> int:
