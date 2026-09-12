@@ -721,10 +721,10 @@ def indicatore_attivita() -> str:
         "risposta-visibile finale" in finale,
         "l'indicatore inserisce un ritorno a capo permanente: " + repr(finale),
     )
-    esigi(
-        reso.count("Ares sta elaborando...") == 0,
-        "l'etichetta temporanea resta nello scrollback",
-    )
+    # L'etichetta si vede mentre si aspetta - e' cio' che dice cosa si sta
+    # aspettando - e sparisce con l'indicatore: dopo l'ultimo erase non c'e'.
+    esigi("Ares sta elaborando..." in reso, "l'indicatore non dice cosa sta aspettando")
+    esigi("Ares sta elaborando..." not in finale, "l'etichetta temporanea resta nello scrollback")
     esigi("\x1b[2A" not in reso, "l'indicatore risale piu' di una riga")
 
     class FlussoFinto:
