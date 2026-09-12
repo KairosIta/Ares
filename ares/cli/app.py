@@ -32,7 +32,7 @@ from typing import Annotated
 from cyclopts import Parameter
 
 from ares import config
-from ares.cli.comando import nuova_app
+from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, nuova_app
 from ares.cli.ui import UI
 
 # Senza `help`: l'aiuto di `ares` e' il docstring della chat qui sotto, con
@@ -168,13 +168,13 @@ def init() -> int:
         destinazione = cartella.scrivi_scheletro(Path.cwd())
     except FileExistsError as errore:
         UI.err("ERRORE: " + str(errore))
-        return 1
+        return ESITO_GUASTO
     except OSError as errore:
         UI.err("ERRORE: impossibile scrivere " + config.WORKSPACE_ISTRUZIONI + ": " + str(errore))
-        return 1
+        return ESITO_GUASTO
     UI.pair("Scritto", str(destinazione), style="ares.title")
     UI.line("Compilalo con le regole del progetto: Ares lo leggera' al prossimo avvio qui.", style="ares.muted")
-    return 0
+    return ESITO_FATTO
 
 
 def esegui(sottocomando: str, argomenti: Sequence[str] | None = None) -> int:

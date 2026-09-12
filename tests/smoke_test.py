@@ -1853,6 +1853,26 @@ def percorsi_a_runtime() -> str:
     )
     esigi(isinstance(tutto, Percorsi) and leggi_percorsi({}, cwd=radice).utente == "default", "utente senza default")
 
+    # Il `.env` resta fuori da `os.environ`: le sue righe arrivano ai nomi di
+    # `config`, una variabile gia' nell'ambiente vince, e un sottoprocesso
+    # lanciato da `run_command` non le eredita. La chiave si porta in
+    # maiuscolo solo su Windows, dove `os.environ` non distingue.
+    from ares.config import leggi_ambiente
+
+    radice.mkdir(parents=True, exist_ok=True)
+    file_env = radice / "env-di-prova"
+    file_env.write_text("ARES_MAIN_MODEL=dal-file\nSEGRETO_DI_PROVA=non-nell-ambiente\n", encoding="utf-8")
+    letto = leggi_ambiente(file_env, {"ARES_MAIN_MODEL": "dalla-shell"})
+    esigi(letto["ARES_MAIN_MODEL"] == "dalla-shell", "la riga del .env vince sull'ambiente")
+    esigi(letto["SEGRETO_DI_PROVA"] == "non-nell-ambiente", "una riga del .env non arriva")
+    esigi("SEGRETO_DI_PROVA" not in os.environ, "leggere il .env lo mette in os.environ")
+    esigi(leggi_ambiente(radice / "assente", {"X": "1"}) == {"X": "1"}, "un .env assente non e' un ambiente vuoto")
+    file_env.write_text("ares_minuscolo=1\n", encoding="utf-8")
+    with patch.object(os, "name", "nt"):
+        esigi("ARES_MINUSCOLO" in leggi_ambiente(file_env, {}), "su Windows la chiave non sale in maiuscolo")
+    with patch.object(os, "name", "posix"):
+        esigi("ares_minuscolo" in leggi_ambiente(file_env, {}), "su POSIX la chiave cambia")
+
     prima = config.PERCORSI
     imposta_percorsi(tutto)
     try:

@@ -252,7 +252,9 @@ richiesta di conferma mostra per intero cosa sta per succedere, e per un file
 che esiste già la differenza riga per riga. `ares --modo modifiche` sceglie
 per una sessione, `/modo piano` cambia a metà conversazione sulla stessa
 sessione, e il modello sa in quale modalità si trova. `auto` si sceglie solo
-con `ares --modo auto`, il banner lo dice in rosso e non si combina con `-p`.
+con `ares --modo auto` e il banner lo dice in rosso. Con `-p` valgono solo
+`manuale` e `piano`: `auto` eseguirebbe e `modifiche` scriverebbe senza che
+nessuno guardi.
 
 Se la cartella è rischiosa — la home intera, la radice del disco, una
 directory di sistema, una che contiene lo stato o il codice di Ares — te lo
