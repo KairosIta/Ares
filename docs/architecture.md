@@ -215,7 +215,7 @@ e intuizioni restano fuori dal ripristino: si scrivono solo con strumenti
 agentici, che il flusso mostra già uno per uno.
 
 Che la conferma stia a valle della scrittura e non a monte non è una scelta
-fra due possibilità disponibili. Le modalità di apprendimento di Agno 3.0.5 sono
+fra due possibilità disponibili. Le modalità di apprendimento di Agno 3.0.9 sono
 quattro, ma non valgono per tutti gli store: `PROPOSE` è supportata dal solo
 store delle intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano
 con un warning, e `HITL` non è implementata da nessuno. Profilo e memorie
