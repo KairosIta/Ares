@@ -266,7 +266,8 @@ def _esegui_chat(
     """La chat. Restituisce il codice di uscita secondo la tabella di `cli/comando.py`.
 
     1 se lo stato non e' pronto o la cartella non esiste; 2 se la cartella
-    e' rifiutata, non c'e' niente da riprendere o `-p` chiede `auto`.
+    e' rifiutata, non c'e' niente da riprendere o `-p` chiede una modalita'
+    che scrive o esegue senza conferma (`auto`, `modifiche`).
 
     Con `-p` su stdout esce la risposta e nient'altro: avvisi, rifiuti,
     strumenti e metriche vanno su stderr, da prima della prima riga.
@@ -297,11 +298,18 @@ def _apri_chat(
     prompt: str | None,
     modo: str,
 ) -> int:
-    # `auto` con `-p` e' la combinazione che nessuno deve poter scrivere per
-    # sbaglio: una pipe con un testo ostile eseguirebbe comandi senza che
-    # nessuno guardi. Prima di tutto il resto, cosi' non tocca niente.
-    if prompt is not None and modo == "auto":
-        UI.line("La modalita' auto non si combina con -p: nessuno vedrebbe cosa viene eseguito.", style="ares.error")
+    # Con `-p` nessuno guarda, quindi vale solo una modalita' in cui niente
+    # lascia traccia senza conferma: `auto` eseguirebbe comandi da un testo
+    # ostile arrivato da una pipe, e `modifiche` scriverebbe file - ARES.md,
+    # uno script, un Makefile - che non distruggono oggi ma eseguono domani.
+    # La regola sta nella tabella delle modalita', non in un nome: se una
+    # modalita' nuova scrivesse in silenzio, sarebbe rifiutata anche lei.
+    # Prima di tutto il resto, cosi' non tocca niente.
+    if prompt is not None and config.modalita_scrive_in_silenzio(modo):
+        UI.line(
+            "La modalita' " + modo + " non si combina con -p: scriverebbe o eseguirebbe senza che nessuno guardi.",
+            style="ares.error",
+        )
         return ESITO_RIFIUTO
     if prompt is not None and scegli:
         # `--scegli` chiede un numero, e con `-p` stdin e' la domanda.

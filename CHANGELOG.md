@@ -6,7 +6,34 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
-Niente ancora dopo la 0.7.0.
+Le correzioni dell'audit del 12 settembre, dopo il rilascio.
+
+### Changed
+
+- **`ares -p` rifiuta anche `modifiche`.** Il controllo copriva solo `auto`,
+  ma `modifiche` scrive e modifica file senza conferma: con un testo ostile
+  da una pipe avrebbe potuto riscrivere `ARES.md`, uno script o un Makefile
+  senza che nessuno guardasse. La regola ora legge la tabella delle
+  modalità — è rifiutata ogni modalità che mette fra i silenziosi uno
+  strumento che lascia traccia, e l'insieme di quegli strumenti è la lista
+  con conferma di `manuale`, non una seconda copia — e la prova chiede il
+  rifiuto di `modifiche` oltre ad `auto` e il turno con `piano`.
+- **Il `.env` non entra più in `os.environ`.** `run_command` lancia il
+  sottoprocesso con l'ambiente del processo, e un `env` da una shell avrebbe
+  stampato le righe del `.env` da qualunque cartella di lavoro, con l'output
+  che torna nel contesto del modello. Il file si legge in un dizionario e le
+  variabili `ARES_*` vengono da lì; una variabile già nell'ambiente vince
+  come prima, e su Windows i nomi si confrontano senza distinguere le
+  maiuscole, come fa `os.environ` lì. Il file sul disco resta leggibile da un
+  comando se la cartella di lavoro è il clone di Ares: è l'avviso che
+  `cartella.py` dà all'avvio, e non cambia. La prova scrive un `.env` a
+  parte e verifica precedenza e isolamento.
+- `ares init` e `ares preflight` prendono i codici di uscita dalla tabella
+  di `cli/comando.py` invece di scrivere `0` e `1`.
+
+### Fixed
+
+- `SECURITY.md` dichiarava supportata la linea 0.6.x: ora dice 0.7.x.
 
 ## [0.7.0] - 2026-09-12
 

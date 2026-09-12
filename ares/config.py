@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from ares.state.platform_files import rendi_privato
 
@@ -26,7 +26,35 @@ from ares.state.platform_files import rendi_privato
 # directory sorelle (backup, workspace) si contano da li'. Questo file sta in
 # `ares/`, un livello sotto.
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+
+
+def leggi_ambiente(percorso_env: Path, ambiente: Mapping[str, str]) -> dict[str, str]:
+    """L'ambiente di questo avvio: le righe del `.env` sotto, l'ambiente dato sopra.
+
+    Il `.env` si legge in un dizionario, non in `os.environ`. Fa differenza
+    per `run_command`: Agno lancia il sottoprocesso con l'ambiente del
+    processo, e un `env` da una shell lo stamperebbe da qualunque cartella di
+    lavoro, con l'output che torna nel contesto del modello - che puo' essere
+    cloud. Letto qui, il sottoprocesso vede l'ambiente della shell che ha
+    lanciato `ares` e nient'altro. Il file sul disco resta leggibile da un
+    comando se la cartella di lavoro e' il clone stesso: quello e' l'avviso
+    che `cli/cartella.py` da' all'avvio, non un compito di questa funzione.
+
+    La precedenza resta quella di prima: una variabile gia' nell'ambiente
+    vince sulla riga del `.env`, cosi' `ARES_TMP=... ares` continua a
+    funzionare. Su Windows `os.environ` non distingue le maiuscole, e una
+    riga `ares_home=` veniva trovata lo stesso: le chiavi del file si portano
+    in maiuscolo li', e solo li', per non cambiare cio' che gia' funzionava.
+    """
+    righe = {
+        chiave.upper() if os.name == "nt" else chiave: valore
+        for chiave, valore in dotenv_values(percorso_env).items()
+        if valore is not None
+    }
+    return {**righe, **ambiente}
+
+
+AMBIENTE: Mapping[str, str] = leggi_ambiente(BASE_DIR / ".env", os.environ)
 
 # ---------------------------------------------------------------------------
 # Modelli
@@ -72,7 +100,7 @@ MODELLO_CLOUD = "glm-5.3-flash:cloud"
 #
 # Il nome non viene interpretato: se non e' scaricato lo dice `ares-preflight`,
 # e la chat lo ripete all'avvio insieme all'avviso sul cloud.
-MAIN_MODEL = os.environ.get("ARES_MAIN_MODEL") or MODELLO_LOCALE
+MAIN_MODEL = AMBIENTE.get("ARES_MAIN_MODEL") or MODELLO_LOCALE
 
 # Modello per l'estrazione delle memorie. Il valore distribuito e' locale,
 # per la stessa ragione di MAIN_MODEL e a maggior ragione: il profilo e le
@@ -95,7 +123,7 @@ MAIN_MODEL = os.environ.get("ARES_MAIN_MODEL") or MODELLO_LOCALE
 # e l'apprendimento: e' il default distribuito, in cui i due ruoli
 # coincidono. Puntando `ARES_MAIN_MODEL` al cloud si separano da soli, e
 # `LEARNING_NUM_CTX` qui sotto se ne accorge senza che si tocchi niente.
-LEARNING_MODEL = os.environ.get("ARES_LEARNING_MODEL") or MODELLO_LOCALE
+LEARNING_MODEL = AMBIENTE.get("ARES_LEARNING_MODEL") or MODELLO_LOCALE
 
 
 def e_modello_cloud(nome: str) -> bool:
@@ -494,15 +522,15 @@ def leggi_percorsi(ambiente: Mapping[str, str] | None = None, cwd: Path | None =
     """I percorsi di questo avvio, letti dall'ambiente dato o da quello vero.
 
     `ambiente` e `cwd` esistono per le prove e per chi vuole un secondo
-    insieme di percorsi nello stesso processo; senza, si legge `os.environ`
-    dopo il `.env` e la directory corrente. Se quella non esiste piu' -
+    insieme di percorsi nello stesso processo; senza, si legge `AMBIENTE` -
+    l'ambiente vero sopra il `.env` - e la directory corrente. Se quella non esiste piu' -
     cancellata da sotto la shell - si ripiega sulla home, che la verifica dei
     rischi fermera' con un avviso invece di un traceback. Risolta subito: su
     Windows la directory corrente puo' arrivare con i nomi corti
     (`RUNNER~1`), e lo stesso percorso scritto in due modi e' la strada per
     un confronto che fallisce.
     """
-    env: Mapping[str, str] = os.environ if ambiente is None else ambiente
+    env: Mapping[str, str] = AMBIENTE if ambiente is None else ambiente
     home = Path(env.get("ARES_HOME") or Path.home() / ".ares")
     if cwd is None:
         try:
@@ -670,7 +698,8 @@ WORKSPACE_PREFIX = "workspace_"
 #              e il prompt chiede al modello di proporre, non di fare.
 #   auto       nessuna conferma. Solo con `ares --modo auto`, mai qui come
 #              valore predefinito e mai con `-p`: una pipe con un testo
-#              ostile eseguirebbe comandi senza che nessuno guardi.
+#              ostile eseguirebbe comandi senza che nessuno guardi. Per lo
+#              stesso motivo `-p` rifiuta anche `modifiche`: scriverebbe.
 #
 # `ares --modo` sceglie per una sessione, `/modo` cambia a meta' conversazione
 # ricostruendo l'agente sulla stessa sessione. WORKSPACE_READ_BEFORE_WRITE
@@ -691,6 +720,21 @@ def liste_modalita(modo: str) -> tuple[list[str], list[str]]:
     if modo not in MODALITA:
         raise ValueError("modalita' sconosciuta: " + modo + ". Valide: " + ", ".join(MODALITA))
     return MODALITA[modo]
+
+
+# Gli strumenti che lasciano una traccia sul disco o eseguono qualcosa: per
+# definizione, quelli che `manuale` mette sotto conferma. Derivato dalla
+# tabella e non scritto una seconda volta, cosi' un nome aggiunto li' entra
+# anche qui. E' l'insieme che decide se una modalita' puo' girare senza
+# nessuno che guardi: `ares -p` rifiuta quelle che ne mettono anche uno fra
+# i silenziosi.
+STRUMENTI_CON_TRACCIA = frozenset(MODALITA["manuale"][1])
+
+
+def modalita_scrive_in_silenzio(modo: str) -> bool:
+    """Vero se la modalita' scrive, sposta, cancella o esegue senza conferma."""
+    silenziosi, _ = liste_modalita(modo)
+    return not STRUMENTI_CON_TRACCIA.isdisjoint(silenziosi)
 
 
 # Blocca la scrittura su un file esistente finche' l'agente non lo ha letto

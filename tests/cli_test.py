@@ -1040,10 +1040,27 @@ def chat_sessioni() -> str:
     esigi(costruiti[-1]["interattivo"] is False, "-p costruisce un agente che scrive in memoria")
     esigi(costruiti[0]["interattivo"] is True, "la chat costruisce un agente senza memoria")
     esigi(costruiti[-1]["modo"] == config.MODO_PREDEFINITO, "-p non passa la modalita' predefinita")
+    # `piano` non lascia tracce: con `-p` passa, ed e' l'altra meta' della
+    # regola che rifiuta `auto` e `modifiche`.
+    with (
+        patch.object(chat, "build_assistant", costruisci),
+        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(sys, "stdin", io.StringIO()),
+        redirect_stdout(io.StringIO()),
+        redirect_stderr(io.StringIO()),
+    ):
+        esito_piano = chat._esegui_chat(user=UTENTE, prompt="riassumi", modo="piano")
+    esigi(esito_piano == 0 and costruiti[-1]["modo"] == "piano", "-p --modo piano viene rifiutato")
     # `auto` con `-p` non parte, e non tocca niente: esce prima della cartella.
     prima = len(costruiti)
     esito, testo = avvio(prompt="riassumi", modo="auto")
     esigi(esito == 2 and "auto" in testo and len(costruiti) == prima, "-p --modo auto non viene rifiutato con 2")
+    # `modifiche` scrive file senza conferma: con `-p` e' la stessa porta
+    # aperta, solo un giorno dopo. Rifiutata anche lei, prima della cartella.
+    esito, testo = avvio(prompt="riassumi", modo="modifiche")
+    esigi(
+        esito == 2 and "modifiche" in testo and len(costruiti) == prima, "-p --modo modifiche non viene rifiutato con 2"
+    )
     esito, testo = avvio(modo="piano")
     esigi(esito == 0 and costruiti[-1]["modo"] == "piano" and "piano" in testo, "--modo piano non arriva al banner")
     return "id dalla cartella, resume a vuoto e sull'ultima di qui, --scegli, -p con stdin senza memoria"
