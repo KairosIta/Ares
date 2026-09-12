@@ -31,11 +31,12 @@ Invio spedisce il messaggio, Alt+Invio aggiunge una nuova riga.
 
 Comandi durante la chat: lo slash apre il menu, `/aiuto` lo descrive, il TAB
 completa e bastano le iniziali finche' restano uniche. L'elenco vive in
-`chat_commands.COMANDI`: era scritto in due posti e le copie erano gia'
-divergite.
+`COMANDI` di `cli/commands.py`: era scritto in due posti e le copie erano
+gia' divergite.
 """
 
 import sys
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -284,7 +285,36 @@ def _esegui_chat(
 
     1 se lo stato non e' pronto o la cartella non esiste; 2 se la cartella
     e' rifiutata, non c'e' niente da riprendere o `-p` chiede `auto`.
+
+    Con `-p` su stdout esce la risposta e nient'altro: avvisi, rifiuti,
+    strumenti e metriche vanno su stderr, da prima della prima riga.
     """
+    with UI.solo_risposte() if prompt is not None else nullcontext():
+        return _apri_chat(
+            session=session,
+            user=user,
+            debug=debug,
+            metriche=metriche,
+            workspace=workspace,
+            riprendi=riprendi,
+            scegli=scegli,
+            prompt=prompt,
+            modo=modo,
+        )
+
+
+def _apri_chat(
+    *,
+    session: str | None,
+    user: str,
+    debug: bool,
+    metriche: bool,
+    workspace: Path | None,
+    riprendi: bool,
+    scegli: bool,
+    prompt: str | None,
+    modo: str,
+) -> int:
     # `auto` con `-p` e' la combinazione che nessuno deve poter scrivere per
     # sbaglio: una pipe con un testo ostile eseguirebbe comandi senza che
     # nessuno guardi. Prima di tutto il resto, cosi' non tocca niente.

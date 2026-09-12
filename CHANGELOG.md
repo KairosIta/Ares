@@ -50,6 +50,32 @@ un parametro che nessun chiamante poteva usare.
   del ruleset, come CodeQL e `Audit` e per lo stesso motivo: è un canarino
   sull'interprete, e ciò che trova va letto quando compare.
 
+### Fixed
+
+- **L'indicatore d'attesa dice cosa sta aspettando.** `render.py` passava
+  allo stream sei etichette — "Ares sta elaborando...", "Ares sta
+  aggiornando ciò che ricorda...", il nome dello strumento in esecuzione —
+  e lo stream le riceveva, le provava e non le disegnava mai: il
+  renderable dell'indicatore componeva solo il frame e la coda
+  dell'anteprima, dal commit che ha introdotto lo streaming stabile. Ora
+  l'etichetta compare accanto al frame mentre si aspetta, e sparisce con
+  lui: la prova verifica che sia disegnata e che dopo l'ultimo erase non ci
+  sia più.
+- **`ares -p` in una pipe scrive su stdout solo la risposta.** Prima uno
+  script che leggeva stdout ci trovava, insieme alla risposta, la riga
+  "Ares", ogni strumento chiamato con l'anteprima del suo esito e la riga
+  delle metriche. `UI.solo_risposte` separa le due uscite per la durata del
+  comando: la risposta del modello resta su stdout, tutto il resto —
+  avvisi d'avvio, rifiuti, strumenti, conferme, metriche — va su stderr,
+  anche quando stdout è un terminale, perché la regola non dipende da chi
+  ascolta. Verificato con un turno vero e una pipe: `ares -p ... > out
+  2> err` lascia in `out` la sola riga di risposta.
+- **L'aiuto di `ares resume` dichiara il codice giusto.** Diceva "esce con
+  1" senza conversazioni da riprendere; il codice restituisce 2, rifiutato,
+  come dice la tabella di `cli/comando.py`. Il docstring di `cli/chat.py`
+  citava anche `chat_commands.COMANDI`, un modulo che non esiste dal
+  passaggio al package.
+
 ### Changed
 
 - **`requires-python` diventa `>=3.12,<3.14`.** Era `<3.13`, ed era l'unico

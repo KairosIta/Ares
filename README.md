@@ -302,7 +302,9 @@ store di apprendimento non vengono aggiornati, perché non c'è nessuno a
 leggere e confermare cosa sarebbe entrato. Le memorie già presenti restano
 nel contesto. La conversazione viene comunque archiviata e il quaderno è
 persistente: il prompt ne consente la scrittura solo per richieste esplicite
-sul quaderno, senza usarlo per aggirare l'apprendimento disattivato.
+sul quaderno, senza usarlo per aggirare l'apprendimento disattivato. Su
+stdout esce la sola risposta: strumenti chiamati, avvisi e metriche vanno su
+stderr, così uno script legge la risposta e nient'altro.
 
 ```bash
 git diff | ares -p "scrivi il messaggio di commit"

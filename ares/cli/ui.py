@@ -9,7 +9,8 @@ percorso di apprendimento.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from threading import Event, RLock, Thread
 from time import monotonic
 from typing import Any
@@ -215,6 +216,10 @@ class RichRunStream:
     A un confine semantico (tool, errore o fine flusso) il buffer viene reso
     come Markdown una volta sola. Un resize puo' quindi ridisegnare al massimo
     la riga dell'anteprima, mai una risposta gia' stampata.
+
+    Il Markdown va su `renderer.risposte`, tutto il resto - chi parla, gli
+    strumenti, l'indicatore d'attesa - su `renderer.console`. Sono la stessa
+    console salvo in `solo_risposte`, dove la seconda e' stderr.
     """
 
     def __init__(
@@ -265,6 +270,11 @@ class RichRunStream:
             frame = ACTIVITY_FRAMES[self._activity_frame % len(ACTIVITY_FRAMES)]
             self._activity_frame += 1
             anteprima.append(frame, "ares.cyan")
+            # L'etichetta dice cosa si sta aspettando: il modello, uno
+            # strumento, l'estrazione delle memorie. Solo mentre si aspetta:
+            # quando i frammenti scorrono, la coda dell'anteprima basta.
+            if self._activity_label:
+                anteprima.append(" " + self._activity_label, "ares.muted")
             if self._preview_tail:
                 anteprima.append("  ")
         if self._preview_tail:
@@ -301,13 +311,14 @@ class RichRunStream:
         contenuto = "".join(self._frammenti)
         self._frammenti.clear()
         self._preview_tail = ""
-        if self.console.is_terminal:
-            self.console.print(Markdown(contenuto, code_theme="monokai", hyperlinks=False))
+        risposte = self.renderer.risposte
+        if risposte.is_terminal:
+            risposte.print(Markdown(contenuto, code_theme="monokai", hyperlinks=False))
         else:
             # Una pipe conserva il sorgente Markdown, utile per log e file.
             # Si aggiunge soltanto il newline che la CLI usa per separare il
             # prompt successivo quando il modello non ne ha gia' prodotto uno.
-            self.console.print(
+            risposte.print(
                 _testo(contenuto),
                 end="" if contenuto.endswith("\n") else "\n",
                 soft_wrap=True,
@@ -438,6 +449,28 @@ class CliRenderer:
         # script che legge stdout - o `--json` - non li trova in mezzo ai
         # dati. `stderr=True` segue il sys.stderr corrente come sopra.
         self.stderr = Console(theme=ARES_THEME, highlight=False, stderr=True)
+        # Dove finisce la risposta del modello. E' la stessa console di tutto
+        # il resto, salvo dentro `solo_risposte`.
+        self.risposte = self.console
+
+    @contextmanager
+    def solo_risposte(self) -> Iterator[None]:
+        """Su stdout solo la risposta del modello; tutto il resto su stderr.
+
+        E' `ares -p`: chi legge stdout da uno script vuole la risposta, e ci
+        trovava in mezzo la riga "Ares", gli strumenti chiamati, le
+        anteprime dei loro esiti e le metriche. Per la durata del blocco
+        `console` e' stderr e `risposte` resta stdout: ogni componente
+        scrive come prima, cambia solo dove arriva. Vale anche con stdout su
+        un terminale, perche' la regola non dipende da chi ascolta.
+        """
+        console, risposte = self.console, self.risposte
+        self.risposte = self.console
+        self.console = self.stderr
+        try:
+            yield
+        finally:
+            self.console, self.risposte = console, risposte
 
     def line(self, valore: object = "", *, style: str | None = None) -> None:
         _riga(self.console, _testo(valore, style))

@@ -35,6 +35,7 @@ import time
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import patch
 
@@ -50,6 +51,7 @@ from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
 from ares.cli import chat  # noqa: E402
+from ares.cli.ui import UI  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
 from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
@@ -939,6 +941,7 @@ def chat_sessioni() -> str:
             patch.object(chat, "promemoria_backup", list),
             patch.object(sys, "stdin", io.StringIO()),
             redirect_stdout(uscita),
+            redirect_stderr(uscita),
         ):
             esito = chat._esegui_chat(user=UTENTE, **argomenti)
         return esito, _piatto(uscita.getvalue())
@@ -986,18 +989,33 @@ def chat_sessioni() -> str:
 
     def ciclo(agent, testo, *, on_event, resolve_pause):
         turni.append(testo)
+        # Un turno con uno strumento e una risposta: in una pipe la risposta
+        # e' l'unica cosa che uno script vuole trovare su stdout.
+        on_event(TurnEvent(kind=TurnEventKind.TOOL_STARTED, tool=SimpleNamespace(tool_name="workspace_list_files")))
+        on_event(TurnEvent(kind=TurnEventKind.CONTENT, content="risposta per la pipe"))
         return FintaRisposta(metriche=FinteMetriche())
 
-    uscita = io.StringIO()
+    uscita, errori = io.StringIO(), io.StringIO()
     with (
         patch.object(chat, "build_assistant", costruisci),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(sys, "stdin", io.StringIO("dati dalla pipe\n")),
         redirect_stdout(uscita),
+        redirect_stderr(errori),
     ):
-        esito = chat._esegui_chat(user=UTENTE, prompt="riassumi")
+        esito = chat._esegui_chat(user=UTENTE, prompt="riassumi", metriche=True)
     esigi(esito == 0 and turni == ["riassumi\n\ndati dalla pipe"], "-p non unisce domanda e stdin: " + repr(turni))
-    esigi("ARES" not in uscita.getvalue(), "-p stampa il banner")
+    esigi("ARES" not in uscita.getvalue() + errori.getvalue(), "-p stampa il banner")
+    esigi(
+        uscita.getvalue() == "risposta per la pipe\n",
+        "-p mette altro oltre la risposta su stdout: " + repr(uscita.getvalue()),
+    )
+    contorno = errori.getvalue()
+    esigi(
+        "Ares" in contorno and "workspace_list_files" in contorno and "turno " in contorno,
+        "-p non manda chi parla, strumenti e metriche su stderr: " + repr(contorno),
+    )
+    esigi(UI.console is not UI.stderr, "-p lascia la console dirottata su stderr dopo il turno")
     # Senza nessuno che legga, l'agente nasce senza memoria da scrivere; la
     # chat normale invece con.
     esigi(costruiti[-1]["interattivo"] is False, "-p costruisce un agente che scrive in memoria")

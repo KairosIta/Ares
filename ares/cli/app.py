@@ -97,8 +97,8 @@ def resume(
     """Riprende l'ultima conversazione nata in questa cartella.
 
     Tornare su un progetto vuol dire ritrovare obiettivo, piano e avanzamento
-    dove li avevi lasciati. Senza conversazioni in questa cartella esce con 1:
-    `ares` da solo ne apre una nuova.
+    dove li avevi lasciati. Senza conversazioni in questa cartella esce con 2,
+    rifiutato: `ares` da solo ne apre una nuova.
 
     Args:
         scegli: mostra le conversazioni di questa cartella e ne fa scegliere una.
