@@ -982,6 +982,25 @@ def chat_sessioni() -> str:
         with patch("builtins.input", lambda _etichetta="": ""):
             esito, testo = avvio(riprendi=True, scegli=True)
         esigi(esito == 2 and "Nessuna conversazione ripresa" in testo, "rinunciare alla scelta apre qualcosa")
+
+        # `resume -p`: un turno solo sull'ultima conversazione di qui, senza
+        # memoria da scrivere come ogni `-p`; con `--scegli` non parte.
+        ripresi: list[str] = []
+
+        def un_turno(agent, testo, *, on_event, resolve_pause):
+            ripresi.append(testo)
+            return FintaRisposta()
+
+        with patch.object(chat, "run_turn_cycle", un_turno):
+            esito, testo = avvio(riprendi=True, prompt="continua")
+        esigi(
+            esito == 0 and ripresi == ["continua"] and costruiti[-1]["session_id"] == "ripresa-nuova",
+            "resume -p non fa il turno sull'ultima conversazione di qui: " + repr((esito, ripresi)),
+        )
+        esigi(costruiti[-1]["interattivo"] is False, "resume -p costruisce un agente che scrive in memoria")
+        prima = len(costruiti)
+        esito, testo = avvio(riprendi=True, scegli=True, prompt="continua")
+        esigi(esito == 2 and "--scegli" in testo and len(costruiti) == prima, "resume --scegli -p non viene rifiutato")
     finally:
         db.delete_sessions([identificativo for identificativo, _, _ in seminate], user_id=UTENTE)
 

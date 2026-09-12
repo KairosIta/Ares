@@ -3,6 +3,7 @@
     ares                      una conversazione nuova nella cartella corrente
     ares resume               riprende l'ultima conversazione di questa cartella
     ares -p "domanda"         una risposta e basta, anche in una pipe
+    ares resume -p "domanda"  la stessa cosa, sull'ultima conversazione di qui
     ares --workspace ~/prog   apre la chat su un'altra cartella
     ares --session progetto   una sessione con un nome fisso
     ares init                 scrive un ARES.md di partenza nella cartella
@@ -87,6 +88,7 @@ def chat(
 @app.command
 def resume(
     *,
+    prompt: Annotated[str | None, Parameter(name=("--prompt", "-p"))] = None,
     scegli: bool = False,
     user: str = config.DEFAULT_USER_ID,
     workspace: Path | None = None,
@@ -101,6 +103,7 @@ def resume(
     rifiutato: `ares` da solo ne apre una nuova.
 
     Args:
+        prompt: una domanda sola sull'ultima conversazione: risponde ed esce; stdin in pipe si aggiunge.
         scegli: mostra le conversazioni di questa cartella e ne fa scegliere una.
         user: identificativo dell'utente.
         workspace: la cartella su cui lavorare, se non e' quella corrente.
@@ -112,7 +115,14 @@ def resume(
     from ares.cli.chat import avvia
 
     return avvia(
-        user=user, workspace=workspace, debug=debug, metriche=metriche, riprendi=True, scegli=scegli, modo=modo
+        user=user,
+        workspace=workspace,
+        debug=debug,
+        metriche=metriche,
+        riprendi=True,
+        scegli=scegli,
+        prompt=prompt,
+        modo=modo,
     )
 
 

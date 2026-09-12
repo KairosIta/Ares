@@ -6,6 +6,7 @@ Uso:
     ares resume                riprende l'ultima conversazione di questa cartella
     ares resume --scegli       la sceglie da un elenco
     ares -p "domanda"          una risposta e basta; stdin in pipe si aggiunge
+    ares resume -p "domanda"   la stessa cosa, sull'ultima conversazione di qui
     ares --workspace ~/prog    su un'altra cartella
     ares --session progetto-x  una sessione con un nome fisso
     ares --debug               mostra le chiamate al modello
@@ -27,7 +28,8 @@ conversazioni, anche una nuova.
 
 Frecce su e giu' ripercorrono cio' che hai gia' scritto, anche di una
 sessione precedente; le frecce laterali correggono la riga senza riscriverla.
-Invio spedisce il messaggio, Alt+Invio aggiunge una nuova riga.
+Invio spedisce il messaggio, Alt+Invio aggiunge una nuova riga, Ctrl-C
+svuota la riga e Ctrl-D chiude, come `/esci`.
 
 Comandi durante la chat: lo slash apre il menu, `/aiuto` lo descrive, il TAB
 completa e bastano le iniziali finche' restano uniche. L'elenco vive in
@@ -49,7 +51,15 @@ from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_OCCUPATO, ESITO_RIFIUTO
-from ares.cli.commands import COMANDI, StatoChat, gestisci_comando, nomi_comandi, risolvi_comando, stampa_aiuto
+from ares.cli.commands import (
+    COMANDI,
+    StatoChat,
+    candidati_argomento,
+    gestisci_comando,
+    nomi_comandi,
+    risolvi_comando,
+    stampa_aiuto,
+)
 from ares.cli.editor import CliInput
 from ares.cli.log import AGNO_LOGGER_NAMES, configura_log_agno
 from ares.cli.render import (
@@ -321,6 +331,10 @@ def _apri_chat(
     if prompt is not None and modo == "auto":
         UI.line("La modalita' auto non si combina con -p: nessuno vedrebbe cosa viene eseguito.", style="ares.error")
         return ESITO_RIFIUTO
+    if prompt is not None and scegli:
+        # `--scegli` chiede un numero, e con `-p` stdin e' la domanda.
+        UI.line("--scegli non si combina con -p: nessuno sceglierebbe. Usa --session <nome>.", style="ares.error")
+        return ESITO_RIFIUTO
     # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio
     # vuoto accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
     # risponderebbe come al primo giorno senza che si capisca perche'.
@@ -383,6 +397,7 @@ def _apri_chat(
         comandi=[(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI],
         cronologia_file=config.CRONOLOGIA_FILE,
         cronologia_righe=config.CRONOLOGIA_RIGHE,
+        argomenti=candidati_argomento(stato),
     )
     if input_cli.history_warning:
         UI.line(
