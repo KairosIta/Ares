@@ -1,6 +1,6 @@
 # Agno in Ares
 
-Ares usa **Agno 3.0.5**, ultima stable verificata il 3 settembre 2026, come framework dell'agente. Agno fornisce il ciclo di
+Ares usa **Agno 3.0.9**, ultima stable verificata il 12 settembre 2026, come framework dell'agente. Agno fornisce il ciclo di
 esecuzione, gli store e le primitive agentiche; Ares decide invece politica
 local-first, modelli Ollama, interfaccia, confini degli strumenti, schema dei
 dati, backup e comportamento dell'apprendimento.
@@ -34,7 +34,7 @@ apprendimento sono quattro - `ALWAYS`, `AGENTIC`, `PROPOSE`, `HITL` - ma non
 valgono per tutti gli store: `PROPOSE` è supportato dal solo
 `LearnedKnowledgeStore`, mentre `UserProfileStore` e `UserMemoryStore` lo
 rifiutano con un warning, e `HITL` è dichiarato "reserved for future use;
-unsupported by every store". **In Agno 3.0.5 non esiste quindi alcun modo, a
+unsupported by every store". **In Agno 3.0.9 non esiste quindi alcun modo, a
 livello di framework, di far confermare ciò che entra in profilo e
 memorie**: è un limite del framework, non una scelta di Ares, ed è la
 ragione per cui la sezione "Confini di sicurezza" di
@@ -52,7 +52,7 @@ due miglioramenti pertinenti a un assistente longevo con molti strumenti.
 Consulta le [note 3.0.0](https://github.com/agno-agi/agno/releases/tag/v3.0.0)
 e le [note 3.0.1](https://github.com/agno-agi/agno/releases/tag/v3.0.1).
 Le patch successive, fino alla
-[3.0.5](https://github.com/agno-agi/agno/releases/tag/v3.0.5), entrano dal
+[3.0.9](https://github.com/agno-agi/agno/releases/tag/v3.0.9), entrano dal
 solo `uv.lock`: il vincolo in `pyproject.toml` è `>=3.0.2,<3.1`, e ogni
 patch viene provata sulle superfici che Ares usa - le firme di
 `LearningMachine.process` e di `SessionContextStore`, che Ares sovrascrive,

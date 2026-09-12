@@ -6,9 +6,21 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
-Le correzioni dell'audit del 12 settembre, dopo il rilascio.
+Le correzioni dell'audit del 12 settembre, dopo il rilascio, e Agno 3.0.9.
 
 ### Changed
+
+- **Agno 3.0.9.** Quattro patch dopo la 3.0.5, quasi tutte su AgentOS, MCP,
+  Workflow e Knowledge, che Ares non usa. Tre toccano Ares e sono tutte
+  correzioni: le sessioni in SQLite non vengono più codificate due volte,
+  così `session_data` in `kairos.db` diventa un oggetto JSON e non una
+  stringa che lo contiene, con le righe vecchie lette come prima e senza
+  migrazione; l'upsert in blocco delle sessioni applica lo stesso controllo
+  sul proprietario di quello singolo; su Python 3.13 gli strumenti in cache
+  non tengono più vivo il frame che li ha avvolti, e con lui agente,
+  sessione e run. I moduli `agno.learn` non cambiano: il limite sulla
+  conferma di profilo e memorie descritto in `SECURITY.md` resta. Cambia
+  solo `agno` nel lock, nessuna dipendenza transitiva.
 
 - **`ares -p` rifiuta anche `modifiche`.** Il controllo copriva solo `auto`,
   ma `modifiche` scrive e modifica file senza conferma: con un testo ostile

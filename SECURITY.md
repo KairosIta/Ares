@@ -75,7 +75,7 @@ memorie vengono scritti sia dagli strumenti che il modello chiama sia
 dall'estrazione automatica dopo ogni risposta, e ciò che entra viene
 reiniettato in ogni sessione futura: un file del workspace o l'output di un
 comando che contenga un'istruzione può quindi lasciare una traccia che dura
-oltre il turno. Agno 3.0.5 non offre una modalità che imponga una conferma
+oltre il turno. Agno 3.0.9 non offre una modalità che imponga una conferma
 su questi due store — `PROPOSE` vale solo per le intuizioni, `HITL` per
 nessuno — quindi la conferma è costruita da Ares **a valle**: con
 `MOSTRA_APPRENDIMENTI` e `CONFERMA_APPRENDIMENTI` accesi, sotto ogni risposta
