@@ -298,6 +298,43 @@ def righe_sessione(sessione: Any, corrente: bool = False, con_cartella: bool = F
     return righe
 
 
+def testo_conversazione(sessione: Any, *, modello: str = "") -> str:
+    """La conversazione in Markdown: una testata, poi ogni scambio come `Tu` e `Ares`.
+
+    Solo i messaggi del turno: Agno rimette nei `messages` di ogni run anche
+    la storia precedente, marcata `from_history`, e senza il filtro ogni
+    scambio comparirebbe tante volte quanti sono i turni che lo seguono.
+    Gli strumenti chiamati stanno in una riga per turno, col solo nome: e'
+    un'esportazione da leggere, non un log.
+    """
+    nome = str(getattr(sessione, "session_id", "?"))
+    runs = getattr(sessione, "runs", None) or []
+    righe = ["# Conversazione " + nome, ""]
+    righe.append("- utente: " + str(getattr(sessione, "user_id", None) or "?"))
+    dove = cartella_sessione(sessione)
+    if dove:
+        righe.append("- cartella: " + dove)
+    if modello:
+        righe.append("- modello: " + modello)
+    righe.append("- ultima modifica: " + quando_sessione(sessione))
+    righe.append("- scambi: " + str(len(runs)))
+    for run in runs:
+        for messaggio in getattr(run, "messages", None) or []:
+            if getattr(messaggio, "from_history", False):
+                continue
+            ruolo = getattr(messaggio, "role", None)
+            testo = _testo_messaggio(messaggio).strip()
+            if ruolo == "user" and testo:
+                righe.extend(["", "## Tu", "", testo])
+            elif ruolo == "assistant" and testo:
+                righe.extend(["", "## Ares", "", testo])
+        strumenti = [str(getattr(t, "tool_name", "") or "") for t in getattr(run, "tools", None) or []]
+        strumenti = [s for s in strumenti if s]
+        if strumenti:
+            righe.extend(["", "_strumenti: " + ", ".join(dict.fromkeys(strumenti)) + "_"])
+    return "\n".join(righe) + "\n"
+
+
 def quando_sessione(sessione: Any) -> str:
     """L'ultima modifica di una sessione, o la creazione, in cifre."""
     return _quando(getattr(sessione, "updated_at", None) or getattr(sessione, "created_at", None))

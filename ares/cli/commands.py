@@ -1,8 +1,12 @@
 """Comandi locali della REPL, derivati da un'unica tabella."""
 
 import difflib
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from agno.db.base import SessionType
 
 from ares import config
 from ares.agent.assistant import build_assistant
@@ -11,7 +15,15 @@ from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
-from ares.state.stores import leggi_entita, leggi_sessioni, righe_entita, righe_sessione
+from ares.state.stores import (
+    leggi_entita,
+    leggi_sessioni,
+    prima_domanda,
+    quando_sessione,
+    righe_entita,
+    righe_sessione,
+    testo_conversazione,
+)
 
 
 @dataclass
@@ -116,16 +128,31 @@ def _comando_sessione(stato: StatoChat, argomento: str):
     """
     if not argomento:
         UI.pair("Sessione corrente", stato.session_id)
-        UI.line("/sessione <nome> passa a un'altra; /sessioni le elenca.", style="ares.muted")
+        UI.line(
+            "/sessione <nome> passa a un'altra, /sessione nuova ne apre una; /sessioni le elenca.", style="ares.muted"
+        )
         return
     nome = argomento.split()[0]
-    if nome == stato.session_id:
+    nuova = nome == "nuova"
+    if nuova:
+        # Come un altro `ares` nella stessa cartella, senza uscire: l'id
+        # viene dalla cartella e dal momento. `nuova` e' percio' una parola
+        # riservata, e una sessione che si chiamasse cosi' non e' raggiungibile
+        # da qui; `ares --session nuova` la apre lo stesso.
+        if not config.WORKSPACE:
+            UI.line("Senza cartella di lavoro il nome lo scegli tu: /sessione <nome>.", style="ares.warning")
+            return
+        nome = cartella.nuovo_id_sessione(config.WORKSPACE_DIR)
+    elif nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
     stato.agent = build_assistant(user_id=stato.user_id, session_id=nome, debug=stato.debug, modo=stato.modo)
     stato.session_id = nome
-    UI.pair("Sessione", nome, style="ares.title")
-    UI.line("Il contesto e' quello di questa sessione; profilo e memorie non cambiano.", style="ares.muted")
+    UI.pair("Sessione", nome + ("  (nuova)" if nuova else ""), style="ares.title")
+    if nuova:
+        UI.line("Contesto vuoto; profilo e memorie non cambiano.", style="ares.muted")
+    else:
+        UI.line("Il contesto e' quello di questa sessione; profilo e memorie non cambiano.", style="ares.muted")
 
 
 def _comando_modo(stato: StatoChat, argomento: str):
@@ -251,6 +278,47 @@ def _comando_cartella(stato: StatoChat, argomento: str):
         UI.line("attenzione: la cartella " + motivo, style="ares.warning")
 
 
+def _comando_esporta(stato: StatoChat, argomento: str):
+    """La conversazione corrente in un file Markdown, per leggerla o passarla a qualcuno.
+
+    Senza argomento il file prende il nome della sessione e nasce nella
+    cartella di lavoro, e uno che esiste gia' non si tocca: il nome e' stato
+    scelto da Ares, non da chi scrive. Con un percorso esplicito si
+    sovrascrive, e lo si dice: chi rilancia `/esporta note.md` vuole la
+    versione aggiornata, non un rifiuto.
+    """
+    db = getattr(stato.agent, "db", None)
+    sessione = None
+    if db is not None:
+        sessione = db.get_session(session_id=stato.session_id, session_type=SessionType.AGENT, user_id=stato.user_id)
+    scambi = len(getattr(sessione, "runs", None) or [])
+    if not scambi:
+        UI.line("Niente da esportare: la sessione non ha ancora turni salvati.", style="ares.muted")
+        return
+    # Un percorso relativo parte dalla cartella di lavoro, che con
+    # `--workspace` non e' quella del processo; uno assoluto resta com'e'.
+    radice = config.WORKSPACE_DIR if config.WORKSPACE else Path.cwd()
+    esplicito = bool(argomento)
+    if esplicito:
+        destinazione = radice / Path(argomento.split()[0]).expanduser()
+    else:
+        destinazione = radice / (stato.session_id + ".md")
+    if destinazione.exists() and not esplicito:
+        UI.line(str(destinazione) + " esiste gia': /esporta <file> per scegliere il nome.", style="ares.error")
+        return
+    esisteva = destinazione.exists()
+    try:
+        destinazione.write_text(testo_conversazione(sessione, modello=config.MAIN_MODEL), encoding="utf-8")
+    except OSError as errore:
+        UI.line("Impossibile scrivere " + str(destinazione) + ": " + str(errore), style="ares.error")
+        return
+    UI.pair("Esportata" if not esisteva else "Sovrascritta", str(destinazione), style="ares.title")
+    UI.line(
+        str(scambi) + (" scambio" if scambi == 1 else " scambi") + " in Markdown: Tu e Ares, a turni.",
+        style="ares.muted",
+    )
+
+
 def _comando_esci(stato: StatoChat, argomento: str):
     return False
 
@@ -274,19 +342,63 @@ COMANDI = (
     ("/memorie", (), "le memorie non strutturate", _comando_memorie),
     ("/contesto", (), "obiettivo e avanzamento della sessione", _comando_contesto),
     ("/sessioni", (), "le conversazioni di questa cartella; <testo> filtra, `tutte` allarga", _comando_sessioni),
-    ("/sessione", (), "la sessione corrente; /sessione <nome> passa a un'altra", _comando_sessione),
+    (
+        "/sessione",
+        (),
+        "la sessione corrente; /sessione <nome> passa a un'altra, `nuova` ne apre una",
+        _comando_sessione,
+    ),
     ("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
     ("/file", (), "i file scritti dall'agente", _comando_file),
     ("/cartella", ("/lavoro",), "la cartella di lavoro: percorso, git, ARES.md", _comando_cartella),
     ("/modo", (), "la modalita' corrente; /modo <nome> passa a manuale, modifiche o piano", _comando_modo),
     ("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
     ("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),
+    ("/esporta", (), "scrive la conversazione in un file Markdown; /esporta <file> sceglie il nome", _comando_esporta),
     ("/esci", ("/quit", "/exit"), "termina la sessione", _comando_esci),
 )
 
 
 def nomi_comandi() -> list:
     return [voce[0] for voce in COMANDI]
+
+
+def _candidati_modo() -> list[tuple[str, str]]:
+    """Le modalita' che `/modo` accetta, descritte come nel suo elenco."""
+    voci = []
+    for nome, (silenziosi, confermati) in config.MODALITA.items():
+        if nome == "auto":
+            continue
+        descrizione = "da soli: " + ", ".join(silenziosi)
+        if confermati:
+            descrizione += "; con conferma: " + ", ".join(confermati)
+        voci.append((nome, descrizione))
+    return voci
+
+
+def _candidati_sessione(stato: StatoChat) -> list[tuple[str, str]]:
+    """`nuova` e le conversazioni di questa cartella, la corrente esclusa."""
+    voci = [("nuova", "una conversazione nuova in questa cartella")]
+    qui = config.WORKSPACE_DIR if config.WORKSPACE else None
+    for s in leggi_sessioni(stato.agent, user_id=stato.user_id, cartella=qui)[: config.SESSIONI_ELENCO]:
+        nome = str(getattr(s, "session_id", "") or "")
+        if not nome or nome == stato.session_id:
+            continue
+        descrizione = quando_sessione(s)
+        inizio = prima_domanda(s, larghezza=50)
+        if inizio:
+            descrizione += "  " + inizio
+        voci.append((nome, descrizione))
+    return voci
+
+
+def candidati_argomento(stato: StatoChat) -> dict[str, Callable[[], list[tuple[str, str]]]]:
+    """Cosa il TAB propone dopo lo spazio, per i comandi che hanno un argomento.
+
+    Le chiusure leggono `stato` al momento della chiamata, non ora: dopo
+    `/sessione x` la corrente e' un'altra, e l'elenco deve saperlo.
+    """
+    return {"/modo": _candidati_modo, "/sessione": lambda: _candidati_sessione(stato)}
 
 
 def stampa_aiuto() -> None:

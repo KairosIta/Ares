@@ -14,7 +14,7 @@ import json
 import os
 import sys
 import tempfile
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -137,11 +137,33 @@ class CronologiaSicura(History):
             self._scrivi(voci[-self.limite :])
 
 
-class CompletamentoComandi(Completer):
-    """Mostra i comandi canonici e la loro descrizione digitando ``/``."""
+# Chi fornisce i candidati per l'argomento di un comando: `/modo ` propone
+# le modalita', `/sessione ` le conversazioni. Ogni voce e' (valore,
+# descrizione), come per i comandi.
+Candidati = Callable[[], Sequence[tuple[str, str]]]
 
-    def __init__(self, comandi: Sequence[tuple[str, str]]) -> None:
+
+class CompletamentoComandi(Completer):
+    """Mostra i comandi canonici digitando ``/``, e i loro argomenti dopo lo spazio.
+
+    I candidati dell'argomento si calcolano una volta per prompt e non a
+    ogni tasto: `/sessione` li legge dal database, e `complete_while_typing`
+    chiama il completer a ogni carattere. `svuota_cache` li fa ricalcolare
+    al prompt successivo, quando una sessione nuova puo' essere comparsa.
+    """
+
+    def __init__(self, comandi: Sequence[tuple[str, str]], argomenti: Mapping[str, Candidati] | None = None) -> None:
         self.comandi = tuple(comandi)
+        self.argomenti = dict(argomenti or {})
+        self._cache: dict[str, Sequence[tuple[str, str]]] = {}
+
+    def svuota_cache(self) -> None:
+        self._cache.clear()
+
+    def _candidati(self, comando: str) -> Sequence[tuple[str, str]]:
+        if comando not in self._cache:
+            self._cache[comando] = tuple(self.argomenti[comando]())
+        return self._cache[comando]
 
     def get_completions(
         self,
@@ -149,16 +171,20 @@ class CompletamentoComandi(Completer):
         complete_event: CompleteEvent,
     ) -> Iterable[Completion]:
         prima = document.text_before_cursor
-        if "\n" in prima or not prima.startswith("/") or " " in prima:
+        if "\n" in prima or not prima.startswith("/"):
             return
-        for nome, descrizione in self.comandi:
-            if nome.startswith(prima) and nome != prima:
-                yield Completion(
-                    nome,
-                    start_position=-len(prima),
-                    display=nome,
-                    display_meta=descrizione,
-                )
+        comando, separatore, argomento = prima.partition(" ")
+        if not separatore:
+            for nome, descrizione in self.comandi:
+                if nome.startswith(prima) and nome != prima:
+                    yield Completion(nome, start_position=-len(prima), display=nome, display_meta=descrizione)
+            return
+        # Solo il primo argomento, e solo per i comandi che ne hanno uno.
+        if " " in argomento or comando not in self.argomenti:
+            return
+        for valore, descrizione in self._candidati(comando):
+            if valore.startswith(argomento) and valore != argomento:
+                yield Completion(valore, start_position=-len(argomento), display=valore, display_meta=descrizione)
 
 
 class LexerInputAres(Lexer):
@@ -215,6 +241,18 @@ def _tasti_chat(completer: CompletamentoComandi) -> KeyBindings:
     @tasti.add("escape", "enter", eager=True)
     def _a_capo(event) -> None:
         event.current_buffer.insert_text("\n")
+
+    @tasti.add("c-c", eager=True)
+    def _svuota(event) -> None:
+        # Ctrl-C svuota la riga invece di chiudere la chat: chiudere per un
+        # riflesso, con un messaggio lungo a meta', costava il messaggio.
+        # Cio' che c'era scritto finisce in cronologia, e la freccia in su
+        # lo riporta. Chiudono Ctrl-D e `/esci`. Durante un turno Ctrl-C
+        # resta l'interruzione, perche' li' il prompt non c'e'.
+        buffer = event.current_buffer
+        if buffer.text:
+            buffer.append_to_history()
+        buffer.reset()
 
     @tasti.add("c-space")
     def _completa(event) -> None:
@@ -274,6 +312,7 @@ class CliInput:
         input: Input | None = None,
         output: Output | None = None,
         fallback_input: Callable[[str], str] = builtins.input,
+        argomenti: Mapping[str, Candidati] | None = None,
     ) -> None:
         if interactive is None:
             interactive = bool(sys.stdin.isatty() and sys.stdout.isatty())
@@ -289,7 +328,7 @@ class CliInput:
             # frecce su/giu in memoria e rende visibile la degradazione.
             self.history = InMemoryHistory()
             self.history_warning = str(errore)
-        self.completer = CompletamentoComandi(comandi)
+        self.completer = CompletamentoComandi(comandi, argomenti)
         self._sessione: PromptSession[str] | None = None
         self._domande: PromptSession[str] | None = None
 
@@ -331,7 +370,7 @@ class CliInput:
         return [
             (
                 "class:bottom-toolbar",
-                " Invio invia · Alt+Invio va a capo · / comandi · ↑↓ cronologia ",
+                " Invio invia · Alt+Invio va a capo · / comandi · ↑↓ cronologia · Ctrl-C svuota · Ctrl-D esce ",
             )
         ]
 
@@ -342,6 +381,7 @@ class CliInput:
             if testo and (not storico or storico[-1] != testo):
                 self.history.append_string(testo)
             return testo
+        self.completer.svuota_cache()
         return self._sessione.prompt(
             self._messaggio(),
             placeholder="Scrivi ad Ares oppure / per i comandi",

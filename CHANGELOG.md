@@ -50,6 +50,41 @@ un parametro che nessun chiamante poteva usare.
   del ruleset, come CodeQL e `Audit` e per lo stesso motivo: è un canarino
   sull'interprete, e ciò che trova va letto quando compare.
 
+### Added
+
+- **Il TAB completa anche l'argomento.** Dopo lo spazio, `/modo ` propone
+  le tre modalità che la REPL accetta con la stessa descrizione del suo
+  elenco, e `/sessione ` le conversazioni di questa cartella con data e
+  prima domanda, più `nuova`. I candidati si leggono una volta per prompt e
+  non a ogni tasto, perché `/sessione` li chiede al database e il
+  completamento mentre si scrive chiama il completer a ogni carattere.
+- **`/sessione nuova` apre una conversazione senza uscire.** L'id viene
+  dalla cartella e dal momento, come un altro `ares` lanciato qui; contesto
+  vuoto, profilo e memorie invariati. `nuova` è quindi una parola riservata
+  in quel comando; `ares --session nuova` resta possibile.
+- **`/esporta` scrive la conversazione in Markdown.** Una testata con
+  sessione, utente, cartella, modello e numero di scambi, poi `## Tu` e
+  `## Ares` a turni e una riga con gli strumenti chiamati. Senza argomento
+  il file prende il nome della sessione nella cartella di lavoro e uno che
+  esiste già non si tocca; `/esporta <file>` sovrascrive e lo dice. Agno
+  rimette la storia precedente nei messaggi di ogni run, marcata
+  `from_history`: il filtro c'è, e la prova conta che ogni scambio compaia
+  una volta.
+- **`ares resume -p "..."`.** Un turno solo sull'ultima conversazione nata
+  in questa cartella, con il suo contesto, e poi esce: prima si poteva solo
+  con `--session <nome>`, cioè sapendo l'id. Vale ciò che vale per ogni
+  `-p`: niente memoria da scrivere, conferme rifiutate, su stdout la sola
+  risposta. `--scegli` con `-p` è rifiutato con 2, perché chiede un numero e
+  stdin è la domanda.
+
+### Changed
+
+- **Ctrl-C al prompt svuota la riga invece di chiudere la chat.** Chiudere
+  per un riflesso, con un messaggio lungo a metà, costava il messaggio. Ora
+  la riga finisce in cronologia — la freccia in su la riporta — e il prompt
+  resta; chiudono `Ctrl-D` e `/esci`. Durante un turno Ctrl-C resta
+  l'interruzione. Banner e barra in basso lo dicono.
+
 ### Fixed
 
 - **L'indicatore d'attesa dice cosa sta aspettando.** `render.py` passava

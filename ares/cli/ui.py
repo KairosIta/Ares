@@ -587,7 +587,7 @@ class CliRenderer:
             dati,
             Text(""),
             _testo(
-                "/ apre i comandi · Alt+Invio va a capo · Ctrl-C interrompe",
+                "/ apre i comandi · Alt+Invio va a capo · Ctrl-C interrompe · Ctrl-D esce",
                 "ares.muted",
             ),
         )

@@ -310,17 +310,25 @@ stderr, così uno script legge la risposta e nient'altro.
 git diff | ares -p "scrivi il messaggio di commit"
 ```
 
+`ares resume -p "..."` fa lo stesso sull'ultima conversazione nata in questa
+cartella, con il suo contesto.
+
 ### La chat
 
 Durante la chat `/` apre il menu dei comandi e TAB completa la voce
-selezionata. Invio spedisce il messaggio, `Alt+Invio` aggiunge una nuova riga,
-le frecce percorrono la cronologia e i suggerimenti riprendono le domande
-precedenti. Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`,
-`/sessioni`, `/entita`, `/file` e `/cartella`, che mostra percorso, ramo,
-file modificati e se c'è un `ARES.md`. Quattro cambiano la sessione in corso
-senza riavviare: `/sessione <id>` passa a un'altra conversazione, `/modo` a
-un'altra modalità, `/metriche` accende il costo di ogni turno, `/debug` le
-chiamate al modello.
+selezionata, e dopo lo spazio anche l'argomento: `/modo ` propone le
+modalità, `/sessione ` le conversazioni di questa cartella. Invio spedisce il
+messaggio, `Alt+Invio` aggiunge una nuova riga, `Ctrl-C` svuota la riga
+lasciandola in cronologia, `Ctrl-D` chiude come `/esci`; le frecce
+percorrono la cronologia e i suggerimenti riprendono le domande precedenti.
+Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`, `/sessioni`,
+`/entita`, `/file` e `/cartella`, che mostra percorso, ramo, file modificati
+e se c'è un `ARES.md`. Quattro cambiano la sessione in corso senza
+riavviare: `/sessione <id>` passa a un'altra conversazione e `/sessione
+nuova` ne apre una, `/modo` cambia modalità, `/metriche` accende il costo di
+ogni turno, `/debug` le chiamate al modello. `/esporta` scrive la
+conversazione in un file Markdown nella cartella di lavoro, `Tu` e `Ares` a
+turni; `/esporta <file>` sceglie il nome.
 
 ### Cosa Ares sa di sé
 

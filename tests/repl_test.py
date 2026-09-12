@@ -32,6 +32,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from _comune import esegui, esigi, prepara_ambiente, pulisci
@@ -978,6 +979,12 @@ def input_repl() -> str:
     metadati = [(nome, descrizione) for nome, _alias, descrizione, _funzione in COMANDI]
     percorso = Path(ARCHIVIO_PROVA) / "cronologia_input_test.txt"
 
+    letture: list[int] = [0]
+
+    def modalita() -> list[tuple[str, str]]:
+        letture[0] += 1
+        return [("manuale", "chiede"), ("modifiche", "scrive"), ("piano", "legge")]
+
     with create_pipe_input() as pipe:
         input_cli = CliInput(
             comandi=metadati,
@@ -986,9 +993,23 @@ def input_repl() -> str:
             interactive=True,
             input=pipe,
             output=DummyOutput(),
+            argomenti={"/modo": modalita},
         )
         pipe.send_text("/mem\t\r")
         esigi(input_cli.prompt() == "/memorie", "TAB non completa nel prompt reale")
+
+        # L'argomento si completa dopo lo spazio; i candidati si leggono una
+        # volta per prompt, non a ogni tasto, e di nuovo al prompt dopo.
+        pipe.send_text("/modo pi\t\r")
+        esigi(input_cli.prompt() == "/modo piano", "TAB non completa l'argomento di /modo")
+        esigi(letture[0] == 1, "i candidati dell'argomento vengono riletti a ogni tasto: " + str(letture[0]))
+        pipe.send_text("/modo mo\t\r")
+        esigi(input_cli.prompt() == "/modo modifiche", "TAB non completa l'argomento al prompt successivo")
+        esigi(letture[0] == 2, "i candidati non vengono riletti al prompt successivo")
+
+        # Ctrl-C svuota la riga e la mette in cronologia; non chiude.
+        pipe.send_text("bozza a meta'\x03dopo\r")
+        esigi(input_cli.prompt() == "dopo", "Ctrl-C non svuota la riga")
 
         pipe.send_text("prima riga\x1b\rseconda riga\r")
         esigi(
@@ -998,14 +1019,6 @@ def input_repl() -> str:
 
         pipe.send_text("s\r")
         esigi(input_cli.ask("Autorizzi? ") == "s", "il prompt breve non restituisce la scelta")
-
-        pipe.send_text("\x03")
-        try:
-            input_cli.prompt()
-        except KeyboardInterrupt:
-            pass
-        else:
-            raise AssertionError("Ctrl-C non interrompe il prompt")
 
         pipe.send_text("\x04")
         try:
@@ -1018,8 +1031,9 @@ def input_repl() -> str:
     rilette = list(CronologiaSicura(percorso, 20).load_history_strings())
     esigi("s" not in rilette, "una risposta di autorizzazione finisce in cronologia")
     esigi(
-        rilette[:2] == ["prima riga\nseconda riga", "/memorie"],
-        "il prompt non salva le domande: " + repr(rilette),
+        rilette[:6]
+        == ["prima riga\nseconda riga", "dopo", "bozza a meta'", "/modo modifiche", "/modo piano", "/memorie"],
+        "il prompt non salva le domande, o Ctrl-C perde la bozza: " + repr(rilette),
     )
 
     risposte = iter(["testo da pipe", "no"])
@@ -1073,7 +1087,7 @@ def input_repl() -> str:
         lock_degradato.prompt() == "ancora disponibile",
         "un guasto del backend di lock blocca la chat",
     )
-    return "menu e TAB, multilinea, Ctrl-C/D, fallback pipe e cronologia in memoria"
+    return "menu e TAB anche sugli argomenti, multilinea, Ctrl-C svuota, Ctrl-D chiude, fallback pipe e cronologia"
 
 
 def comandi() -> str:
@@ -1238,6 +1252,78 @@ def stato_della_chat() -> str:
     )
     comando("/sessione progetto-z")
     esigi(modi[-1] == "piano", "il cambio di sessione perde la modalita'")
+
+    # `/sessione nuova`: un id dalla cartella e dal momento, come un altro
+    # `ares` qui, e lo dice.
+    uscita = comando("/sessione nuova")
+    esigi(
+        stato.session_id != "nuova" and stato.session_id == costruiti[-1][0] and "(nuova)" in uscita,
+        "/sessione nuova non apre una conversazione con un id nuovo: " + repr((stato.session_id, uscita)),
+    )
+    nome_nuova = stato.session_id
+
+    # `/esporta`: senza turni salvati non scrive; con i turni scrive il
+    # Markdown della sessione, una volta sola per scambio anche se Agno
+    # rimette la storia nei messaggi di ogni run.
+    uscita = comando("/esporta")
+    esigi("Niente da esportare" in uscita, "/esporta senza database scrive qualcosa: " + repr(uscita))
+
+    def messaggio(ruolo: str, testo: str, storia: bool = False):
+        return SimpleNamespace(role=ruolo, content=testo, from_history=storia)
+
+    runs = [
+        SimpleNamespace(
+            messages=[
+                messaggio("system", "istruzioni"),
+                messaggio("user", "Ciao Ares"),
+                messaggio("assistant", "Salve!"),
+            ],
+            tools=[SimpleNamespace(tool_name="workspace_read_file"), SimpleNamespace(tool_name="workspace_read_file")],
+        ),
+        SimpleNamespace(
+            messages=[
+                messaggio("user", "Ciao Ares", storia=True),
+                messaggio("assistant", "Salve!", storia=True),
+                messaggio("user", "Come va?"),
+                messaggio("assistant", "", storia=False),
+                messaggio("assistant", "Bene, grazie."),
+            ],
+            tools=[],
+        ),
+    ]
+    letti: list[dict] = []
+
+    class DbFinto:
+        def get_session(self, **argomenti):
+            letti.append(argomenti)
+            return SimpleNamespace(session_id=argomenti["session_id"], user_id="utente", runs=runs, metadata={})
+
+    stato.agent.db = DbFinto()
+    uscita = comando("/esporta")
+    atteso = config.WORKSPACE_DIR / (nome_nuova + ".md")
+    esigi("Esportata" in uscita and atteso.is_file(), "/esporta non scrive il file della sessione: " + repr(uscita))
+    esigi(
+        letti[-1]["session_id"] == nome_nuova and letti[-1]["user_id"] == "utente", "/esporta legge un'altra sessione"
+    )
+    testo = atteso.read_text(encoding="utf-8")
+    esigi(testo.startswith("# Conversazione " + nome_nuova), "l'esportazione non ha la testata: " + repr(testo[:80]))
+    esigi(
+        testo.count("Ciao Ares") == 1 and testo.count("Salve!") == 1, "la storia riportata da Agno raddoppia gli scambi"
+    )
+    esigi(
+        testo.count("## Tu") == 2 and testo.count("## Ares") == 2,
+        "mancano turni o ne compaiono di vuoti: " + repr(testo),
+    )
+    esigi("istruzioni" not in testo, "il messaggio di sistema finisce nell'esportazione")
+    esigi("_strumenti: workspace_read_file_" in testo, "gli strumenti del turno non compaiono una volta sola")
+    esigi("- scambi: 2" in testo, "la testata non conta gli scambi")
+    uscita = comando("/esporta")
+    esigi("esiste gia'" in uscita, "/esporta sovrascrive il file con il nome scelto da Ares")
+    scelto = config.WORKSPACE_DIR / "note.md"
+    uscita = comando("/esporta " + str(scelto))
+    esigi("Esportata" in uscita and scelto.is_file(), "/esporta <file> non scrive dove chiesto: " + repr(uscita))
+    uscita = comando("/esporta " + str(scelto))
+    esigi("Sovrascritta" in uscita, "/esporta <file> su un file che esiste non dice che sovrascrive: " + repr(uscita))
     return "metriche e debug a interruttore, sessione e modalita' cambiate ricostruendo l'agente"
 
 
