@@ -89,10 +89,7 @@ from ares.agent.assistant import (  # noqa: E402
 from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
 from ares.agent.prompts import strumenti_spazio  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
-from ares.cli.chat import (  # noqa: E402
-    StatoChat,
-    gestisci_comando,
-)
+from ares.cli.commands import StatoChat, gestisci_comando  # noqa: E402
 from ares.cli.ui import stampa_store  # noqa: E402
 from ares.state.stores import (  # noqa: E402
     leggi_entita,

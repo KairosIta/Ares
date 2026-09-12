@@ -85,8 +85,17 @@ def esegui_protetto(
         return ESITO_GUASTO
 
 
-def nuova_app(nome: str, aiuto: str, *, radice: bool = False) -> App:
+def _mostra_default(valore: object) -> object:
+    """Il default nell'aiuto, tranne per i flag spenti: `[default: False]` e' rumore."""
+    return None if valore is False else valore
+
+
+def nuova_app(nome: str, aiuto: str | None, *, radice: bool = False) -> App:
     """Un'App con i titoli in italiano e la console di Ares.
+
+    `aiuto` e' la riga sotto l'uso. Il comando radice la passa `None`:
+    Cyclopts mostra allora il docstring del comando di default, cioe' della
+    chat, con la descrizione e gli esempi, invece di una riga sola.
 
     `result_action="return_value"` fa restituire a `app(argv)` cio' che la
     funzione restituisce, invece di chiamare `sys.exit`: i `main()` dei
@@ -95,7 +104,9 @@ def nuova_app(nome: str, aiuto: str, *, radice: bool = False) -> App:
 
     `negative=""` toglie i `--no-debug`, `--no-yes` che Cyclopts aggiunge a
     ogni flag booleano: qui un flag si accende e basta, e l'aiuto resta
-    leggibile.
+    leggibile. Per la stessa ragione un flag spento non dice `[default:
+    False]`; gli altri default restano, perche' `--modo manuale` e `--keep
+    5` sono informazioni.
     """
     app = App(
         name=nome,
@@ -105,7 +116,7 @@ def nuova_app(nome: str, aiuto: str, *, radice: bool = False) -> App:
         group_commands=Group("Comandi"),
         group_parameters=Group("Parametri"),
         group_arguments=Group("Argomenti"),
-        default_parameter=Parameter(negative=""),
+        default_parameter=Parameter(negative="", show_default=_mostra_default),
         result_action="return_value",
     )
     # Le due voci che Cyclopts aggiunge da se' hanno la descrizione in

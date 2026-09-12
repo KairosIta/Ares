@@ -25,6 +25,7 @@ list`, e passa dalla stessa App perche' l'aiuto dica la forma nuova.
 
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -34,7 +35,9 @@ from ares import config
 from ares.cli.comando import nuova_app
 from ares.cli.ui import UI
 
-app = nuova_app("ares", "Assistente personale locale su Agno e Ollama", radice=True)
+# Senza `help`: l'aiuto di `ares` e' il docstring della chat qui sotto, con
+# la descrizione e gli esempi, e non una riga che nasconde entrambi.
+app = nuova_app("ares", None, radice=True)
 
 # La descrizione e' ripetuta qui perche' il modulo non e' ancora importato
 # quando `ares --help` la stampa: e' il prezzo del caricamento pigro.
@@ -46,31 +49,21 @@ SOTTOCOMANDI = (
     ("inspect", "ares.ops.inspect_learning:app", "Ispeziona gli archivi di apprendimento senza toccarli"),
     ("migrate", "ares.ops.migrazione:app", "Sposta stato e backup di prima in ~/.ares"),
 )
-for _nome, _modulo, _aiuto in SOTTOCOMANDI:
-    app.command(_modulo, name=_nome, help=_aiuto)
+# L'ordine dell'aiuto e' questo, non l'alfabetico: prima cio' che si usa
+# ogni giorno, poi la manutenzione nell'ordine in cui la si incontra.
+for _posizione, (_nome, _modulo, _aiuto) in enumerate(SOTTOCOMANDI, start=2):
+    app.command(_modulo, name=_nome, help=_aiuto, sort_key=_posizione)
 
 
-@app.default
-def chat(
-    *,
-    prompt: Annotated[str | None, Parameter(name=("--prompt", "-p"))] = None,
-    session: str | None = None,
-    user: str = config.DEFAULT_USER_ID,
-    workspace: Path | None = None,
-    modo: config.Modo = config.MODO_PREDEFINITO,
-    debug: bool = False,
-    metriche: bool = False,
-) -> int:
-    """Apre una conversazione nuova con Ares, nella cartella da cui lo lanci.
-
-    Ares lavora sui file della cartella corrente, come un collaboratore che
-    si siede nel tuo progetto. Ogni conversazione nasce li' e ha il proprio
-    contesto - obiettivo, piano, avanzamento - che `ares resume` riapre. Il
-    profilo e le memorie sono per utente e ci sono in ogni conversazione.
+# Le opzioni che `ares` e `ares resume` condividono, scritte una volta.
+# `name="*"` le appiattisce nell'aiuto accanto alle altre: chi legge non sa
+# che sono un oggetto, e non deve saperlo.
+@Parameter(name="*")
+@dataclass
+class OpzioniChat:
+    """Le opzioni comuni alla chat nuova e a quella ripresa.
 
     Args:
-        prompt: una domanda sola: risponde ed esce; in una pipe, stdin si aggiunge alla domanda.
-        session: un nome fisso per la sessione, invece di una conversazione nuova.
         user: identificativo dell'utente.
         workspace: la cartella su cui lavorare, se non e' quella corrente.
         modo: quanto Ares fa da solo: manuale chiede per ogni traccia sul disco, modifiche scrive da solo,
@@ -78,23 +71,63 @@ def chat(
         debug: mostra le chiamate al modello.
         metriche: mostra il costo di ogni turno: finestra occupata, token, secondi.
     """
+
+    user: str = config.DEFAULT_USER_ID
+    workspace: Path | None = None
+    modo: config.Modo = config.MODO_PREDEFINITO
+    debug: bool = False
+    metriche: bool = False
+
+
+@app.default
+def chat(
+    *,
+    prompt: Annotated[str | None, Parameter(name=("--prompt", "-p"))] = None,
+    session: str | None = None,
+    opzioni: OpzioniChat | None = None,
+) -> int:
+    """Assistente personale locale su Agno e Ollama.
+
+    `ares` apre una conversazione nuova nella cartella da cui lo lanci, e
+    lavora sui suoi file come un collaboratore che si siede nel tuo
+    progetto. Ogni conversazione nasce li' e ha il proprio contesto -
+    obiettivo, piano, avanzamento - che `ares resume` riapre. Il profilo e
+    le memorie sono per utente e ci sono in ogni conversazione.
+
+    Esempi:
+
+        ares                      una conversazione nuova, qui
+        ares resume               riprende l'ultima di questa cartella
+        ares -p "domanda"         una risposta e basta, anche in una pipe
+        ares resume -p "domanda"  la stessa cosa, sull'ultima di qui
+        ares --workspace ~/prog   apre la chat su un'altra cartella
+        ares --modo modifiche     scrive da solo, chiede per il resto
+        ares preflight            l'ambiente e' pronto?
+
+    Args:
+        prompt: una domanda sola: risponde ed esce; in una pipe, stdin si aggiunge alla domanda.
+        session: un nome fisso per la sessione, invece di una conversazione nuova.
+    """
     from ares.cli.chat import avvia
 
+    o = opzioni or OpzioniChat()
     return avvia(
-        session=session, user=user, workspace=workspace, debug=debug, metriche=metriche, prompt=prompt, modo=modo
+        session=session,
+        user=o.user,
+        workspace=o.workspace,
+        debug=o.debug,
+        metriche=o.metriche,
+        prompt=prompt,
+        modo=o.modo,
     )
 
 
-@app.command
+@app.command(sort_key=0)
 def resume(
     *,
     prompt: Annotated[str | None, Parameter(name=("--prompt", "-p"))] = None,
     scegli: bool = False,
-    user: str = config.DEFAULT_USER_ID,
-    workspace: Path | None = None,
-    modo: config.Modo = config.MODO_PREDEFINITO,
-    debug: bool = False,
-    metriche: bool = False,
+    opzioni: OpzioniChat | None = None,
 ) -> int:
     """Riprende l'ultima conversazione nata in questa cartella.
 
@@ -105,28 +138,23 @@ def resume(
     Args:
         prompt: una domanda sola sull'ultima conversazione: risponde ed esce; stdin in pipe si aggiunge.
         scegli: mostra le conversazioni di questa cartella e ne fa scegliere una.
-        user: identificativo dell'utente.
-        workspace: la cartella su cui lavorare, se non e' quella corrente.
-        modo: quanto Ares fa da solo: manuale chiede per ogni traccia sul disco, modifiche scrive da solo,
-            piano legge soltanto, auto non chiede mai.
-        debug: mostra le chiamate al modello.
-        metriche: mostra il costo di ogni turno: finestra occupata, token, secondi.
     """
     from ares.cli.chat import avvia
 
+    o = opzioni or OpzioniChat()
     return avvia(
-        user=user,
-        workspace=workspace,
-        debug=debug,
-        metriche=metriche,
+        user=o.user,
+        workspace=o.workspace,
+        debug=o.debug,
+        metriche=o.metriche,
         riprendi=True,
         scegli=scegli,
         prompt=prompt,
-        modo=modo,
+        modo=o.modo,
     )
 
 
-@app.command
+@app.command(sort_key=1)
 def init() -> int:
     """Scrive un ARES.md di partenza nella cartella corrente.
 

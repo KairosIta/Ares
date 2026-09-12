@@ -62,28 +62,23 @@ from ares.agent.turn_core import (  # noqa: E402
     run_turn_cycle,
 )
 from ares.cli import render  # noqa: E402
-from ares.cli.chat import (  # noqa: E402
-    AGNO_LOGGER_NAMES,
-    COMANDI,
-    StatoChat,
+from ares.cli.commands import COMANDI, StatoChat, gestisci_comando, risolvi_comando, stampa_aiuto  # noqa: E402
+from ares.cli.editor import (  # noqa: E402
+    CRONOLOGIA_INTESTAZIONE,
+    CliInput,
+    CompletamentoComandi,
+    CronologiaSicura,
+)
+from ares.cli.log import AGNO_LOGGER_NAMES, configura_log_agno  # noqa: E402
+from ares.cli.render import (  # noqa: E402
     chiedi_conferme,
-    configura_log_agno,
     finestra_occupata,
-    gestisci_comando,
     mostra_flusso,
     righe_argomento,
     righe_esito,
     righe_metriche,
     righe_richiesta,
     righe_scrittura,
-    risolvi_comando,
-    stampa_aiuto,
-)
-from ares.cli.editor import (  # noqa: E402
-    CRONOLOGIA_INTESTAZIONE,
-    CliInput,
-    CompletamentoComandi,
-    CronologiaSicura,
 )
 from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
 from ares.state import platform_files  # noqa: E402
@@ -1051,6 +1046,33 @@ def input_repl() -> str:
         fallback_input=fallback,
     )
     esigi(fallback_cli.prompt() == "testo da pipe", "il fallback non legge il messaggio")
+
+    # La barra in basso: senza stato i soli tasti; con lo stato, lo stato a
+    # sinistra e i tasti finche' ci stanno, altrimenti i brevi, altrimenti
+    # niente. Fuori da un'app la larghezza vale 80.
+    piatta = "".join(testo for _stile, testo in fallback_cli._barra())
+    esigi(piatta.strip() == CliInput.TASTI, "la barra senza stato non e' l'elenco dei tasti: " + repr(piatta))
+    corto = CliInput(
+        comandi=metadati,
+        cronologia_file=Path(ARCHIVIO_PROVA) / "c1.txt",
+        cronologia_righe=5,
+        interactive=False,
+        stato=lambda: "manuale · s1",
+    )
+    piatta = "".join(testo for _stile, testo in corto._barra())
+    esigi(
+        piatta.startswith(" manuale · s1") and CliInput.TASTI_BREVI in piatta and CliInput.TASTI not in piatta,
+        "a 80 colonne la barra non accorcia i tasti: " + repr(piatta),
+    )
+    lungo = CliInput(
+        comandi=metadati,
+        cronologia_file=Path(ARCHIVIO_PROVA) / "c2.txt",
+        cronologia_righe=5,
+        interactive=False,
+        stato=lambda: "x" * 60,
+    )
+    piatta = "".join(testo for _stile, testo in lungo._barra())
+    esigi("Ctrl-D" not in piatta, "con lo stato lungo la barra tiene i tasti e sfora: " + repr(piatta))
     esigi(fallback_cli.ask("Scelta: ") == "no", "il fallback non legge la scelta")
     esigi(etichette == ["Tu › ", "Scelta: "], "prompt del fallback inattesi: " + repr(etichette))
 
@@ -1324,7 +1346,18 @@ def stato_della_chat() -> str:
     esigi("Esportata" in uscita and scelto.is_file(), "/esporta <file> non scrive dove chiesto: " + repr(uscita))
     uscita = comando("/esporta " + str(scelto))
     esigi("Sovrascritta" in uscita, "/esporta <file> su un file che esiste non dice che sovrascrive: " + repr(uscita))
-    return "metriche e debug a interruttore, sessione e modalita' cambiate ricostruendo l'agente"
+    # La riga della barra sotto il prompt: modalita' e sessione sempre, la
+    # finestra solo dopo un turno, e con `<1` sotto l'uno per cento.
+    from ares.cli.chat import riga_stato
+
+    stato.finestra = None
+    esigi(riga_stato(stato) == stato.modo + " · " + stato.session_id, "la barra senza turni non e' modo e sessione")
+    with patch.object(config, "NUM_CTX", 1000):
+        stato.finestra = 250
+        esigi(riga_stato(stato).endswith(" · finestra 25%"), "la barra non dice la finestra: " + riga_stato(stato))
+        stato.finestra = 3
+        esigi(riga_stato(stato).endswith(" · finestra <1%"), "sotto l'uno per cento la barra dice 0%")
+    return "metriche e debug a interruttore, sessione e modalita' cambiate ricostruendo l'agente, riga della barra"
 
 
 def conferme_scritte() -> str:
