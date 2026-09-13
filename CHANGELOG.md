@@ -6,15 +6,22 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
-Le correzioni dell'audit del 12 settembre, dopo il rilascio, e Agno 3.0.9.
+## [0.7.1] - 2026-09-13
+
+Correzioni di integrità dei dati e sicurezza operativa: restore Windows,
+memoria fra chat concorrenti, interruzioni e output in pipe. Include anche
+le correzioni dell'audit del 12 settembre e l'aggiornamento ad Agno 3.0.9.
+Release patch: nessuna nuova API e nessuna migrazione dei dati. Le chat già
+aperte devono essere riavviate per adottare il lock per utente.
 
 Verifica del 2026-09-13: otto suite offline verdi con copertura al 90%
 su Linux/Python 3.12.3, più le tre prove con Ollama (`--solo affidabilita
 intuizioni e2e`) verdi su Agno 3.0.9 e LanceDB 0.38.0. Conversazione con
 `deepseek-v4.1-flash:cloud`, estrazione con `glm-5.3-flash:cloud`, embedding
 locale con `nomic-embed-text-v2-moe`; tutti gli archivi delle prove sono
-temporanei. Questo giro non verifica il modello conversazionale locale né
-l'esecuzione nativa su Windows.
+temporanei. Il modello conversazionale locale non è stato verificato in
+questo giro. La PR #71 è passata anche in CI su Windows/Python 3.12 e su
+Ubuntu/Python 3.12 e 3.13, con analisi statica, CodeQL e audit dipendenze verdi.
 
 ### Changed
 
@@ -1112,7 +1119,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/KairosIta/Ares/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/KairosIta/Ares/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/KairosIta/Ares/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/KairosIta/Ares/compare/v0.5.0...v0.6.0
