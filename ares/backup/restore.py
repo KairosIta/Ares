@@ -78,10 +78,17 @@ def _svuota_directory(percorso: Path) -> None:
 def _installa_restore_per_copia(staging: Path, destinazione: Path, precedente: Path) -> None:
     """Fallback Windows con copia di rollback gia' pronta prima dello swap."""
     esisteva = destinazione.is_dir()
-    try:
-        if esisteva:
+    # Finche' questa copia non e' completa l'originale e' l'unico stato
+    # affidabile. Un guasto qui non deve entrare nel rollback, che svuota
+    # la destinazione prima di ricopiarla.
+    if esisteva:
+        try:
             shutil.copytree(destinazione, precedente)
-        else:
+        except Exception:
+            shutil.rmtree(precedente, ignore_errors=True)
+            raise
+    try:
+        if not esisteva:
             destinazione.mkdir(parents=True)
         _svuota_directory(destinazione)
         shutil.copytree(staging, destinazione, dirs_exist_ok=True)

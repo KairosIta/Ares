@@ -54,7 +54,7 @@ from ares.cli import chat  # noqa: E402
 from ares.cli.ui import UI  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
-from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
+from ares.state.lock import StatoOccupato, lock_stato, lock_turno  # noqa: E402
 
 UTENTE = "prova-cli"
 SESSIONE = "cli"
@@ -777,6 +777,122 @@ def chat_turno() -> str:
     )
 
 
+def chat_memoria_protetta() -> str:
+    """Store SQLite reali: contesa fra processi, rollback e scritture prima di un errore."""
+    from agno.db.sqlite import SqliteDb
+    from agno.learn import UserMemoryConfig
+
+    from ares.agent.learning import AresUserMemoryStore
+
+    db = SqliteDb(db_file=str(RADICE_PROVA / "memoria-turni.db"))
+    store = AresUserMemoryStore(config=UserMemoryConfig(db=db))
+    utente = "utente-turni"
+    agent = SimpleNamespace(
+        user_id=utente,
+        id="chat-a",
+        learning_machine=SimpleNamespace(user_profile_store=None, user_memory_store=store),
+    )
+    store.add_memory(user_id=utente, memory="confermata nella chat B")
+    fotografia_vera = chat.istantanea
+    ripristino_vero = chat.ripristina
+    fasi = []
+
+    def esigi_contesa(fase):
+        fasi.append(fase)
+        # Due processi, non due descrittori nella stessa chat: stesso utente
+        # occupato, altro utente libero nello stesso archivio.
+        codice = (
+            "from ares.state.lock import lock_turno, StatoOccupato\n"
+            "try:\n"
+            "    with lock_turno('utente-turni'): pass\n"
+            "except StatoOccupato: pass\n"
+            "else: raise RuntimeError('turno concorrente ammesso')\n"
+            "with lock_turno('altro-utente'): pass\n"
+        )
+        figlio = subprocess.run([sys.executable, "-c", codice], capture_output=True, text=True, timeout=30)
+        esigi(figlio.returncode == 0, fase + ": " + figlio.stderr)
+
+    def fotografia(agent):
+        esigi_contesa("istantanea")
+        return fotografia_vera(agent)
+
+    def ripristino(agent, stato):
+        esigi_contesa("ripristino")
+        return ripristino_vero(agent, stato)
+
+    class InputProtetto(FintoInput):
+        def ask(self, etichetta, *, muted=False):
+            esigi_contesa("conferma")
+            return "n"
+
+    try:
+        for errore in (None, KeyboardInterrupt, RuntimeError):
+            fasi.clear()
+
+            def ciclo(*args, errore=errore, **kwargs):
+                esigi_contesa("turno")
+                store.add_memory(user_id=utente, memory="da rifiutare nella chat A")
+                if errore is not None:
+                    raise errore("guasto sintetico")
+                return FintaRisposta()
+
+            uscita = io.StringIO()
+            with (
+                patch.object(chat, "istantanea", fotografia),
+                patch.object(chat, "ripristina", ripristino),
+                patch.object(chat, "run_turn_cycle", ciclo),
+                patch.object(config, "MOSTRA_APPRENDIMENTI", True),
+                patch.object(config, "CONFERMA_APPRENDIMENTI", True),
+                redirect_stdout(uscita),
+            ):
+                risposta = chat.esegui_turno(agent, "ricorda", InputProtetto([]))
+            esigi((risposta is None) == (errore is not None), "esito del turno errato")
+            esigi(fasi == ["istantanea", "turno", "conferma", "ripristino"], "lock incompleto: " + repr(fasi))
+            contenuto = [m["content"] for m in store.get(user_id=utente).memories]
+            esigi(contenuto == ["confermata nella chat B"], "memoria precedente persa o nuova non annullata")
+            esigi("Non e' stato appreso" not in uscita.getvalue(), "rassicurazione falsa dopo scrittura")
+            with lock_turno(utente):
+                pass  # Anche dopo errore o Ctrl-C il lock deve essere libero.
+
+        # La contesa si rileva prima di qualsiasi lettura o inferenza,
+        # anche quando l'eco e' disabilitato.
+        with (
+            lock_turno(utente),
+            patch.object(config, "MOSTRA_APPRENDIMENTI", False),
+            patch.object(chat, "run_turn_cycle") as ciclo_spia,
+            patch.object(chat, "istantanea") as lettura_spia,
+        ):
+            try:
+                chat.esegui_turno(agent, "non deve partire", FintoInput([]))
+            except StatoOccupato:
+                pass
+            else:
+                esigi(False, "turno occupato avviato")
+            esigi(not ciclo_spia.called and not lettura_spia.called, "contesa rilevata troppo tardi")
+
+        # La REPL resta aperta; il comando senza terminale usa invece il
+        # codice condiviso "occupato", senza avviare il modello.
+        with (
+            lock_turno(utente),
+            patch.object(chat, "build_assistant", lambda **k: agent),
+            patch.object(chat, "CliInput", lambda **k: FintoInput(["riprova piu' tardi"])),
+            patch.object(chat, "run_turn_cycle") as ciclo_spia,
+            redirect_stdout(io.StringIO()),
+            redirect_stderr(io.StringIO()),
+        ):
+            esigi(chat.avvia(session=SESSIONE, user=utente) == 0, "la contesa ha chiuso la REPL con errore")
+            uscita_pipe, errori_pipe = io.StringIO(), io.StringIO()
+            with redirect_stdout(uscita_pipe), redirect_stderr(errori_pipe):
+                codice = chat.avvia(session=SESSIONE, user=utente, prompt="ciao")
+            esigi(codice == 3, "la pipe non esce con occupato")
+            esigi(uscita_pipe.getvalue() == "", "la contesa per utente sporca stdout")
+            esigi("turno in corso" in errori_pipe.getvalue(), "la contesa per utente manca su stderr")
+            esigi(not ciclo_spia.called, "la contesa della CLI ha avviato un turno")
+    finally:
+        db.db_engine.dispose()
+    return "lock fra processi fino al rollback; errori e Ctrl-C mostrano e annullano le scritture reali"
+
+
 def chat_ciclo() -> str:
     """Il giro completo di `_esegui_chat` con un modello finto.
 
@@ -1248,7 +1364,7 @@ def chat_avvio() -> str:
     codice = 0
     with (
         patch.object(chat, "lock_stato", lambda esclusivo: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
-        redirect_stdout(uscita),
+        redirect_stderr(uscita),
     ):
         try:
             chat.main()
@@ -1259,6 +1375,22 @@ def chat_avvio() -> str:
     esigi("Impossibile avviare Ares" in testo, "l'archivio occupato non viene detto")
     esigi("backup in corso" in testo, "il motivo dell'occupazione non compare")
     esigi("riprova" in testo, "non viene suggerito di riprovare")
+
+    # Il lock dello stato si acquisisce prima del contesto di output della
+    # pipe: anche questo rifiuto deve lasciare stdout vuoto.
+    uscita_pipe, errori_pipe = io.StringIO(), io.StringIO()
+    with (
+        lock_stato(esclusivo=True),
+        patch.object(chat, "run_turn_cycle") as ciclo_spia,
+        patch.object(chat, "build_assistant") as costruzione_spia,
+        redirect_stdout(uscita_pipe),
+        redirect_stderr(errori_pipe),
+    ):
+        codice = chat.avvia(user=UTENTE, prompt="ciao")
+    esigi(codice == 3, "la pipe con stato occupato non esce con 3")
+    esigi(uscita_pipe.getvalue() == "", "la contesa dello stato sporca stdout")
+    esigi("stato di Ares e' in uso" in errori_pipe.getvalue(), "la contesa dello stato manca su stderr")
+    esigi(not ciclo_spia.called and not costruzione_spia.called, "stato occupato: agente avviato")
 
     def avvio_interrotto(**_argomenti: object) -> None:
         raise KeyboardInterrupt
@@ -1360,6 +1492,7 @@ def main() -> int:
         ok("inspect_learning", inspect_learning_cli())
         ok("chat REPL", chat_repl())
         ok("chat turno", chat_turno())
+        ok("memoria protetta", chat_memoria_protetta())
         ok("chat ciclo", chat_ciclo())
         ok("chat cartella", chat_cartella())
         ok("chat sessioni", chat_sessioni())
