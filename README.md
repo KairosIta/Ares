@@ -393,6 +393,11 @@ lavoro, con rapporti JSON e Markdown e stato isolato.
 
 ## Operazioni
 
+Più chat possono restare aperte. I turni dello stesso utente vengono però
+serializzati fino alla conferma degli apprendimenti: se un'altra chat sta
+lavorando, Ares lo segnala e puoi riprovare quando ha finito. Con `ares -p`
+la contesa termina con codice 3. Utenti diversi possono lavorare insieme.
+
 I comandi di manutenzione mostrano tabelle sul terminale e testo piatto in
 una pipe; gli errori vanno su stderr. Prima di toccare lo stato chiedono di
 riscrivere una frase esatta, con lo stesso editor della chat; `--yes` la

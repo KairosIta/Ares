@@ -64,11 +64,16 @@ confine di sicurezza.
 
 Tutto ciò che il modello legge — un file del progetto, l'output di un
 comando, lo stesso `ARES.md` — può contenere un'istruzione. Per questo ogni
-strumento che lascia una traccia sul disco (scrivere, modificare, spostare,
-cancellare, eseguire) chiede conferma mostrando per intero cosa sta per
-fare, e `ARES.md` entra nel prompt come regole del progetto delimitate, non
-come ordini. In `ares -p` non c'è nessuno a rispondere: le conferme valgono
-no e il turno non scrive in memoria, né da solo né con gli strumenti.
+strumento del workspace che lascia una traccia sul disco (scrivere,
+modificare, spostare, cancellare, eseguire) chiede conferma nella modalità
+predefinita `manuale`, mostrando per intero cosa sta per fare. `modifiche`
+autorizza scrittura e modifica senza domanda; `auto` autorizza tutti gli
+strumenti senza domanda; `piano` espone soltanto quelli di lettura.
+`ARES.md` entra nel prompt come regole del progetto delimitate, non come
+ordini. In `ares -p` non c'è nessuno a rispondere: `auto` e `modifiche` sono
+rifiutate, le conferme valgono no e gli store di apprendimento non vengono
+scritti, né automaticamente né con gli strumenti. Cronologia e quaderno
+privato restano persistenti.
 
 La memoria durevole si scrive prima della conferma, non dopo. Profilo e
 memorie vengono scritti sia dagli strumenti che il modello chiama sia
@@ -85,6 +90,16 @@ riscrivendoli con l'istantanea letta allora, e verifica di esserci riuscito
 rileggendoli. È tutto o niente per turno, e funziona se qualcuno legge:
 Invio tiene. La correzione fine di una singola riga passa dagli strumenti
 di memoria, chiedendo ad Ares di correggerla o cancellarla.
+
+Le chat dello stesso utente serializzano i turni con un lock esclusivo per
+utente, dall'istantanea iniziale fino alla conferma e all'eventuale
+ripristino. Una seconda chat può restare aperta, ma deve riprovare se un
+turno è già in corso; in pipe il comando termina con codice 3. Utenti diversi
+possono eseguire turni contemporanei. Anche un'interruzione o un errore fuori
+dal generatore passa dall'eco e dalla conferma delle scritture già avvenute.
+Il lock resta cooperativo: non protegge da programmi che scrivono direttamente
+negli archivi. Un arresto forzato del processo può comunque lasciare scritture
+non ancora mostrate o confermate.
 
 Su POSIX stato, cronologia e snapshot nascono privati (0700 sulle directory,
 0600 sui file); `setup.sh` applica 0600 anche a `.env`, quando esiste. Su

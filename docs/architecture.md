@@ -131,7 +131,14 @@ e la chat si ferma finché non è successo.
   ripresa - e `stores.py` le filtra per cartella: `/sessioni` tiene quelle
   di qui e quelle senza cartella, `ares resume` solo quelle di qui;
 - `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato, su
-  cui `platform_files.py` uniforma le primitive fra POSIX e Windows.
+  cui `platform_files.py` uniforma le primitive fra POSIX e Windows. Le chat
+  tengono quello condiviso; un secondo lock esclusivo per utente copre ogni
+  turno, dall'istantanea degli apprendimenti alla conferma e al rollback.
+  Le chat dello stesso utente possono restare aperte, ma un turno occupato
+  viene rifiutato prima di leggere l'istantanea o chiamare il modello;
+  utenti diversi restano indipendenti. I file dei lock per utente vivono
+  accanto al lock di stato, con un hash dell'identità nel nome, e non vengono
+  rimossi al rilascio per non separare i processi su file diversi.
 - `git.py` legge il ramo corrente da `.git/HEAD`, anche in un worktree, senza
   lanciare git: serve al banner e alla scheda del prompt, che non devono
   aspettare un processo né fallire dove git non c'è.
@@ -241,6 +248,8 @@ Su POSIX gli snapshot vengono pubblicati con una rinomina di directory. Su
 Windows, dove LanceDB può impedire quella rinomina anche dopo la chiusura dei
 reader nativi, il manifest viene pubblicato per ultimo come commit marker e
 il restore conserva stabile la directory radice con una copia di rollback.
+La copia iniziale deve essere completa prima di modificare la destinazione:
+se fallisce, l'originale resta intatto e la copia parziale viene scartata.
 Un restore ucciso fra le rinomine può lasciare accanto allo stato la copia
 `.tmp-precedente-*` e nessuna `tmp/`: la chat all'avvio e `ares backup list`
 lo dicono, nominando il residuo e lo snapshot pre-restore da cui tornare,

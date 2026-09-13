@@ -73,18 +73,16 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura è intorno al 90%. `cli/chat.py` era il
-modulo più scoperto, al 61%, quando il turno conversazionale si attraversava
-solo con Ollama; da quando `chat turno` lo percorre con un `run_turn_cycle`
-finto è al 92%. I comandi locali che leggono gli archivi — `/profilo`,
-`/memorie`, `/entita`, `/file`, `/cartella` — passano in `comandi su archivio`
-nello smoke, sul seme: `cli/commands.py` era al 76% ed è all'89%. Fra i moduli
-grandi il meno coperto resta `cli/ui.py`, all'83%: i rami del terminale senza
-TTY. La percentuale più bassa in assoluto è quella di `cli/conferma.py`, al
-77%, e sono sei righe: la domanda posta con l'editor di Prompt Toolkit, che
-esiste solo quando stdin e stdout sono un terminale. Sotto misura non lo sono
-mai, e la prova passa dal ripiego `input()` — che è anche il modo in cui una
-conferma si dà da uno script.
+Con le sole prove offline la misura del 13 settembre 2026 su Linux e
+Python 3.12.3 è al 90%. `cli/chat.py` arriva al 94%, `agent/echo.py` al 95%
+e `state/lock.py` al 100%; `backup/restore.py` resta all'86%, `cli/ui.py`
+all'84% e `cli/commands.py` all'80%. Sono misure di questa esecuzione, non
+soglie: una percentuale alta non dimostra che siano coperti tutti gli
+interleaving fra chat o tutti i punti in cui una copia può fallire.
+`cli/conferma.py` è al 77%: fra i percorsi non attraversati resta la domanda
+con l'editor di Prompt Toolkit, disponibile solo quando stdin e stdout sono
+un terminale. Le prove di conferma scritta passano dal ripiego `input()`,
+usato anche dagli script.
 
 `cli/comando.py` era il caso opposto, al 76%: lì le sei righe scoperte erano
 la tabella dei codici d'uscita, cioè i rami che traducono un'eccezione
@@ -126,6 +124,20 @@ prova ora `contratto`, offline e in modo deterministico, mentre
 può dire, cioè *quanto spesso* l'estrazione manca il colpo. È la divisione
 giusta fra le due: una risponde "il retry funziona come scritto", l'altra
 "serve davvero, e quanto".
+
+Le prove del terminale simulato impostano un ambiente Rich proprio, così
+`TERM=dumb`, `NO_COLOR` o le impostazioni della CI non cambiano le
+precondizioni del rendering TTY. Una prova separata verifica la risposta
+senza controlli ANSI su un terminale `dumb`.
+
+Le regressioni sulla conservazione dei dati includono il fallimento della
+copia iniziale del restore Windows, prima e dopo aver copiato un file:
+l'originale deve restare intatto. La CLI usa store Agno reali su SQLite
+temporaneo per verificare che un rifiuto conservi le memorie precedenti,
+anche dopo errori e Ctrl-C; processi figli verificano la contesa dello stesso
+utente e l'indipendenza di utenti diversi durante istantanea, turno,
+conferma e ripristino. Sono coperti anche il rifiuto prima dell'inferenza,
+il rilascio del lock e gli esiti della contesa nella REPL e in pipe.
 
 ## Analisi statica
 
