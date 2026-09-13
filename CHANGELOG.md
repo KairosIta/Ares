@@ -8,6 +8,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 Le correzioni dell'audit del 12 settembre, dopo il rilascio, e Agno 3.0.9.
 
+Verifica del 2026-09-13: otto suite offline verdi con copertura al 90%
+su Linux/Python 3.12.3, più le tre prove con Ollama (`--solo affidabilita
+intuizioni e2e`) verdi su Agno 3.0.9 e LanceDB 0.38.0. Conversazione con
+`deepseek-v4.1-flash:cloud`, estrazione con `glm-5.3-flash:cloud`, embedding
+locale con `nomic-embed-text-v2-moe`; tutti gli archivi delle prove sono
+temporanei. Questo giro non verifica il modello conversazionale locale né
+l'esecuzione nativa su Windows.
+
 ### Changed
 
 - **Agno 3.0.9.** Quattro patch dopo la 3.0.5, quasi tutte su AgentOS, MCP,
@@ -45,6 +53,33 @@ Le correzioni dell'audit del 12 settembre, dopo il rilascio, e Agno 3.0.9.
 
 ### Fixed
 
+- **Diagnostica di contesa su stderr anche con `ares -p`.** Il gestore
+  esterno usa `UI.err()` dopo che il contesto di output della pipe è stato
+  chiuso. I test verificano stdout vuoto, diagnostica su stderr, codice 3 e
+  nessuna inferenza sia per il lock per utente sia per quello dello stato.
+- **Restore Windows: originale intatto se la copia di sicurezza fallisce.**
+  La copia iniziale ora precede il blocco di installazione e rollback: un
+  errore prima o durante la copia non svuota più lo stato per recuperarlo da
+  una copia incompleta. Due regressioni verificano entrambi i casi.
+- **Un turno per utente fino alla conferma della memoria.** Le chat
+  condividono ancora il lock dello stato, ma ogni turno prende anche un
+  lock esclusivo per utente prima dell'istantanea e lo rilascia dopo la
+  conferma e l'eventuale rollback. Un rifiuto non può così cancellare una
+  memoria scritta da una chat concorrente. La REPL segnala la contesa e
+  resta aperta; `ares -p` termina con codice 3. Utenti diversi restano
+  indipendenti. La prova usa SQLite reale e processi separati.
+- **Gli apprendimenti vengono mostrati anche dopo un errore o Ctrl-C fuori
+  dal generatore.** Le scritture già avvenute passano dalla stessa conferma
+  del turno normale; eliminata la rassicurazione falsa «Non è stato
+  appreso». Il test scrive nello store prima di provocare entrambi gli esiti
+  e verifica che il rifiuto conservi soltanto le memorie precedenti.
+- **Test TTY indipendenti dall'ambiente della shell.** Il terminale
+  simulato ha un ambiente Rich esplicito; una prova separata copre
+  `TERM=dumb` e l'assenza di controlli ANSI.
+- `ROADMAP.md` riporta Agno 3.0.9; la policy di sicurezza distingue le
+  autorizzazioni delle quattro modalità, gli store di apprendimento e il
+  quaderno privato persistente anche in pipe. Documentati lock per utente
+  e limiti in caso di arresto forzato.
 - `SECURITY.md` dichiarava supportata la linea 0.6.x: ora dice 0.7.x.
 
 ## [0.7.0] - 2026-09-12

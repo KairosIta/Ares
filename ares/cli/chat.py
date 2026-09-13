@@ -59,7 +59,7 @@ from ares.cli.ui import UI
 from ares.ops import migrazione
 from ares.state.archivi import build_db
 from ares.state.git import ramo_git
-from ares.state.lock import StatoOccupato, lock_stato
+from ares.state.lock import StatoOccupato, lock_stato, lock_turno
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
 
 
@@ -97,6 +97,12 @@ def _turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
 
 
 def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
+    """Serializza il turno e la conferma con le altre chat dello stesso utente."""
+    with lock_turno(getattr(agent, "user_id", None) or config.DEFAULT_USER_ID):
+        return _esegui_turno_protetto(agent, testo, input_cli)
+
+
+def _esegui_turno_protetto(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     """Un turno intero, con una rete sotto per cio' che Agno non prende.
 
     Questa rete cattura molto meno di quanto sembri, e vale la pena dire cosa
@@ -109,9 +115,9 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
 
     Restano fuori i pezzi che non stanno dentro quei generatori: costruire gli
     argomenti della chiamata, risolvere le conferme, e qualunque cosa
-    sollevino `confirm()` o `reject()`. Nessuno di questi e' stato visto
-    fallire; la rete c'e' perche' il prezzo di un'eccezione che sfugge e' la
-    sessione intera, e il prezzo della rete sono sei righe.
+    sollevino `confirm()` o `reject()`. Prima di un errore possono gia'
+    essere state scritte memorie: anche questi esiti passano dall'eco e
+    dalla conferma, conservando il lock dell'utente fino al ripristino.
 
     Due rami separati perche' un Ctrl-C e' una decisione e un guasto e' un
     imprevisto: al primo non serve mostrare niente oltre la conferma che si e'
@@ -121,14 +127,14 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     # scrive durante il run, e una lettura fatta dopo la risposta non lo
     # vedrebbe. Spenta in config, non si legge niente.
     stato = istantanea(agent) if config.MOSTRA_APPRENDIMENTI else None
+    risposta = None
     try:
         risposta = _turno(agent, testo, input_cli)
     except KeyboardInterrupt:
         # Il context manager del renderer ha gia' chiuso l'anteprima e reso
         # permanente l'eventuale Markdown parziale.
         UI.blank()
-        UI.line("Interrotto fuori dal turno. Non e' stato appreso.", style="ares.warning")
-        return None
+        UI.line("Interrotto fuori dal turno.", style="ares.warning")
     except Exception as errore:
         UI.blank()
         UI.line(
@@ -136,10 +142,9 @@ def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
             style="ares.error",
         )
         UI.line(
-            "La sessione resta aperta: quello che Ares sapeva prima e' ancora li'.",
+            "La sessione resta aperta.",
             style="ares.muted",
         )
-        return None
 
     if stato is not None:
         # Anche dopo una pausa lasciata li': cio' che e' stato scritto e'
@@ -451,7 +456,12 @@ def _apri_chat(
             UI.blank()
             continue
 
-        risposta = esegui_turno(stato.agent, testo, input_cli)
+        try:
+            risposta = esegui_turno(stato.agent, testo, input_cli)
+        except StatoOccupato as errore:
+            UI.line(str(errore), style="ares.warning")
+            UI.blank()
+            continue
         if risposta is not None:
             stato.finestra = finestra_occupata(risposta) or stato.finestra
             if stato.metriche:
@@ -499,8 +509,8 @@ def avvia(
             )
             return esito if isinstance(esito, int) else 0
     except StatoOccupato as errore:
-        UI.line("Impossibile avviare Ares: " + str(errore), style="ares.error")
-        UI.line("Attendi che backup o restore terminino e riprova.", style="ares.muted")
+        UI.err("Impossibile avviare Ares: " + str(errore))
+        UI.err("Attendi che l'operazione in corso termini e riprova.", style="ares.muted")
         return ESITO_OCCUPATO
     except KeyboardInterrupt:
         # Dentro la chat il Ctrl-C e' gia' gestito - dal prompt esce, da un

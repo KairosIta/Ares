@@ -324,6 +324,36 @@ def prova_rollback_copia() -> None:
     """Il fallback a copia ripristina il vecchio stato, e segnala un doppio guasto."""
     copia_vera = shutil.copytree
 
+    # Il guasto puo' precedere l'installazione: una copia di sicurezza
+    # parziale non deve mai sostituire l'originale ancora integro.
+    for parziale in (False, True):
+        radice = RADICE_PROVA / ("copia-iniziale-" + str(parziale))
+        destinazione = radice / "destinazione"
+        precedente = radice / "precedente"
+        staging = radice / "staging"
+        destinazione.mkdir(parents=True)
+        staging.mkdir()
+        (destinazione / "a.txt").write_text("prima", encoding="utf-8")
+        (destinazione / "b.txt").write_text("da conservare", encoding="utf-8")
+
+        def copia_iniziale_rotta(sorgente, copia, *args, destinazione=destinazione, parziale=parziale, **kwargs):
+            esigi(Path(sorgente) == destinazione, "avviato un rollback da una copia non valida")
+            if parziale:
+                Path(copia).mkdir()
+                shutil.copy2(destinazione / "a.txt", Path(copia) / "a.txt")
+            raise OSError("copia di sicurezza interrotta")
+
+        with patch("ares.backup.restore.shutil.copytree", side_effect=copia_iniziale_rotta):
+            try:
+                restore._installa_restore_per_copia(staging, destinazione, precedente)
+            except OSError as errore:
+                esigi("copia di sicurezza interrotta" in str(errore), "errore iniziale perso")
+            else:
+                esigi(False, "copia iniziale fallita senza errore")
+        esigi((destinazione / "a.txt").read_text(encoding="utf-8") == "prima", "originale a alterato")
+        esigi((destinazione / "b.txt").read_text(encoding="utf-8") == "da conservare", "originale b perso")
+        esigi(not precedente.exists(), "copia incompleta lasciata come possibile rollback")
+
     def scenario(nome: str, rollback_fallisce: bool) -> tuple[Path, Path, Path]:
         radice = RADICE_PROVA / nome
         staging = radice / "staging"

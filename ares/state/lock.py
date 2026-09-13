@@ -13,6 +13,7 @@ dal contratto.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from hashlib import sha256
 from pathlib import Path
 
 from ares import config
@@ -21,6 +22,27 @@ from ares.state.platform_files import FileOccupato, lock_file
 
 class StatoOccupato(RuntimeError):
     """Un altro processo sta usando lo stato con un lock incompatibile."""
+
+
+@contextmanager
+def lock_turno(user_id: str) -> Iterator[None]:
+    """Un turno per utente, dall'istantanea fino all'eventuale ripristino.
+
+    Il lock condiviso dello stato resta esterno e impedisce la manutenzione.
+    Questo lock esclusivo coordina invece le chat fra loro, anche con eco
+    spento o in pipe. Non attende: chi trova un turno attivo puo' riprovare.
+    Il nome e' un hash per non esporre l'identita' o usarla come percorso.
+    Il file resta sul disco: rimuoverlo separerebbe i lock su inode diversi.
+    """
+    chiave = sha256(user_id.encode("utf-8")).hexdigest()
+    percorso = config.STATE_LOCK_FILE.with_name(config.STATE_LOCK_FILE.name + ".utente-" + chiave)
+    try:
+        with lock_file(percorso, esclusivo=True, bloccante=False):
+            yield
+    except FileOccupato as errore:
+        raise StatoOccupato(
+            "un'altra chat di questo utente ha un turno in corso; riprova quando ha concluso anche le conferme"
+        ) from errore
 
 
 @contextmanager

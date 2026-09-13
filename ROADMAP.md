@@ -5,7 +5,7 @@ roadmap privilegia affidabilità, comprensibilità e controllo dell’utente.
 
 ## Stato attuale
 
-La versione corrente usa Agno 3.0.5 e comprende memoria persistente,
+La versione corrente usa Agno 3.0.9 e comprende memoria persistente,
 apprendimento dopo `continue_run`, backup locale, manutenzione delle entità
 e delle sessioni, REPL Rich/Prompt Toolkit e installazione riproducibile.
 `ares` si lancia da qualunque cartella e lavora lì, con le conversazioni

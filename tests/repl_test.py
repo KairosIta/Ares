@@ -599,6 +599,28 @@ def renderer_rich() -> str:
     return "markup letterale, zero ANSI anche da conferme, strumenti ed eco, stream singolo"
 
 
+def renderer_terminale_minimo() -> str:
+    """TERM=dumb conserva la risposta senza richiedere il rendering Live."""
+    catturato = io.StringIO()
+    console = Console(
+        file=catturato,
+        force_terminal=True,
+        width=120,
+        _environ={"TERM": "dumb", "NO_COLOR": "1"},
+    )
+    esigi(console.is_dumb_terminal, "il terminale minimo non e' stato simulato")
+    ora = [100.0]
+    with RichRunStream(CliRenderer(console), clock=lambda: ora[0], auto_activity=False) as flusso:
+        flusso.activity_started("attesa")
+        ora[0] += 3
+        flusso.pulse_activity()
+        flusso.content("risposta senza controlli\x1b[2J")
+    testo = catturato.getvalue()
+    esigi(testo.count("risposta senza controlli") == 1, "risposta persa o duplicata sul terminale minimo")
+    esigi("\x1b" not in testo, "controlli ANSI emessi sul terminale minimo")
+    return "risposta unica e nessun controllo ANSI con TERM=dumb"
+
+
 def renderer_tty_markdown_sicuro() -> str:
     """Anteprima a una riga, controlli filtrati e Markdown finale unico."""
     catturato = io.StringIO()
@@ -607,6 +629,7 @@ def renderer_tty_markdown_sicuro() -> str:
         color_system="standard",
         force_terminal=True,
         width=120,
+        _environ={"TERM": "xterm-256color"},
     )
     renderer = CliRenderer(console)
     ora = [100.0]
@@ -672,6 +695,7 @@ def indicatore_attivita() -> str:
         color_system="standard",
         force_terminal=True,
         width=80,
+        _environ={"TERM": "xterm-256color"},
     )
     renderer = CliRenderer(console)
     ora = [100.0]
@@ -1683,6 +1707,7 @@ def main() -> int:
             ("scritture in memoria", scritture_in_memoria),
             ("renderer Rich       ", renderer_rich),
             ("renderer TTY        ", renderer_tty_markdown_sicuro),
+            ("terminale minimo    ", renderer_terminale_minimo),
             ("indicatore attivita ", indicatore_attivita),
             ("core del turno      ", core_del_turno),
             ("log CLI             ", log_cli_puliti),
