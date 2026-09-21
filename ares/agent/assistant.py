@@ -36,7 +36,7 @@ from ares.agent.runtime import (
     build_result_store,
     build_workspace,
 )
-from ares.state.identita import utente_canonico
+from ares.state.identita import Utente
 from ares.state.stores import CHIAVE_CARTELLA, con_run, sessioni_della_cartella
 
 __all__ = [
@@ -59,7 +59,7 @@ __all__ = [
 
 
 def build_assistant(
-    user_id: str = config.DEFAULT_USER_ID,
+    utente: Utente,
     session_id: str = "principale",
     debug: bool = False,
     interattivo: bool = True,
@@ -81,16 +81,17 @@ def build_assistant(
     dello spazio di lavoro girano da soli, quali chiedono e quali non ci
     sono, e il prompt lo dice.
 
-    `user_id` viene portato alla forma canonica qui, una volta, e da qui in
-    poi e' quello che Agno usa come chiave di profilo e User Memory: e' il
-    punto in cui la grafia scritta sulla riga di comando smette di contare.
+    `utente` e' l'identita' gia' canonica, e non ha un valore predefinito:
+    un default nella firma sarebbe una seconda risposta alla domanda "per
+    conto di chi", decisa all'import invece che da chi costruisce. Il valore
+    che Agno usa come chiave di profilo e User Memory e' `utente.id`, ed e'
+    quello per cui namespace, lock e sessioni parlano.
     """
-    user_id = utente_canonico(user_id)
     db = build_db()
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
     # store learned_knowledge nel namespace globale del framework.
     knowledge = build_knowledge() if config.LEARN_KNOWLEDGE else None
-    fs = build_filesystem(user_id)
+    fs = build_filesystem(utente)
     spazio = build_workspace(modo) if config.WORKSPACE else None
 
     metadata = None
@@ -98,7 +99,7 @@ def build_assistant(
     if spazio is not None:
         metadata = {CHIAVE_CARTELLA: str(spazio.root)}
         if config.SEARCH_PAST_SESSIONS:
-            recenti = sessioni_della_cartella(db, user_id, spazio.root, escludi=session_id)
+            recenti = sessioni_della_cartella(db, utente, spazio.root, escludi=session_id)
             precedenti = [con_run(db, s) for s in recenti[: config.SESSIONI_RECENTI_NEL_PROMPT]]
 
     return Agent(
@@ -107,14 +108,14 @@ def build_assistant(
         description=descrizione(interattivo=interattivo),
         model=build_chat_model(),
         db=db,
-        user_id=user_id,
+        user_id=utente.id,
         session_id=session_id,
         metadata=metadata,
         tools=[fs.tools()] + ([spazio] if spazio is not None else []),
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
         instructions=[
             *istruzioni_sull_ambiente(
-                user_id=user_id,
+                utente=utente,
                 session_id=session_id,
                 radice_lavoro=spazio.root if spazio is not None else None,
                 modo=modo,
@@ -128,7 +129,7 @@ def build_assistant(
             *istruzioni_sulle_conversazioni(precedenti, cartella=spazio.root if spazio is not None else None),
             *istruzioni_sul_quaderno(),
         ],
-        learning=build_learning_machine(db=db, knowledge=knowledge, user_id=user_id, strumenti=interattivo),
+        learning=build_learning_machine(db=db, knowledge=knowledge, utente=utente, strumenti=interattivo),
         post_hooks=[apprendi_a_run_completato] if interattivo else [],
         add_learnings_to_context=True,
         add_history_to_context=True,
@@ -152,7 +153,7 @@ def build_assistant(
 
 
 if __name__ == "__main__":
-    agent = build_assistant()
+    agent = build_assistant(Utente.da_grezzo(config.DEFAULT_USER_ID))
     print("Assistente costruito.")
     print("Modello:", config.MAIN_MODEL)
     macchina = agent.learning_machine

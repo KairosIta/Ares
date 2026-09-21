@@ -47,7 +47,7 @@ from ares.entities.models import (
     PianoFusione,
     StatisticheFusione,
 )
-from ares.state.identita import UtenteNonValido
+from ares.state.identita import Utente, UtenteNonValido
 from ares.state.stores import namespace_entita
 
 app = nuova_app("entities", "Manutenzione offline delle entita' di Ares")
@@ -214,9 +214,12 @@ def stampa_piano(piano: PianoFusione) -> None:
     UI.line("La sorgente sara' eliminata dopo un backup verificato; il canonico restera' attivo.", style="ares.muted")
 
 
-def _esegui_audit(user_id: str, mostra_tutte: bool, tutte_le_coppie: bool, come_json: bool = False) -> int:
+def _esegui_audit(user: str, mostra_tutte: bool, tutte_le_coppie: bool, come_json: bool = False) -> int:
+    # Il confine dell'identita': l'opzione arriva come stringa e da qui in
+    # poi e' un `Utente`, che il namespace non deve piu' normalizzare.
+    utente = Utente.da_grezzo(user)
     percorso = Path(config.DB_FILE)
-    namespace = namespace_entita(user_id)
+    namespace = namespace_entita(utente)
     if not percorso.is_file():
         if come_json:
             UI.json({"namespace": namespace, "entita": [], "righe_ignorate": [], "candidati": []})
@@ -237,13 +240,14 @@ def _esegui_audit(user_id: str, mostra_tutte: bool, tutte_le_coppie: bool, come_
     return 0
 
 
-def _esegui_merge(user_id: str, source: str, canonical: str, applica: bool) -> int:
+def _esegui_merge(user: str, source: str, canonical: str, applica: bool) -> int:
+    utente = Utente.da_grezzo(user)
     percorso = Path(config.DB_FILE)
     if not percorso.is_file():
         raise ErroreManutenzione("nessun archivio di Ares trovato in " + str(percorso))
 
     config.prepara_archivio()
-    namespace = namespace_entita(user_id)
+    namespace = namespace_entita(utente)
     db = SqliteDb(db_file=str(percorso))
     entita, ignorate = carica_entita(db=db, namespace=namespace)
     if ignorate:

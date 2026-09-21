@@ -129,6 +129,12 @@ quale regola un archivio è stato scritto: il disallineamento non è un errore,
 - L'alfabeto di `ares/state/identita.py` è la **regola 1**. Gli archivi
   scritti prima sono esenti solo perché vuoti: non c'è una migrazione, e non
   è una garanzia permanente.
+- La regola 1 non è più una funzione da ricordare: il tipo `Utente` la rende
+  un invariante. `Utente.da_grezzo` è l'unica porta e rifiuta una scrittura
+  non canonica, quindi dalla porta in poi non esiste una seconda grafia con
+  cui cercare — e un lettore nuovo non può dimenticarsi niente, perché una
+  stringa grezza non è un `Utente`. `utente_canonico` resta la regola, ma
+  chiamata una volta sola al confine del programma.
 - La validazione precede ogni lettura. Un id che oggi è invalido
   (`café`, `demo/personale`) non è nominabile dalla CLI: migrarlo è
   un'operazione di basso livello che salta `utente_canonico` e legge le chiavi

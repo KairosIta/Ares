@@ -22,7 +22,7 @@ from agno.db.base import SessionType
 from agno.learn.utils import values_match_query
 
 from ares import config
-from ares.state.identita import utente_canonico
+from ares.state.identita import Utente
 
 # Query usata quando chi chiama non ne ha una: recall() e' semantica e senza
 # query non restituisce niente, quindi serve qualcosa di abbastanza largo da
@@ -30,7 +30,7 @@ from ares.state.identita import utente_canonico
 QUERY_DI_RIPIEGO = "criterio decisione preferenza configurazione"
 
 
-def namespace_utente(user_id: str) -> str:
+def namespace_utente(utente: Utente) -> str:
     """Contenitore di tutto cio' che appartiene a un utente.
 
     Un solo posto costruisce questa stringa, perche' un refuso in una
@@ -41,21 +41,20 @@ def namespace_utente(user_id: str) -> str:
     La barra invece dei due punti perche' il FileSystem di Agno normalizza i
     namespace in forma URL-safe: `user:demo` finisce nel database come
     `user%3ademo`, mentre `user/demo` resta leggibile con qualsiasi
-    client SQLite. La forma dell'id - spazi e maiuscole - arriva da
-    `utente_canonico`, la stessa che usano profilo, memorie e lock: qui non
-    si normalizza una seconda volta, altrimenti le due regole tornerebbero a
-    divergere.
+    client SQLite. La forma dell'id arriva dal tipo `Utente`, che l'ha
+    gia' portata a quella canonica: qui non si normalizza una seconda volta,
+    altrimenti le due regole tornerebbero a divergere.
     """
-    return "user/" + utente_canonico(user_id)
+    return "user/" + utente.id
 
 
-def namespace_entita(user_id: str) -> str:
+def namespace_entita(utente: Utente) -> str:
     """Namespace delle entita': persone, progetti e sistemi di quell'utente.
 
     Sottocontenitore separato perche' le entita' sono l'unico store con una
     granularita' propria; il resto vive direttamente sotto l'utente.
     """
-    return namespace_utente(user_id) + "/personale"
+    return namespace_utente(utente) + "/personale"
 
 
 # Campi che il framework mette e toglie da solo. Restano fuori dalla ricerca:
@@ -97,7 +96,7 @@ def contenuto_entita(entita: Any) -> dict:
     }
 
 
-def leggi_entita(lm: Any, user_id: str, query: str = "", limit: int = 50) -> list[Any]:
+def leggi_entita(lm: Any, utente: Utente, query: str = "", limit: int = 50) -> list[Any]:
     """Elenca le entita' registrate, filtrandole per query se ne arriva una.
 
     search() e' una ricerca testuale: con query vuota non matcha nulla e
@@ -115,12 +114,12 @@ def leggi_entita(lm: Any, user_id: str, query: str = "", limit: int = 50) -> lis
     store = lm.entity_memory_store
     if store is None:
         return []
-    namespace = namespace_entita(user_id)
+    namespace = namespace_entita(utente)
     if query:
-        larghe = store.search(query=query, user_id=user_id, namespace=namespace, limit=config.ENTITA_FINESTRA_RICERCA)
+        larghe = store.search(query=query, user_id=utente.id, namespace=namespace, limit=config.ENTITA_FINESTRA_RICERCA)
         strette = [e for e in larghe if values_match_query(contenuto_entita(e), query)]
         return strette[:limit]
-    return store.list_entities(user_id=user_id, namespace=namespace, limit=limit)
+    return store.list_entities(user_id=utente.id, namespace=namespace, limit=limit)
 
 
 def righe_entita(entita: Any, max_fatti: int = 5) -> list[str]:
@@ -138,7 +137,7 @@ def righe_entita(entita: Any, max_fatti: int = 5) -> list[str]:
     return righe
 
 
-def leggi_intuizioni(lm: Any, user_id: str, query: str = "", limit: int = 20) -> list[Any]:
+def leggi_intuizioni(lm: Any, utente: Utente, query: str = "", limit: int = 20) -> list[Any]:
     """Intuizioni apprese, cercate per somiglianza semantica.
 
     recall() e' ricerca semantica: senza query non esiste un elenco
@@ -152,7 +151,7 @@ def leggi_intuizioni(lm: Any, user_id: str, query: str = "", limit: int = 20) ->
     store = lm.learned_knowledge_store
     if store is None:
         return []
-    return store.recall(query=query or QUERY_DI_RIPIEGO, user_id=user_id, limit=limit) or []
+    return store.recall(query=query or QUERY_DI_RIPIEGO, user_id=utente.id, limit=limit) or []
 
 
 # La chiave, nei metadati della sessione, della cartella in cui e' nata.
@@ -171,20 +170,18 @@ def cartella_sessione(sessione: Any) -> str | None:
     return str(valore) if valore else None
 
 
-def _sessioni_db(db: Any, user_id: str, *, con_run: bool = True) -> list[Any]:
+def _sessioni_db(db: Any, utente: Utente, *, con_run: bool = True) -> list[Any]:
     """Tutte le sessioni dell'utente dal database, dalla piu' toccata di recente.
 
-    L'id passa da `utente_canonico` come quello di namespace, lock e profilo:
-    `leggi_sessioni` e `sessioni_della_cartella` sono porte pubbliche, e una
-    che cercasse con la grafia grezza non troverebbe le sessioni scritte con
-    quella canonica. Cosi' la regola vale anche per chi chiamasse con un id
-    non normalizzato, senza doverlo ripetere in ogni chiamante.
+    L'id e' quello canonico del tipo `Utente`, come per namespace, lock e
+    profilo: `leggi_sessioni` e `sessioni_della_cartella` sono porte
+    pubbliche, e una che cercasse con la grafia grezza non troverebbe le
+    sessioni scritte con quella canonica.
     """
-    user_id = utente_canonico(user_id)
     return list(
         db.get_sessions(
             session_type=SessionType.AGENT,
-            user_id=user_id,
+            user_id=utente.id,
             sort_by="updated_at",
             sort_order="desc",
             include_runs=con_run,
@@ -193,7 +190,7 @@ def _sessioni_db(db: Any, user_id: str, *, con_run: bool = True) -> list[Any]:
     )
 
 
-def leggi_sessioni(agent: Any, user_id: str, query: str = "", cartella: Any = None) -> list[Any]:
+def leggi_sessioni(agent: Any, utente: Utente, query: str = "", cartella: Any = None) -> list[Any]:
     """Le sessioni di questo utente, dalla piu' toccata di recente.
 
     Non passa dagli store di apprendimento: le conversazioni stanno nella
@@ -218,7 +215,7 @@ def leggi_sessioni(agent: Any, user_id: str, query: str = "", cartella: Any = No
     db = getattr(agent, "db", None)
     if db is None:
         return []
-    sessioni = _sessioni_db(db, user_id)
+    sessioni = _sessioni_db(db, utente)
     if cartella is not None:
         qui = str(cartella)
         sessioni = [s for s in sessioni if cartella_sessione(s) in (None, qui)]
@@ -228,7 +225,7 @@ def leggi_sessioni(agent: Any, user_id: str, query: str = "", cartella: Any = No
     return [s for s in sessioni if cercato in str(getattr(s, "session_id", "")).casefold()]
 
 
-def sessioni_della_cartella(db: Any, user_id: str, cartella: Any, *, escludi: str | None = None) -> list[Any]:
+def sessioni_della_cartella(db: Any, utente: Utente, cartella: Any, *, escludi: str | None = None) -> list[Any]:
     """Le sole sessioni nate in `cartella`, dalla piu' toccata di recente.
 
     E' la lettura di `ares resume` e dell'elenco che il modello riceve
@@ -240,7 +237,7 @@ def sessioni_della_cartella(db: Any, user_id: str, cartella: Any, *, escludi: st
     qui = str(cartella)
     return [
         s
-        for s in _sessioni_db(db, user_id, con_run=False)
+        for s in _sessioni_db(db, utente, con_run=False)
         if cartella_sessione(s) == qui and getattr(s, "session_id", None) != escludi
     ]
 

@@ -13,6 +13,7 @@ from agno.fs import FileSystem
 from agno.offload.store import ResultStore
 
 from ares import config
+from ares.state.identita import Utente
 from ares.state.platform_files import rendi_privato
 from ares.state.stores import namespace_utente
 
@@ -44,15 +45,16 @@ def build_db() -> SqliteDb:
     return apri_sqlite(config.DB_FILE)
 
 
-def build_filesystem(user_id: str | None = None) -> FileSystem:
+def build_filesystem(utente: Utente) -> FileSystem:
     """Quaderno privato su SQLite, separato e isolato per utente.
 
-    `user_id` vuoto vale `config.DEFAULT_USER_ID`, letto adesso: un default
-    nella firma lo fotograferebbe all'import.
+    L'identita' arriva gia' canonica dal tipo: qui non c'e' un ripiego per un
+    id vuoto, perche' un `Utente` vuoto non esiste e chi ha un valore che
+    potrebbe esserlo lo risolve al confine, dove puo' ancora dire perche'.
     """
     return FileSystem(
         apri_sqlite(config.FS_DB_FILE),
-        namespace=namespace_utente(user_id or config.DEFAULT_USER_ID),
+        namespace=namespace_utente(utente),
     )
 
 

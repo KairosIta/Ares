@@ -59,7 +59,7 @@ from ares.cli.ui import UI
 from ares.ops import migrazione
 from ares.state.archivi import build_db
 from ares.state.git import ramo_git
-from ares.state.identita import UtenteNonValido, utente_canonico
+from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato, lock_stato, lock_turno
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
 
@@ -99,7 +99,7 @@ def _turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
 
 def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     """Serializza il turno e la conferma con le altre chat dello stesso utente."""
-    with lock_turno(getattr(agent, "user_id", None) or config.DEFAULT_USER_ID):
+    with lock_turno(Utente.da_grezzo(getattr(agent, "user_id", None) or config.DEFAULT_USER_ID)):
         return _esegui_turno_protetto(agent, testo, input_cli)
 
 
@@ -182,7 +182,7 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
-def _sessione_da_aprire(user: str, radice: Path | None, *, riprendi: bool, scegli: bool) -> tuple[str | None, str]:
+def _sessione_da_aprire(utente: Utente, radice: Path | None, *, riprendi: bool, scegli: bool) -> tuple[str | None, str]:
     """Quale conversazione aprire quando `--session` non lo dice, e come chiamarla nel banner.
 
     Senza `resume` ogni avvio e' una conversazione nuova, nominata dalla
@@ -201,7 +201,7 @@ def _sessione_da_aprire(user: str, radice: Path | None, *, riprendi: bool, scegl
         return "principale", ""
     if not riprendi:
         return cartella.nuovo_id_sessione(radice), "nuova"
-    precedenti = sessioni_della_cartella(build_db(), user, radice)
+    precedenti = sessioni_della_cartella(build_db(), utente, radice)
     if not precedenti:
         UI.line("Nessuna conversazione in questa cartella: `ares` da solo ne apre una nuova.", style="ares.warning")
         return None, ""
@@ -285,14 +285,14 @@ def _esegui_chat(
     # la stessa persona. A valle nessuno normalizza piu', quindi non esiste
     # una seconda regola che possa divergere.
     try:
-        user = utente_canonico(user)
+        utente = Utente.da_grezzo(user)
     except UtenteNonValido as errore:
         UI.line("Utente non valido: " + str(errore) + ".", style="ares.error")
         return ESITO_RIFIUTO
     with UI.solo_risposte() if prompt is not None else nullcontext():
         return _apri_chat(
             session=session,
-            user=user,
+            utente=utente,
             debug=debug,
             metriche=metriche,
             workspace=workspace,
@@ -306,7 +306,7 @@ def _esegui_chat(
 def _apri_chat(
     *,
     session: str | None,
-    user: str,
+    utente: Utente,
     debug: bool,
     metriche: bool,
     workspace: Path | None,
@@ -367,12 +367,12 @@ def _apri_chat(
 
     etichetta = ""
     if session is None:
-        session, etichetta = _sessione_da_aprire(user, radice, riprendi=riprendi, scegli=scegli)
+        session, etichetta = _sessione_da_aprire(utente, radice, riprendi=riprendi, scegli=scegli)
         if session is None:
             return ESITO_RIFIUTO
 
     configura_log_agno(debug)
-    agent = build_assistant(user_id=user, session_id=session, debug=debug, interattivo=prompt is None, modo=modo)
+    agent = build_assistant(utente=utente, session_id=session, debug=debug, interattivo=prompt is None, modo=modo)
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
     # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa
@@ -381,7 +381,7 @@ def _apri_chat(
     stato = StatoChat(
         agent=agent,
         session_id=session,
-        user_id=user,
+        utente=utente,
         debug=debug,
         metriche=config.MOSTRA_METRICHE or metriche,
         modo=modo,
@@ -409,7 +409,7 @@ def _apri_chat(
     UI.banner(
         modello=config.MAIN_MODEL,
         sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
-        utente=user,
+        utente=utente.id,
         cartella=str(radice) if radice is not None else None,
         ramo=ramo_git(radice) if radice is not None else None,
         istruzioni=istruzioni,

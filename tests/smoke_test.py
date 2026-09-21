@@ -91,6 +91,7 @@ from ares.agent.prompts import strumenti_spazio  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.cli.commands import StatoChat, gestisci_comando  # noqa: E402
 from ares.cli.ui import stampa_store  # noqa: E402
+from ares.state.identita import Utente  # noqa: E402
 from ares.state.stores import (  # noqa: E402
     leggi_entita,
     leggi_intuizioni,
@@ -377,8 +378,8 @@ def namespace_coerenti(lm, fs, user_id: str) -> str:
     namespace: sono per user_id e le loro config non accettano nemmeno il
     parametro.
     """
-    utente = namespace_utente(user_id)
-    entita = namespace_entita(user_id)
+    utente = namespace_utente(Utente.da_grezzo(user_id))
+    entita = namespace_entita(Utente.da_grezzo(user_id))
     coppie = [("LearningMachine", lm.namespace, utente), ("FileSystem", fs.namespace, utente)]
     # Solo gli store accesi: uno spento non ha un namespace sbagliato, non ce
     # l'ha proprio, e pretenderlo trasformerebbe una configurazione lecita in
@@ -400,7 +401,7 @@ def namespace_stabili(user_id: str) -> str:
     dal lato dei file, e le due meta' dell'archivio si separerebbero senza
     un errore.
     """
-    for costruito in (namespace_utente(user_id), namespace_entita(user_id)):
+    for costruito in (namespace_utente(Utente.da_grezzo(user_id)), namespace_entita(Utente.da_grezzo(user_id))):
         normalizzato = normalize_namespace(costruito)
         esigi(
             normalizzato == costruito,
@@ -678,12 +679,12 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
     # Locale e cloud, a prescindere dal `.env` di questa macchina.
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
         locale = prompts.descrizione()
-        scheda_locale = prompts.istruzioni_sull_ambiente(user_id=user_id, session_id=session_id)[0]
+        scheda_locale = prompts.istruzioni_sull_ambiente(utente=Utente.da_grezzo(user_id), session_id=session_id)[0]
     esigi("esce di qui" in locale and "ollama.com" not in locale, "in locale la descrizione parla di cloud")
     esigi("in locale" in scheda_locale and "server remoto" not in scheda_locale, "in locale la scheda parla di cloud")
     with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
         cloud = prompts.descrizione()
-        scheda_cloud = prompts.istruzioni_sull_ambiente(user_id=user_id, session_id=session_id)[0]
+        scheda_cloud = prompts.istruzioni_sull_ambiente(utente=Utente.da_grezzo(user_id), session_id=session_id)[0]
     esigi(
         "esce di qui" not in cloud and "ti fa parlare sta su ollama.com" in cloud,
         "con la conversazione in cloud la descrizione promette privacy",
@@ -695,7 +696,7 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
 
     # La shell segue il sistema: `bash -lc` non esiste su Windows.
     with patch.object(os, "name", "nt"):
-        finestre = prompts.istruzioni_sull_ambiente(user_id=user_id, session_id=session_id)[0]
+        finestre = prompts.istruzioni_sull_ambiente(utente=Utente.da_grezzo(user_id), session_id=session_id)[0]
         strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(config.WORKSPACE_DIR))
     esigi("shell PowerShell" in finestre and "'powershell'" in strumenti_nt, "su Windows il prompt parla di bash")
     with patch.object(os, "name", "posix"):
@@ -800,7 +801,7 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     """
     from ares.agent.prompts import messaggio_di_sistema
 
-    prompt = messaggio_di_sistema(agent, session_id=session_id, user_id=user_id)
+    prompt = messaggio_di_sistema(agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
     for inglese in (
         "CRITICAL RULES",
         "You have entity memory",
@@ -855,7 +856,9 @@ def modalita() -> str:
                 )
             else:
                 esigi(strumento not in consegnati, nome + ": " + strumento + " arriva benche' escluso")
-        scheda = prompts.istruzioni_sull_ambiente(user_id="u", session_id="s", radice_lavoro=spazio.root, modo=nome)[0]
+        scheda = prompts.istruzioni_sull_ambiente(
+            utente=Utente.da_grezzo("u"), session_id="s", radice_lavoro=spazio.root, modo=nome
+        )[0]
         esigi("Modalita' " + nome in scheda, nome + ": la scheda non la nomina")
         paragrafo = " ".join(prompts.istruzioni_sugli_strumenti(spazio.root, nome))
         for alias in tutti:
@@ -891,7 +894,7 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
 
     from ares.agent.prompts import messaggio_di_sistema
 
-    muto = build_assistant(user_id=user_id, session_id=session_id + "-p", interattivo=False)
+    muto = build_assistant(utente=Utente.da_grezzo(user_id), session_id=session_id + "-p", interattivo=False)
     esigi(not muto.post_hooks, "in -p il post-hook di apprendimento e' agganciato")
     assert muto.learning_machine is not None
     _ = muto.result_store
@@ -921,7 +924,7 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
     )
     for nome, _ in strumenti_spazio(config.liste_modalita(config.MODO_PREDEFINITO)[1]):
         esigi(nome in istruzioni, "il prompt di -p non nomina " + nome + " fra gli strumenti rifiutati")
-    prompt = messaggio_di_sistema(muto, session_id=session_id + "-p", user_id=user_id)
+    prompt = messaggio_di_sistema(muto, session_id=session_id + "-p", utente=Utente.da_grezzo(user_id))
     esigi("<user_memory>" in prompt or "<user_profile>" in prompt, "in -p il contesto di memoria non entra nel prompt")
     for nome in scrittori | {"search_learnings", "search_entities"}:
         esigi(nome not in prompt, "in -p il prompt ordina di usare uno strumento assente: " + nome)
@@ -991,8 +994,10 @@ def prompt_e_capacita() -> str:
             )
             precedente.metadata = {"cartella": str(config.WORKSPACE_DIR.resolve())}
             db.upsert_session(precedente)
-            agente = build_assistant(user_id=utente, session_id=utente, modo=modo, interattivo=interattivo)
-            prompt = messaggio_di_sistema(agente, session_id=utente, user_id=utente)
+            agente = build_assistant(
+                utente=Utente.da_grezzo(utente), session_id=utente, modo=modo, interattivo=interattivo
+            )
+            prompt = messaggio_di_sistema(agente, session_id=utente, utente=Utente.da_grezzo(utente))
             esigi(
                 (precedente.session_id in prompt) == (config.WORKSPACE and config.SEARCH_PAST_SESSIONS),
                 f"caso {indice}: il blocco delle conversazioni non segue la disponibilita' della ricerca",
@@ -1144,7 +1149,7 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
 
     # La collisione e' silenziosa per costruzione: Agno tiene il primo nome
     # arrivato e scrive un WARNING. Qui si guarda l'intersezione, non i log.
-    del_quaderno = set(build_filesystem(user_id).tools().functions)
+    del_quaderno = set(build_filesystem(Utente.da_grezzo(user_id)).tools().functions)
     comuni = del_quaderno & set(attesi)
     esigi(not comuni, "lo spazio di lavoro e il quaderno privato si contendono: " + ", ".join(sorted(comuni)))
 
@@ -1230,8 +1235,8 @@ def lettori_tolleranti(user_id: str) -> str:
     esigi("spento" in detto, "uno store spento non viene annunciato: " + repr(detto))
 
     vuota = _MacchinaSenzaStore()
-    esigi(leggi_entita(vuota, user_id=user_id) == [], "leggi_entita non regge uno store di entita' spento")
-    esigi(leggi_intuizioni(vuota, user_id=user_id) == [], "leggi_intuizioni non regge uno store spento")
+    esigi(leggi_entita(vuota, Utente.da_grezzo(user_id)) == [], "leggi_entita non regge uno store di entita' spento")
+    esigi(leggi_intuizioni(vuota, Utente.da_grezzo(user_id)) == [], "leggi_intuizioni non regge uno store spento")
     return "store spento annunciato, letture vuote invece di eccezioni"
 
 
@@ -1400,7 +1405,7 @@ def entita_complete(lm, user_id: str) -> str:
     """
     if "entity_memory" not in lm.stores:
         return NON_CONCLUSIVO + "entity_memory e' spento in config: non c'e' niente da seminare"
-    namespace = namespace_entita(user_id)
+    namespace = namespace_entita(Utente.da_grezzo(user_id))
     in_archivio = conta_apprendimenti("entity_memory", namespace)
     esigi(
         in_archivio == len(ENTITA_SEMINATE),
@@ -1408,7 +1413,7 @@ def entita_complete(lm, user_id: str) -> str:
     )
     # Limite alto e non il default: un elenco tagliato dalla paginazione
     # sembrerebbe un difetto di lettura.
-    rilette = leggi_entita(lm, user_id=user_id, limit=1000)
+    rilette = leggi_entita(lm, Utente.da_grezzo(user_id), limit=1000)
     esigi(
         len(rilette) == in_archivio,
         "in archivio ci sono " + str(in_archivio) + " entita' ma lo store ne restituisce " + str(len(rilette)),
@@ -1425,7 +1430,7 @@ def fatti_leggibili(lm, user_id: str) -> str:
     if "entity_memory" not in lm.stores:
         return NON_CONCLUSIVO + "entity_memory e' spento in config: non c'e' nessun fatto da leggere"
     righe = []
-    for entita in leggi_entita(lm, user_id=user_id, limit=1000):
+    for entita in leggi_entita(lm, Utente.da_grezzo(user_id), limit=1000):
         righe.extend(righe_entita(entita, max_fatti=100))
     fatti = [riga for riga in righe if riga.strip().startswith("fatto:")]
     for riga in fatti:
@@ -1449,33 +1454,33 @@ def entita_cercate(agent, user_id: str) -> str:
     lm = agent.learning_machine
     if "entity_memory" not in lm.stores:
         return NON_CONCLUSIVO + "entity_memory e' spento in config: non c'e' niente da cercare"
-    intero = leggi_entita(lm, user_id=user_id, limit=1000)
+    intero = leggi_entita(lm, Utente.da_grezzo(user_id), limit=1000)
     esigi(len(intero) > 1, "serve piu' di un'entita' in archivio perche' un filtro voglia dire qualcosa")
 
     # Il nome: il caso facile, ed e' l'unico che un filtro rotto supera lo stesso.
-    per_nome = [nome_entita(e) for e in leggi_entita(lm, user_id=user_id, query="Uno")]
+    per_nome = [nome_entita(e) for e in leggi_entita(lm, Utente.da_grezzo(user_id), query="Uno")]
     esigi(per_nome == ["Entita Uno"], "cercare un nome non restituisce quell'entita': " + repr(per_nome))
 
     # Un fatto: la ricerca guarda dentro, non solo il nome.
-    per_fatto = [nome_entita(e) for e in leggi_entita(lm, user_id=user_id, query="quattro")]
+    per_fatto = [nome_entita(e) for e in leggi_entita(lm, Utente.da_grezzo(user_id), query="quattro")]
     esigi(per_fatto == ["Entita Due"], "cercare un fatto non trova la sua entita': " + repr(per_fatto))
 
     # Il caso che conta: "person" e' dentro `personale`, cioe' dentro il
     # namespace di ogni entita' di questo archivio. Deve restare il tipo.
-    per_tipo = sorted(nome_entita(e) for e in leggi_entita(lm, user_id=user_id, query="person"))
+    per_tipo = sorted(nome_entita(e) for e in leggi_entita(lm, Utente.da_grezzo(user_id), query="person"))
     esigi(
         per_tipo == ["Entita Due"],
         "una parola del namespace pesca entita' che non la contengono: " + repr(per_tipo),
     )
 
-    esigi(leggi_entita(lm, user_id=user_id, query="pipppo") == [], "una parola inventata trova qualcosa")
+    esigi(leggi_entita(lm, Utente.da_grezzo(user_id), query="pipppo") == [], "una parola inventata trova qualcosa")
 
     # Il filtro esiste anche a monte: l'argomento del comando deve arrivare
     # fino allo store. Un `/entita` che lo ignora stampa l'archivio intero e
     # sembra rispondere.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/entita Uno", StatoChat(agent=agent, session_id="sessione", user_id=user_id))
+        gestisci_comando("/entita Uno", StatoChat(agent=agent, session_id="sessione", utente=Utente.da_grezzo(user_id)))
     stampato = catturato.getvalue()
     esigi("Entita Uno" in stampato, "/entita con un argomento non trova l'entita' cercata")
     esigi("Entita Due" not in stampato, "/entita ignora l'argomento e stampa l'archivio intero")
@@ -1539,22 +1544,22 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     escono nell'ordine in cui stanno sul disco.
     """
     atteso = semina_sessioni(agent, user_id)
-    lette = [s.session_id for s in leggi_sessioni(agent, user_id=user_id)]
+    lette = [s.session_id for s in leggi_sessioni(agent, Utente.da_grezzo(user_id))]
     esigi(lette == atteso, "ordine per ultima modifica non rispettato: " + repr(lette))
 
     # Il filtro guarda il nome, e taglia dopo aver filtrato: una sessione che
     # corrisponde ma e' vecchia deve restare visibile.
-    filtrate = [s.session_id for s in leggi_sessioni(agent, user_id=user_id, query="LAVORO")]
+    filtrate = [s.session_id for s in leggi_sessioni(agent, Utente.da_grezzo(user_id), query="LAVORO")]
     esigi(filtrate == ["lavoro-gamma", "lavoro-delta"], "il filtro sul nome non funziona: " + repr(filtrate))
-    esigi(leggi_sessioni(agent, user_id=user_id, query="pipppo") == [], "un filtro inventato trova qualcosa")
+    esigi(leggi_sessioni(agent, Utente.da_grezzo(user_id), query="pipppo") == [], "un filtro inventato trova qualcosa")
 
     # Nessuna sessione di un altro utente.
     esigi(
-        leggi_sessioni(agent, user_id=UTENTE_DI_CONTROLLO) == [],
+        leggi_sessioni(agent, Utente.da_grezzo(UTENTE_DI_CONTROLLO)) == [],
         "le sessioni di un utente si vedono da un altro utente",
     )
 
-    prima = leggi_sessioni(agent, user_id=user_id)[0]
+    prima = leggi_sessioni(agent, Utente.da_grezzo(user_id))[0]
     righe = " ".join(righe_sessione(prima, corrente=True))
     esigi("(questa)" in righe, "la sessione in corso non e' marcata: " + repr(righe))
     esigi("1 scambio" in righe, "il numero di scambi e' sbagliato: " + repr(righe))
@@ -1570,13 +1575,18 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     try:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
+            gestisci_comando(
+                "/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+            )
         troncato = catturato.getvalue()
         esigi("altre 2" in troncato, "l'elenco tagliato non dice quante ne restano: " + repr(troncato))
         esigi(atteso[3] not in troncato, "il tetto non taglia niente")
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            gestisci_comando("/sessioni " + atteso[3], StatoChat(agent=agent, session_id=session_id, user_id=user_id))
+            gestisci_comando(
+                "/sessioni " + atteso[3],
+                StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id)),
+            )
         esigi(
             atteso[3] in catturato.getvalue(),
             "una sessione oltre il tetto non si trova nemmeno cercandola: si taglia prima di filtrare",
@@ -1590,7 +1600,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     # in archivio ma esclusa da un filtro.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
+        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id)))
     stampato = catturato.getvalue()
     esigi(session_id in stampato, "l'assenza della sessione in corso non viene spiegata")
     for nome in atteso:
@@ -1601,7 +1611,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     agent.db.upsert_session(_sessione_finta(session_id, 500, "domanda di questa", user_id))
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
+        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id)))
     presente = catturato.getvalue()
     esigi("(questa)" in presente, "la sessione in corso non e' marcata nell'elenco: " + repr(presente))
     esigi(
@@ -1616,7 +1626,9 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     try:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
+            gestisci_comando(
+                "/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+            )
         oltre = catturato.getvalue()
         esigi("(questa)" not in oltre, "il tetto non taglia la sessione in corso: " + repr(oltre))
         esigi(
@@ -1630,7 +1642,9 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     # falsa, ed e' il caso che il primo controllo da solo lasciava passare.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni lavoro", StatoChat(agent=agent, session_id=session_id, user_id=user_id))
+        gestisci_comando(
+            "/sessioni lavoro", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+        )
     filtrato = catturato.getvalue()
     esigi(
         "dal primo turno salvato" not in filtrato,
@@ -1654,7 +1668,9 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     def esegui_comando(riga: str) -> str:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
-            vive = gestisci_comando(riga, StatoChat(agent=agent, session_id=session_id, user_id=user_id))
+            vive = gestisci_comando(
+                riga, StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+            )
         esigi(vive is True, riga + " chiude la sessione")
         return catturato.getvalue()
 
@@ -1714,7 +1730,7 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     righe = righe_sessione(Sessione())
     esigi("data ignota" in righe[0], "una sessione senza data non lo dice: " + repr(righe))
     esigi(prima_domanda(Sessione(), larghezza=5) == "prima...", "il troncamento della domanda non avviene")
-    esigi(leggi_sessioni(object(), user_id=user_id) == [], "un agente senza archivio non da' un elenco vuoto")
+    esigi(leggi_sessioni(object(), Utente.da_grezzo(user_id)) == [], "un agente senza archivio non da' un elenco vuoto")
 
     # Le memorie come testo per il prompt: la legenda in testa, la data fra
     # quadre, una voce che non e' un dict resa com'e', una vuota saltata.
@@ -1751,8 +1767,8 @@ def file_isolati(user_id: str) -> str:
         user_id != UTENTE_DI_CONTROLLO,
         "l'utente in prova e' lo stesso di controllo: non c'e' niente da confrontare",
     )
-    miei = {f.path for f in build_filesystem(user_id).list()}
-    altrui = {f.path for f in build_filesystem(UTENTE_DI_CONTROLLO).list()}
+    miei = {f.path for f in build_filesystem(Utente.da_grezzo(user_id)).list()}
+    altrui = {f.path for f in build_filesystem(Utente.da_grezzo(UTENTE_DI_CONTROLLO)).list()}
     esigi(FILE_SEMINATO[0] in miei, "il file seminato non si rilegge: " + str(sorted(miei)))
     condivisi = miei & altrui
     esigi(not condivisi, "un altro utente vede " + str(sorted(condivisi)))
@@ -1961,12 +1977,12 @@ def main() -> int:
     reale_prima = stato_archivio_reale()
 
     try:
-        agent = build_assistant(user_id=args.user, session_id=args.session)
+        agent = build_assistant(utente=Utente.da_grezzo(args.user), session_id=args.session)
     except Exception as errore:
         print("FALLITO  costruzione -", type(errore).__name__ + ":", errore)
         return 1
     lm = agent.learning_machine
-    fs = build_filesystem(args.user)
+    fs = build_filesystem(Utente.da_grezzo(args.user))
     print("ok       costruzione - agente costruito in", round(time.monotonic() - avvio, 2), "s")
 
     try:

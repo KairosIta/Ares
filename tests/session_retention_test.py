@@ -30,6 +30,7 @@ from ares import config  # noqa: E402
 from ares.agent.assistant import build_assistant, build_db  # noqa: E402
 from ares.backup.snapshots import elenco_snapshot, verifica_snapshot  # noqa: E402
 from ares.sessions.retention import apri_archivio  # noqa: E402
+from ares.state.identita import Utente  # noqa: E402
 from ares.state.lock import lock_stato  # noqa: E402
 
 UTENTE = "prova-retention"
@@ -88,7 +89,7 @@ def fetch_page() -> str:
 
 
 def agente(user_id: str, session_id: str):
-    costruito = build_assistant(user_id=user_id, session_id=session_id)
+    costruito = build_assistant(utente=Utente.da_grezzo(user_id), session_id=session_id)
     costruito.model = ModelloToolDeterministico()
     costruito.tools = [*list(costruito.tools or []), fetch_page]
     return costruito
@@ -357,7 +358,7 @@ def main() -> int:
             check=False,
         )
         esigi(ripristino.returncode == 0, "restore fallito: " + ripristino.stderr + ripristino.stdout)
-        db_ripristinato, store_ripristinato = apri_archivio(UTENTE)
+        db_ripristinato, store_ripristinato = apri_archivio(Utente.da_grezzo(UTENTE))
         esigi(db_ripristinato.get_session(session_id=SESSIONE_VECCHIA) is not None, "sessione non ripristinata")
         esigi(store_ripristinato.payload(vecchio_id) == PAYLOAD, "payload offloaded non ripristinato")
         esigi(

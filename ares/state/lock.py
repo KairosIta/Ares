@@ -17,7 +17,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from ares import config
-from ares.state.identita import utente_canonico
+from ares.state.identita import Utente
 from ares.state.platform_files import FileOccupato, lock_file
 
 
@@ -26,7 +26,7 @@ class StatoOccupato(RuntimeError):
 
 
 @contextmanager
-def lock_turno(user_id: str) -> Iterator[None]:
+def lock_turno(utente: Utente) -> Iterator[None]:
     """Un turno per utente, dall'istantanea fino all'eventuale ripristino.
 
     Il lock condiviso dello stato resta esterno e impedisce la manutenzione.
@@ -35,12 +35,13 @@ def lock_turno(user_id: str) -> Iterator[None]:
     Il nome e' un hash per non esporre l'identita' o usarla come percorso.
     Il file resta sul disco: rimuoverlo separerebbe i lock su inode diversi.
 
-    L'id passa prima da `utente_canonico`: due grafie della stessa persona -
-    `Demo` e `demo` - devono contendere lo stesso lock, altrimenti namespace
-    dice che sono un utente e qui risultano due, e due chat scrivono lo
-    stesso profilo credendo di essere sole.
+    L'id e' quello canonico del tipo `Utente`: due grafie della stessa
+    persona - `Demo` e `demo` - non possono arrivare qui come due utenti,
+    perche' non sono due `Utente`. Namespace e lock parlano percio' sempre
+    della stessa persona, e due chat non scrivono lo stesso profilo credendo
+    di essere sole.
     """
-    chiave = sha256(utente_canonico(user_id).encode("utf-8")).hexdigest()
+    chiave = sha256(utente.id.encode("utf-8")).hexdigest()
     percorso = config.STATE_LOCK_FILE.with_name(config.STATE_LOCK_FILE.name + ".utente-" + chiave)
     try:
         with lock_file(percorso, esclusivo=True, bloccante=False):

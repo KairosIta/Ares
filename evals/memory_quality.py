@@ -543,13 +543,14 @@ def _worker(caso: str, risultato: Path) -> None:
     from ares.agent.prompts import messaggio_di_sistema
     from ares.cli.log import configura_log_agno
     from ares.state.archivi import build_db
+    from ares.state.identita import Utente
 
     configura_log_agno(False)
     for flag in ("LEARN_ENTITIES", "LEARN_KNOWLEDGE", "WORKSPACE", "SEARCH_PAST_SESSIONS", "READ_CHAT_HISTORY"):
         setattr(config, flag, False)
     config.LEARN_USER_PROFILE = config.LEARN_USER_MEMORY = config.LEARN_SESSION_CONTEXT = True
     config.MEMORY_AGENT_TOOLS = True
-    macchina: Any = build_learning_machine(build_db(), None, "eval-user")
+    macchina: Any = build_learning_machine(build_db(), None, Utente.da_grezzo("eval-user"))
     raccoglitore = RaccoglitoreAvvisi()
     for nome in list(logging.root.manager.loggerDict):
         if nome == "agno" or nome.startswith(("agno-", "agno.")):
@@ -603,8 +604,8 @@ def _worker(caso: str, risultato: Path) -> None:
                 raise RuntimeError("Il contesto di sessione non e' stato salvato.")
             scrivi_json(risultato, dati)
             sessione = "recupero-" + str(indice)
-            agente = build_assistant(user_id="eval-user", session_id=sessione, interattivo=False)
-            prompt = messaggio_di_sistema(agente, user_id="eval-user", session_id=sessione)
+            agente = build_assistant(utente=Utente.da_grezzo("eval-user"), session_id=sessione, interattivo=False)
+            prompt = messaggio_di_sistema(agente, utente=Utente.da_grezzo("eval-user"), session_id=sessione)
             voce["prompt_recupero_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()
             voce["domanda_recupero"] = fase.domanda + SONDA
             inizio_recupero = time.monotonic()

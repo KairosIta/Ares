@@ -82,6 +82,7 @@ from ares.agent.assistant import build_assistant  # noqa: E402
 from ares.agent.learning import build_session_context_store  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
 from ares.agent.turn_core import TurnEventKind, run_turn_cycle  # noqa: E402
+from ares.state.identita import Utente  # noqa: E402
 
 UTENTE = "prova-contratto"
 SESSIONE = "contratto"
@@ -228,7 +229,7 @@ class ContatoreEstrazioni:
 
 
 def agente():
-    costruito = build_assistant(user_id=UTENTE, session_id=SESSIONE)
+    costruito = build_assistant(utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
     costruito.model = ModelloScript(copione_cancellazione())
     return costruito
 

@@ -24,11 +24,12 @@ from ares.entities.maintenance import (  # noqa: E402
     carica_entita,
     pianifica_fusione,
 )
+from ares.state.identita import Utente  # noqa: E402
 from ares.state.lock import lock_stato  # noqa: E402
 from ares.state.stores import namespace_entita  # noqa: E402
 
 UTENTE = "audit"
-NAMESPACE = namespace_entita(UTENTE)
+NAMESPACE = namespace_entita(Utente.da_grezzo(UTENTE))
 
 
 def salva(db: SqliteDb, entita: EntityMemory) -> None:
