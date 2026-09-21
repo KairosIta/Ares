@@ -22,6 +22,7 @@ from ares.backup import integrity
 from ares.cli.comando import ESITO_RIFIUTO, codice_di, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
+from ares.config import Percorsi
 from ares.state.lock import StatoOccupato, lock_stato
 
 
@@ -29,13 +30,13 @@ from ares.state.lock import StatoOccupato, lock_stato
 class OperazioniBackup:
     """Operazioni della façade usate dalla CLI, iniettate per evitare cicli."""
 
-    avviso_residui: Callable[[], list[str]]
-    crea_snapshot: Callable[[], Path]
-    elenco_snapshot: Callable[[], list[Path]]
-    pota_snapshot: Callable[[int, bool], list[Path]]
-    ripristina_snapshot: Callable[[str, bool], Path | None]
-    risolvi_snapshot: Callable[[str], Path]
-    verifica_snapshot: Callable[[Any, bool], dict[str, Any]]
+    avviso_residui: Callable[[Percorsi], list[str]]
+    crea_snapshot: Callable[[Percorsi], Path]
+    elenco_snapshot: Callable[[Percorsi], list[Path]]
+    pota_snapshot: Callable[[Percorsi, int, bool], list[Path]]
+    ripristina_snapshot: Callable[[Percorsi, str, bool], Path | None]
+    risolvi_snapshot: Callable[[Percorsi, str], Path]
+    verifica_snapshot: Callable[[Percorsi, Any, bool], dict[str, Any]]
 
 
 app = nuova_app("backup", "Snapshot locali dello stato di Ares")
@@ -106,7 +107,7 @@ def _descrivi(percorso: Path) -> dict[str, Any]:
 @_protetto
 def crea() -> int:
     """Crea e verifica uno snapshot."""
-    creato = _op().crea_snapshot()
+    creato = _op().crea_snapshot(config.leggi_percorsi())
     UI.line("Snapshot creato e verificato: " + str(creato), style="ares.success")
     return 0
 
@@ -119,11 +120,12 @@ def elenca(*, come_json: ComeJson = False) -> int:
     Args:
         come_json: stampa l'elenco come JSON, per gli script.
     """
+    percorsi = config.leggi_percorsi()
     operazioni = _op()
-    residui = operazioni.avviso_residui()
-    voci = [_descrivi(percorso) for percorso in reversed(operazioni.elenco_snapshot())]
+    residui = operazioni.avviso_residui(percorsi)
+    voci = [_descrivi(percorso) for percorso in reversed(operazioni.elenco_snapshot(percorsi))]
     if come_json:
-        UI.json({"backup_dir": str(config.BACKUP_DIR), "residui": residui, "snapshot": voci})
+        UI.json({"backup_dir": str(percorsi.backup), "residui": residui, "snapshot": voci})
         return 0
     # Prima del catalogo: chi elenca gli snapshot sta decidendo se e da cosa
     # ripristinare, e un restore rimasto a meta' e' la prima cosa da sapere.
@@ -132,7 +134,7 @@ def elenca(*, come_json: ComeJson = False) -> int:
     if residui:
         UI.blank()
     if not voci:
-        UI.line("Nessuno snapshot in " + str(config.BACKUP_DIR), style="ares.muted")
+        UI.line("Nessuno snapshot in " + str(percorsi.backup), style="ares.muted")
         return 0
     UI.table(
         ("snapshot", "tipo", "creato", ("dimensione", "ares.text", "right")),
@@ -150,7 +152,7 @@ def verifica(snapshot: str = "latest", *, come_json: ComeJson = False) -> int:
         snapshot: nome dello snapshot, o `latest` per l'ultimo.
         come_json: stampa il manifest verificato come JSON.
     """
-    manifest = _op().verifica_snapshot(snapshot, False)
+    manifest = _op().verifica_snapshot(config.leggi_percorsi(), snapshot, False)
     if come_json:
         UI.json(manifest)
         return 0
@@ -168,13 +170,14 @@ def ripristina(snapshot: str, *, yes: bool = False, skip_safety: bool = False) -
         yes: non chiedere conferma.
         skip_safety: ripristina senza snapshot pre-restore (solo se lo stato corrente e' irrecuperabile).
     """
+    percorsi = config.leggi_percorsi()
     operazioni = _op()
-    percorso = operazioni.risolvi_snapshot(snapshot)
-    operazioni.verifica_snapshot(percorso, True)
+    percorso = operazioni.risolvi_snapshot(percorsi, snapshot)
+    operazioni.verifica_snapshot(percorsi, percorso, True)
     if not yes and not conferma_scritta(percorso.name, cosa="Lo stato attuale verra' sostituito da questo snapshot."):
         UI.line("Restore annullato.", style="ares.warning")
         return ESITO_RIFIUTO
-    sicurezza = operazioni.ripristina_snapshot(percorso.name, not skip_safety)
+    sicurezza = operazioni.ripristina_snapshot(percorsi, percorso.name, not skip_safety)
     UI.line("Restore completato: " + percorso.name, style="ares.success")
     if sicurezza is not None:
         UI.pair("Stato precedente salvato in", sicurezza)
@@ -190,11 +193,12 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
         keep: quanti snapshot recenti conservare.
         yes: non chiedere conferma.
     """
+    percorsi = config.leggi_percorsi()
     operazioni = _op()
     if keep < 1:
         UI.err("ERRORE: --keep deve essere almeno 1")
         return ESITO_RIFIUTO
-    disponibili = operazioni.elenco_snapshot()
+    disponibili = operazioni.elenco_snapshot(percorsi)
     candidati = disponibili[:-keep] if len(disponibili) > keep else []
     if not candidati:
         UI.line("Niente da eliminare; snapshot: " + str(len(disponibili)) + ", keep: " + str(keep), style="ares.muted")
@@ -208,12 +212,12 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
     # Fra anteprima e conferma potrebbe essere nato uno snapshot. Non eliminare
     # mai qualcosa che l'utente non ha appena visto.
     nomi_visti = [percorso.name for percorso in candidati]
-    with lock_stato(esclusivo=True):
-        attuali = operazioni.elenco_snapshot()
+    with lock_stato(percorsi.lock_file, esclusivo=True):
+        attuali = operazioni.elenco_snapshot(percorsi)
         candidati_attuali = attuali[:-keep] if len(attuali) > keep else []
         if [percorso.name for percorso in candidati_attuali] != nomi_visti:
             raise integrity.ErroreBackup("l'elenco degli snapshot e' cambiato; ripeti prune")
-        eliminati = operazioni.pota_snapshot(keep, False)
+        eliminati = operazioni.pota_snapshot(percorsi, keep, False)
     UI.line("Eliminati " + str(len(eliminati)) + " snapshot; conservati " + str(keep), style="ares.success")
     return 0
 

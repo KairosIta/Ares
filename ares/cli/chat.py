@@ -56,6 +56,7 @@ from ares.cli.editor import CliInput
 from ares.cli.log import configura_log_agno
 from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
 from ares.cli.ui import UI
+from ares.config import Percorsi
 from ares.ops import migrazione
 from ares.state.archivi import build_db
 from ares.state.git import ramo_git
@@ -79,14 +80,14 @@ def riga_stato(stato: StatoChat) -> str:
     return " · ".join(pezzi)
 
 
-def _turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
+def _turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     """Il turno vero, senza le difese: le pause per autorizzare uno strumento."""
     with UI.stream() as flusso:
         risposta = run_turn_cycle(
             agent,
             testo,
             on_event=lambda evento: mostra_evento(flusso, evento),
-            resolve_pause=lambda output: chiedi_conferme(output, input_cli),
+            resolve_pause=lambda output: chiedi_conferme(output, input_cli, percorsi),
         )
 
     if risposta is not None and risposta.is_paused:
@@ -97,13 +98,14 @@ def _turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     return risposta
 
 
-def esegui_turno(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
+def esegui_turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     """Serializza il turno e la conferma con le altre chat dello stesso utente."""
-    with lock_turno(Utente.da_grezzo(getattr(agent, "user_id", None) or config.DEFAULT_USER_ID)):
-        return _esegui_turno_protetto(agent, testo, input_cli)
+    identita = Utente.da_grezzo(getattr(agent, "user_id", None) or config.DEFAULT_USER_ID)
+    with lock_turno(percorsi, identita):
+        return _esegui_turno_protetto(percorsi, agent, testo, input_cli)
 
 
-def _esegui_turno_protetto(agent, testo: str, input_cli: CliInput) -> RunOutput | None:
+def _esegui_turno_protetto(percorsi: Percorsi, agent, testo: str, input_cli: CliInput) -> RunOutput | None:
     """Un turno intero, con una rete sotto per cio' che Agno non prende.
 
     Questa rete cattura molto meno di quanto sembri, e vale la pena dire cosa
@@ -130,7 +132,7 @@ def _esegui_turno_protetto(agent, testo: str, input_cli: CliInput) -> RunOutput 
     stato = istantanea(agent) if config.MOSTRA_APPRENDIMENTI else None
     risposta = None
     try:
-        risposta = _turno(agent, testo, input_cli)
+        risposta = _turno(percorsi, agent, testo, input_cli)
     except KeyboardInterrupt:
         # Il context manager del renderer ha gia' chiuso l'anteprima e reso
         # permanente l'eventuale Markdown parziale.
@@ -182,7 +184,9 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
-def _sessione_da_aprire(utente: Utente, radice: Path | None, *, riprendi: bool, scegli: bool) -> tuple[str | None, str]:
+def _sessione_da_aprire(
+    percorsi: Percorsi, utente: Utente, radice: Path | None, *, riprendi: bool, scegli: bool
+) -> tuple[str | None, str]:
     """Quale conversazione aprire quando `--session` non lo dice, e come chiamarla nel banner.
 
     Senza `resume` ogni avvio e' una conversazione nuova, nominata dalla
@@ -201,17 +205,19 @@ def _sessione_da_aprire(utente: Utente, radice: Path | None, *, riprendi: bool, 
         return "principale", ""
     if not riprendi:
         return cartella.nuovo_id_sessione(radice), "nuova"
-    precedenti = sessioni_della_cartella(build_db(), utente, radice)
+    precedenti = sessioni_della_cartella(build_db(percorsi), utente, radice)
     if not precedenti:
         UI.line("Nessuna conversazione in questa cartella: `ares` da solo ne apre una nuova.", style="ares.warning")
         return None, ""
     if scegli:
         UI.heading("Conversazioni in " + str(radice))
-        scelta = cartella.scegli_sessione([con_run(build_db(), s) for s in precedenti[: config.SESSIONI_ELENCO]])
+        scelta = cartella.scegli_sessione(
+            [con_run(build_db(percorsi), s) for s in precedenti[: config.SESSIONI_ELENCO]]
+        )
         if scelta is None:
             UI.line("Nessuna conversazione ripresa.", style="ares.muted")
         return scelta, "ripresa"
-    ultima = con_run(build_db(), precedenti[0])
+    ultima = con_run(build_db(percorsi), precedenti[0])
     scambi = len(getattr(ultima, "runs", None) or [])
     conto = str(scambi) + (" scambio" if scambi == 1 else " scambi")
     UI.pair("Riprendo", str(ultima.session_id) + "   " + quando_sessione(ultima) + "   " + conto)
@@ -245,12 +251,12 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
             testo = testo + "\n\n" + dati
     input_cli = CliInput(
         comandi=[],
-        cronologia_file=config.CRONOLOGIA_FILE,
+        cronologia_file=stato.percorsi.cronologia_file,
         cronologia_righe=config.CRONOLOGIA_RIGHE,
         interactive=False,
         fallback_input=lambda _etichetta: "",
     )
-    risposta = esegui_turno(stato.agent, testo, input_cli)
+    risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli)
     if stato.metriche and risposta is not None:
         for riga in righe_metriche(risposta):
             UI.metrics(riga)
@@ -289,8 +295,13 @@ def _esegui_chat(
     except UtenteNonValido as errore:
         UI.line("Utente non valido: " + str(errore) + ".", style="ares.error")
         return ESITO_RIFIUTO
+    # I percorsi si leggono qui, al confine del comando, e da qui in poi
+    # viaggiano per parametro: nessuno li rilegge a meta' strada, e la
+    # cartella scelta con --workspace e' un `replace` sul proprio oggetto.
+    percorsi = config.leggi_percorsi()
     with UI.solo_risposte() if prompt is not None else nullcontext():
         return _apri_chat(
+            percorsi=percorsi,
             session=session,
             utente=utente,
             debug=debug,
@@ -305,6 +316,7 @@ def _esegui_chat(
 
 def _apri_chat(
     *,
+    percorsi: Percorsi,
     session: str | None,
     utente: Utente,
     debug: bool,
@@ -335,7 +347,7 @@ def _apri_chat(
     # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio
     # vuoto accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
     # risponderebbe come al primo giorno senza che si capisca perche'.
-    ancora_di_la = migrazione.avviso()
+    ancora_di_la = migrazione.avviso(percorsi)
     if ancora_di_la:
         UI.line(ancora_di_la[0], style="ares.warning")
         for riga in ancora_di_la[1:]:
@@ -345,34 +357,35 @@ def _apri_chat(
     # Poi la cartella, perche' e' l'altro passo che puo' dire no: un avvio
     # rifiutato non deve aver toccato niente, nemmeno la directory dello
     # stato. `workspace` e' `--workspace`; senza, e' quella da cui si e'
-    # lanciato `ares`, e `config` la ha gia' letta.
+    # lanciato `ares`, che `leggi_percorsi` ha gia' letto.
     radice: Path | None = None
     if config.WORKSPACE:
         try:
-            radice = cartella.scegli(workspace)
+            radice = cartella.scegli(workspace, percorsi)
         except ValueError as errore:
             UI.line(str(errore), style="ares.error")
             return ESITO_GUASTO
-        if not cartella.autorizza(radice, esplicito=workspace is not None):
+        if not cartella.autorizza(radice, percorsi, esplicito=workspace is not None):
             return ESITO_RIFIUTO
-        # La cartella scelta diventa un campo dei percorsi correnti, dalla
-        # porta sola: `render`, `/cartella` e `build_workspace` la leggono
-        # da li'. Prima era un'assegnazione a `config.WORKSPACE_DIR`.
-        config.imposta_percorsi(replace(config.PERCORSI, lavoro=radice))
+        # La cartella scelta resta un campo dell'oggetto, ma il `replace` e'
+        # locale: `render`, `/cartella` e `build_workspace` la ricevono da
+        # chi li chiama. Prima era un'assegnazione a `config.WORKSPACE_DIR`
+        # che nessuna firma lasciava vedere.
+        percorsi = replace(percorsi, lavoro=radice)
 
-    # Poi cio' che scrive: la cronologia della REPL nasce dentro tmp/, che
-    # quindi deve esistere gia' privata quando `CliInput` ci scrive. `--help`
-    # non arriva qui: esce dentro Cyclopts.
-    config.prepara_archivio()
+    # Poi cio' che scrive: la cronologia della REPL nasce dentro lo stato,
+    # che quindi deve esistere gia' privato quando `CliInput` ci scrive.
+    # `--help` non arriva qui: esce dentro Cyclopts.
+    config.prepara_archivio(percorsi)
 
     etichetta = ""
     if session is None:
-        session, etichetta = _sessione_da_aprire(utente, radice, riprendi=riprendi, scegli=scegli)
+        session, etichetta = _sessione_da_aprire(percorsi, utente, radice, riprendi=riprendi, scegli=scegli)
         if session is None:
             return ESITO_RIFIUTO
 
     configura_log_agno(debug)
-    agent = build_assistant(utente=utente, session_id=session, debug=debug, interattivo=prompt is None, modo=modo)
+    agent = build_assistant(percorsi, utente, session_id=session, debug=debug, interattivo=prompt is None, modo=modo)
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
     # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa
@@ -382,6 +395,7 @@ def _apri_chat(
         agent=agent,
         session_id=session,
         utente=utente,
+        percorsi=percorsi,
         debug=debug,
         metriche=config.MOSTRA_METRICHE or metriche,
         modo=modo,
@@ -392,7 +406,7 @@ def _apri_chat(
 
     input_cli = CliInput(
         comandi=[(voce.nome, voce.descrizione) for voce in COMANDI],
-        cronologia_file=config.CRONOLOGIA_FILE,
+        cronologia_file=percorsi.cronologia_file,
         cronologia_righe=config.CRONOLOGIA_RIGHE,
         argomenti=candidati_argomento(stato),
         stato=lambda: riga_stato(stato),
@@ -435,7 +449,7 @@ def _apri_chat(
     # All'avvio e non all'uscita: qui l'utente c'e' e puo' decidere, mentre
     # chi scrive `/esci` ha gia' finito e legge un avviso che rimandera'.
     # L'elenco e' vuoto quasi sempre - vedi `promemoria_backup`.
-    promemoria = promemoria_backup()
+    promemoria = promemoria_backup(percorsi)
     if promemoria:
         UI.blank()
         UI.line(promemoria[0], style="ares.warning")
@@ -444,7 +458,7 @@ def _apri_chat(
     # Un restore interrotto lascia lo stato di prima accanto a uno stato
     # ricreato vuoto: Ares risponderebbe come al primo giorno, e senza questo
     # avviso l'utente lo scoprirebbe da una risposta che non ricorda niente.
-    residui = avviso_residui_restore()
+    residui = avviso_residui_restore(percorsi)
     if residui:
         UI.blank()
         UI.line(residui[0], style="ares.error")
@@ -469,7 +483,7 @@ def _apri_chat(
             continue
 
         try:
-            risposta = esegui_turno(stato.agent, testo, input_cli)
+            risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli)
         except StatoOccupato as errore:
             UI.line(str(errore), style="ares.warning")
             UI.blank()
@@ -504,10 +518,14 @@ def avvia(
     2, perche' uno script che lancia `ares` deve poterli distinguere; un
     Ctrl-C durante l'avvio vale 0, perche' l'ha deciso l'utente.
     """
+    # I percorsi si leggono al confine del comando: il lock condiviso che
+    # segue vale per tutta la vita del processo, e la cartella scelta con
+    # --workspace non lo sposta (cambia `lavoro`, non `stato`).
+    percorsi = config.leggi_percorsi()
     try:
         # Lock condiviso per tutta la vita del processo. Piu' chat possono
         # convivere; backup e restore, che chiedono il lock esclusivo, no.
-        with lock_stato(esclusivo=False):
+        with lock_stato(percorsi.lock_file, esclusivo=False):
             esito = _esegui_chat(
                 session=session,
                 user=user,

@@ -273,12 +273,15 @@ locali e i due modelli - conversazione ed estrazione delle memorie - possono
 essere sovrascritti con le variabili mostrate in `.env.example`; il file
 `.env` del clone non viene pubblicato.
 
-I percorsi sono un oggetto, `Percorsi`: home, stato, backup, cartella di
-lavoro e utente, con i nomi derivati - i due SQLite, l'indice, il lock, la
-cronologia - come proprietà. `leggi_percorsi` lo costruisce da un ambiente e
-una directory dati, o da quelli veri, quando viene chiamata; i nomi di
-sempre - `TMP_DIR`, `DB_FILE`, `BACKUP_DIR`, `WORKSPACE_DIR`... - sono viste
-dell'oggetto corrente e `imposta_percorsi` è l'unica porta da cui si
-sostituisce, rilegandoli tutti insieme. La chat ci passa con la cartella
-scelta, e una prova può costruire i propri percorsi su una directory
-usa-e-getta nello stesso interprete.
+I percorsi sono un oggetto, `Percorsi`: home, stato, backup e cartella di
+lavoro, con i nomi derivati - i due SQLite, l'indice, il lock, la cronologia -
+come proprietà. L'identità non sta qui: è un asse suo, e viaggia come `Utente`
+accanto ai percorsi invece di essere uno dei campi. `leggi_percorsi` lo
+costruisce da un ambiente e una directory dati, o da quelli veri, quando viene
+chiamata; i nomi di sempre - `TMP_DIR`, `DB_FILE`, `BACKUP_DIR`,
+`WORKSPACE_DIR`... - non esistono più, e con loro è sparita
+`imposta_percorsi`: chi legge lo stato riceve un `Percorsi` come primo
+parametro, e l'unico punto in cui se ne costruisce uno è il confine del
+processo. La chat ne costruisce uno con la cartella scelta da `--workspace`,
+che da lì in poi è quello che i costruttori ricevono; ed è così che due
+insiemi di percorsi nello stesso processo non si confondono.

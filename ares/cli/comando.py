@@ -18,6 +18,7 @@ from cyclopts import App, Group, Parameter
 
 import ares
 from ares.cli.ui import UI
+from ares.config import Percorsi
 from ares.state.lock import StatoOccupato, lock_stato
 
 # I codici di uscita, uguali per ogni comando. Erano cinque wrapper con
@@ -54,6 +55,7 @@ def codice_di(errore: BaseException) -> int:
 
 
 def esegui_protetto(
+    percorsi: Percorsi,
     azione: Callable[[], int],
     *,
     esclusivo: bool,
@@ -61,7 +63,7 @@ def esegui_protetto(
     guasti: tuple[type[BaseException], ...] = (OSError,),
     riprova: str = "Attendi che chat, backup, restore o manutenzione terminino e riprova.",
 ) -> int:
-    """Esegue `azione` sotto il lock dello stato e traduce gli errori previsti in codici.
+    """Esegue `azione` sotto il lock dello stato indicato da `percorsi`.
 
     E' il contorno che sessions, entities, backup e migrate scrivevano
     ognuno a modo proprio. `rifiuti` sono le eccezioni con cui l'azione dice
@@ -71,7 +73,7 @@ def esegui_protetto(
     letto, non nascosto dietro un codice.
     """
     try:
-        with lock_stato(esclusivo=esclusivo):
+        with lock_stato(percorsi.lock_file, esclusivo=esclusivo):
             return azione()
     except StatoOccupato as errore:
         UI.err("Impossibile usare lo stato di Ares: " + str(errore))

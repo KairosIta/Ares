@@ -14,6 +14,7 @@ from ares.agent.assistant import build_assistant
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
+from ares.config import Percorsi
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
@@ -36,11 +37,18 @@ class StatoChat:
     e non potevano toccare niente: `/debug`, `/metriche` e `/sessione` hanno
     bisogno di scrivere, e il ciclo della chat di rileggere. Un oggetto solo,
     mutabile, e' il modo piu' corto di dirlo.
+
+    I percorsi stanno qui perche' i comandi li leggono a ogni invocazione -
+    `/sessioni` per la cartella, `/file` per il quaderno, `/esporta` per la
+    destinazione - e ricostruirli a ogni comando leggerebbe la directory
+    corrente al momento sbagliato: con `--workspace` la cartella di lavoro
+    e' quella scelta all'avvio, non quella del processo.
     """
 
     agent: Agent
     session_id: str
     utente: Utente
+    percorsi: Percorsi
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
@@ -108,7 +116,7 @@ def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
     if tutte:
         parole = parole[1:]
     argomento = " ".join(parole)
-    qui = config.WORKSPACE_DIR if config.WORKSPACE and not tutte else None
+    qui = stato.percorsi.lavoro if config.WORKSPACE and not tutte else None
     UI.heading("Sessioni" if qui is None else "Sessioni di questa cartella")
     sessioni = leggi_sessioni(stato.agent, stato.utente, query=argomento, cartella=qui)
     mostrate = sessioni[: config.SESSIONI_ELENCO]
@@ -164,11 +172,11 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         if not config.WORKSPACE:
             UI.line("Senza cartella di lavoro il nome lo scegli tu: /sessione <nome>.", style="ares.warning")
             return
-        nome = cartella.nuovo_id_sessione(config.WORKSPACE_DIR)
+        nome = cartella.nuovo_id_sessione(stato.percorsi.lavoro)
     elif nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
-    stato.agent = build_assistant(utente=stato.utente, session_id=nome, debug=stato.debug, modo=stato.modo)
+    stato.agent = build_assistant(stato.percorsi, stato.utente, session_id=nome, debug=stato.debug, modo=stato.modo)
     stato.session_id = nome
     UI.pair("Sessione", nome + ("  (nuova)" if nuova else ""), style="ares.title")
     if nuova:
@@ -215,7 +223,9 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
     if nome == stato.modo:
         UI.line("Sei gia' in modalita' '" + nome + "'.", style="ares.muted")
         return
-    stato.agent = build_assistant(utente=stato.utente, session_id=stato.session_id, debug=stato.debug, modo=nome)
+    stato.agent = build_assistant(
+        stato.percorsi, stato.utente, session_id=stato.session_id, debug=stato.debug, modo=nome
+    )
     stato.modo = nome
     UI.pair("Modalita'", nome, style="ares.title")
     UI.line("Stessa sessione, strumenti e prompt della modalita' nuova.", style="ares.muted")
@@ -263,7 +273,7 @@ def _comando_entita(stato: StatoChat, argomento: str) -> None:
 
 def _comando_file(stato: StatoChat, argomento: str) -> None:
     UI.heading("Quaderno privato")
-    fs = build_filesystem(stato.utente)
+    fs = build_filesystem(stato.percorsi, stato.utente)
     elenco = fs.list()
     if not elenco:
         UI.line("Nessun file.", style="ares.muted")
@@ -283,7 +293,7 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
     if not config.WORKSPACE:
         UI.line("Lo spazio di lavoro e' spento in config.py.", style="ares.muted")
         return
-    radice = config.WORKSPACE_DIR
+    radice = stato.percorsi.lavoro
     UI.pair("percorso", str(radice), style="ares.cyan")
     ramo = ramo_git(radice)
     if ramo:
@@ -303,7 +313,7 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
         UI.pair(
             "istruzioni", "nessun " + config.WORKSPACE_ISTRUZIONI + "; `ares init` ne scrive uno", style="ares.muted"
         )
-    for motivo in cartella.rischi(radice):
+    for motivo in cartella.rischi(radice, stato.percorsi):
         UI.line("attenzione: la cartella " + motivo, style="ares.warning")
 
 
@@ -326,7 +336,7 @@ def _comando_esporta(stato: StatoChat, argomento: str) -> None:
         return
     # Un percorso relativo parte dalla cartella di lavoro, che con
     # `--workspace` non e' quella del processo; uno assoluto resta com'e'.
-    radice = config.WORKSPACE_DIR if config.WORKSPACE else Path.cwd()
+    radice = stato.percorsi.lavoro if config.WORKSPACE else Path.cwd()
     esplicito = bool(argomento)
     if esplicito:
         destinazione = radice / Path(argomento.split()[0]).expanduser()
@@ -410,7 +420,7 @@ def _candidati_modo() -> list[tuple[str, str]]:
 def _candidati_sessione(stato: StatoChat) -> list[tuple[str, str]]:
     """`nuova` e le conversazioni di questa cartella, la corrente esclusa."""
     voci = [("nuova", "una conversazione nuova in questa cartella")]
-    qui = config.WORKSPACE_DIR if config.WORKSPACE else None
+    qui = stato.percorsi.lavoro if config.WORKSPACE else None
     for s in leggi_sessioni(stato.agent, stato.utente, cartella=qui)[: config.SESSIONI_ELENCO]:
         nome = str(getattr(s, "session_id", "") or "")
         if not nome or nome == stato.session_id:

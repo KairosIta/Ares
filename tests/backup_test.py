@@ -17,6 +17,7 @@ import sys
 import time
 from collections.abc import Callable
 from contextlib import closing, nullcontext, redirect_stderr, redirect_stdout
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,11 @@ from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 RADICE_PROVA = prepara_ambiente("backup-test")
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.backup import files, integrity, probe, restore, snapshots  # noqa: E402
 from ares.backup.snapshots import (  # noqa: E402
     ErroreBackup,
@@ -113,7 +119,7 @@ def manifest_minimo() -> dict[str, Any]:
         "components": {
             "kairos.db": False,
             "filesystem.db": False,
-            config.CRONOLOGIA_FILE.name: False,
+            PERCORSI.cronologia_file.name: False,
             "lancedb": {"present": False, "tables": {}},
         },
     }
@@ -131,7 +137,7 @@ def snapshot_sintetico(radice: Path, nome: str, manifest: Any | None = None) -> 
 def verifica_integrita_sintetica(snapshot: Path) -> dict[str, Any]:
     return integrity.verifica_snapshot(
         snapshot,
-        cronologia=config.CRONOLOGIA_FILE.name,
+        cronologia=PERCORSI.cronologia_file.name,
         modello_embedder=config.EMBEDDER_MODEL,
         dimensioni_embedder=config.EMBEDDER_DIMENSIONS,
     )
@@ -186,7 +192,7 @@ def prova_errori_integrita() -> None:
     esigi_errore(lambda: verifica_integrita_sintetica(componenti), "components non e' un oggetto")
 
     cronologia_mancante = manifest_minimo()
-    cronologia_mancante["components"][config.CRONOLOGIA_FILE.name] = True
+    cronologia_mancante["components"][PERCORSI.cronologia_file.name] = True
     cronologia = snapshot_sintetico(radice, "cronologia-mancante", cronologia_mancante)
     esigi_errore(lambda: verifica_integrita_sintetica(cronologia), "che manca nello snapshot")
 
@@ -407,14 +413,13 @@ def prova_rollback_rinomina() -> None:
     staging.mkdir()
     (destinazione / "stato.txt").write_text("vecchio\n", encoding="utf-8")
     (staging / "stato.txt").write_text("nuovo\n", encoding="utf-8")
-    tmp_vera = config.TMP_DIR
-    config.TMP_DIR = destinazione
+    percorsi = replace(PERCORSI, stato=destinazione)
 
     operazioni = restore.OperazioniRestore(
-        crea_snapshot_senza_lock=lambda _tipo: radice / "non-creato",
-        risolvi_snapshot=lambda _nome: radice / "snapshot",
-        stato_presente=lambda: False,
-        verifica_snapshot=lambda _snapshot, _diretto: {},
+        crea_snapshot_senza_lock=lambda _percorsi, _tipo: radice / "non-creato",
+        risolvi_snapshot=lambda _percorsi, _nome: radice / "snapshot",
+        stato_presente=lambda _percorsi: False,
+        verifica_snapshot=lambda _percorsi, _snapshot, _diretto: {},
     )
 
     def rinomina_con_guasto(sorgente: Path, destinazione_rinomina: Path) -> None:
@@ -422,21 +427,18 @@ def prova_rollback_rinomina() -> None:
             raise OSError("seconda rinomina interrotta")
         os.rename(sorgente, destinazione_rinomina)
 
-    try:
-        with (
-            patch("ares.backup.restore.lock_stato", return_value=nullcontext()),
-            patch("ares.backup.restore._prepara_restore", return_value=staging),
-            patch("ares.backup.restore._rinomina_directory", side_effect=rinomina_con_guasto),
-            patch("ares.backup.restore.os.name", "posix"),
-        ):
-            try:
-                restore.ripristina_snapshot("snapshot", False, operazioni)
-            except OSError as errore:
-                esigi("seconda rinomina interrotta" in str(errore), "errore rename perso: " + str(errore))
-            else:
-                esigi(False, "il fallimento del secondo rename non e' stato propagato")
-    finally:
-        config.TMP_DIR = tmp_vera
+    with (
+        patch("ares.backup.restore.lock_stato", return_value=nullcontext()),
+        patch("ares.backup.restore._prepara_restore", return_value=staging),
+        patch("ares.backup.restore._rinomina_directory", side_effect=rinomina_con_guasto),
+        patch("ares.backup.restore.os.name", "posix"),
+    ):
+        try:
+            restore.ripristina_snapshot(percorsi, "snapshot", False, operazioni)
+        except OSError as errore:
+            esigi("seconda rinomina interrotta" in str(errore), "errore rename perso: " + str(errore))
+        else:
+            esigi(False, "il fallimento del secondo rename non e' stato propagato")
 
     esigi(
         (destinazione / "stato.txt").read_text(encoding="utf-8") == "vecchio\n",
@@ -490,15 +492,15 @@ def prova_guardie_restore() -> None:
     snapshot.mkdir()
     manifest = manifest_minimo()
     manifest["components"]["kairos.db"] = True
-    parent = config.TMP_DIR.resolve().parent
-    prima = set(parent.glob("." + config.TMP_DIR.name + "-restore-*"))
+    parent = PERCORSI.stato.resolve().parent
+    prima = set(parent.glob("." + PERCORSI.stato.name + "-restore-*"))
     try:
-        restore._prepara_restore(snapshot, manifest)
+        restore._prepara_restore(PERCORSI, snapshot, manifest)
     except FileNotFoundError:
         pass
     else:
         esigi(False, "una preparazione senza il database dichiarato non e' fallita")
-    dopo = set(parent.glob("." + config.TMP_DIR.name + "-restore-*"))
+    dopo = set(parent.glob("." + PERCORSI.stato.name + "-restore-*"))
     esigi(dopo == prima, "la preparazione fallita ha lasciato uno staging: " + repr(sorted(dopo - prima)))
 
     sorgente = RADICE_PROVA / "rinomina-sorgente"
@@ -524,10 +526,27 @@ def prova_residui_restore() -> None:
     Lo snapshot pre-restore e' sintetico, con una data nel futuro, cosi' e'
     l'ultimo del catalogo qualunque cosa abbiano lasciato le prove prima.
     """
-    esigi(residui_restore() == [], "residui segnalati senza che ce ne siano: " + repr(residui_restore()))
-    esigi(avviso_residui_restore() == [], "avviso sui residui senza residui")
+    esigi(
+        residui_restore(
+            PERCORSI,
+        )
+        == [],
+        "residui segnalati senza che ce ne siano: "
+        + repr(
+            residui_restore(
+                PERCORSI,
+            )
+        ),
+    )
+    esigi(
+        avviso_residui_restore(
+            PERCORSI,
+        )
+        == [],
+        "avviso sui residui senza residui",
+    )
 
-    stato = config.TMP_DIR.resolve()
+    stato = PERCORSI.stato.resolve()
     precedente = stato.with_name("." + stato.name + "-precedente-deadbeef")
     preparazione = stato.with_name("." + stato.name + "-restore-cafe")
     estraneo = stato.with_name("." + stato.name + "-altro")
@@ -539,16 +558,29 @@ def prova_residui_restore() -> None:
     try:
         if os.name == "posix":
             collegamento.symlink_to(precedente)
-        esigi(residui_restore() == [precedente, preparazione], "residui non riconosciuti: " + repr(residui_restore()))
+        esigi(
+            residui_restore(
+                PERCORSI,
+            )
+            == [precedente, preparazione],
+            "residui non riconosciuti: "
+            + repr(
+                residui_restore(
+                    PERCORSI,
+                )
+            ),
+        )
 
-        righe = avviso_residui_restore()
+        righe = avviso_residui_restore(
+            PERCORSI,
+        )
         unite = "\n".join(righe)
         esigi("non e' stato completato" in righe[0], "l'avviso non dice cosa e' successo: " + righe[0])
         esigi(str(precedente) in unite and str(preparazione) in unite, "l'avviso non nomina i residui: " + unite)
         esigi("prima del restore" in unite and "mai installata" in unite, "l'avviso non distingue i residui")
         # Le prove precedenti possono aver lasciato un pre-restore vero nel
         # catalogo: l'avviso deve nominare quello, o dire che non ce n'e'.
-        esistente = _ultimo_snapshot_di_tipo("pre-restore")
+        esistente = _ultimo_snapshot_di_tipo(PERCORSI, "pre-restore")
         if esistente is None:
             esigi("unica copia" in unite, "senza pre-restore l'avviso non dice che il residuo e' l'unica copia")
         else:
@@ -559,8 +591,10 @@ def prova_residui_restore() -> None:
         manifest["snapshot_id"] = "20990101T000000Z-pre-restore"
         manifest["type"] = "pre-restore"
         manifest["created_at"] = "2099-01-01T00:00:00+00:00"
-        sicurezza = snapshot_sintetico(config.BACKUP_DIR, manifest["snapshot_id"], manifest)
-        righe = avviso_residui_restore()
+        sicurezza = snapshot_sintetico(PERCORSI.backup, manifest["snapshot_id"], manifest)
+        righe = avviso_residui_restore(
+            PERCORSI,
+        )
         unite = "\n".join(righe)
         esigi("ares backup restore " + sicurezza.name in unite, "l'avviso non nomina lo snapshot pre-restore: " + unite)
         esigi("unica copia" not in unite, "l'avviso dice 'unica copia' con uno snapshot pre-restore a disposizione")
@@ -578,9 +612,17 @@ def prova_residui_restore() -> None:
         shutil.rmtree(precedente)
         if collegamento.is_symlink():
             collegamento.unlink()
-        righe = avviso_residui_restore()
+        righe = avviso_residui_restore(
+            PERCORSI,
+        )
         unite = "\n".join(righe)
-        esigi(residui_restore() == [preparazione], "la preparazione da sola non viene riconosciuta")
+        esigi(
+            residui_restore(
+                PERCORSI,
+            )
+            == [preparazione],
+            "la preparazione da sola non viene riconosciuta",
+        )
         esigi("mai installata" in unite, "la preparazione non viene descritta")
         esigi("restore " + sicurezza.name not in unite, "un restore suggerito senza motivo")
     finally:
@@ -590,7 +632,13 @@ def prova_residui_restore() -> None:
             collegamento.unlink()
         if sicurezza is not None:
             shutil.rmtree(sicurezza, ignore_errors=True)
-    esigi(avviso_residui_restore() == [], "avviso rimasto dopo la pulizia")
+    esigi(
+        avviso_residui_restore(
+            PERCORSI,
+        )
+        == [],
+        "avviso rimasto dopo la pulizia",
+    )
 
 
 def _operazione_lancedb(azione: str) -> str:
@@ -600,7 +648,7 @@ def _operazione_lancedb(azione: str) -> str:
             "-c",
             OPERAZIONE_LANCEDB,
             azione,
-            config.LANCEDB_URI,
+            PERCORSI.lancedb_uri,
             str(config.EMBEDDER_DIMENSIONS),
         ],
         capture_output=True,
@@ -626,18 +674,20 @@ def righe_lancedb() -> int:
 def main() -> int:
     avvio = time.monotonic()
     try:
-        crea_sqlite(Path(config.DB_FILE), "profilo-originale")
-        crea_sqlite(Path(config.FS_DB_FILE), "nota-originale")
+        crea_sqlite(Path(PERCORSI.db_file), "profilo-originale")
+        crea_sqlite(Path(PERCORSI.fs_db_file), "nota-originale")
         crea_lancedb()
-        config.CRONOLOGIA_FILE.write_text("prima domanda\n", encoding="utf-8")
+        PERCORSI.cronologia_file.write_text("prima domanda\n", encoding="utf-8")
         ok("seme", "due SQLite, una riga LanceDB e una cronologia")
 
-        primo = crea_snapshot()
-        manifest = verifica_snapshot(primo, percorso_diretto=True)
+        primo = crea_snapshot(
+            PERCORSI,
+        )
+        manifest = verifica_snapshot(PERCORSI, primo, percorso_diretto=True)
         esigi(manifest["components"]["lancedb"]["tables"] == {"learned_knowledge": 1}, "conteggio LanceDB errato")
-        esigi(manifest["components"][config.CRONOLOGIA_FILE.name] is True, "cronologia non nel manifest")
+        esigi(manifest["components"][PERCORSI.cronologia_file.name] is True, "cronologia non nel manifest")
         esigi(
-            (primo / config.CRONOLOGIA_FILE.name).read_text(encoding="utf-8") == "prima domanda\n",
+            (primo / PERCORSI.cronologia_file.name).read_text(encoding="utf-8") == "prima domanda\n",
             "cronologia non copiata nello snapshot",
         )
         for nome in ("kairos.db", "filesystem.db"):
@@ -700,43 +750,45 @@ def main() -> int:
         prova_guardie_restore()
         ok("guardie restore", "staging fallito ripulito e destinazione esistente preservata")
 
-        aggiungi_sqlite(Path(config.DB_FILE), "profilo-modificato")
-        aggiungi_sqlite(Path(config.FS_DB_FILE), "nota-modificata")
+        aggiungi_sqlite(Path(PERCORSI.db_file), "profilo-modificato")
+        aggiungi_sqlite(Path(PERCORSI.fs_db_file), "nota-modificata")
         aggiungi_lancedb()
-        config.CRONOLOGIA_FILE.write_text("prima domanda\nseconda domanda\n", encoding="utf-8")
-        secondo = crea_snapshot()
+        PERCORSI.cronologia_file.write_text("prima domanda\nseconda domanda\n", encoding="utf-8")
+        secondo = crea_snapshot(
+            PERCORSI,
+        )
         esigi(secondo != primo, "due snapshot hanno lo stesso identificativo")
         ok("secondo snapshot", secondo.name)
 
-        sicurezza = ripristina_snapshot(primo.name)
+        sicurezza = ripristina_snapshot(PERCORSI, primo.name)
         esigi(sicurezza is not None and sicurezza.is_dir(), "manca lo snapshot pre-restore")
-        esigi(valori_sqlite(Path(config.DB_FILE)) == ["profilo-originale"], "kairos.db non ripristinato")
-        esigi(valori_sqlite(Path(config.FS_DB_FILE)) == ["nota-originale"], "filesystem.db non ripristinato")
+        esigi(valori_sqlite(Path(PERCORSI.db_file)) == ["profilo-originale"], "kairos.db non ripristinato")
+        esigi(valori_sqlite(Path(PERCORSI.fs_db_file)) == ["nota-originale"], "filesystem.db non ripristinato")
         esigi(righe_lancedb() == 1, "LanceDB non ripristinato")
-        verifica_snapshot(sicurezza, percorso_diretto=True)
+        verifica_snapshot(PERCORSI, sicurezza, percorso_diretto=True)
         # Il restore riporta indietro Ares, non chi gli parla: i database sono
         # quelli del primo snapshot, la cronologia e' rimasta quella viva.
         esigi(
-            config.CRONOLOGIA_FILE.read_text(encoding="utf-8") == "prima domanda\nseconda domanda\n",
-            "il restore ha riavvolto la cronologia: " + repr(config.CRONOLOGIA_FILE.read_text()),
+            PERCORSI.cronologia_file.read_text(encoding="utf-8") == "prima domanda\nseconda domanda\n",
+            "il restore ha riavvolto la cronologia: " + repr(PERCORSI.cronologia_file.read_text()),
         )
         ok("restore", "stato originale, cronologia viva conservata, pre-restore verificato")
 
         # tmp/ persa davvero: li' la cronologia dello snapshot e' l'unica che
         # esiste, ed e' il caso per cui un backup viene fatto.
-        config.CRONOLOGIA_FILE.unlink()
-        ripristina_snapshot(primo.name)
-        esigi(config.CRONOLOGIA_FILE.is_file(), "cronologia non ripristinata da uno snapshot")
+        PERCORSI.cronologia_file.unlink()
+        ripristina_snapshot(PERCORSI, primo.name)
+        esigi(PERCORSI.cronologia_file.is_file(), "cronologia non ripristinata da uno snapshot")
         esigi(
-            config.CRONOLOGIA_FILE.read_text(encoding="utf-8") == "prima domanda\n",
-            "cronologia ripristinata sbagliata: " + repr(config.CRONOLOGIA_FILE.read_text()),
+            PERCORSI.cronologia_file.read_text(encoding="utf-8") == "prima domanda\n",
+            "cronologia ripristinata sbagliata: " + repr(PERCORSI.cronologia_file.read_text()),
         )
         ok("cronologia", "conservata se viva, ripristinata se persa")
 
         # I suffissi non sono cronologia: costruiamo due sole voci sintetiche
         # con nome e data in ordine opposto, senza alterare snapshot validi.
-        vecchio = config.BACKUP_DIR / "zzzz-vecchio"
-        nuovo = config.BACKUP_DIR / "aaaa-nuovo"
+        vecchio = PERCORSI.backup / "zzzz-vecchio"
+        nuovo = PERCORSI.backup / "aaaa-nuovo"
         try:
             vecchio.mkdir()
             nuovo.mkdir()
@@ -748,7 +800,13 @@ def main() -> int:
                 json.dumps({"created_at": "2099-08-21T20:00:01+00:00"}),
                 encoding="utf-8",
             )
-            esigi(elenco_snapshot()[-1].name == nuovo.name, "latest segue il nome invece della data")
+            esigi(
+                elenco_snapshot(
+                    PERCORSI,
+                )[-1].name
+                == nuovo.name,
+                "latest segue il nome invece della data",
+            )
         finally:
             shutil.rmtree(vecchio, ignore_errors=True)
             shutil.rmtree(nuovo, ignore_errors=True)
@@ -757,7 +815,7 @@ def main() -> int:
         embedder_vero = config.EMBEDDER_MODEL
         config.EMBEDDER_MODEL = "embedder-incompatibile"
         try:
-            verifica_snapshot(primo, percorso_diretto=True)
+            verifica_snapshot(PERCORSI, primo, percorso_diretto=True)
         except ErroreBackup as errore:
             esigi("embedder incompatibile" in str(errore), "errore embedder inatteso: " + str(errore))
         else:
@@ -766,7 +824,7 @@ def main() -> int:
             config.EMBEDDER_MODEL = embedder_vero
         ok("compatibilita'", "embedder differente rifiutato")
 
-        collegamento = config.BACKUP_DIR / "snapshot-symlink"
+        collegamento = PERCORSI.backup / "snapshot-symlink"
         symlink_disponibile = True
         try:
             try:
@@ -784,7 +842,7 @@ def main() -> int:
                 collegamento = None
             else:
                 try:
-                    verifica_snapshot(collegamento, percorso_diretto=True)
+                    verifica_snapshot(PERCORSI, collegamento, percorso_diretto=True)
                 except ErroreBackup as errore:
                     esigi("link simbolico" in str(errore), "errore symlink inatteso: " + str(errore))
                 else:
@@ -795,7 +853,7 @@ def main() -> int:
         if symlink_disponibile:
             ok("symlink", "radice snapshot simbolica rifiutata")
 
-        corrotto = config.BACKUP_DIR / "99999999T999999Z-corrotto"
+        corrotto = PERCORSI.backup / "99999999T999999Z-corrotto"
         shutil.copytree(primo, corrotto)
         database_corrotto = corrotto / "kairos.db"
         with database_corrotto.open("r+b") as file_corrotto:
@@ -804,7 +862,7 @@ def main() -> int:
             file_corrotto.seek(100)
             file_corrotto.write(bytes([(byte[0] if byte else 0) ^ 0xFF]))
         try:
-            verifica_snapshot(corrotto, percorso_diretto=True)
+            verifica_snapshot(PERCORSI, corrotto, percorso_diretto=True)
         except ErroreBackup as errore:
             esigi("checksum errato" in str(errore), "la corruzione ha prodotto l'errore sbagliato: " + str(errore))
         else:
@@ -812,63 +870,72 @@ def main() -> int:
         shutil.rmtree(corrotto)
         ok("corruzione", "checksum modificato rifiutato")
 
-        with lock_stato(esclusivo=False):
+        with lock_stato(PERCORSI.lock_file, esclusivo=False):
             # Due chat sono lettori compatibili anche sul backend Windows;
             # solo il backup, che richiede lo scrittore esclusivo, si ferma.
-            with lock_stato(esclusivo=False):
+            with lock_stato(PERCORSI.lock_file, esclusivo=False):
                 pass
             try:
-                crea_snapshot()
+                crea_snapshot(
+                    PERCORSI,
+                )
             except StatoOccupato:
                 pass
             else:
                 esigi(False, "il backup e' partito mentre la chat simulata teneva il lock")
         ok("lock", "backup fermato con Ares aperto")
 
-        backup_vero = config.BACKUP_DIR
-        config.BACKUP_DIR = config.TMP_DIR / "backup-vietato"
+        vietato = replace(PERCORSI, backup=PERCORSI.stato / "backup-vietato")
         try:
-            valida_percorsi()
+            valida_percorsi(vietato)
         except ErroreBackup:
             pass
         else:
             esigi(False, "un backup dentro lo stato e' stato accettato")
-        finally:
-            config.BACKUP_DIR = backup_vero
         ok("guardia percorsi", "backup dentro tmp/ respinto")
 
-        prima = len(elenco_snapshot())
-        eliminati = pota_snapshot(2)
-        esigi(len(elenco_snapshot()) == min(prima, 2), "prune non ha conservato due snapshot")
+        prima = len(
+            elenco_snapshot(
+                PERCORSI,
+            )
+        )
+        eliminati = pota_snapshot(PERCORSI, 2)
+        esigi(
+            len(
+                elenco_snapshot(
+                    PERCORSI,
+                )
+            )
+            == min(prima, 2),
+            "prune non ha conservato due snapshot",
+        )
         esigi(len(eliminati) == max(0, prima - 2), "prune ha eliminato il numero sbagliato")
         ok("prune", str(len(eliminati)) + " eliminati, 2 conservati")
 
         # Il promemoria: e' l'unica parte automatica di un backup che resta
         # manuale, quindi il controllo che conta e' quando tace.
-        esigi(promemoria_backup(soglia_giorni=0) == [], "promemoria acceso con la soglia a zero")
-        esigi(promemoria_backup(soglia_giorni=3650) == [], "promemoria acceso con uno snapshot di oggi")
-        vecchio_backup = config.BACKUP_DIR
-        config.BACKUP_DIR = RADICE_PROVA / "backup-mai-fatto"
-        try:
-            righe = promemoria_backup(soglia_giorni=7)
-            esigi(righe, "nessun promemoria pur non essendoci mai stato uno snapshot")
-            esigi("Nessuno snapshot" in righe[0], "il promemoria non dice che non ce n'e' nessuno")
-            esigi("ares backup create" in righe[-1], "il promemoria non dice come rimediare")
-            # Una domanda non deve lasciare una directory: chiedere "ho un
-            # backup?" e ottenere in cambio una cartella vuota e' esattamente
-            # il tipo di effetto che questo progetto ha appena tolto altrove.
-            esigi(
-                not config.BACKUP_DIR.exists(),
-                "il promemoria ha creato la directory dei backup: " + str(config.BACKUP_DIR),
-            )
-        finally:
-            config.BACKUP_DIR = vecchio_backup
+        esigi(promemoria_backup(PERCORSI, soglia_giorni=0) == [], "promemoria acceso con la soglia a zero")
+        esigi(promemoria_backup(PERCORSI, soglia_giorni=3650) == [], "promemoria acceso con uno snapshot di oggi")
+        senza_backup = replace(PERCORSI, backup=RADICE_PROVA / "backup-mai-fatto")
+        righe = promemoria_backup(senza_backup, soglia_giorni=7)
+        esigi(righe, "nessun promemoria pur non essendoci mai stato uno snapshot")
+        esigi("Nessuno snapshot" in righe[0], "il promemoria non dice che non ce n'e' nessuno")
+        esigi("ares backup create" in righe[-1], "il promemoria non dice come rimediare")
+        # Una domanda non deve lasciare una directory: chiedere "ho un
+        # backup?" e ottenere in cambio una cartella vuota e' esattamente
+        # il tipo di effetto che questo progetto ha appena tolto altrove.
+        esigi(
+            not senza_backup.backup.exists(),
+            "il promemoria ha creato la directory dei backup: " + str(senza_backup.backup),
+        )
 
         # Invecchiati spostando indietro il manifest, non l'mtime: il
         # promemoria legge `created_at`, come l'ordinamento. E tutti quelli
         # rimasti, non solo l'ultimo: invecchiarne uno solo lo manda in fondo
         # all'elenco e il piu' recente resterebbe quello di oggi.
-        rimasti = elenco_snapshot()
+        rimasti = elenco_snapshot(
+            PERCORSI,
+        )
         # I byte originali, non il dizionario riserializzato: il manifest e'
         # un file dentro uno snapshot verificabile, e riscriverlo con un'altra
         # indentazione lo lascerebbe diverso da com'era.
@@ -879,17 +946,22 @@ def main() -> int:
             manifest["created_at"] = antica.isoformat()
             (snapshot / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         try:
-            atteso = elenco_snapshot()[-1]
-            righe = promemoria_backup(soglia_giorni=7)
+            atteso = elenco_snapshot(
+                PERCORSI,
+            )[-1]
+            righe = promemoria_backup(PERCORSI, soglia_giorni=7)
             esigi(righe, "nessun promemoria con l'ultimo snapshot di 30 giorni fa")
             esigi("30 giorni fa" in righe[0], "il promemoria non dice quanti giorni: " + righe[0])
             esigi(atteso.name in righe[0], "il promemoria non nomina lo snapshot piu' recente")
-            esigi(promemoria_backup(soglia_giorni=60) == [], "promemoria acceso sotto la propria soglia")
+            esigi(promemoria_backup(PERCORSI, soglia_giorni=60) == [], "promemoria acceso sotto la propria soglia")
         finally:
             for snapshot, byte in originali.items():
                 (snapshot / "manifest.json").write_bytes(byte)
         for snapshot in rimasti:
-            esigi(verifica_snapshot(snapshot.name)["snapshot_id"] == snapshot.name, "snapshot alterato dalla prova")
+            esigi(
+                verifica_snapshot(PERCORSI, snapshot.name)["snapshot_id"] == snapshot.name,
+                "snapshot alterato dalla prova",
+            )
         ok("promemoria", "tace se recente o spento, avvisa se manca o e' vecchio, non crea niente")
 
         prova_residui_restore()

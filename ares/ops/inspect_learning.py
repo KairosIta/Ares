@@ -30,6 +30,7 @@ from pathlib import Path
 from ares import config
 from ares.cli.comando import ESITO_FATTO, ESITO_OCCUPATO, ESITO_RIFIUTO, nuova_app
 from ares.cli.ui import UI, byte_leggibili
+from ares.config import Percorsi
 from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato, lock_stato
 
@@ -41,7 +42,9 @@ def separatore(titolo: str) -> None:
     UI.heading(titolo)
 
 
-def _ispeziona(utente: Utente, session: str | None, query: str, file: str | None, prompt: bool, modo: str) -> None:
+def _ispeziona(
+    percorsi: Percorsi, utente: Utente, session: str | None, query: str, file: str | None, prompt: bool, modo: str
+) -> None:
     from ares.agent.assistant import build_assistant
     from ares.agent.prompts import messaggio_di_sistema
     from ares.cli.cartella import nuovo_id_sessione
@@ -52,9 +55,9 @@ def _ispeziona(utente: Utente, session: str | None, query: str, file: str | None
 
     # Qui e non prima: `--help` esce dentro Cyclopts, e un comando che stampa
     # l'aiuto non deve creare l'archivio che dice di ispezionare.
-    config.prepara_archivio()
+    config.prepara_archivio(percorsi)
 
-    fs = build_filesystem(utente)
+    fs = build_filesystem(percorsi, utente)
 
     if file:
         contenuto = fs.read(file)
@@ -76,11 +79,11 @@ def _ispeziona(utente: Utente, session: str | None, query: str, file: str | None
         # restano, ma tolti dallo stdout che qui e' il testo e basta.
         configura_log_agno(False)
         session = session or nuovo_id_sessione(Path.cwd())
-        agent = build_assistant(utente=utente, session_id=session, modo=modo)
+        agent = build_assistant(percorsi, utente, session_id=session, modo=modo)
         print(messaggio_di_sistema(agent, session_id=session, utente=utente))
         return
 
-    agent = build_assistant(utente=utente, session_id=session or "principale")
+    agent = build_assistant(percorsi, utente, session_id=session or "principale")
     if not session:
         # Senza `--session` si guarda l'ultima conversazione toccata, di
         # qualunque cartella: e' quella di cui si vuole sapere cosa e' rimasto.
@@ -159,9 +162,10 @@ def ispeziona(
     except UtenteNonValido as errore:
         UI.err("Rifiutato: " + str(errore))
         return ESITO_RIFIUTO
+    percorsi = config.leggi_percorsi()
     try:
-        with lock_stato(esclusivo=False):
-            _ispeziona(utente, session, query, file, prompt, modo)
+        with lock_stato(percorsi.lock_file, esclusivo=False):
+            _ispeziona(percorsi, utente, session, query, file, prompt, modo)
     except StatoOccupato as errore:
         UI.err("Impossibile leggere lo stato di Ares: " + str(errore))
         UI.err("Attendi che backup o restore terminino e riprova.", style="ares.muted")

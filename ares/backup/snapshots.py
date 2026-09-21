@@ -32,6 +32,7 @@ from typing import Any
 import ares
 from ares import config
 from ares.backup import cli, files, integrity, restore
+from ares.config import Percorsi
 from ares.state.lock import lock_stato
 from ares.state.platform_files import rendi_privato
 
@@ -56,12 +57,13 @@ _installa_restore_per_copia = restore._installa_restore_per_copia
 _prepara_restore = restore._prepara_restore
 _svuota_directory = restore._svuota_directory
 
-# La cronologia della riga di comando vive in tmp/ insieme al resto, ma non e'
-# stato appreso: e' cio' che l'utente ha digitato. Da qui le due regole
+# La cronologia della riga di comando vive nello stato insieme al resto, ma
+# non e' stato appreso: e' cio' che l'utente ha digitato. Da qui le due regole
 # asimmetriche piu' sotto - lo snapshot la copia, il restore non la riporta
 # indietro - che sono la stessa cosa detta due volte: un backup protegge da
-# una perdita, un restore fa tornare indietro Ares, non chi gli parla.
-CRONOLOGIA = config.CRONOLOGIA_FILE.name
+# una perdita, un restore fa tornare indietro Ares, non chi gli parla. Il nome
+# del file e' `percorsi.cronologia_file.name`, letto dove serve: era una
+# costante di modulo, cioe' il nome di un archivio deciso all'import.
 
 
 def _si_sovrappongono(primo: Path, secondo: Path) -> bool:
@@ -102,22 +104,22 @@ def _pubblica_snapshot(staging: Path, definitivo: Path) -> None:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def valida_percorsi() -> None:
+def valida_percorsi(percorsi: Percorsi) -> None:
     """Il backup non puo' contenere o essere contenuto da cio' che protegge."""
     # La cartella di lavoro non e' nell'elenco: e' quella da cui si lancia
     # `ares`, e `ares backup create` dalla home non deve fallire perche' la
     # home contiene i backup. Che Ares lavori dove stanno i suoi backup lo
     # dice `cli/cartella.py` all'avvio della chat, ed e' li' che si decide.
-    backup = config.BACKUP_DIR.resolve()
-    vietati = [("lo stato", config.TMP_DIR), ("il progetto", config.BASE_DIR)]
+    backup = percorsi.backup.resolve()
+    vietati = [("lo stato", percorsi.stato), ("il progetto", config.BASE_DIR)]
     for nome, percorso in vietati:
         if _si_sovrappongono(backup, Path(percorso)):
             raise ErroreBackup("BACKUP_DIR si sovrappone con " + nome + " (" + str(Path(percorso).resolve()) + ")")
 
 
-def _root_backup() -> Path:
-    valida_percorsi()
-    root = config.BACKUP_DIR.resolve()
+def _root_backup(percorsi: Percorsi) -> Path:
+    valida_percorsi(percorsi)
+    root = percorsi.backup.resolve()
     root.mkdir(parents=True, exist_ok=True)
     # Non ripercorrere tutti gli snapshot a ogni list/verify: ogni snapshot
     # viene gia' reso privato quando nasce.
@@ -146,10 +148,10 @@ def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     _integrita_sqlite(destinazione)
 
 
-def _stato_presente() -> bool:
-    if any((config.TMP_DIR / nome).is_file() for nome in DATABASE):
+def _stato_presente(percorsi: Percorsi) -> bool:
+    if any((percorsi.stato / nome).is_file() for nome in DATABASE):
         return True
-    lance = Path(config.LANCEDB_URI)
+    lance = Path(percorsi.lancedb_uri)
     return lance.is_dir() and any(voce.is_file() for voce in lance.rglob("*"))
 
 
@@ -187,13 +189,13 @@ def _versione_agno() -> str | None:
         return None
 
 
-def _id_snapshot(tipo: str) -> str:
+def _id_snapshot(percorsi: Percorsi, tipo: str) -> str:
     if tipo not in {"manuale", "pre-merge", "pre-restore", "pre-session-prune"}:
         raise ErroreBackup("tipo di snapshot non valido: " + repr(tipo))
     base = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     suffisso = "" if tipo == "manuale" else "-" + tipo
     candidato = base + suffisso
-    root = config.BACKUP_DIR.resolve()
+    root = percorsi.backup.resolve()
     contatore = 1
     while (root / candidato).exists():
         candidato = base + suffisso + "-" + str(contatore).zfill(2)
@@ -201,35 +203,36 @@ def _id_snapshot(tipo: str) -> str:
     return candidato
 
 
-def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
-    if not _stato_presente():
-        raise ErroreBackup("nessuno stato di Ares da salvare in " + str(config.TMP_DIR))
+def _crea_snapshot_senza_lock(percorsi: Percorsi, tipo: str = "manuale") -> Path:
+    if not _stato_presente(percorsi):
+        raise ErroreBackup("nessuno stato di Ares da salvare in " + str(percorsi.stato))
 
-    root = _root_backup()
-    identificativo = _id_snapshot(tipo)
+    root = _root_backup(percorsi)
+    identificativo = _id_snapshot(percorsi, tipo)
     staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=root))
     rendi_privato(staging)
     componenti: dict[str, Any] = {}
 
     try:
         for nome in DATABASE:
-            sorgente = config.TMP_DIR / nome
+            sorgente = percorsi.stato / nome
             if sorgente.is_file():
                 _copia_sqlite(sorgente, staging / nome)
                 componenti[nome] = True
             else:
                 componenti[nome] = False
 
-        sorgente_cronologia = config.TMP_DIR / CRONOLOGIA
+        cronologia = percorsi.cronologia_file.name
+        sorgente_cronologia = percorsi.stato / cronologia
         if sorgente_cronologia.is_file():
             # Copia semplice e non `_copia_sqlite`: e' un file di testo, e il
             # lock esclusivo garantisce che nessuna chat lo stia scrivendo.
-            shutil.copy2(sorgente_cronologia, staging / CRONOLOGIA)
-            componenti[CRONOLOGIA] = True
+            shutil.copy2(sorgente_cronologia, staging / cronologia)
+            componenti[cronologia] = True
         else:
-            componenti[CRONOLOGIA] = False
+            componenti[cronologia] = False
 
-        lance_sorgente = Path(config.LANCEDB_URI)
+        lance_sorgente = Path(percorsi.lancedb_uri)
         if lance_sorgente.is_dir() and any(voce.is_file() for voce in lance_sorgente.rglob("*")):
             lance_destinazione = staging / "lancedb"
             shutil.copytree(lance_sorgente, lance_destinazione)
@@ -242,7 +245,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
             "snapshot_id": identificativo,
             "type": tipo,
             "created_at": datetime.now(UTC).isoformat(),
-            "source_state_dir": str(config.TMP_DIR.resolve()),
+            "source_state_dir": str(percorsi.stato.resolve()),
             "python_version": platform.python_version(),
             "agno_version": _versione_agno(),
             "ares_version": ares.__version__,
@@ -263,7 +266,7 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
         )
         _privato(staging)
         _scrivi_checksum(staging)
-        verifica_snapshot(staging, percorso_diretto=True)
+        verifica_snapshot(percorsi, staging, percorso_diretto=True)
 
         definitivo = root / identificativo
         _pubblica_snapshot(staging, definitivo)
@@ -273,11 +276,11 @@ def _crea_snapshot_senza_lock(tipo: str = "manuale") -> Path:
         raise
 
 
-def crea_snapshot(tipo: str = "manuale", acquisisci_lock: bool = True) -> Path:
+def crea_snapshot(percorsi: Percorsi, tipo: str = "manuale", acquisisci_lock: bool = True) -> Path:
     """Crea uno snapshot atomico. Ritorna la directory definitiva."""
-    contesto = lock_stato(esclusivo=True) if acquisisci_lock else nullcontext()
+    contesto = lock_stato(percorsi.lock_file, esclusivo=True) if acquisisci_lock else nullcontext()
     with contesto:
-        return _crea_snapshot_senza_lock(tipo=tipo)
+        return _crea_snapshot_senza_lock(percorsi, tipo=tipo)
 
 
 def _ordine_snapshot(percorso: Path) -> tuple[float, str]:
@@ -310,11 +313,11 @@ def _snapshot_dentro(root: Path) -> list[Path]:
     )
 
 
-def elenco_snapshot() -> list[Path]:
-    return _snapshot_dentro(_root_backup())
+def elenco_snapshot(percorsi: Percorsi) -> list[Path]:
+    return _snapshot_dentro(_root_backup(percorsi))
 
 
-def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
+def promemoria_backup(percorsi: Percorsi, soglia_giorni: int | None = None) -> list[str]:
     """Le righe da mostrare all'avvio se e' ora di rifare un backup.
 
     Elenco vuoto quando non c'e' niente da dire: nessuno stato da perdere,
@@ -336,10 +339,10 @@ def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
     if soglia <= 0:
         return []
     try:
-        if not _stato_presente():
+        if not _stato_presente(percorsi):
             return []
-        valida_percorsi()
-        root = config.BACKUP_DIR
+        valida_percorsi(percorsi)
+        root = percorsi.backup
         disponibili = _snapshot_dentro(root) if root.is_dir() else []
         comando = "    " + config.comando_ares("backup", "create")
         if not disponibili:
@@ -360,7 +363,7 @@ def promemoria_backup(soglia_giorni: int | None = None) -> list[str]:
         return []
 
 
-def residui_restore() -> list[Path]:
+def residui_restore(percorsi: Percorsi) -> list[Path]:
     """Le directory che un restore interrotto puo' lasciare accanto allo stato.
 
     Su POSIX il restore e' due rinomine: lo stato corrente diventa
@@ -381,7 +384,7 @@ def residui_restore() -> list[Path]:
     sul percorso di avvio della chat.
     """
     try:
-        stato = config.TMP_DIR.resolve()
+        stato = percorsi.stato.resolve()
         radice = stato.parent
         if not radice.is_dir():
             return []
@@ -395,9 +398,9 @@ def residui_restore() -> list[Path]:
         return []
 
 
-def _ultimo_snapshot_di_tipo(tipo: str) -> Path | None:
+def _ultimo_snapshot_di_tipo(percorsi: Percorsi, tipo: str) -> Path | None:
     """Lo snapshot piu' recente di un tipo, senza creare ne' verificare niente."""
-    root = config.BACKUP_DIR
+    root = percorsi.backup
     if not root.is_dir():
         return None
     for percorso in reversed(_snapshot_dentro(root)):
@@ -410,7 +413,7 @@ def _ultimo_snapshot_di_tipo(tipo: str) -> Path | None:
     return None
 
 
-def avviso_residui_restore() -> list[str]:
+def avviso_residui_restore(percorsi: Percorsi) -> list[str]:
     """Le righe con cui dire che un restore e' rimasto a meta', o nessuna.
 
     La prima riga dice cosa e' successo, le altre dove sta il residuo e da
@@ -419,13 +422,13 @@ def avviso_residui_restore() -> list[str]:
     comando, perche' chi legge questo avviso ha appena scoperto che il suo
     archivio potrebbe essere vuoto e non ha voglia di cercare.
     """
-    residui = residui_restore()
+    residui = residui_restore(percorsi)
     if not residui:
         return []
     try:
-        stato = config.TMP_DIR.resolve()
+        stato = percorsi.stato.resolve()
         precedenti = [r for r in residui if r.name.startswith("." + stato.name + "-precedente-")]
-        sicurezza = _ultimo_snapshot_di_tipo("pre-restore") if precedenti else None
+        sicurezza = _ultimo_snapshot_di_tipo(percorsi, "pre-restore") if precedenti else None
     except OSError:
         precedenti, sicurezza = residui, None
     comando = config.comando_ares("backup")
@@ -449,33 +452,34 @@ def avviso_residui_restore() -> list[str]:
     return righe
 
 
-def risolvi_snapshot(nome: str) -> Path:
-    disponibili = elenco_snapshot()
+def risolvi_snapshot(percorsi: Percorsi, nome: str) -> Path:
+    disponibili = elenco_snapshot(percorsi)
     if nome == "latest":
         if not disponibili:
             raise ErroreBackup("nessuno snapshot disponibile")
         return disponibili[-1]
     if Path(nome).name != nome or nome.startswith("."):
         raise ErroreBackup("identificativo snapshot non valido: " + repr(nome))
-    candidato = _root_backup() / nome
+    candidato = _root_backup(percorsi) / nome
     if not candidato.is_dir():
         raise ErroreBackup("snapshot inesistente: " + nome)
     return candidato
 
 
-def verifica_snapshot(snapshot: Any, percorso_diretto: bool = False) -> dict[str, Any]:
+def verifica_snapshot(percorsi: Percorsi, snapshot: Any, percorso_diretto: bool = False) -> dict[str, Any]:
     """Verifica manifest, insieme dei file, checksum e formati dei database."""
-    percorso = Path(snapshot) if percorso_diretto else risolvi_snapshot(str(snapshot))
+    percorso = Path(snapshot) if percorso_diretto else risolvi_snapshot(percorsi, str(snapshot))
     return _verifica_integrita_snapshot(
         percorso,
-        cronologia=CRONOLOGIA,
+        cronologia=percorsi.cronologia_file.name,
         modello_embedder=config.EMBEDDER_MODEL,
         dimensioni_embedder=config.EMBEDDER_DIMENSIONS,
     )
 
 
-def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Path | None:
+def ripristina_snapshot(percorsi: Percorsi, nome: str, snapshot_sicurezza: bool = True) -> Path | None:
     return restore.ripristina_snapshot(
+        percorsi,
         nome,
         snapshot_sicurezza,
         restore.OperazioniRestore(
@@ -487,12 +491,12 @@ def ripristina_snapshot(nome: str, snapshot_sicurezza: bool = True) -> Path | No
     )
 
 
-def pota_snapshot(da_tenere: int, acquisisci_lock: bool = True) -> list[Path]:
+def pota_snapshot(percorsi: Percorsi, da_tenere: int, acquisisci_lock: bool = True) -> list[Path]:
     if da_tenere < 1:
         raise ErroreBackup("--keep deve essere almeno 1")
-    contesto = lock_stato(esclusivo=True) if acquisisci_lock else nullcontext()
+    contesto = lock_stato(percorsi.lock_file, esclusivo=True) if acquisisci_lock else nullcontext()
     with contesto:
-        snapshot = elenco_snapshot()
+        snapshot = elenco_snapshot(percorsi)
         candidati = snapshot[:-da_tenere] if len(snapshot) > da_tenere else []
         for percorso in candidati:
             shutil.rmtree(percorso)

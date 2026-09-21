@@ -12,6 +12,7 @@ from ares import config
 from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
+from ares.config import Percorsi
 
 # Gli eventi che aprono un'attesa, con cio' che l'indicatore dice, e quelli
 # che la chiudono. Erano una catena di venti `elif` con lo stesso corpo:
@@ -397,7 +398,7 @@ def righe_richiesta(esecuzione, radice=None) -> list:
     return righe
 
 
-def chiedi_conferme(risposta, input_cli: CliInput) -> int:
+def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi) -> int:
     """Chiede il permesso per gli strumenti in pausa. Ritorna quanti ne ha risolti.
 
     Il conto serve a non restare appesi: se il turno e' in pausa per un
@@ -410,7 +411,7 @@ def chiedi_conferme(risposta, input_cli: CliInput) -> int:
             continue
         esecuzione = requisito.tool_execution
         nome = str(esecuzione.tool_name or "")
-        radice = config.WORKSPACE_DIR if nome.startswith(config.WORKSPACE_PREFIX) else None
+        radice = percorsi.lavoro if nome.startswith(config.WORKSPACE_PREFIX) else None
         UI.confirmation(righe_richiesta(esecuzione, radice=radice))
         try:
             scelta = input_cli.ask("Autorizzi? [s/N] ").strip().lower()

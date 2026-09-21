@@ -13,14 +13,15 @@ from agno.fs import FileSystem
 from agno.offload.store import ResultStore
 
 from ares import config
+from ares.config import Percorsi
 from ares.state.identita import Utente
 from ares.state.platform_files import rendi_privato
 from ares.state.stores import namespace_utente
 
 
-def _archivio_privato(percorso: str) -> str:
+def _archivio_privato(percorsi: Percorsi, percorso: str) -> str:
     """Crea il file SQLite con permessi privati prima della prima connessione."""
-    config.prepara_archivio()
+    config.prepara_archivio(percorsi)
     file_db = Path(percorso)
     file_db.parent.mkdir(parents=True, exist_ok=True)
     if not file_db.exists():
@@ -29,9 +30,9 @@ def _archivio_privato(percorso: str) -> str:
     return percorso
 
 
-def apri_sqlite(percorso: str) -> SqliteDb:
+def apri_sqlite(percorsi: Percorsi, percorso: str) -> SqliteDb:
     """Costruisce SQLite e materializza subito i pragma persistenti di Agno."""
-    db = SqliteDb(db_file=_archivio_privato(percorso))
+    db = SqliteDb(db_file=_archivio_privato(percorsi, percorso))
     # Agno registra WAL sull'evento di connessione, ma il costruttore e'
     # lazy. Senza questa apertura un archivio nuovo resta in DELETE mode fino
     # alla prima lettura e un comando di ispezione finisce per modificarlo.
@@ -40,12 +41,12 @@ def apri_sqlite(percorso: str) -> SqliteDb:
     return db
 
 
-def build_db() -> SqliteDb:
+def build_db(percorsi: Percorsi) -> SqliteDb:
     """Stato dell'agente: sessioni, profilo, memorie, entita'."""
-    return apri_sqlite(config.DB_FILE)
+    return apri_sqlite(percorsi, percorsi.db_file)
 
 
-def build_filesystem(utente: Utente) -> FileSystem:
+def build_filesystem(percorsi: Percorsi, utente: Utente) -> FileSystem:
     """Quaderno privato su SQLite, separato e isolato per utente.
 
     L'identita' arriva gia' canonica dal tipo: qui non c'e' un ripiego per un
@@ -53,7 +54,7 @@ def build_filesystem(utente: Utente) -> FileSystem:
     potrebbe esserlo lo risolve al confine, dove puo' ancora dire perche'.
     """
     return FileSystem(
-        apri_sqlite(config.FS_DB_FILE),
+        apri_sqlite(percorsi, percorsi.fs_db_file),
         namespace=namespace_utente(utente),
     )
 

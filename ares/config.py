@@ -5,10 +5,13 @@ VRAM. Modello, contesto, percorsi e identita' possono essere adattati qui o,
 quando previsto, tramite variabili d'ambiente.
 
 Importare questo modulo non tocca il disco: legge `.env` e definisce nomi.
-La directory dello stato la crea `prepara_archivio()`, che chiama chi
+La directory dello stato la crea `prepara_archivio(percorsi)`, che chiama chi
 l'archivio lo apre davvero. I percorsi sono un oggetto `Percorsi` costruito
-da `leggi_percorsi` e sostituibile con `imposta_percorsi`, l'unica porta; i
-nomi TMP_DIR, DB_FILE, BACKUP_DIR... sono viste dell'oggetto corrente.
+da `leggi_percorsi` all'avvio e passato a chi ne ha bisogno: qui non c'e' un
+`PERCORSI` corrente, e nemmeno i nomi TMP_DIR, DB_FILE, BACKUP_DIR..., che
+erano viste di quell'oggetto e ne nascondevano la provenienza. Chi legge lo
+stato lo riceve come parametro; l'unico punto in cui si costruisce e' il
+confine del processo.
 """
 
 import os
@@ -464,24 +467,29 @@ CONFERMA_APPRENDIMENTI = True
 # `ARES_BACKUP_DIR` spostano le due parti da sole, ed e' cio' che usano le
 # prove per girare su un archivio usa-e-getta.
 #
-# I percorsi sono un oggetto, costruito da `leggi_percorsi` quando viene
-# chiamata e non quando questo modulo viene importato. I nomi di sempre -
-# TMP_DIR, DB_FILE, BACKUP_DIR... - restano, e sono viste dell'oggetto
-# corrente: `imposta_percorsi` e' la porta sola da cui si sostituisce, e
-# rilega tutti i nomi insieme, cosi' non esiste un TMP_DIR nuovo con un
-# DB_FILE vecchio. E' cio' che la chat fa con la cartella scelta, e cio' che
-# una prova puo' fare nello stesso interprete senza rilanciare Python.
+# I percorsi sono un oggetto, costruito da `leggi_percorsi` all'avvio e non
+# quando questo modulo viene importato. Non esistono piu' i nomi di sempre -
+# TMP_DIR, DB_FILE, BACKUP_DIR... - tenuti allineati da `imposta_percorsi`:
+# erano un canale invisibile, per cui un modulo leggeva `TMP_DIR` senza che
+# dalla sua firma si vedesse da dove venisse, e chi ne scriveva uno solo
+# lasciava gli altri indietro. Ora chi legge lo stato lo riceve come
+# parametro, e la cartella scelta con `--workspace` e' un `replace` locale
+# invece di una mutazione che il resto del processo non vede arrivare.
 
 
 @dataclass(frozen=True)
 class Percorsi:
-    """Dove sta lo stato, dove i backup, dove si lavora, e per conto di chi."""
+    """Dove sta lo stato, dove i backup e dove si lavora.
+
+    L'identita' non sta qui: per conto di chi si parla e' un `Utente`, che e'
+    un asse suo e non un percorso. Tenerli nello stesso oggetto faceva
+    sembrare che scegliere una cartella potesse cambiare utente.
+    """
 
     home: Path
     stato: Path
     backup: Path
     lavoro: Path
-    utente: str
 
     # Il nome del file conserva quello che il progetto aveva prima del
     # rilascio pubblico, mentre le classi sono state rinominate. Non e' una
@@ -529,6 +537,11 @@ def leggi_percorsi(ambiente: Mapping[str, str] | None = None, cwd: Path | None =
     Windows la directory corrente puo' arrivare con i nomi corti
     (`RUNNER~1`), e lo stesso percorso scritto in due modi e' la strada per
     un confronto che fallisce.
+
+    Chi la chiama lo fa al confine del processo: i comandi della CLI nel
+    proprio corpo, le prove all'import del modulo dopo `prepara_ambiente`.
+    Il risultato viaggia come parametro fino in fondo, quindi due `Percorsi`
+    diversi nello stesso processo non si confondono.
     """
     env: Mapping[str, str] = AMBIENTE if ambiente is None else ambiente
     home = Path(env.get("ARES_HOME") or Path.home() / ".ares")
@@ -542,37 +555,31 @@ def leggi_percorsi(ambiente: Mapping[str, str] | None = None, cwd: Path | None =
         stato=Path(env.get("ARES_TMP") or home / "stato"),
         backup=Path(env.get("ARES_BACKUP_DIR") or home / "backup"),
         lavoro=cwd,
-        utente=env.get("ARES_USER_ID", "default"),
     )
 
-
-PERCORSI = leggi_percorsi()
-ARES_HOME: Path = PERCORSI.home
-TMP_DIR: Path = PERCORSI.stato
 
 # Dove stavano prima. Li legge `ops/migrazione.py`, che li sposta una volta
 # sola; la chat si ferma finche' ci sono dati li' e niente nel posto nuovo,
 # perche' partire con uno stato vuoto accanto a uno pieno li sdoppierebbe.
+# Non dipendono dai percorsi correnti - sono il posto di prima, per
+# definizione - quindi restano costanti di processo.
 VECCHIO_TMP_DIR = BASE_DIR / "tmp"
 VECCHIO_BACKUP_DIR = BASE_DIR.parent / "ares-backup"
-DB_FILE: str = PERCORSI.db_file
-FS_DB_FILE: str = PERCORSI.fs_db_file
-LANCEDB_URI: str = PERCORSI.lancedb_uri
 
 
-def prepara_archivio() -> Path:
+def prepara_archivio(percorsi: Percorsi) -> Path:
     """Crea la directory dello stato, privata, e restituisce il percorso.
 
     Sta qui e non nel corpo del modulo perche' importare una configurazione
     non deve produrre effetti: `preflight.py` importa `config` per tre nomi di
     modello e non ha alcun motivo di lasciarsi dietro un archivio, e nemmeno
     `--help`. Chi apre l'archivio la chiama, ed e' idempotente: i tre
-    costruttori di `assistant.py`, e il `main()` dei comandi che l'archivio lo
-    toccano - `backup/snapshots.py` no, legge tmp/ e sa dire che non c'e'. Nei comandi
-    la chiamata va **dopo** `parse_args()`, perche' `--help` esce li' in
-    mezzo. Piu' punti dello stretto necessario, di proposito: il costo di una
-    chiamata in piu' e' zero, quello di una dimenticata e' un archivio
-    leggibile da chiunque.
+    costruttori di `assistant.py`, e il corpo dei comandi che l'archivio lo
+    toccano - `backup/snapshots.py` no, legge lo stato e sa dire che non c'e'.
+    Nei comandi la chiamata viene **dopo** aver letto gli argomenti, perche'
+    `--help` esce prima. Piu' punti dello stretto necessario, di proposito: il
+    costo di una chiamata in piu' e' zero, quello di una dimenticata e' un
+    archivio leggibile da chiunque.
 
     I permessi si applicano alla directory e non ai file che contiene, perche'
     la directory e' il confine che regge davvero: senza il diritto di
@@ -583,20 +590,20 @@ def prepara_archivio() -> Path:
     per cui la copia era privata e l'originale no. Su Windows non fa nulla,
     come ovunque nel progetto: li' vale la DACL ereditata.
     """
-    TMP_DIR.mkdir(parents=True, exist_ok=True)
-    rendi_privato(TMP_DIR)
+    percorsi.stato.mkdir(parents=True, exist_ok=True)
+    rendi_privato(percorsi.stato)
     # Anche `~/.ares`, quando lo stato ci sta dentro: e' la directory che si
     # attraversa per arrivare a tutto il resto, backup compresi.
-    if TMP_DIR.parent == ARES_HOME:
-        rendi_privato(ARES_HOME)
-    return TMP_DIR
+    if percorsi.stato.parent == percorsi.home:
+        rendi_privato(percorsi.home)
+    return percorsi.stato
 
 
 # Snapshot locali dello stato appreso. Accanto allo stato e non dentro,
 # perche' un backup dentro cio' che deve salvare verrebbe copiato
-# ricorsivamente e sparirebbe insieme all'originale.
-BACKUP_DIR: Path = PERCORSI.backup
-STATE_LOCK_FILE: Path = PERCORSI.lock_file
+# ricorsivamente e sparirebbe insieme all'originale. Il percorso lo porta
+# `Percorsi.backup`, e il lock `Percorsi.lock_file`: non ci sono piu' nomi
+# qui che li fotografino all'import.
 
 # Solo il valore suggerito dalla CLI. Nessuno snapshot viene cancellato
 # automaticamente: `backup.py prune` mostra sempre i candidati e chiede una
@@ -626,7 +633,6 @@ BACKUP_PROMEMORIA_GIORNI = 7
 # `CronologiaSicura` tiene una voce JSON per messaggio anche multilinea e
 # coordina con un lock breve le chat aperte insieme. Il vecchio formato GNU
 # Readline viene riletto e migrato alla prima nuova voce.
-CRONOLOGIA_FILE: Path = PERCORSI.cronologia_file
 
 # Un tetto perche' un file che cresce e basta e' esattamente cio' che questo
 # progetto conta altrove. Il backend lo applica atomicamente a ogni nuova
@@ -653,10 +659,9 @@ CRONOLOGIA_RIGHE = 2000
 # confermare e non fra quelle libere.
 #
 # Il valore e' la directory corrente letta da `leggi_percorsi`; la chat lo
-# sostituisce all'avvio con la cartella scelta e autorizzata, passando da
-# `imposta_percorsi`.
+# sostituisce all'avvio con la cartella scelta e autorizzata, con un
+# `replace` sul proprio `Percorsi` e non su una globale.
 WORKSPACE = True
-WORKSPACE_DIR: Path = PERCORSI.lavoro
 
 # Il file che, se c'e' nella cartella di lavoro, entra nelle istruzioni del
 # turno: convenzioni del progetto, cosa non toccare, come si lanciano le
@@ -746,32 +751,12 @@ WORKSPACE_READ_BEFORE_WRITE = True
 # Identita'
 # ---------------------------------------------------------------------------
 
-DEFAULT_USER_ID: str = PERCORSI.utente
-
-
-def imposta_percorsi(percorsi: Percorsi) -> None:
-    """Sostituisce i percorsi correnti e rilega tutti i nomi che li vedono.
-
-    E' l'unica porta. Prima la chat scriveva `config.WORKSPACE_DIR = radice`
-    e gli altri cinque punti che lo leggevano lo trovavano cambiato: un
-    canale invisibile a chi legge `render.py`. Ora la cartella scelta e' un
-    campo dell'oggetto, e i nomi derivati - DB_FILE da TMP_DIR, il lock, la
-    cronologia - cambiano insieme, cosi' una prova che sposta lo stato nello
-    stesso interprete non lascia un lock che punta all'archivio vero.
-    """
-    global PERCORSI, ARES_HOME, TMP_DIR, DB_FILE, FS_DB_FILE, LANCEDB_URI
-    global BACKUP_DIR, STATE_LOCK_FILE, CRONOLOGIA_FILE, WORKSPACE_DIR, DEFAULT_USER_ID
-    PERCORSI = percorsi
-    ARES_HOME = percorsi.home
-    TMP_DIR = percorsi.stato
-    DB_FILE = percorsi.db_file
-    FS_DB_FILE = percorsi.fs_db_file
-    LANCEDB_URI = percorsi.lancedb_uri
-    BACKUP_DIR = percorsi.backup
-    STATE_LOCK_FILE = percorsi.lock_file
-    CRONOLOGIA_FILE = percorsi.cronologia_file
-    WORKSPACE_DIR = percorsi.lavoro
-    DEFAULT_USER_ID = percorsi.utente
+# Il valore suggerito dalla CLI quando non si scrive `--user`, e nient'altro:
+# non e' un percorso, non viene mai riassegnato e non decide dove si scrive.
+# Chi lo usa lo passa a `Utente.da_grezzo`, che lo normalizza o lo rifiuta.
+# L'identita' ha smesso di essere un campo di `Percorsi`: scegliere una
+# cartella non cambia per conto di chi si parla.
+DEFAULT_USER_ID: str = AMBIENTE.get("ARES_USER_ID", "default")
 
 
 def comando_ares(*parole: str) -> str:

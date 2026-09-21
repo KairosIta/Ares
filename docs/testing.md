@@ -22,22 +22,20 @@ come `valutazione`; la misura con Ollama si avvia esplicitamente con
 `tests/run.py` non importa le prove: le lancia, una per processo. Non è una
 preferenza di stile. Ogni prova scrive `ARES_TMP` e `ARES_BACKUP_DIR` ed
 entra nella propria cartella di lavoro usa-e-getta **prima** di importare
-`config`, che all'import lega i propri nomi — `TMP_DIR`, `DB_FILE`,
-`BACKUP_DIR` e gli altri — ai percorsi letti in quell'istante. La cartella di
-lavoro non ha una variabile d'ambiente perché nel prodotto è la directory
-corrente, quella da cui si scrive `ares`: le prove fanno lo stesso gesto con
-`chdir`.
+`config`, che all'import fotografa l'ambiente in cui è nato — `AMBIENTE` è
+quel dizionario, e non cambia più. La cartella di lavoro non ha una variabile
+d'ambiente perché nel prodotto è la directory corrente, quella da cui si
+scrive `ares`: le prove fanno lo stesso gesto con `chdir`.
 
-Da `config.Percorsi` quei nomi non sono più decisi per sempre:
-`imposta_percorsi` li sostituisce tutti insieme a processo avviato, e una
-prova può quindi costruire i propri percorsi nello stesso interprete. Il
-processo separato resta comunque, perché la sostituzione riguarda i nomi e non
-ciò che li ha già letti: un lock aperto, uno store costruito, un percorso
-copiato in una variabile. Due prove nello stesso interprete condividerebbero
-il primo `config` importato — cioè i percorsi della prima — e il giorno in cui
-una sbagliasse variabile scriverebbe nell'archivio vero senza che nessuno se
-ne accorga. Un processo per prova rende quell'errore impossibile invece che
-improbabile.
+I percorsi si derivano da quella fotografia a ogni `config.leggi_percorsi()`,
+e nessun nome di modulo li tiene: chi legge lo stato se li vede passare come
+primo parametro. Il processo separato resta comunque, perché ciò che conta
+non è solo dove si legge ma cosa è già aperto: un lock, uno store, un
+percorso copiato in una variabile non si rileggono. Due prove nello stesso
+interprete condividerebbero la prima fotografia dell'ambiente — cioè i
+percorsi della prima — e il giorno in cui una sbagliasse variabile
+scriverebbe nell'archivio vero senza che nessuno se ne accorga. Un processo
+per prova rende quell'errore impossibile invece che improbabile.
 
 Quel gesto, e le poche righe che ogni prova ripeteva uguali, stanno in
 `tests/_comune.py`: `prepara_ambiente` sceglie i percorsi usa-e-getta e
@@ -48,7 +46,7 @@ corrente non si cancella; `esigi` è l'asserzione che
 controllo e, quando un controllo fallisce, la riga da cui viene — con il
 traceback intero se non è un'asserzione ma un guasto che la prova non
 prevedeva. Il modulo non importa niente di `ares`, ed è l'unica garanzia
-che i percorsi vengano decisi prima che `config` li legga.
+che i percorsi vengano decisi prima che `config` fotografi l'ambiente.
 
 Le prove restano eseguibili una per una, come prima. L'elenco però vive in un
 posto solo, la tabella `PROVE` in `tests/run.py`: la CI chiama il runner,

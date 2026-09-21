@@ -23,6 +23,7 @@ from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_RIFIUTO, esegui_protetto, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
+from ares.config import Percorsi
 from ares.sessions.retention import (
     ErroreRetention,
     SessioneRetention,
@@ -77,13 +78,13 @@ def _dati_sessione(sessione: SessioneRetention) -> dict[str, Any]:
     }
 
 
-def _stato(user: str, come_json: bool) -> int:
+def _stato(percorsi: Percorsi, user: str, come_json: bool) -> int:
     # Il confine: da qui in poi l'identita' e' un `Utente`, e nessun passo
     # successivo puo' riportare in giro la grafia scritta sulla riga di
     # comando. Un id invalido solleva `UtenteNonValido`, che `_esegui` sa
     # tradurre in un rifiuto leggibile.
     utente = Utente.da_grezzo(user)
-    db = build_db()
+    db = build_db(percorsi)
     sessioni = inventario(db, utente)
     offload = sum(s.offload_count for s in sessioni)
     payload = sum(s.offload_bytes for s in sessioni)
@@ -114,14 +115,14 @@ def _confermata(numero: int, yes: bool) -> bool:
     return conferma_scritta(frase)
 
 
-def _applica(utente: Utente, sessioni: Sequence[SessioneRetention], yes: bool) -> int:
+def _applica(percorsi: Percorsi, utente: Utente, sessioni: Sequence[SessioneRetention], yes: bool) -> int:
     if not _confermata(len(sessioni), yes):
         UI.line("Cancellazione annullata.", style="ares.warning")
         return ESITO_RIFIUTO
-    snapshot = crea_snapshot(tipo="pre-session-prune", acquisisci_lock=False)
+    snapshot = crea_snapshot(percorsi, tipo="pre-session-prune", acquisisci_lock=False)
     UI.pair("Backup verificato", snapshot.name)
     comando = config.comando_ares("backup", "restore", snapshot.name)
-    db, store = apri_archivio(utente)
+    db, store = apri_archivio(percorsi, utente)
     try:
         eliminate = elimina_sessioni(db, store, sessioni, utente)
     except StatoParziale as errore:
@@ -151,9 +152,9 @@ def _applica(utente: Utente, sessioni: Sequence[SessioneRetention], yes: bool) -
     return 0
 
 
-def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bool) -> int:
+def _prune(percorsi: Percorsi, user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bool) -> int:
     utente = Utente.da_grezzo(user)
-    db = build_db()
+    db = build_db(percorsi)
     protette = set(config.SESSIONI_PROTETTE) | set(keep)
     candidate = seleziona_inattive(
         inventario(db, utente),
@@ -170,12 +171,12 @@ def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bo
     if not apply:
         _anteprima()
         return 0
-    return _applica(utente, candidate, yes)
+    return _applica(percorsi, utente, candidate, yes)
 
 
-def _delete(user: str, session_id: str, apply: bool, yes: bool) -> int:
+def _delete(percorsi: Percorsi, user: str, session_id: str, apply: bool, yes: bool) -> int:
     utente = Utente.da_grezzo(user)
-    db = build_db()
+    db = build_db(percorsi)
     sessione = trova_sessione(inventario(db, utente), session_id)
     UI.line("Sessione da eliminare:", style="ares.warning")
     _tabella_sessioni([sessione])
@@ -187,7 +188,7 @@ def _delete(user: str, session_id: str, apply: bool, yes: bool) -> int:
     if not apply:
         _anteprima()
         return 0
-    return _applica(utente, [sessione], yes)
+    return _applica(percorsi, utente, [sessione], yes)
 
 
 def _anteprima() -> None:
@@ -196,6 +197,7 @@ def _anteprima() -> None:
 
 
 def _esegui(
+    percorsi: Percorsi,
     azione: Callable[[], int],
     *,
     apply: bool = False,
@@ -211,13 +213,14 @@ def _esegui(
     if yes and not apply:
         UI.err("ERRORE: --yes richiede --apply")
         return ESITO_RIFIUTO
-    if not Path(config.DB_FILE).is_file():
+    if not Path(percorsi.db_file).is_file():
         if senza_archivio is not None:
             return senza_archivio()
-        UI.line("Nessun archivio di Ares trovato in " + str(config.DB_FILE), style="ares.muted")
+        UI.line("Nessun archivio di Ares trovato in " + str(percorsi.db_file), style="ares.muted")
         return ESITO_FATTO
-    config.prepara_archivio()
+    config.prepara_archivio(percorsi)
     return esegui_protetto(
+        percorsi,
         azione,
         esclusivo=apply,
         rifiuti=(ErroreRetention, ErroreBackup, UtenteNonValido),
@@ -234,6 +237,8 @@ def status(*, user: str = config.DEFAULT_USER_ID, come_json: Annotated[bool, Par
         come_json: stampa sessioni e totali come JSON, per gli script.
     """
 
+    percorsi = config.leggi_percorsi()
+
     def vuoto() -> int:
         # Senza archivio non si interroga niente: l'eco della risposta JSON
         # usa la forma canonica quando l'id ne ha una, la stessa che `_stato`
@@ -245,10 +250,10 @@ def status(*, user: str = config.DEFAULT_USER_ID, come_json: Annotated[bool, Par
         if come_json:
             UI.json({"user": chi, "sessions": [], "offload_count": 0, "offload_bytes": 0})
             return 0
-        UI.line("Nessun archivio di Ares trovato in " + str(config.DB_FILE), style="ares.muted")
+        UI.line("Nessun archivio di Ares trovato in " + str(percorsi.db_file), style="ares.muted")
         return 0
 
-    return _esegui(lambda: _stato(user, come_json), senza_archivio=vuoto)
+    return _esegui(percorsi, lambda: _stato(percorsi, user, come_json), senza_archivio=vuoto)
 
 
 @app.command
@@ -269,7 +274,8 @@ def prune(
         apply: crea un backup e applica la selezione mostrata.
         yes: con --apply, non chiedere conferma.
     """
-    return _esegui(lambda: _prune(user, older_than, keep or [], apply, yes), apply=apply, yes=yes)
+    percorsi = config.leggi_percorsi()
+    return _esegui(percorsi, lambda: _prune(percorsi, user, older_than, keep or [], apply, yes), apply=apply, yes=yes)
 
 
 @app.command
@@ -282,7 +288,8 @@ def delete(session_id: str, *, user: str = config.DEFAULT_USER_ID, apply: bool =
         apply: crea un backup ed elimina la sessione mostrata.
         yes: con --apply, non chiedere conferma.
     """
-    return _esegui(lambda: _delete(user, session_id, apply, yes), apply=apply, yes=yes)
+    percorsi = config.leggi_percorsi()
+    return _esegui(percorsi, lambda: _delete(percorsi, user, session_id, apply, yes), apply=apply, yes=yes)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

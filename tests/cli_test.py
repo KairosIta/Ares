@@ -33,6 +33,7 @@ import tempfile
 import threading
 import time
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from dataclasses import replace
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -40,14 +41,19 @@ from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import patch
 
-# I percorsi vanno scelti prima di importare config, che crea TMP_DIR
-# all'import: importarlo e correggere dopo lascerebbe comunque una tmp/ vuota
-# accanto ai dati veri.
+# I percorsi vanno scelti prima di importare config, che li legge quando
+# `leggi_percorsi` viene chiamata: importarlo e correggere dopo non basta
+# piu', perche' nessun nome di modulo li tiene.
 from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("cli-test")
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
@@ -146,12 +152,14 @@ def esegui_preflight(modelli: list[str] | None, argomenti: list[str] | None = No
 COSTRUZIONE = """
 import sys
 
+from ares import config
 from ares.agent.assistant import build_assistant, build_filesystem
 from ares.state.identita import Utente
 
+percorsi = config.leggi_percorsi()
 utente = Utente.da_grezzo(sys.argv[1])
-build_assistant(utente=utente, session_id=sys.argv[2])
-build_filesystem(utente).write(sys.argv[3], sys.argv[4])
+build_assistant(percorsi, utente, session_id=sys.argv[2])
+build_filesystem(percorsi, utente).write(sys.argv[3], sys.argv[4])
 """
 
 
@@ -191,8 +199,8 @@ def costruisci_archivio() -> str:
         check=False,
     )
     esigi(figlio.returncode == 0, "costruzione dell'archivio fallita: " + figlio.stderr[-800:])
-    esigi(Path(config.DB_FILE).is_file(), "il database dell'agente non e' stato creato")
-    esigi(Path(config.FS_DB_FILE).is_file(), "il database del filesystem non e' stato creato")
+    esigi(Path(PERCORSI.db_file).is_file(), "il database dell'agente non e' stato creato")
+    esigi(Path(PERCORSI.fs_db_file).is_file(), "il database del filesystem non e' stato creato")
     return "costruito in un processo separato, che non lo tiene aperto"
 
 
@@ -202,10 +210,11 @@ def costruisci_archivio() -> str:
 
 
 COSTRUZIONE_AGENTE = """
+from ares import config
 from ares.agent.assistant import build_assistant
 from ares.state.identita import Utente
 
-agente = build_assistant(utente=Utente.da_grezzo("  Demo  "), session_id="identita")
+agente = build_assistant(config.leggi_percorsi(), Utente.da_grezzo("  Demo  "), session_id="identita")
 print(agente.user_id)
 """
 
@@ -280,14 +289,16 @@ def identita_canonica() -> str:
     # Il lock si prova fra processi, come il resto della contesa: lo stesso
     # archivio, due grafie, un solo turno ammesso.
     codice = (
+        "from ares import config\n"
         "from ares.state.identita import Utente\n"
         "from ares.state.lock import StatoOccupato, lock_turno\n"
+        "percorsi = config.leggi_percorsi()\n"
         "try:\n"
-        "    with lock_turno(Utente.da_grezzo('demo')): pass\n"
+        "    with lock_turno(percorsi, Utente.da_grezzo('demo')): pass\n"
         "except StatoOccupato: pass\n"
         "else: raise RuntimeError('due grafie dello stesso utente non si contendono il lock')\n"
     )
-    with lock_turno(Utente.da_grezzo("Demo")):
+    with lock_turno(PERCORSI, Utente.da_grezzo("Demo")):
         figlio = subprocess.run(
             [sys.executable, "-c", codice],
             cwd=config.BASE_DIR,
@@ -479,7 +490,7 @@ def backup_cli(_archivio: Path) -> str:
     esito, testo = comando("create")
     esigi(esito == 0, "create non riuscito: " + testo)
     esigi("Snapshot creato e verificato" in testo, "create non nomina lo snapshot")
-    primo = snapshots.elenco_snapshot()[-1].name
+    primo = snapshots.elenco_snapshot(PERCORSI)[-1].name
 
     esito, testo = comando("list")
     esigi(esito == 0, "list non riuscito: " + testo)
@@ -509,12 +520,12 @@ def backup_cli(_archivio: Path) -> str:
     # e' un guasto. Uno script che riceve 3 puo' riprovare fra un minuto, uno
     # che riceve 1 no, e la differenza la decide `codice_di`. Il lock
     # condiviso qui e' la chat aperta di un'altra finestra.
-    quanti = len(snapshots.elenco_snapshot())
-    with lock_stato(esclusivo=False):
+    quanti = len(snapshots.elenco_snapshot(PERCORSI))
+    with lock_stato(PERCORSI.lock_file, esclusivo=False):
         esito, testo = comando("create")
     esigi(esito == 3, "un create con lo stato occupato non e' uscito con 3, ma con " + str(esito))
     esigi("ERRORE:" in testo, "il create bloccato non dice perche'")
-    esigi(len(snapshots.elenco_snapshot()) == quanti, "un create bloccato ha creato uno snapshot")
+    esigi(len(snapshots.elenco_snapshot(PERCORSI)) == quanti, "un create bloccato ha creato uno snapshot")
 
     # La conferma sbagliata non e' un errore: e' un annullamento, e ha un
     # codice suo perche' uno script deve poterlo distinguere da un guasto.
@@ -539,10 +550,10 @@ def backup_cli(_archivio: Path) -> str:
     esigi(esito == 2, "un prune annullato non e' uscito con 2")
     esigi("Prune annullato" in testo, "il prune annullato non lo dice")
 
-    prima = len(snapshots.elenco_snapshot())
+    prima = len(snapshots.elenco_snapshot(PERCORSI))
     esito, testo = comando("prune", "--keep", "1", "--yes")
     esigi(esito == 0, "prune non riuscito: " + testo)
-    esigi(len(snapshots.elenco_snapshot()) == 1, "prune non ha conservato esattamente uno snapshot")
+    esigi(len(snapshots.elenco_snapshot(PERCORSI)) == 1, "prune non ha conservato esattamente uno snapshot")
     esigi("Eliminati " + str(prima - 1) in testo, "prune non riporta quanti ne ha eliminati")
     return "create, list, verify, restore, prune con annullamenti e i codici 0, 1, 2 e 3"
 
@@ -554,7 +565,7 @@ def inspect_learning_cli() -> str:
     e' che stampi: e' che l'archivio sia identico prima e dopo, perche' questo
     comando esiste per guardare senza toccare.
     """
-    file_db = Path(config.DB_FILE)
+    file_db = Path(PERCORSI.db_file)
     prima = file_db.stat().st_mtime_ns, file_db.stat().st_size
 
     uscita = io.StringIO()
@@ -596,7 +607,7 @@ def inspect_learning_cli() -> str:
     esigi(testo.startswith("Sei Ares"), "il prompt non comincia con la descrizione di Ares: " + repr(testo[:200]))
     # Risolta come la conserva `config`: su Windows la temp arriva col nome
     # corto (`RUNNER~1`) e il prompt porta quello espanso.
-    esigi(str(config.WORKSPACE_DIR.resolve()) in testo, "il prompt non nomina la cartella corrente")
+    esigi(str(PERCORSI.lavoro.resolve()) in testo, "il prompt non nomina la cartella corrente")
     esigi("<istruzioni_" in testo, "il prompt non contiene le guide degli store di apprendimento")
     esigi(prima == (file_db.stat().st_mtime_ns, file_db.stat().st_size), "--prompt ha modificato l'archivio")
     uscita = io.StringIO()
@@ -630,7 +641,7 @@ def chat_repl() -> str:
     # il codice di Ares - e senza terminale la REPL la rifiuterebbe.
     figlio = subprocess.run(
         [sys.executable, "-m", "ares", "--user", UTENTE, "--session", SESSIONE],
-        cwd=config.WORKSPACE_DIR,
+        cwd=PERCORSI.lavoro,
         env=os.environ.copy(),
         input="/aiuto\n\n/entita\n/file\n/cartella\n/sconosciuto comando\n/esci\n",
         capture_output=True,
@@ -643,7 +654,7 @@ def chat_repl() -> str:
     esigi("A presto" in testo, "la REPL non saluta all'uscita")
     esigi("/aiuto" in testo, "l'elenco dei comandi non compare")
     esigi("appunto.md" in testo, "/file non elenca il file scritto dall'agente")
-    esigi(str(config.WORKSPACE_DIR.resolve()) in testo, "il banner o /cartella non nominano la cartella di lavoro")
+    esigi(str(PERCORSI.lavoro.resolve()) in testo, "il banner o /cartella non nominano la cartella di lavoro")
     esigi("Comando sconosciuto: /sconosciuto" in testo, "il comando ignoto non e' stato riconosciuto come tale")
     # La riga che tiene in piedi la promessa del modulo. Una riga che non
     # comincia con `/` non e' un comando: e' un messaggio, e la REPL lo manda
@@ -765,7 +776,7 @@ def chat_turno() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "run_turn_cycle", ciclo_ok), redirect_stdout(uscita):
-        risposta = chat.esegui_turno(object(), "ciao", input_cli)
+        risposta = chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
     esigi(risposta is not None, "un turno riuscito non restituisce la risposta")
 
     # Pausa che il client non sa risolvere: il ciclo si ferma e lo dice.
@@ -774,7 +785,7 @@ def chat_turno() -> str:
         patch.object(chat, "run_turn_cycle", lambda *a, **k: FintaRisposta(is_paused=True)),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(object(), "ciao", input_cli)
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
     esigi("in pausa" in _piatto(uscita.getvalue()), "una pausa irrisolta resta muta")
 
     # Ctrl-C fuori dal turno: nessun apprendimento, e non e' un errore.
@@ -783,7 +794,7 @@ def chat_turno() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "run_turn_cycle", ciclo_interrotto), redirect_stdout(uscita):
-        esigi(chat.esegui_turno(object(), "ciao", input_cli) is None, "un'interruzione non restituisce None")
+        esigi(chat.esegui_turno(PERCORSI, object(), "ciao", input_cli) is None, "un'interruzione non restituisce None")
     testo = _piatto(uscita.getvalue())
     esigi("Interrotto" in testo, "l'interruzione non viene detta")
     esigi("fallito" not in testo, "un Ctrl-C viene presentato come un guasto")
@@ -794,7 +805,7 @@ def chat_turno() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "run_turn_cycle", ciclo_rotto), redirect_stdout(uscita):
-        esigi(chat.esegui_turno(object(), "ciao", input_cli) is None, "un guasto non restituisce None")
+        esigi(chat.esegui_turno(PERCORSI, object(), "ciao", input_cli) is None, "un guasto non restituisce None")
     testo = _piatto(uscita.getvalue())
     esigi("RuntimeError" in testo, "il tipo dell'errore non compare")
     esigi("archivio irraggiungibile" in testo, "il messaggio dell'errore non compare")
@@ -841,7 +852,7 @@ def chat_turno() -> str:
             patch.object(config, "CONFERMA_APPRENDIMENTI", conferma),
             redirect_stdout(uscita),
         ):
-            chat.esegui_turno(object(), "ricorda che preferisco config.py", input_cli)
+            chat.esegui_turno(PERCORSI, object(), "ricorda che preferisco config.py", input_cli)
         return _piatto(uscita.getvalue()), input_cli.domande
 
     testo, domande = turno_che_scrive([""])
@@ -883,7 +894,7 @@ def chat_turno() -> str:
         patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(object(), "ricorda che preferisco config.py", InputInterrotto([]))
+        chat.esegui_turno(PERCORSI, object(), "ricorda che preferisco config.py", InputInterrotto([]))
     esigi(ripristini == [], "un Ctrl-C alla domanda ha ripristinato")
 
     # Con la conferma spenta l'eco compare e la domanda no.
@@ -905,7 +916,7 @@ def chat_turno() -> str:
         patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(object(), "ciao", input_cli)
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
     esigi(input_cli.domande == [], "un turno senza scritture fa una domanda: " + repr(input_cli.domande))
 
     # Spento in config non si legge nemmeno l'archivio.
@@ -919,7 +930,7 @@ def chat_turno() -> str:
         patch.object(config, "MOSTRA_APPRENDIMENTI", False),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(object(), "ciao", input_cli)
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
     esigi(letture == [], "con l'eco spento l'archivio viene letto lo stesso")
     esigi("appreso" not in _piatto(uscita.getvalue()), "con l'eco spento compare una riga di eco")
     return (
@@ -953,13 +964,15 @@ def chat_memoria_protetta() -> str:
         # Due processi, non due descrittori nella stessa chat: stesso utente
         # occupato, altro utente libero nello stesso archivio.
         codice = (
+            "from ares import config\n"
             "from ares.state.identita import Utente\n"
             "from ares.state.lock import lock_turno, StatoOccupato\n"
+            "percorsi = config.leggi_percorsi()\n"
             "try:\n"
-            "    with lock_turno(Utente.da_grezzo('utente-turni')): pass\n"
+            "    with lock_turno(percorsi, Utente.da_grezzo('utente-turni')): pass\n"
             "except StatoOccupato: pass\n"
             "else: raise RuntimeError('turno concorrente ammesso')\n"
-            "with lock_turno(Utente.da_grezzo('altro-utente')): pass\n"
+            "with lock_turno(percorsi, Utente.da_grezzo('altro-utente')): pass\n"
         )
         figlio = subprocess.run([sys.executable, "-c", codice], capture_output=True, text=True, timeout=30)
         esigi(figlio.returncode == 0, fase + ": " + figlio.stderr)
@@ -997,25 +1010,25 @@ def chat_memoria_protetta() -> str:
                 patch.object(config, "CONFERMA_APPRENDIMENTI", True),
                 redirect_stdout(uscita),
             ):
-                risposta = chat.esegui_turno(agent, "ricorda", InputProtetto([]))
+                risposta = chat.esegui_turno(PERCORSI, agent, "ricorda", InputProtetto([]))
             esigi((risposta is None) == (errore is not None), "esito del turno errato")
             esigi(fasi == ["istantanea", "turno", "conferma", "ripristino"], "lock incompleto: " + repr(fasi))
             contenuto = [m["content"] for m in store.get(user_id=utente).memories]
             esigi(contenuto == ["confermata nella chat B"], "memoria precedente persa o nuova non annullata")
             esigi("Non e' stato appreso" not in uscita.getvalue(), "rassicurazione falsa dopo scrittura")
-            with lock_turno(Utente.da_grezzo(utente)):
+            with lock_turno(PERCORSI, Utente.da_grezzo(utente)):
                 pass  # Anche dopo errore o Ctrl-C il lock deve essere libero.
 
         # La contesa si rileva prima di qualsiasi lettura o inferenza,
         # anche quando l'eco e' disabilitato.
         with (
-            lock_turno(Utente.da_grezzo(utente)),
+            lock_turno(PERCORSI, Utente.da_grezzo(utente)),
             patch.object(config, "MOSTRA_APPRENDIMENTI", False),
             patch.object(chat, "run_turn_cycle") as ciclo_spia,
             patch.object(chat, "istantanea") as lettura_spia,
         ):
             try:
-                chat.esegui_turno(agent, "non deve partire", FintoInput([]))
+                chat.esegui_turno(PERCORSI, agent, "non deve partire", FintoInput([]))
             except StatoOccupato:
                 pass
             else:
@@ -1025,8 +1038,8 @@ def chat_memoria_protetta() -> str:
         # La REPL resta aperta; il comando senza terminale usa invece il
         # codice condiviso "occupato", senza avviare il modello.
         with (
-            lock_turno(Utente.da_grezzo(utente)),
-            patch.object(chat, "build_assistant", lambda **k: agent),
+            lock_turno(PERCORSI, Utente.da_grezzo(utente)),
+            patch.object(chat, "build_assistant", lambda *a, **k: agent),
             patch.object(chat, "CliInput", lambda **k: FintoInput(["riprova piu' tardi"])),
             patch.object(chat, "run_turn_cycle") as ciclo_spia,
             redirect_stdout(io.StringIO()),
@@ -1063,10 +1076,10 @@ def chat_ciclo() -> str:
 
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda **k: object()),
+        patch.object(chat, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
-        patch.object(chat, "promemoria_backup", lambda: ["Ultimo backup: mai", "Esegui ares backup create"]),
+        patch.object(chat, "promemoria_backup", lambda *a, **k: ["Ultimo backup: mai", "Esegui ares backup create"]),
         patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"),
         redirect_stdout(uscita),
     ):
@@ -1087,10 +1100,10 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda **k: object()),
+        patch.object(chat, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
-        patch.object(chat, "promemoria_backup", list),
+        patch.object(chat, "promemoria_backup", lambda *a, **k: []),
         patch.object(config, "MAIN_MODEL", "qwen3:9b"),
         patch.object(config, "LEARNING_MODEL", "qwen3:9b"),
         patch.object(config, "MOSTRA_METRICHE", False),
@@ -1106,10 +1119,10 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda **k: object()),
+        patch.object(chat, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
-        patch.object(chat, "promemoria_backup", list),
+        patch.object(chat, "promemoria_backup", lambda *a, **k: []),
         patch.object(config, "MAIN_MODEL", "qwen3:9b"),
         patch.object(config, "LEARNING_MODEL", "glm-5.3-flash:cloud"),
         patch.object(config, "MOSTRA_METRICHE", False),
@@ -1127,13 +1140,18 @@ def chat_cartella() -> str:
 
     Tre avvii: una cartella che non esiste, una che `autorizza` rifiuta, una
     buona passata con `--workspace`. Nei primi due l'agente non deve nemmeno
-    essere costruito; nel terzo `config.WORKSPACE_DIR` deve puntare alla
-    cartella scelta e il banner nominarla, con il suo ARES.md.
+    essere costruito; nel terzo i percorsi con cui l'agente nasce devono
+    puntare alla cartella scelta e il banner nominarla, con il suo ARES.md.
+
+    La cartella si legge dai percorsi che `build_assistant` riceve, non da un
+    globale: e' cio' che il rifacimento ha cambiato, e leggerla da li' e' il
+    modo di pretendere che il `--workspace` arrivi davvero fino all'agente.
     """
-    originale = config.WORKSPACE_DIR
+    originale = PERCORSI.lavoro
     costruiti: list[dict] = []
 
-    def costruisci(**argomenti):
+    def costruisci(percorsi, utente, **argomenti):
+        argomenti["percorsi"] = percorsi
         costruiti.append(argomenti)
         return object()
 
@@ -1148,7 +1166,7 @@ def chat_cartella() -> str:
     uscita = io.StringIO()
     with (
         patch.object(chat, "build_assistant", costruisci),
-        patch.object(chat.cartella, "autorizza", lambda percorso, *, esplicito: False),
+        patch.object(chat.cartella, "autorizza", lambda percorso, percorsi, *, esplicito: False),
         redirect_stdout(uscita),
     ):
         esito = chat._esegui_chat(session=SESSIONE, user=UTENTE)
@@ -1163,17 +1181,14 @@ def chat_cartella() -> str:
     # banner a 80 colonne lo manda a capo se e' lungo, come la temp di Windows.
     input_cli = FintoInput(["/cartella", KeyboardInterrupt])
     uscita = io.StringIO()
-    try:
-        with (
-            patch.object(chat, "build_assistant", costruisci),
-            patch.object(chat, "CliInput", lambda **k: input_cli),
-            patch.object(chat, "promemoria_backup", list),
-            redirect_stdout(uscita),
-        ):
-            chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=progetto)
-        scelta = config.WORKSPACE_DIR
-    finally:
-        config.WORKSPACE_DIR = originale
+    with (
+        patch.object(chat, "build_assistant", costruisci),
+        patch.object(chat, "CliInput", lambda **k: input_cli),
+        patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+        redirect_stdout(uscita),
+    ):
+        chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=progetto)
+    scelta = costruiti[0]["percorsi"].lavoro
     testo = _piatto(uscita.getvalue())
     esigi(scelta == progetto.resolve(), "--workspace non ha cambiato la cartella di lavoro: " + str(scelta))
     esigi(len(costruiti) == 1, "l'agente non e' stato costruito una volta sola: " + str(len(costruiti)))
@@ -1197,7 +1212,8 @@ def chat_sessioni() -> str:
 
     costruiti: list[dict] = []
 
-    def costruisci(**argomenti):
+    def costruisci(percorsi, utente, **argomenti):
+        argomenti["percorsi"] = percorsi
         costruiti.append(argomenti)
         return object()
 
@@ -1206,7 +1222,7 @@ def chat_sessioni() -> str:
         with (
             patch.object(chat, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
-            patch.object(chat, "promemoria_backup", list),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             patch.object(sys, "stdin", io.StringIO()),
             redirect_stdout(uscita),
             redirect_stderr(uscita),
@@ -1216,9 +1232,7 @@ def chat_sessioni() -> str:
 
     esito, testo = avvio()
     nome = costruiti[-1]["session_id"]
-    esigi(
-        esito == 0 and nome.startswith(config.WORKSPACE_DIR.name + "-"), "l'id nuovo non viene dalla cartella: " + nome
-    )
+    esigi(esito == 0 and nome.startswith(PERCORSI.lavoro.name + "-"), "l'id nuovo non viene dalla cartella: " + nome)
     esigi("(nuova)" in testo, "il banner non dice che la conversazione e' nuova: " + repr(testo))
 
     esito, testo = avvio(riprendi=True)
@@ -1227,8 +1241,8 @@ def chat_sessioni() -> str:
 
     # Seminate nel database della suite e tolte alla fine: `sessioni parziale`,
     # piu' avanti, conta le sessioni dell'archivio e non deve trovarle.
-    db = build_db()
-    qui = str(config.WORKSPACE_DIR)
+    db = build_db(PERCORSI)
+    qui = str(PERCORSI.lavoro)
     seminate = (
         ("ripresa-vecchia", 1000, qui),
         ("ripresa-nuova", 2000, qui),
@@ -1337,8 +1351,8 @@ def chat_sessioni() -> str:
 def migrazione_stato() -> str:
     """`ares migrate`: lo stato di un clone precedente passa in ~/.ares, e la chat aspetta.
 
-    Vecchio e nuovo sono directory della prova, scambiate in `config` per la
-    durata del controllo. Si prova lo spostamento, l'idempotenza, il rifiuto
+    Vecchio e nuovo sono directory della prova, e i percorsi del processo
+    vengono sostituiti alla porta sola per la durata del controllo. Si prova lo spostamento, l'idempotenza, il rifiuto
     di toccare una destinazione piena, e che la chat si fermi finche' lo
     stato e' ancora di la': costruire l'agente su un archivio vuoto accanto a
     uno pieno e' esattamente cio' che la migrazione esiste per evitare.
@@ -1356,7 +1370,8 @@ def migrazione_stato() -> str:
 
     costruiti: list[dict] = []
 
-    def costruisci(**argomenti):
+    def costruisci(percorsi, utente, **argomenti):
+        argomenti["percorsi"] = percorsi
         costruiti.append(argomenti)
         return object()
 
@@ -1366,16 +1381,16 @@ def migrazione_stato() -> str:
             esito = migrazione.migra()
         return esito, _piatto(uscita.getvalue())
 
-    with patch.multiple(
-        config,
-        ARES_HOME=casa,
-        TMP_DIR=casa / "stato",
-        BACKUP_DIR=casa / "backup",
-        STATE_LOCK_FILE=casa / "stato.lock",
-        VECCHIO_TMP_DIR=vecchio_tmp,
-        VECCHIO_BACKUP_DIR=vecchio_backup,
+    # I percorsi di questa prova: si sostituisce la porta sola - il confine
+    # del processo - invece dei nomi che non esistono piu'. Da qui in poi
+    # anche la chat legge questi, come se fosse stata lanciata con
+    # `ARES_HOME` puntato alla casa della prova.
+    nuovo = replace(PERCORSI, home=casa, stato=casa / "stato", backup=casa / "backup")
+    with (
+        patch.multiple(config, VECCHIO_TMP_DIR=vecchio_tmp, VECCHIO_BACKUP_DIR=vecchio_backup),
+        patch.object(config, "leggi_percorsi", lambda: nuovo),
     ):
-        righe = migrazione.avviso()
+        righe = migrazione.avviso(nuovo)
         esigi(
             len(righe) == 4 and "migrate" in righe[-1], "l'avviso non elenca le due parti e il rimedio: " + repr(righe)
         )
@@ -1397,7 +1412,7 @@ def migrazione_stato() -> str:
         if os.name == "posix":
             esigi((casa.stat().st_mode & 0o777) == 0o700, "~/.ares non e' privata")
             esigi(((casa / "stato").stat().st_mode & 0o777) == 0o700, "lo stato spostato non e' privato")
-        esigi(migrazione.avviso() == [], "l'avviso resta dopo la migrazione")
+        esigi(migrazione.avviso(nuovo) == [], "l'avviso resta dopo la migrazione")
 
         esito, testo = migra()
         esigi(esito == 0 and "Niente da spostare" in testo, "la seconda migrazione non e' un no-op: " + testo)
@@ -1410,7 +1425,7 @@ def migrazione_stato() -> str:
         esigi(esito == 0 and "contiene gia' dei dati" in testo, "un conflitto non viene detto: " + testo)
         esigi((vecchio_tmp / "kairos.db").exists(), "un conflitto ha spostato o cancellato qualcosa")
         esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "un conflitto ha sovrascritto")
-        esigi(migrazione.avviso() == [], "un conflitto ferma la chat")
+        esigi(migrazione.avviso(nuovo) == [], "un conflitto ferma la chat")
     return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve"
 
 
@@ -1422,15 +1437,15 @@ def chat_residui() -> str:
     prova prima con il residuo e poi senza, perche' un avviso che compare
     sempre e' quello che smette di essere letto.
     """
-    stato = config.TMP_DIR.resolve()
+    stato = PERCORSI.stato.resolve()
     residuo = stato.with_name("." + stato.name + "-precedente-deadbeef")
 
     def avvia() -> str:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", lambda **k: object()),
+            patch.object(chat, "build_assistant", lambda *a, **k: object()),
             patch.object(chat, "CliInput", lambda **k: FintoInput([])),
-            patch.object(chat, "promemoria_backup", list),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             redirect_stdout(uscita),
         ):
             chat._esegui_chat(session=SESSIONE, user=UTENTE)
@@ -1463,7 +1478,7 @@ def sessioni_parziale() -> str:
     """
     from agno.session.agent import AgentSession
 
-    db = maintenance.build_db()
+    db = maintenance.build_db(PERCORSI)
     antico = int(time.time()) - 100 * 86_400
     sessioni = ["cli-inattiva-a", "cli-inattiva-b"]
     for session_id in sessioni:
@@ -1515,7 +1530,7 @@ def chat_avvio() -> str:
     uscita = io.StringIO()
     codice = 0
     with (
-        patch.object(chat, "lock_stato", lambda esclusivo: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
+        patch.object(chat, "lock_stato", lambda *_, **__: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
         redirect_stderr(uscita),
     ):
         try:
@@ -1532,7 +1547,7 @@ def chat_avvio() -> str:
     # pipe: anche questo rifiuto deve lasciare stdout vuoto.
     uscita_pipe, errori_pipe = io.StringIO(), io.StringIO()
     with (
-        lock_stato(esclusivo=True),
+        lock_stato(PERCORSI.lock_file, esclusivo=True),
         patch.object(chat, "run_turn_cycle") as ciclo_spia,
         patch.object(chat, "build_assistant") as costruzione_spia,
         redirect_stdout(uscita_pipe),

@@ -49,6 +49,11 @@ ARCHIVIO_PROVA = str(RADICE_PROVA / "stato")
 SPAZIO_PROVA = str(RADICE_PROVA / "lavoro")
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.ops.preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
 
@@ -69,12 +74,14 @@ DOMANDA = "Mi chiamo Prova e uso Linux. In una riga: a cosa serve un file di loc
 # con gli stessi percorsi e nessun oggetto ereditato.
 RILETTURA = """
 import sys
+
+from ares import config
 from ares.agent.assistant import build_assistant
 from ares.state.identita import Utente
 from ares.state.stores import leggi_entita
 
 utente, sessione = sys.argv[1], sys.argv[2]
-lm = build_assistant(utente=Utente.da_grezzo(utente), session_id=sessione).learning_machine
+lm = build_assistant(config.leggi_percorsi(), Utente.da_grezzo(utente), session_id=sessione).learning_machine
 
 print("user_profile", lm.user_profile_store.get(user_id=utente) is not None)
 memorie = getattr(lm.user_memory_store.get(user_id=utente), "memories", None) or []
@@ -129,7 +136,7 @@ def conta_per_tipo() -> dict:
     codice di lettura del difetto non puo' vederlo.
     """
     conteggi = {}
-    with closing(sqlite3.connect(config.DB_FILE)) as connessione:
+    with closing(sqlite3.connect(PERCORSI.db_file)) as connessione:
         try:
             righe = connessione.execute("select learning_type, count(*) from agno_learnings group by 1")
         except sqlite3.OperationalError:
@@ -140,7 +147,7 @@ def conta_per_tipo() -> dict:
 
 
 def conta_sessioni() -> int:
-    with closing(sqlite3.connect(config.DB_FILE)) as connessione:
+    with closing(sqlite3.connect(PERCORSI.db_file)) as connessione:
         try:
             return connessione.execute("select count(*) from agno_sessions").fetchone()[0]
         except sqlite3.OperationalError:
@@ -154,7 +161,7 @@ def stato_archivio_reale() -> list:
     senza, l'unico modo di sapere che il turno non ha scritto tra i dati veri
     sarebbe fidarsi della variabile d'ambiente.
     """
-    reale = config.ARES_HOME / "stato"
+    reale = PERCORSI.home / "stato"
     if not reale.exists():
         return []
     return sorted(
@@ -179,8 +186,8 @@ def main() -> int:
 
     try:
         esigi(
-            not config.DB_FILE.startswith(str(config.ARES_HOME / "stato")),
-            "l'archivio della prova coincide con quello vero: " + config.DB_FILE,
+            not PERCORSI.db_file.startswith(str(PERCORSI.home / "stato")),
+            "l'archivio della prova coincide con quello vero: " + PERCORSI.db_file,
         )
         ok("archivio separato   ", "i dati veri non vengono ne' letti ne' scritti")
 
@@ -202,7 +209,7 @@ def main() -> int:
         from ares.agent.assistant import build_assistant
 
         costruzione = time.monotonic()
-        agent = build_assistant(utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
+        agent = build_assistant(PERCORSI, Utente.da_grezzo(UTENTE), session_id=SESSIONE)
         ok("costruzione         ", "agente costruito in " + str(round(time.monotonic() - costruzione, 2)) + " s")
 
         print()

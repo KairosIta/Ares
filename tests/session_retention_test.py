@@ -27,6 +27,11 @@ from agno.models.response import ModelResponse  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.agent.assistant import build_assistant, build_db  # noqa: E402
 from ares.backup.snapshots import elenco_snapshot, verifica_snapshot  # noqa: E402
 from ares.sessions.retention import apri_archivio  # noqa: E402
@@ -89,7 +94,7 @@ def fetch_page() -> str:
 
 
 def agente(user_id: str, session_id: str):
-    costruito = build_assistant(utente=Utente.da_grezzo(user_id), session_id=session_id)
+    costruito = build_assistant(PERCORSI, utente=Utente.da_grezzo(user_id), session_id=session_id)
     costruito.model = ModelloToolDeterministico()
     costruito.tools = [*list(costruito.tools or []), fetch_page]
     return costruito
@@ -163,11 +168,13 @@ def main() -> int:
 
     riuscita = False
     try:
-        solo_db = build_db()
-        esigi(not Path(config.FS_DB_FILE).exists(), "aprire il solo archivio sessioni ha creato filesystem.db")
+        solo_db = build_db(
+            PERCORSI,
+        )
+        esigi(not Path(PERCORSI.fs_db_file).exists(), "aprire il solo archivio sessioni ha creato filesystem.db")
         stato_vuoto = esegui_cli("status", "--user", UTENTE)
         esigi(stato_vuoto.returncode == 0 and "Sessioni: 0" in stato_vuoto.stdout, "status vuoto fallito")
-        esigi(not Path(config.FS_DB_FILE).exists(), "uno status in sola lettura ha creato filesystem.db")
+        esigi(not Path(PERCORSI.fs_db_file).exists(), "uno status in sola lettura ha creato filesystem.db")
         chiudi_engine(solo_db)
         ok("status puro", "nessun payload backend creato per una lettura")
 
@@ -219,7 +226,12 @@ def main() -> int:
         esigi(
             principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None, "l'anteprima ha cancellato la sessione"
         )
-        esigi(not elenco_snapshot(), "l'anteprima ha creato uno snapshot")
+        esigi(
+            not elenco_snapshot(
+                PERCORSI,
+            ),
+            "l'anteprima ha creato uno snapshot",
+        )
         ok("anteprima", "una candidata, principale protetta, nessuna scrittura")
 
         protetta = esegui_cli("delete", SESSIONE_RECENTE, "--user", UTENTE)
@@ -235,7 +247,7 @@ def main() -> int:
             "--yes da solo accettato",
         )
 
-        with lock_stato(esclusivo=False):
+        with lock_stato(PERCORSI.lock_file, esclusivo=False):
             bloccata = esegui_cli(
                 "prune",
                 "--user",
@@ -253,7 +265,12 @@ def main() -> int:
             principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None,
             "prune bloccato ha scritto",
         )
-        esigi(not elenco_snapshot(), "prune bloccato ha creato uno snapshot")
+        esigi(
+            not elenco_snapshot(
+                PERCORSI,
+            ),
+            "prune bloccato ha creato uno snapshot",
+        )
 
         # Un rifiuto che arriva come eccezione, non come `return`: `--yes` da
         # solo lo decide la firma del comando, un id inesistente lo scopre
@@ -295,9 +312,11 @@ def main() -> int:
 
         applicazione = esegui_cli("prune", "--user", UTENTE, "--older-than", "180", "--apply", "--yes")
         esigi(applicazione.returncode == 0, "prune fallito: " + applicazione.stderr + applicazione.stdout)
-        snapshot = elenco_snapshot()
+        snapshot = elenco_snapshot(
+            PERCORSI,
+        )
         esigi(len(snapshot) == 1, "il prune non ha creato esattamente uno snapshot")
-        verifica_snapshot(snapshot[0], percorso_diretto=True)
+        verifica_snapshot(PERCORSI, snapshot[0], percorso_diretto=True)
         store = principale.result_store
         esigi(store is not None, "store perso dopo il run")
         esigi(principale.db.get_session(session_id=SESSIONE_VECCHIA) is None, "sessione inattiva ancora presente")
@@ -358,7 +377,7 @@ def main() -> int:
             check=False,
         )
         esigi(ripristino.returncode == 0, "restore fallito: " + ripristino.stderr + ripristino.stdout)
-        db_ripristinato, store_ripristinato = apri_archivio(Utente.da_grezzo(UTENTE))
+        db_ripristinato, store_ripristinato = apri_archivio(PERCORSI, Utente.da_grezzo(UTENTE))
         esigi(db_ripristinato.get_session(session_id=SESSIONE_VECCHIA) is not None, "sessione non ripristinata")
         esigi(store_ripristinato.payload(vecchio_id) == PAYLOAD, "payload offloaded non ripristinato")
         esigi(

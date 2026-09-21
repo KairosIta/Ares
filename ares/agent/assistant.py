@@ -36,6 +36,7 @@ from ares.agent.runtime import (
     build_result_store,
     build_workspace,
 )
+from ares.config import Percorsi
 from ares.state.identita import Utente
 from ares.state.stores import CHIAVE_CARTELLA, con_run, sessioni_della_cartella
 
@@ -59,6 +60,7 @@ __all__ = [
 
 
 def build_assistant(
+    percorsi: Percorsi,
     utente: Utente,
     session_id: str = "principale",
     debug: bool = False,
@@ -81,18 +83,23 @@ def build_assistant(
     dello spazio di lavoro girano da soli, quali chiedono e quali non ci
     sono, e il prompt lo dice.
 
+    `percorsi` e' dove stanno stato, backup e cartella di lavoro, e non ha
+    un valore predefinito: chi costruisce l'agente lo ha gia' in mano dal
+    confine del processo, e un `config.PERCORSI` qui dentro sarebbe di nuovo
+    una risposta ambientale alla domanda "quale archivio".
+
     `utente` e' l'identita' gia' canonica, e non ha un valore predefinito:
     un default nella firma sarebbe una seconda risposta alla domanda "per
     conto di chi", decisa all'import invece che da chi costruisce. Il valore
     che Agno usa come chiave di profilo e User Memory e' `utente.id`, ed e'
     quello per cui namespace, lock e sessioni parlano.
     """
-    db = build_db()
+    db = build_db(percorsi)
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
     # store learned_knowledge nel namespace globale del framework.
-    knowledge = build_knowledge() if config.LEARN_KNOWLEDGE else None
-    fs = build_filesystem(utente)
-    spazio = build_workspace(modo) if config.WORKSPACE else None
+    knowledge = build_knowledge(percorsi) if config.LEARN_KNOWLEDGE else None
+    fs = build_filesystem(percorsi, utente)
+    spazio = build_workspace(percorsi, modo) if config.WORKSPACE else None
 
     metadata = None
     precedenti: list = []
@@ -153,7 +160,7 @@ def build_assistant(
 
 
 if __name__ == "__main__":
-    agent = build_assistant(Utente.da_grezzo(config.DEFAULT_USER_ID))
+    agent = build_assistant(config.leggi_percorsi(), Utente.da_grezzo(config.DEFAULT_USER_ID))
     print("Assistente costruito.")
     print("Modello:", config.MAIN_MODEL)
     macchina = agent.learning_machine

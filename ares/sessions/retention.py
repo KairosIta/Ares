@@ -18,6 +18,7 @@ from agno.learn.utils import build_learning_id
 from agno.offload.setup import build_result_store as configura_result_store
 from agno.offload.store import ResultStore
 
+from ares.config import Percorsi
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.identita import Utente
 
@@ -66,7 +67,7 @@ class _Manutenzione:
     id = "ares-session-maintenance"
 
 
-def apri_archivio(utente: Utente) -> tuple[SqliteDb, ResultStore]:
+def apri_archivio(percorsi: Percorsi, utente: Utente) -> tuple[SqliteDb, ResultStore]:
     """Apre i due SQLite e registra il backend payload nella cascata Agno.
 
     `filesystem.db` e' intenzionalmente distinto dal database delle sessioni.
@@ -74,8 +75,8 @@ def apri_archivio(utente: Utente) -> tuple[SqliteDb, ResultStore]:
     ripetuta nel processo offline: senza, Agno eliminerebbe sessione e indice
     ma non saprebbe in quale backend cercare il payload.
     """
-    db = build_db()
-    filesystem = build_filesystem(utente)
+    db = build_db(percorsi)
+    filesystem = build_filesystem(percorsi, utente)
     store = configura_result_store(
         setting=build_result_store(filesystem),
         db=db,

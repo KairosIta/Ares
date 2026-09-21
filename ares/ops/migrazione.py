@@ -19,6 +19,7 @@ from pathlib import Path
 from ares import config
 from ares.cli.comando import ESITO_GUASTO, ESITO_OCCUPATO, nuova_app
 from ares.cli.ui import UI
+from ares.config import Percorsi
 from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.platform_files import rendi_privato
 
@@ -39,26 +40,26 @@ def _diversi(a: Path, b: Path) -> bool:
         return a != b
 
 
-def _coppie() -> tuple[tuple[str, Path, Path], ...]:
+def _coppie(percorsi: Percorsi) -> tuple[tuple[str, Path, Path], ...]:
     return (
-        ("lo stato", Path(config.VECCHIO_TMP_DIR), Path(config.TMP_DIR)),
-        ("i backup", Path(config.VECCHIO_BACKUP_DIR), Path(config.BACKUP_DIR)),
+        ("lo stato", Path(config.VECCHIO_TMP_DIR), percorsi.stato),
+        ("i backup", Path(config.VECCHIO_BACKUP_DIR), percorsi.backup),
     )
 
 
-def parti() -> list[tuple[str, Path, Path]]:
+def parti(percorsi: Percorsi) -> list[tuple[str, Path, Path]]:
     """(cosa, vecchio, nuovo) per ogni parte ancora nel posto di prima, con il nuovo vuoto o assente."""
-    return [(c, v, n) for c, v, n in _coppie() if _pieno(v) and _diversi(v, n) and not _pieno(n)]
+    return [(c, v, n) for c, v, n in _coppie(percorsi) if _pieno(v) and _diversi(v, n) and not _pieno(n)]
 
 
-def conflitti() -> list[tuple[str, Path, Path]]:
+def conflitti(percorsi: Percorsi) -> list[tuple[str, Path, Path]]:
     """Le parti in cui vecchio e nuovo sono entrambi pieni: qui non si tocca niente."""
-    return [(c, v, n) for c, v, n in _coppie() if _pieno(v) and _diversi(v, n) and _pieno(n)]
+    return [(c, v, n) for c, v, n in _coppie(percorsi) if _pieno(v) and _diversi(v, n) and _pieno(n)]
 
 
-def avviso() -> list[str]:
+def avviso(percorsi: Percorsi) -> list[str]:
     """Le righe con cui la chat si ferma quando lo stato e' ancora nel posto di prima. Vuoto se no."""
-    da_fare = parti()
+    da_fare = parti(percorsi)
     if not da_fare:
         return []
     righe = ["Lo stato di Ares e' ancora dove stava prima, e qui non c'e' niente:"]
@@ -76,14 +77,15 @@ def migra() -> int:
     Non tocca una parte quando la destinazione contiene gia' dei dati: lo
     dice, e la decisione resta a chi guarda le due directory.
     """
-    for cosa, vecchio, nuovo in conflitti():
+    percorsi = config.leggi_percorsi()
+    for cosa, vecchio, nuovo in conflitti(percorsi):
         UI.line(
             "Attenzione: " + cosa + " in " + str(vecchio) + " restano li': " + str(nuovo) + " contiene gia' dei dati.",
             style="ares.warning",
         )
-    da_fare = parti()
+    da_fare = parti(percorsi)
     if not da_fare:
-        UI.line("Niente da spostare: lo stato di Ares vive in " + str(config.ARES_HOME) + ".", style="ares.muted")
+        UI.line("Niente da spostare: lo stato di Ares vive in " + str(percorsi.home) + ".", style="ares.muted")
         return 0
 
     vecchio_lock = Path(config.VECCHIO_TMP_DIR).with_name(Path(config.VECCHIO_TMP_DIR).name + ".lock")
@@ -92,12 +94,12 @@ def migra() -> int:
         # prendono, e quello vecchio accanto a `tmp/`, che una chat ancora
         # aperta dalla versione precedente potrebbe tenere.
         with (
-            lock_stato(esclusivo=True, percorso=Path(config.STATE_LOCK_FILE)),
-            lock_stato(esclusivo=True, percorso=vecchio_lock),
+            lock_stato(percorsi.lock_file, esclusivo=True),
+            lock_stato(vecchio_lock, esclusivo=True),
         ):
             for cosa, vecchio, nuovo in da_fare:
                 nuovo.parent.mkdir(parents=True, exist_ok=True)
-                if nuovo.parent == Path(config.ARES_HOME):
+                if nuovo.parent == percorsi.home:
                     rendi_privato(nuovo.parent)
                 if nuovo.is_dir():
                     # Vuota, per costruzione di `parti()`: si toglie perche'
@@ -116,7 +118,7 @@ def migra() -> int:
         return ESITO_GUASTO
     with contextlib.suppress(OSError):
         vecchio_lock.unlink()
-    UI.line("Da ora `ares` legge da " + str(config.ARES_HOME) + ", da qualunque cartella.", style="ares.muted")
+    UI.line("Da ora `ares` legge da " + str(percorsi.home) + ", da qualunque cartella.", style="ares.muted")
     return 0
 
 
