@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 
-from ares import config
+from ares.config import Percorsi
 from ares.state.identita import Utente
 from ares.state.platform_files import FileOccupato, lock_file
 
@@ -26,7 +26,7 @@ class StatoOccupato(RuntimeError):
 
 
 @contextmanager
-def lock_turno(utente: Utente) -> Iterator[None]:
+def lock_turno(percorsi: Percorsi, utente: Utente) -> Iterator[None]:
     """Un turno per utente, dall'istantanea fino all'eventuale ripristino.
 
     Il lock condiviso dello stato resta esterno e impedisce la manutenzione.
@@ -42,7 +42,8 @@ def lock_turno(utente: Utente) -> Iterator[None]:
     di essere sole.
     """
     chiave = sha256(utente.id.encode("utf-8")).hexdigest()
-    percorso = config.STATE_LOCK_FILE.with_name(config.STATE_LOCK_FILE.name + ".utente-" + chiave)
+    lock = percorsi.lock_file
+    percorso = lock.with_name(lock.name + ".utente-" + chiave)
     try:
         with lock_file(percorso, esclusivo=True, bloccante=False):
             yield
@@ -54,17 +55,18 @@ def lock_turno(utente: Utente) -> Iterator[None]:
 
 @contextmanager
 def lock_stato(
+    percorso: Path,
+    *,
     esclusivo: bool,
     bloccante: bool = False,
-    percorso: Path | None = None,
 ) -> Iterator[None]:
     """Acquisisce il lock condiviso o esclusivo e lo rilascia sempre.
 
-    `percorso` vuoto vale `config.STATE_LOCK_FILE`, letto adesso: un default
-    nella firma lo fotograferebbe all'import, e una prova che cambia lo stato
-    con `patch.object` continuerebbe a bloccare quello vero.
+    Il file arriva come parametro - di norma `percorsi.lock_file` - e non ha
+    un valore predefinito: un default nella firma fotograferebbe l'archivio
+    corrente all'import, e chi ne apre un altro continuerebbe a bloccare
+    quello vero. `ops/migrazione.py` ne prende due, e li nomina entrambi.
     """
-    percorso = Path(config.STATE_LOCK_FILE) if percorso is None else percorso
     try:
         with lock_file(
             Path(percorso),

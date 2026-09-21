@@ -42,8 +42,8 @@ Le API pubbliche coprono soltanto le operazioni necessarie ad Ares.
 
 | Area | Evidenza | Conseguenza per il contratto |
 | --- | --- | --- |
-| Configurazione | `config.imposta_percorsi` riassegna workspace, archivi e lock globali; i costruttori leggono `config` | Una conversazione deve ricevere una configurazione risolta propria |
-| Costruzione | `build_assistant` riceve utente, sessione, modalità e `interattivo`, ma non un workspace esplicito | Il costruttore dipende da impostazioni esterne alla sua firma |
+| Configurazione | `config.leggi_percorsi()` costruisce i percorsi al confine del processo; ogni lettore li riceve come primo parametro. Identità e percorsi sono due assi, non più nomi di modulo | Una conversazione deve ricevere una configurazione risolta propria, e i modelli applicativi non devono leggere né scrivere un globale |
+| Costruzione | `build_assistant` riceve percorsi, utente, sessione, modalità e `interattivo`; il workspace non è un parametro a sé | Il workspace sceglie i percorsi, non il costruttore: `--workspace` è una sostituzione locale, e resta da decidere se il progetto debba essere un campo a sé |
 | Turno | `turn_core` separa lo streaming dal terminale, ma espone `RunOutput` e oggetti generici | Conservare l'adattamento esistente e completare i dati pubblici |
 | Memoria | `cli/chat.py` coordina fotografia, differenze, conferma e ripristino | Il client che usa soltanto `turn_core` non eredita queste politiche |
 | Lock | Il lock del turno avvolge il flusso nella CLI; quello dello stato dura quanto la chat | Coordinamento e durata devono appartenere al servizio applicativo |
@@ -196,6 +196,19 @@ L'ambiente e il `.env` sono sorgenti per costruire questi dati, non oggetti
 globali da modificare quando cambia una scheda. Collezioni di opzioni
 devono essere copiate o rese immutabili: una dataclass congelata da sola
 non impedisce la mutazione di un dizionario interno.
+
+Il primo pezzo di questa separazione è fatto, e riguarda proprio i percorsi.
+`ares/config.py` non tiene più un `PERCORSI` corrente né le viste che lo
+nascondevano (`TMP_DIR`, `DB_FILE`, `BACKUP_DIR`, `WORKSPACE_DIR`...), e
+`imposta_percorsi` non esiste: chi legge lo stato riceve un `Percorsi` come
+primo parametro, e l'unico punto in cui se ne costruisce uno è il confine del
+processo — i comandi della CLI nel proprio corpo, le prove all'import, dopo
+`prepara_ambiente`. L'identità è l'altro asse, e viaggia accanto: `Utente` non
+è un campo di `Percorsi`. Restano fuori da questo giro le impostazioni che non
+sono percorsi — modello, modalità, connessione Ollama — che oggi sono ancora
+nomi di modulo letti dai costruttori: sono il gruppo che il contratto chiama
+"contesto della conversazione", e diventare parametri espliciti è il passo
+successivo.
 
 Il cambio modello o modalità si applica ai turni successivi; durante un
 turno attivo restituisce un conflitto, salvo futura operazione dedicata.

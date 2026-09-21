@@ -56,6 +56,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
@@ -63,9 +64,9 @@ from unittest.mock import patch
 
 from _comune import NON_CONCLUSIVO, esegui, esigi, prepara_ambiente, pulisci
 
-# I percorsi vanno scelti prima di importare config, che crea TMP_DIR
-# all'import; e `build_workspace` crea la directory di lavoro, che senza
-# questa riga comparirebbe accanto al progetto.
+# I percorsi vanno scelti prima di importare config, che li legge quando
+# `leggi_percorsi` viene chiamata; e `build_workspace` apre la directory di
+# lavoro, che senza questa riga sarebbe quella del clone.
 RADICE_PROVA = prepara_ambiente("smoke")
 ARCHIVIO_PROVA = str(RADICE_PROVA / "stato")
 SPAZIO_PROVA = str(RADICE_PROVA / "lavoro")
@@ -77,6 +78,11 @@ from agno.fs._paths import normalize_namespace  # noqa: E402
 from agno.tools.workspace import Workspace  # noqa: E402
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.agent.assistant import (  # noqa: E402
     AresLearningMachine,
     AresSessionContextStore,
@@ -156,7 +162,7 @@ def stato_archivio_reale() -> list:
     scrive per mestiere, ma in un'altra directory. Cio' che va dimostrato non
     e' che non scriva, e' che non scriva li'.
     """
-    reale = config.ARES_HOME / "stato"
+    reale = PERCORSI.home / "stato"
     if not reale.exists():
         return []
     return sorted(
@@ -174,7 +180,7 @@ def conta_apprendimenti(learning_type: str, namespace: str) -> int:
     zero entita' con tre in archivio, e solo un conteggio indipendente
     rendeva visibile la differenza.
     """
-    with contextlib.closing(sqlite3.connect(config.DB_FILE)) as connessione:
+    with contextlib.closing(sqlite3.connect(PERCORSI.db_file)) as connessione:
         try:
             righe = connessione.execute(
                 "select count(*) from agno_learnings where learning_type = ? and namespace = ?",
@@ -494,7 +500,7 @@ def ruoli_locali() -> str:
 
     with patch.object(config, "EMBEDDER_MODEL", "glm-5.3-flash:cloud"):
         try:
-            runtime.build_knowledge()
+            runtime.build_knowledge(PERCORSI)
         except ValueError as errore:
             esigi("EMBEDDER_MODEL" in str(errore), "l'errore non nomina EMBEDDER_MODEL: " + str(errore))
         else:
@@ -674,7 +680,7 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
     else:
         esigi(config.LEARNING_MODEL in scheda, "la scheda non dice LEARNING_MODEL")
     if config.WORKSPACE:
-        esigi(str(config.WORKSPACE_DIR.resolve()) in scheda, "la scheda non dice la cartella di lavoro")
+        esigi(str(PERCORSI.lavoro.resolve()) in scheda, "la scheda non dice la cartella di lavoro")
 
     # Locale e cloud, a prescindere dal `.env` di questa macchina.
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
@@ -697,10 +703,10 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
     # La shell segue il sistema: `bash -lc` non esiste su Windows.
     with patch.object(os, "name", "nt"):
         finestre = prompts.istruzioni_sull_ambiente(utente=Utente.da_grezzo(user_id), session_id=session_id)[0]
-        strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(config.WORKSPACE_DIR))
+        strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro))
     esigi("shell PowerShell" in finestre and "'powershell'" in strumenti_nt, "su Windows il prompt parla di bash")
     with patch.object(os, "name", "posix"):
-        strumenti_posix = " ".join(prompts.istruzioni_sugli_strumenti(config.WORKSPACE_DIR))
+        strumenti_posix = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro))
     esigi("'bash', '-lc'" in strumenti_posix, "su POSIX il prompt non suggerisce bash")
     return "modelli, contesto, sistema, utente e cartella nella scheda; descrizione e scheda seguono il cloud"
 
@@ -844,7 +850,7 @@ def modalita() -> str:
     tutti = set(Workspace._ALIASES)
     esiti = []
     for nome, (silenziosi, confermati) in config.MODALITA.items():
-        spazio = build_workspace(nome)
+        spazio = build_workspace(PERCORSI, nome)
         consegnati = {f.name: f for f in spazio.functions.values()}
         for alias in tutti:
             strumento = config.WORKSPACE_PREFIX + Workspace._ALIASES[alias]
@@ -894,7 +900,7 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
 
     from ares.agent.prompts import messaggio_di_sistema
 
-    muto = build_assistant(utente=Utente.da_grezzo(user_id), session_id=session_id + "-p", interattivo=False)
+    muto = build_assistant(PERCORSI, utente=Utente.da_grezzo(user_id), session_id=session_id + "-p", interattivo=False)
     esigi(not muto.post_hooks, "in -p il post-hook di apprendimento e' agganciato")
     assert muto.learning_machine is not None
     _ = muto.result_store
@@ -983,7 +989,9 @@ def prompt_e_capacita() -> str:
     casi = [(modo, interattivo, ()) for modo in config.MODALITA for interattivo in (True, False)]
     casi += [("manuale", True, (nome,)) for nome in flag]
     casi.append(("manuale", True, flag))
-    db = build_db()
+    db = build_db(
+        PERCORSI,
+    )
     for indice, (modo, interattivo, spenti) in enumerate(casi):
         with ExitStack() as stack:
             for nome in spenti:
@@ -992,10 +1000,10 @@ def prompt_e_capacita() -> str:
             precedente = _sessione_finta(
                 "precedente-" + utente, 1234567890, "Decidiamo come organizzare il progetto.", utente
             )
-            precedente.metadata = {"cartella": str(config.WORKSPACE_DIR.resolve())}
+            precedente.metadata = {"cartella": str(PERCORSI.lavoro.resolve())}
             db.upsert_session(precedente)
             agente = build_assistant(
-                utente=Utente.da_grezzo(utente), session_id=utente, modo=modo, interattivo=interattivo
+                PERCORSI, utente=Utente.da_grezzo(utente), session_id=utente, modo=modo, interattivo=interattivo
             )
             prompt = messaggio_di_sistema(agente, session_id=utente, utente=Utente.da_grezzo(utente))
             esigi(
@@ -1043,7 +1051,7 @@ def protezione_contesto(agent, user_id: str) -> str:
         "soglia offload diversa dalla configurazione",
     )
     esigi(
-        Path(str(store.fs.backend.db_engine.url.database)).resolve() == Path(config.FS_DB_FILE).resolve(),
+        Path(str(store.fs.backend.db_engine.url.database)).resolve() == Path(PERCORSI.fs_db_file).resolve(),
         "i payload non usano filesystem.db gia' incluso nei backup",
     )
 
@@ -1104,14 +1112,14 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
     # Tutti e due risolti: su Windows la temp ha il nome corto (`RUNNER~1`)
     # e `config` la conserva espansa.
     esigi(
-        config.WORKSPACE_DIR.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()),
-        "la prova sta usando lo spazio di lavoro vero: " + str(config.WORKSPACE_DIR),
+        PERCORSI.lavoro.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()),
+        "la prova sta usando lo spazio di lavoro vero: " + str(PERCORSI.lavoro),
     )
-    esigi(config.WORKSPACE_DIR.is_dir(), "lo spazio di lavoro non e' stato creato")
+    esigi(PERCORSI.lavoro.is_dir(), "lo spazio di lavoro non e' stato creato")
     # La cartella viaggia con la sessione: Agno copia `metadata` nella
     # sessione nuova, ed e' cio' che `ares resume` e `/sessioni` rileggono.
     esigi(
-        agent.metadata == {"cartella": str(config.WORKSPACE_DIR.resolve())},
+        agent.metadata == {"cartella": str(PERCORSI.lavoro.resolve())},
         "l'agente non registra la cartella nei metadati: " + repr(agent.metadata),
     )
 
@@ -1149,22 +1157,20 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
 
     # La collisione e' silenziosa per costruzione: Agno tiene il primo nome
     # arrivato e scrive un WARNING. Qui si guarda l'intersezione, non i log.
-    del_quaderno = set(build_filesystem(Utente.da_grezzo(user_id)).tools().functions)
+    del_quaderno = set(build_filesystem(PERCORSI, Utente.da_grezzo(user_id)).tools().functions)
     comuni = del_quaderno & set(attesi)
     esigi(not comuni, "lo spazio di lavoro e il quaderno privato si contendono: " + ", ".join(sorted(comuni)))
 
     # La cartella e' quella dell'utente e non si crea: una che non esiste e'
     # un refuso, e costruirci sopra un workspace vuoto lo nasconderebbe.
-    scelta_vera = config.WORKSPACE_DIR
-    config.WORKSPACE_DIR = scelta_vera / "non-esiste"
+    scelta_vera = PERCORSI.lavoro
+    inesistente = replace(PERCORSI, lavoro=scelta_vera / "non-esiste")
     try:
-        build_workspace()
+        build_workspace(inesistente)
     except ValueError:
         pass
     else:
         esigi(False, "una cartella inesistente non ha fermato build_workspace")
-    finally:
-        config.WORKSPACE_DIR = scelta_vera
 
     return (
         str(len(attesi))
@@ -1480,7 +1486,15 @@ def entita_cercate(agent, user_id: str) -> str:
     # sembra rispondere.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/entita Uno", StatoChat(agent=agent, session_id="sessione", utente=Utente.da_grezzo(user_id)))
+        gestisci_comando(
+            "/entita Uno",
+            StatoChat(
+                agent=agent,
+                session_id="sessione",
+                utente=Utente.da_grezzo(user_id),
+                percorsi=PERCORSI,
+            ),
+        )
     stampato = catturato.getvalue()
     esigi("Entita Uno" in stampato, "/entita con un argomento non trova l'entita' cercata")
     esigi("Entita Due" not in stampato, "/entita ignora l'argomento e stampa l'archivio intero")
@@ -1576,7 +1590,13 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
             gestisci_comando(
-                "/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+                "/sessioni",
+                StatoChat(
+                    agent=agent,
+                    session_id=session_id,
+                    utente=Utente.da_grezzo(user_id),
+                    percorsi=PERCORSI,
+                ),
             )
         troncato = catturato.getvalue()
         esigi("altre 2" in troncato, "l'elenco tagliato non dice quante ne restano: " + repr(troncato))
@@ -1585,7 +1605,12 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
         with contextlib.redirect_stdout(catturato):
             gestisci_comando(
                 "/sessioni " + atteso[3],
-                StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id)),
+                StatoChat(
+                    agent=agent,
+                    session_id=session_id,
+                    utente=Utente.da_grezzo(user_id),
+                    percorsi=PERCORSI,
+                ),
             )
         esigi(
             atteso[3] in catturato.getvalue(),
@@ -1600,7 +1625,15 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     # in archivio ma esclusa da un filtro.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id)))
+        gestisci_comando(
+            "/sessioni",
+            StatoChat(
+                agent=agent,
+                session_id=session_id,
+                utente=Utente.da_grezzo(user_id),
+                percorsi=PERCORSI,
+            ),
+        )
     stampato = catturato.getvalue()
     esigi(session_id in stampato, "l'assenza della sessione in corso non viene spiegata")
     for nome in atteso:
@@ -1611,7 +1644,15 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     agent.db.upsert_session(_sessione_finta(session_id, 500, "domanda di questa", user_id))
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        gestisci_comando("/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id)))
+        gestisci_comando(
+            "/sessioni",
+            StatoChat(
+                agent=agent,
+                session_id=session_id,
+                utente=Utente.da_grezzo(user_id),
+                percorsi=PERCORSI,
+            ),
+        )
     presente = catturato.getvalue()
     esigi("(questa)" in presente, "la sessione in corso non e' marcata nell'elenco: " + repr(presente))
     esigi(
@@ -1627,7 +1668,13 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
             gestisci_comando(
-                "/sessioni", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+                "/sessioni",
+                StatoChat(
+                    agent=agent,
+                    session_id=session_id,
+                    utente=Utente.da_grezzo(user_id),
+                    percorsi=PERCORSI,
+                ),
             )
         oltre = catturato.getvalue()
         esigi("(questa)" not in oltre, "il tetto non taglia la sessione in corso: " + repr(oltre))
@@ -1643,7 +1690,13 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
         gestisci_comando(
-            "/sessioni lavoro", StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+            "/sessioni lavoro",
+            StatoChat(
+                agent=agent,
+                session_id=session_id,
+                utente=Utente.da_grezzo(user_id),
+                percorsi=PERCORSI,
+            ),
         )
     filtrato = catturato.getvalue()
     esigi(
@@ -1669,7 +1722,13 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
         catturato = io.StringIO()
         with contextlib.redirect_stdout(catturato):
             vive = gestisci_comando(
-                riga, StatoChat(agent=agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+                riga,
+                StatoChat(
+                    agent=agent,
+                    session_id=session_id,
+                    utente=Utente.da_grezzo(user_id),
+                    percorsi=PERCORSI,
+                ),
             )
         esigi(vive is True, riga + " chiude la sessione")
         return catturato.getvalue()
@@ -1692,10 +1751,10 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     esigi("byte" in uscita, "/file non dice la dimensione: " + repr(uscita))
 
     uscita = esegui_comando("/cartella")
-    esigi(str(config.WORKSPACE_DIR) in uscita, "/cartella non nomina la directory: " + repr(uscita))
+    esigi(str(PERCORSI.lavoro) in uscita, "/cartella non nomina la directory: " + repr(uscita))
     esigi("nessun ARES.md" in uscita, "/cartella non dice che manca ARES.md: " + repr(uscita))
     uscita = esegui_comando("/lavoro")
-    esigi(str(config.WORKSPACE_DIR) in uscita, "/lavoro, il vecchio nome, non e' piu' un alias: " + repr(uscita))
+    esigi(str(PERCORSI.lavoro) in uscita, "/lavoro, il vecchio nome, non e' piu' un alias: " + repr(uscita))
     acceso = config.WORKSPACE
     config.WORKSPACE = False
     try:
@@ -1767,8 +1826,8 @@ def file_isolati(user_id: str) -> str:
         user_id != UTENTE_DI_CONTROLLO,
         "l'utente in prova e' lo stesso di controllo: non c'e' niente da confrontare",
     )
-    miei = {f.path for f in build_filesystem(Utente.da_grezzo(user_id)).list()}
-    altrui = {f.path for f in build_filesystem(Utente.da_grezzo(UTENTE_DI_CONTROLLO)).list()}
+    miei = {f.path for f in build_filesystem(PERCORSI, Utente.da_grezzo(user_id)).list()}
+    altrui = {f.path for f in build_filesystem(PERCORSI, Utente.da_grezzo(UTENTE_DI_CONTROLLO)).list()}
     esigi(FILE_SEMINATO[0] in miei, "il file seminato non si rilegge: " + str(sorted(miei)))
     condivisi = miei & altrui
     esigi(not condivisi, "un altro utente vede " + str(sorted(condivisi)))
@@ -1814,12 +1873,12 @@ def archivio_privato() -> str:
     def modo(percorso: Path) -> str:
         return oct(percorso.stat().st_mode)[-3:]
 
-    directory = [("archivio", Path(config.TMP_DIR)), ("indice vettoriale", Path(config.LANCEDB_URI))]
+    directory = [("archivio", Path(PERCORSI.stato)), ("indice vettoriale", Path(PERCORSI.lancedb_uri))]
     for etichetta, percorso in directory:
         esigi(percorso.is_dir(), etichetta + " assente: " + str(percorso))
         esigi(modo(percorso) == "700", etichetta + " attraversabile da altri: " + modo(percorso))
 
-    database = [Path(config.DB_FILE), Path(config.FS_DB_FILE)]
+    database = [Path(PERCORSI.db_file), Path(PERCORSI.fs_db_file)]
     for percorso in database:
         esigi(percorso.is_file(), "database assente: " + str(percorso))
         esigi(
@@ -1832,7 +1891,9 @@ def archivio_privato() -> str:
     # cloni nuovi e lascerebbe scoperti proprio gli archivi con dentro
     # qualcosa.
     database[0].chmod(0o644)
-    build_db()
+    build_db(
+        PERCORSI,
+    )
     esigi(
         modo(database[0]) == "600",
         "archivio preesistente non corretto: " + modo(database[0]),
@@ -1842,24 +1903,24 @@ def archivio_privato() -> str:
 
 
 def percorsi_a_runtime() -> str:
-    """I percorsi sono un oggetto costruito quando serve, e si sostituiscono da una porta sola.
+    """I percorsi sono un oggetto costruito quando serve, e non esistono come nomi di modulo.
 
     `leggi_percorsi` legge un ambiente dato, non `os.environ`, quindi si
     prova senza toccare niente: `ARES_HOME` sposta stato e backup insieme,
-    `ARES_TMP` una parte sola, i nomi derivati seguono. `imposta_percorsi`
-    rilega tutti i nomi del modulo: dopo, `DB_FILE` sta dentro il nuovo
-    `TMP_DIR` e il lock accanto, e non esiste un istante in cui i due
-    puntano ad archivi diversi. Alla fine si rimette l'oggetto di prima,
-    perche' il resto della prova legge da li'.
+    `ARES_TMP` una parte sola, i nomi derivati seguono. E non c'e' piu' un
+    `PERCORSI` di modulo da sostituire, ne' i nomi che ne erano viste: era il
+    canale per cui un modulo leggeva `DB_FILE` senza che dalla firma si
+    vedesse da dove venisse, e un nome rimesso in `config` tornerebbe a
+    esserlo senza rompere niente. Per questo la prova lo pretende.
     """
-    from ares.config import Percorsi, imposta_percorsi, leggi_percorsi
+    from ares.config import Percorsi, leggi_percorsi
 
     radice = RADICE_PROVA / "percorsi"
     casa = radice / "casa"
-    tutto = leggi_percorsi({"ARES_HOME": str(casa), "ARES_USER_ID": "prova-percorsi"}, cwd=radice)
+    tutto = leggi_percorsi({"ARES_HOME": str(casa)}, cwd=radice)
     esigi(tutto.stato == casa / "stato" and tutto.backup == casa / "backup", "ARES_HOME non sposta stato e backup")
-    esigi(tutto.lavoro == radice and tutto.utente == "prova-percorsi", "cartella o utente non letti")
-    esigi(tutto.db_file == str(casa / "stato" / "kairos.db"), "DB_FILE non deriva dallo stato")
+    esigi(tutto.lavoro == radice, "la cartella di lavoro non viene letta")
+    esigi(tutto.db_file == str(casa / "stato" / "kairos.db"), "il database non deriva dallo stato")
     esigi(tutto.lock_file == casa / "stato.lock", "il lock non e' accanto allo stato")
     esigi(tutto.cronologia_file == casa / "stato" / "cronologia_chat.txt", "la cronologia non e' nello stato")
     parte = leggi_percorsi({"ARES_TMP": str(radice / "solo-stato")}, cwd=radice)
@@ -1867,7 +1928,24 @@ def percorsi_a_runtime() -> str:
         parte.stato == radice / "solo-stato" and parte.backup == Path.home() / ".ares" / "backup",
         "ARES_TMP sposta troppo",
     )
-    esigi(isinstance(tutto, Percorsi) and leggi_percorsi({}, cwd=radice).utente == "default", "utente senza default")
+    esigi(isinstance(tutto, Percorsi), "leggi_percorsi non restituisce un Percorsi")
+    esigi(not hasattr(tutto, "utente"), "l'identita' e' ancora un campo dei percorsi")
+    # Nessuno di questi nomi esiste piu': chi ne rimettesse uno solo
+    # ricostruirebbe il canale che nessuna firma lascia vedere.
+    for nome in (
+        "PERCORSI",
+        "TMP_DIR",
+        "DB_FILE",
+        "FS_DB_FILE",
+        "LANCEDB_URI",
+        "BACKUP_DIR",
+        "STATE_LOCK_FILE",
+        "CRONOLOGIA_FILE",
+        "WORKSPACE_DIR",
+        "ARES_HOME",
+        "imposta_percorsi",
+    ):
+        esigi(not hasattr(config, nome), "config espone ancora " + nome + ": e' un canale invisibile")
 
     # Il `.env` resta fuori da `os.environ`: le sue righe arrivano ai nomi di
     # `config`, una variabile gia' nell'ambiente vince, e un sottoprocesso
@@ -1889,21 +1967,7 @@ def percorsi_a_runtime() -> str:
     with patch.object(os, "name", "posix"):
         esigi("ares_minuscolo" in leggi_ambiente(file_env, {}), "su POSIX la chiave cambia")
 
-    prima = config.PERCORSI
-    imposta_percorsi(tutto)
-    try:
-        esigi(tutto.stato == config.TMP_DIR and tutto.db_file == config.DB_FILE, "TMP_DIR e DB_FILE non seguono")
-        esigi(
-            tutto.backup == config.BACKUP_DIR and tutto.lock_file == config.STATE_LOCK_FILE, "backup o lock non seguono"
-        )
-        esigi(
-            tutto.cronologia_file == config.CRONOLOGIA_FILE and radice == config.WORKSPACE_DIR, "cronologia o cartella"
-        )
-        esigi(config.DEFAULT_USER_ID == "prova-percorsi" and casa == config.ARES_HOME, "utente o home non seguono")
-    finally:
-        imposta_percorsi(prima)
-    esigi(prima.stato == config.TMP_DIR and prima.db_file == config.DB_FILE, "i percorsi di prima non tornano")
-    return "letti da un ambiente dato, derivati coerenti, sostituiti e rimessi da una porta sola"
+    return "letti da un ambiente dato, derivati coerenti, nessun nome di modulo che li nasconda"
 
 
 def import_senza_effetti() -> str:
@@ -1925,9 +1989,10 @@ def import_senza_effetti() -> str:
     ambiente["ARES_TMP"] = str(prova / "stato")
     codice = (
         "import os; from ares import config;"
-        "print('dopo-import', os.path.exists(config.TMP_DIR));"
-        "config.prepara_archivio();"
-        "print('dopo-prepara', os.path.exists(config.TMP_DIR))"
+        "p = config.leggi_percorsi();"
+        "print('dopo-import', os.path.exists(p.stato));"
+        "config.prepara_archivio(p);"
+        "print('dopo-prepara', os.path.exists(p.stato))"
     )
     try:
         figlio = subprocess.run(
@@ -1950,8 +2015,8 @@ def import_senza_effetti() -> str:
 def archivio_vero_intatto(prima: list) -> str:
     """La prova non ha letto ne' scritto l'archivio vero."""
     esigi(
-        not config.DB_FILE.startswith(str(config.ARES_HOME / "stato")),
-        "l'archivio della prova coincide con quello vero: " + config.DB_FILE,
+        not PERCORSI.db_file.startswith(str(PERCORSI.home / "stato")),
+        "l'archivio della prova coincide con quello vero: " + PERCORSI.db_file,
     )
     esigi(stato_archivio_reale() == prima, "l'archivio vero e' cambiato durante la prova")
     return str(len(prima)) + " file nello stato vero, invariati"
@@ -1969,7 +2034,7 @@ def main() -> int:
     parser.add_argument("--conserva", action="store_true", help="non cancella l'archivio della prova")
     args = parser.parse_args()
 
-    print("Archivio della prova:", config.DB_FILE)
+    print("Archivio della prova:", PERCORSI.db_file)
     print("Utente:", args.user, "  Sessione:", args.session)
     print()
 
@@ -1977,12 +2042,12 @@ def main() -> int:
     reale_prima = stato_archivio_reale()
 
     try:
-        agent = build_assistant(utente=Utente.da_grezzo(args.user), session_id=args.session)
+        agent = build_assistant(PERCORSI, utente=Utente.da_grezzo(args.user), session_id=args.session)
     except Exception as errore:
         print("FALLITO  costruzione -", type(errore).__name__ + ":", errore)
         return 1
     lm = agent.learning_machine
-    fs = build_filesystem(Utente.da_grezzo(args.user))
+    fs = build_filesystem(PERCORSI, Utente.da_grezzo(args.user))
     print("ok       costruzione - agente costruito in", round(time.monotonic() - avvio, 2), "s")
 
     try:

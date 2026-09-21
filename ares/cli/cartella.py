@@ -25,6 +25,7 @@ from typing import Any
 from ares import config
 from ares.cli.conferma import conferma_scritta, domanda
 from ares.cli.ui import UI
+from ares.config import Percorsi
 from ares.state.stores import prima_domanda, quando_sessione
 
 # Le directory di sistema dove un `workspace_delete` o un `bash -lc` hanno
@@ -34,14 +35,17 @@ _SISTEMA_POSIX = ("/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/var", "/o
 _SISTEMA_WINDOWS = ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")
 
 
-def scegli(percorso: Path | None) -> Path:
+def scegli(percorso: Path | None, percorsi: Percorsi) -> Path:
     """La cartella di lavoro risolta: quella data, o quella da cui si e' partiti.
 
     Una cartella che non esiste e' un errore e non una da creare: qui si
     lavora sui file di un progetto, e un refuso in `--workspace` che crea
     una directory vuota si scoprirebbe al primo file che manca.
+
+    Senza argomento vale `percorsi.lavoro`, cioe' la directory corrente letta
+    da `leggi_percorsi` all'avvio.
     """
-    scelta = (percorso if percorso is not None else config.WORKSPACE_DIR).expanduser()
+    scelta = (percorso if percorso is not None else percorsi.lavoro).expanduser()
     try:
         scelta = scelta.resolve(strict=True)
     except (FileNotFoundError, RuntimeError):
@@ -64,7 +68,7 @@ def _stesso_o_sotto(percorso: Path, radice: Path) -> bool:
         return False
 
 
-def rischi(percorso: Path) -> list[str]:
+def rischi(percorso: Path, percorsi: Percorsi) -> list[str]:
     """I motivi per cui aprire Ares in questa cartella merita un pensiero.
 
     Vuota quasi sempre. Ogni riga e' scritta per essere letta sotto
@@ -82,8 +86,8 @@ def rischi(percorso: Path) -> list[str]:
     if any(_stesso_o_sotto(percorso, d) for d in _sistema()):
         motivi.append("e' una directory di sistema")
     for nome, dentro in (
-        ("lo stato di Ares", config.TMP_DIR),
-        ("i backup di Ares", config.BACKUP_DIR),
+        ("lo stato di Ares", percorsi.stato),
+        ("i backup di Ares", percorsi.backup),
         ("il codice di Ares", config.BASE_DIR),
     ):
         if _stesso_o_sotto(Path(dentro), percorso):
@@ -91,7 +95,7 @@ def rischi(percorso: Path) -> list[str]:
     return motivi
 
 
-def autorizza(percorso: Path, *, esplicito: bool) -> bool:
+def autorizza(percorso: Path, percorsi: Percorsi, *, esplicito: bool) -> bool:
     """Vero se si puo' lavorare qui: subito, o dopo una conferma scritta.
 
     `esplicito` dice che il percorso viene da `--workspace` e non dalla
@@ -99,7 +103,7 @@ def autorizza(percorso: Path, *, esplicito: bool) -> bool:
     puo' rispondere, un percorso rischioso nominato apposta passa con
     l'avviso, uno ereditato dalla shell si rifiuta.
     """
-    motivi = rischi(percorso)
+    motivi = rischi(percorso, percorsi)
     if not motivi:
         return True
     UI.line("Attenzione: la cartella " + str(percorso), style="ares.warning")

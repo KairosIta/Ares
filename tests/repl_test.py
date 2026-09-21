@@ -54,6 +54,11 @@ from rich.console import Console  # noqa: E402
 from rich.text import Text  # noqa: E402
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.agent.turn_core import (  # noqa: E402
     TurnEngine,
     TurnEvent,
@@ -81,6 +86,7 @@ from ares.cli.render import (  # noqa: E402
     righe_scrittura,
 )
 from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
+from ares.config import Percorsi  # noqa: E402
 from ares.state import platform_files  # noqa: E402
 from ares.state.git import ramo_git  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -183,7 +189,7 @@ def conferme_leggibili() -> str:
         tool_name=config.WORKSPACE_PREFIX + "run_command",
         tool_args={"args": comando, "timeout": 120},
     )
-    righe = righe_richiesta(esecuzione, radice=config.WORKSPACE_DIR)
+    righe = righe_richiesta(esecuzione, radice=PERCORSI.lavoro)
     testo = "\n".join(righe)
 
     citato = [r for r in righe if r.strip().startswith("args:")]
@@ -204,7 +210,7 @@ def conferme_leggibili() -> str:
         shlex.split(ricomposto) == comando,
         "la riga ricomposta non torna al comando originale: " + repr(ricomposto),
     )
-    esigi(str(config.WORKSPACE_DIR) in testo, "la conferma non dice in quale directory si esegue")
+    esigi(str(PERCORSI.lavoro) in testo, "la conferma non dice in quale directory si esegue")
     esigi(any("timeout: 120" in r for r in righe), "un argomento semplice non compare")
 
     # Un valore multiriga non deve schiacciarsi su una riga sola.
@@ -265,7 +271,7 @@ def avvertenze_del_comando() -> str:
     che stanno nella directory, altrimenti diventa la riga che si smette di
     leggere.
     """
-    radice = config.WORKSPACE_DIR
+    radice = PERCORSI.lavoro
     avv = render.avvertenze_comando
 
     esigi(avv(["ls", "-la"], radice) == [], "un comando innocuo riceve avvertenze")
@@ -367,16 +373,16 @@ def conferme_applicate() -> str:
         ignorato = RequisitoFinto("interno", da_confermare=False)
         accettato = RequisitoFinto(config.WORKSPACE_PREFIX + "delete_file")
         input_si = InputFinto("sì")
-        risolti = chiedi_conferme(RispostaFinta([ignorato, accettato]), input_si)
+        risolti = chiedi_conferme(RispostaFinta([ignorato, accettato]), input_si, PERCORSI)
         esigi(risolti == 1, "un requisito che non chiede conferma viene contato")
         esigi(accettato.confermato and accettato.rifiutato == "mai", "il sì non conferma il requisito")
         esigi(not ignorato.confermato and ignorato.rifiutato == "mai", "un requisito interno viene modificato")
         esigi(len(ui.richieste) == 1, "la richiesta di autorizzazione non viene mostrata una volta sola")
-        esigi(str(config.WORKSPACE_DIR) in "\n".join(ui.richieste[0]), "la richiesta non mostra la radice")
+        esigi(str(PERCORSI.lavoro) in "\n".join(ui.richieste[0]), "la richiesta non mostra la radice")
 
         rifiutato = RequisitoFinto(config.WORKSPACE_PREFIX + "run_command")
         input_no = InputFinto("no", "comando troppo ampio")
-        risolti = chiedi_conferme(RispostaFinta([rifiutato]), input_no)
+        risolti = chiedi_conferme(RispostaFinta([rifiutato]), input_no, PERCORSI)
         esigi(risolti == 1, "un rifiuto non risolve il requisito")
         esigi(not rifiutato.confermato, "un no conferma comunque il requisito")
         esigi(rifiutato.rifiutato == "comando troppo ampio", "il motivo del rifiuto non arriva al requirement")
@@ -386,11 +392,12 @@ def conferme_applicate() -> str:
         risolti = chiedi_conferme(
             RispostaFinta([interrotto]),
             InputFinto(KeyboardInterrupt(), EOFError()),
+            PERCORSI,
         )
         esigi(risolti == 1, "Ctrl-C lascia irrisolto il requisito")
         esigi(interrotto.rifiutato is None, "Ctrl-C inventa un motivo di rifiuto")
         esigi(ui.righe_vuote == 2, "Ctrl-C/EOF non chiudono pulitamente le due richieste")
-        esigi(chiedi_conferme(RispostaFinta([]), InputFinto()) == 0, "una pausa ignota risulta risolta")
+        esigi(chiedi_conferme(RispostaFinta([]), InputFinto(), PERCORSI) == 0, "una pausa ignota risulta risolta")
     finally:
         render.UI = ui_originale
 
@@ -944,7 +951,7 @@ def log_cli_puliti() -> str:
 
 def cronologia_persistente() -> str:
     """Migrazione, multilinea, concorrenza, permessi e retention."""
-    percorso = config.CRONOLOGIA_FILE
+    percorso = PERCORSI.cronologia_file
     if percorso.exists():
         percorso.unlink()
 
@@ -1196,11 +1203,22 @@ def comandi() -> str:
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
         vive = gestisci_comando(
-            "/pipppo", StatoChat(agent=None, session_id="sessione", utente=Utente.da_grezzo("utente"))
+            "/pipppo",
+            StatoChat(
+                agent=None,
+                session_id="sessione",
+                utente=Utente.da_grezzo("utente"),
+                percorsi=PERCORSI,
+            ),
         )
     esigi(vive is True, "un comando sconosciuto chiude la sessione")
     esigi(catturato.getvalue().strip() != "", "un comando sconosciuto non dice niente")
-    vuoto = StatoChat(agent=None, session_id="sessione", utente=Utente.da_grezzo("utente"))
+    vuoto = StatoChat(
+        agent=None,
+        session_id="sessione",
+        utente=Utente.da_grezzo("utente"),
+        percorsi=PERCORSI,
+    )
     with contextlib.redirect_stdout(io.StringIO()):
         esigi(gestisci_comando("/esci", vuoto) is False, "/esci non chiude")
         esigi(gestisci_comando("/qu", vuoto) is False, "/qu non chiude")
@@ -1241,13 +1259,16 @@ def stato_della_chat() -> str:
 
     modi: list[str] = []
 
-    def costruisci(*, utente: Utente, session_id: str, debug: bool, modo: str) -> AgenteFinto:
+    def costruisci(percorsi: Percorsi, utente: Utente, *, session_id: str, debug: bool, modo: str) -> AgenteFinto:
         costruiti.append((session_id, debug))
         modi.append(modo)
         return AgenteFinto(session_id, debug)
 
     stato = StatoChat(
-        agent=AgenteFinto("principale", False), session_id="principale", utente=Utente.da_grezzo("utente")
+        agent=AgenteFinto("principale", False),
+        session_id="principale",
+        utente=Utente.da_grezzo("utente"),
+        percorsi=PERCORSI,
     )
 
     def comando(riga: str) -> str:
@@ -1351,7 +1372,7 @@ def stato_della_chat() -> str:
 
     stato.agent.db = DbFinto()
     uscita = comando("/esporta")
-    atteso = config.WORKSPACE_DIR / (nome_nuova + ".md")
+    atteso = PERCORSI.lavoro / (nome_nuova + ".md")
     esigi("Esportata" in uscita and atteso.is_file(), "/esporta non scrive il file della sessione: " + repr(uscita))
     esigi(
         letti[-1]["session_id"] == nome_nuova and letti[-1]["user_id"] == "utente", "/esporta legge un'altra sessione"
@@ -1370,7 +1391,7 @@ def stato_della_chat() -> str:
     esigi("- scambi: 2" in testo, "la testata non conta gli scambi")
     uscita = comando("/esporta")
     esigi("esiste gia'" in uscita, "/esporta sovrascrive il file con il nome scelto da Ares")
-    scelto = config.WORKSPACE_DIR / "note.md"
+    scelto = PERCORSI.lavoro / "note.md"
     uscita = comando("/esporta " + str(scelto))
     esigi("Esportata" in uscita and scelto.is_file(), "/esporta <file> non scrive dove chiesto: " + repr(uscita))
     uscita = comando("/esporta " + str(scelto))
@@ -1435,14 +1456,14 @@ def cartella_di_lavoro() -> str:
 
     lavoro = Path.cwd().resolve()
     esigi(lavoro == (RADICE_PROVA / "lavoro").resolve(), "la prova non parte dalla cartella di lavoro: " + str(lavoro))
-    esigi(config.WORKSPACE_DIR.resolve() == lavoro, "config non ha letto la directory corrente")
+    esigi(PERCORSI.lavoro.resolve() == lavoro, "config non ha letto la directory corrente")
 
     # scegli: la corrente, una data, una inesistente, un file.
-    esigi(cartella.scegli(None) == lavoro, "senza argomento non sceglie la directory corrente")
-    esigi(cartella.scegli(RADICE_PROVA) == RADICE_PROVA.resolve(), "un percorso dato non viene risolto")
+    esigi(cartella.scegli(None, PERCORSI) == lavoro, "senza argomento non sceglie la directory corrente")
+    esigi(cartella.scegli(RADICE_PROVA, PERCORSI) == RADICE_PROVA.resolve(), "un percorso dato non viene risolto")
     for sbagliato in (lavoro / "non-esiste", RADICE_PROVA / "stato" / "cronologia_chat.txt"):
         try:
-            cartella.scegli(sbagliato)
+            cartella.scegli(sbagliato, PERCORSI)
         except ValueError as errore:
             esigi("non" in str(errore), "l'errore non dice cosa non va: " + str(errore))
         else:
@@ -1451,20 +1472,26 @@ def cartella_di_lavoro() -> str:
 
     # rischi: dove non ce ne sono, e dove ce ne sono.
     esigi(
-        cartella.rischi(lavoro) == [],
-        "la cartella di lavoro della prova risulta rischiosa: " + repr(cartella.rischi(lavoro)),
+        cartella.rischi(lavoro, PERCORSI) == [],
+        "la cartella di lavoro della prova risulta rischiosa: " + repr(cartella.rischi(lavoro, PERCORSI)),
     )
     radice_disco = Path(lavoro.anchor)
-    esigi(any("radice del disco" in m for m in cartella.rischi(radice_disco)), "la radice del disco non e' rischiosa")
+    esigi(
+        any("radice del disco" in m for m in cartella.rischi(radice_disco, PERCORSI)),
+        "la radice del disco non e' rischiosa",
+    )
     home = Path.home().resolve()
-    esigi(any("home intera" in m for m in cartella.rischi(home)), "la home non e' rischiosa")
+    esigi(any("home intera" in m for m in cartella.rischi(home, PERCORSI)), "la home non e' rischiosa")
     if home.parent != radice_disco:
-        esigi(any("contiene la tua home" in m for m in cartella.rischi(home.parent)), "il padre della home non lo e'")
-    motivi = cartella.rischi(RADICE_PROVA)
+        esigi(
+            any("contiene la tua home" in m for m in cartella.rischi(home.parent, PERCORSI)),
+            "il padre della home non lo e'",
+        )
+    motivi = cartella.rischi(RADICE_PROVA, PERCORSI)
     esigi(any("lo stato di Ares" in m for m in motivi), "la radice con dentro lo stato non lo dice: " + repr(motivi))
     esigi(any("i backup di Ares" in m for m in motivi), "la radice con dentro i backup non lo dice: " + repr(motivi))
     esigi(
-        any("il codice di Ares" in m for m in cartella.rischi(config.BASE_DIR)),
+        any("il codice di Ares" in m for m in cartella.rischi(config.BASE_DIR, PERCORSI)),
         "il clone di Ares non e' segnalato",
     )
 
@@ -1477,7 +1504,7 @@ def cartella_di_lavoro() -> str:
             contextlib.redirect_stdout(fuori),
             contextlib.redirect_stderr(errori),
         ):
-            esito = cartella.autorizza(percorso, esplicito=esplicito)
+            esito = cartella.autorizza(percorso, PERCORSI, esplicito=esplicito)
         return esito, fuori.getvalue(), errori.getvalue()
 
     esito, testo, errore = senza_terminale(lavoro, esplicito=False)
@@ -1508,7 +1535,7 @@ def cartella_di_lavoro() -> str:
     ):
         # Risolto come lo passa la chat: su Windows la temp arriva col nome
         # corto, e la conferma deve chiedere il percorso che poi si apre.
-        esito = cartella.autorizza(RADICE_PROVA.resolve(), esplicito=False)
+        esito = cartella.autorizza(RADICE_PROVA.resolve(), PERCORSI, esplicito=False)
     esigi(
         esito is False and chieste == [str(RADICE_PROVA.resolve())],
         "la conferma non chiede il percorso: " + repr(chieste),
@@ -1718,7 +1745,7 @@ def main() -> int:
     avvio = time.monotonic()
     # La cronologia privata sta nell'archivio, che nella chat esiste perche'
     # `build_assistant` lo prepara prima di aprirla. Qui l'agente non c'e'.
-    config.prepara_archivio()
+    config.prepara_archivio(PERCORSI)
     falliti, non_conclusivi = esegui(
         (
             ("conferme leggibili  ", conferme_leggibili),

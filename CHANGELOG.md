@@ -8,6 +8,26 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **I percorsi viaggiano come parametro, non come nomi di modulo.**
+  `ares/config.py` teneva un `PERCORSI` corrente e le dieci viste che lo
+  nascondevano — `ARES_HOME`, `TMP_DIR`, `DB_FILE`, `FS_DB_FILE`,
+  `LANCEDB_URI`, `BACKUP_DIR`, `STATE_LOCK_FILE`, `CRONOLOGIA_FILE`,
+  `WORKSPACE_DIR` — rilegate insieme da `imposta_percorsi`. Chiunque leggesse
+  lo stato poteva prenderlo da lì, e la chat cambiava cartella di lavoro
+  riassegnando un globale a metà esecuzione: due insiemi di percorsi nello
+  stesso processo erano possibili e indistinguibili. Ora c'è un solo modo di
+  costruirli, `config.leggi_percorsi()`, e sta al confine del processo — i
+  comandi della CLI nel proprio corpo, le prove all'import dopo
+  `prepara_ambiente`. Chi tocca lo stato riceve un `Percorsi` come primo
+  parametro, le facciate iniettate (`OperazioniBackup`, `OperazioniRestore`)
+  lo dichiarano nella firma, e `--workspace` è una sostituzione locale che da
+  lì in poi viaggia come gli altri. Due eccezioni deliberate: `lock_stato`
+  prende un `Path`, perché la migrazione tiene due lock e uno dei due non è un
+  `Percorsi`; `chiedi_conferme` lo prende in coda, perché il resto della firma
+  è ciò che si mostra all'utente. L'identità non è un campo di `Percorsi`: è
+  un asse suo, e viaggia come `Utente` accanto. Nessun comportamento visibile
+  cambia.
+
 - **L'identità dell'utente è un tipo, non una stringa da normalizzare.**
   `utente_canonico` era la regola giusta, ma chiamata in otto punti — la chat,
   il quaderno, le sessioni, il prompt, la manutenzione — e bastava un lettore

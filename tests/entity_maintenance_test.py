@@ -16,6 +16,11 @@ from agno.learn.schemas import EntityMemory  # noqa: E402
 from agno.learn.utils import build_learning_id  # noqa: E402
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.backup.snapshots import elenco_snapshot, verifica_snapshot  # noqa: E402
 from ares.entities.maintenance import (  # noqa: E402
     ErroreManutenzione,
@@ -78,7 +83,7 @@ def indice_entita(db: SqliteDb) -> dict:
 
 
 def main() -> int:
-    db = SqliteDb(db_file=config.DB_FILE)
+    db = SqliteDb(db_file=PERCORSI.db_file)
     try:
         salva(
             db,
@@ -193,7 +198,7 @@ def main() -> int:
         finale = db.get_learnings(learning_type="entity_memory", namespace=NAMESPACE, limit=None)
         esigi(prima == finale, "la CLI di audit ha modificato lo store")
 
-        with lock_stato(esclusivo=True):
+        with lock_stato(PERCORSI.lock_file, esclusivo=True):
             bloccato = subprocess.run(
                 [sys.executable, "-m", "ares.entities", "audit", "--user", UTENTE],
                 cwd=config.BASE_DIR,
@@ -384,7 +389,7 @@ def main() -> int:
             "--into",
             "project/ares_agent",
         ]
-        with lock_stato(esclusivo=False):
+        with lock_stato(PERCORSI.lock_file, esclusivo=False):
             merge_bloccato = subprocess.run(
                 [*base_merge, "--apply"],
                 cwd=config.BASE_DIR,
@@ -396,7 +401,12 @@ def main() -> int:
                 check=False,
             )
         esigi(merge_bloccato.returncode == 3, "la fusione non pretende il lock esclusivo, o non esce con 3")
-        esigi(not elenco_snapshot(), "una fusione bloccata ha creato un backup")
+        esigi(
+            not elenco_snapshot(
+                PERCORSI,
+            ),
+            "una fusione bloccata ha creato un backup",
+        )
 
         anteprima = subprocess.run(
             base_merge,
@@ -412,7 +422,12 @@ def main() -> int:
         esigi("aggiunge: Funziona interamente" in anteprima.stdout, "fatto aggiunto non mostrato")
         esigi("unifica: Assistente locale" in anteprima.stdout, "fatto unificato non mostrato")
         esigi("person/mario_rossi" in anteprima.stdout, "riga relazionale coinvolta non mostrata")
-        esigi(not elenco_snapshot(), "l'anteprima ha creato un backup")
+        esigi(
+            not elenco_snapshot(
+                PERCORSI,
+            ),
+            "l'anteprima ha creato un backup",
+        )
         esigi(
             db.get_learnings(learning_type="entity_memory", namespace=NAMESPACE, limit=None) == prima_fusione,
             "l'anteprima CLI ha modificato lo store",
@@ -429,7 +444,12 @@ def main() -> int:
             check=False,
         )
         esigi(annullata.returncode == 2, "conferma sbagliata non annulla la fusione con 2")
-        esigi(not elenco_snapshot(), "una fusione annullata ha creato un backup")
+        esigi(
+            not elenco_snapshot(
+                PERCORSI,
+            ),
+            "una fusione annullata ha creato un backup",
+        )
 
         # Il secondo UPDATE contiene un set, non serializzabile come JSON: il
         # primo UPDATE viene eseguito, il secondo fallisce e SQLAlchemy deve
@@ -512,9 +532,11 @@ def main() -> int:
             "reciproca monitors non ricostruita",
         )
 
-        snapshot = elenco_snapshot()
+        snapshot = elenco_snapshot(
+            PERCORSI,
+        )
         esigi(len(snapshot) == 1, "la fusione non ha creato un solo backup")
-        manifest = verifica_snapshot(snapshot[0], percorso_diretto=True)
+        manifest = verifica_snapshot(PERCORSI, snapshot[0], percorso_diretto=True)
         esigi(manifest.get("type") == "pre-merge", "snapshot non marcato pre-merge")
         db_backup = SqliteDb(db_file=str(snapshot[0] / "kairos.db"))
         esigi(

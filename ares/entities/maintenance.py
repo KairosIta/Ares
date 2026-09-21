@@ -28,6 +28,7 @@ from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.cli.comando import ESITO_RIFIUTO, esegui_protetto, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI
+from ares.config import Percorsi
 from ares.entities.audit import (
     PAROLE_COMUNI,
     SOGLIA_CONTENUTO_SIMILE,
@@ -214,11 +215,13 @@ def stampa_piano(piano: PianoFusione) -> None:
     UI.line("La sorgente sara' eliminata dopo un backup verificato; il canonico restera' attivo.", style="ares.muted")
 
 
-def _esegui_audit(user: str, mostra_tutte: bool, tutte_le_coppie: bool, come_json: bool = False) -> int:
+def _esegui_audit(
+    percorsi: Percorsi, user: str, mostra_tutte: bool, tutte_le_coppie: bool, come_json: bool = False
+) -> int:
     # Il confine dell'identita': l'opzione arriva come stringa e da qui in
     # poi e' un `Utente`, che il namespace non deve piu' normalizzare.
     utente = Utente.da_grezzo(user)
-    percorso = Path(config.DB_FILE)
+    percorso = Path(percorsi.db_file)
     namespace = namespace_entita(utente)
     if not percorso.is_file():
         if come_json:
@@ -230,7 +233,7 @@ def _esegui_audit(user: str, mostra_tutte: bool, tutte_le_coppie: bool, come_jso
     # Dopo il controllo e non prima: se l'archivio non c'e' questo comando lo
     # dice e basta, non lo crea. Se c'e', la directory esiste gia' e la
     # chiamata serve a correggerne i permessi su un clone piu' vecchio.
-    config.prepara_archivio()
+    config.prepara_archivio(percorsi)
     db = SqliteDb(db_file=str(percorso))
     esito = analizza(db=db, namespace=namespace, includi_tutte_le_coppie=tutte_le_coppie)
     if come_json:
@@ -240,13 +243,13 @@ def _esegui_audit(user: str, mostra_tutte: bool, tutte_le_coppie: bool, come_jso
     return 0
 
 
-def _esegui_merge(user: str, source: str, canonical: str, applica: bool) -> int:
+def _esegui_merge(percorsi: Percorsi, user: str, source: str, canonical: str, applica: bool) -> int:
     utente = Utente.da_grezzo(user)
-    percorso = Path(config.DB_FILE)
+    percorso = Path(percorsi.db_file)
     if not percorso.is_file():
         raise ErroreManutenzione("nessun archivio di Ares trovato in " + str(percorso))
 
-    config.prepara_archivio()
+    config.prepara_archivio(percorsi)
     namespace = namespace_entita(utente)
     db = SqliteDb(db_file=str(percorso))
     entita, ignorate = carica_entita(db=db, namespace=namespace)
@@ -270,7 +273,7 @@ def _esegui_merge(user: str, source: str, canonical: str, applica: bool) -> int:
         UI.line("Conferma non corrispondente: fusione annullata.", style="ares.warning")
         return ESITO_RIFIUTO
 
-    snapshot = crea_snapshot(tipo="pre-merge", acquisisci_lock=False)
+    snapshot = crea_snapshot(percorsi, tipo="pre-merge", acquisisci_lock=False)
     UI.pair("Backup verificato", snapshot.name)
     try:
         applica_piano(db=db, piano=piano)
@@ -302,7 +305,10 @@ def audit(
         tutte_le_coppie: mostra anche ogni coppia dello stesso tipo priva di indizi automatici.
         come_json: stampa inventario e candidati come JSON, per gli script.
     """
-    return _esegui(lambda: _esegui_audit(user, mostra_tutte, tutte_le_coppie, come_json), esclusivo=False)
+    percorsi = config.leggi_percorsi()
+    return _esegui(
+        percorsi, lambda: _esegui_audit(percorsi, user, mostra_tutte, tutte_le_coppie, come_json), esclusivo=False
+    )
 
 
 @app.command
@@ -321,11 +327,14 @@ def merge(
         user: utente proprietario delle entita'.
         apply: dopo l'anteprima chiede conferma, crea un backup e applica la fusione.
     """
-    return _esegui(lambda: _esegui_merge(user, source, canonical, apply), esclusivo=apply)
+    percorsi = config.leggi_percorsi()
+    return _esegui(percorsi, lambda: _esegui_merge(percorsi, user, source, canonical, apply), esclusivo=apply)
 
 
-def _esegui(azione: Callable[[], int], *, esclusivo: bool) -> int:
-    return esegui_protetto(azione, esclusivo=esclusivo, rifiuti=(ErroreManutenzione, ErroreBackup, UtenteNonValido))
+def _esegui(percorsi: Percorsi, azione: Callable[[], int], *, esclusivo: bool) -> int:
+    return esegui_protetto(
+        percorsi, azione, esclusivo=esclusivo, rifiuti=(ErroreManutenzione, ErroreBackup, UtenteNonValido)
+    )
 
 
 def main(argv: Iterable[str] | None = None) -> int:

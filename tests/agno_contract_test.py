@@ -78,6 +78,11 @@ from agno.models.message import Message, MessageMetrics  # noqa: E402
 from agno.models.response import ModelResponse  # noqa: E402
 
 from ares import config  # noqa: E402
+
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
+# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
+# e li passa a chi ne ha bisogno.
+PERCORSI = config.leggi_percorsi()
 from ares.agent.assistant import build_assistant  # noqa: E402
 from ares.agent.learning import build_session_context_store  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
@@ -229,7 +234,7 @@ class ContatoreEstrazioni:
 
 
 def agente():
-    costruito = build_assistant(utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
+    costruito = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
     costruito.model = ModelloScript(copione_cancellazione())
     return costruito
 
@@ -254,7 +259,7 @@ def contenuti_tool(messaggi) -> list[str]:
 def estrazione_singola() -> str:
     """Un turno con pausa produce una sola estrazione, sul run completo."""
     agent = agente()
-    file = config.WORKSPACE_DIR / NOME_FILE
+    file = PERCORSI.lavoro / NOME_FILE
     with ContatoreEstrazioni(agent.learning_machine) as contatore:
         cliente, risposta = turno(agent, "conferma", file)
     esigi(risposta is not None and not risposta.is_paused, "il turno non e' arrivato in fondo")
@@ -294,7 +299,7 @@ def estrazione_singola() -> str:
 def ciclo_hitl() -> str:
     """`run -> pausa -> continue_run` sullo stesso run, con conferma e con rifiuto."""
     agent = agente()
-    file = config.WORKSPACE_DIR / NOME_FILE
+    file = PERCORSI.lavoro / NOME_FILE
 
     cliente, risposta = turno(agent, "conferma", file)
     esigi(risposta is not None and not risposta.is_paused, "il run confermato e' ancora in pausa")
@@ -382,7 +387,12 @@ MESSAGGI_CONTESTO = [
 
 
 def store_contesto(riesce_ai: set[int]):
-    return build_session_context_store(build_db(), ModelloContesto(riesce_ai))
+    return build_session_context_store(
+        build_db(
+            PERCORSI,
+        ),
+        ModelloContesto(riesce_ai),
+    )
 
 
 def contesto_riprova() -> str:

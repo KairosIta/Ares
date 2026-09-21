@@ -10,22 +10,21 @@ Uso:
 Ogni prova resta uno script eseguibile da solo: questo file non le importa,
 le lancia. Non e' una preferenza di stile. Ognuna prepara il proprio ambiente
 scrivendo `ARES_TMP` e `ARES_BACKUP_DIR` ed entrando nella propria cartella
-di lavoro *prima* di importare `config`, che all'import lega i propri nomi -
-`TMP_DIR`, `DB_FILE`, `BACKUP_DIR` e gli altri - ai percorsi letti in
-quell'istante.
+di lavoro *prima* di importare `config`, che all'import fotografa l'ambiente
+in cui e' nato - `AMBIENTE` e' quel dizionario, e non cambia piu'.
 
-Quei nomi non sono piu' decisi per sempre: `config.imposta_percorsi` li
-sostituisce tutti insieme a processo avviato, e una prova puo' percio'
-costruire i propri percorsi nello stesso interprete. Il processo separato
-resta comunque, perche' la sostituzione riguarda i nomi e non cio' che li ha
-gia' letti: un lock aperto, uno store costruito, un percorso copiato in una
-variabile. Due prove nello stesso interprete condividerebbero il primo
-`config` importato, cioe' i percorsi della prima: la seconda scriverebbe dove
-ha preparato la prima, e il giorno in cui una delle due sbagliasse variabile
-scriverebbe nell'archivio vero senza che nessuno se ne accorga. Un processo
-per prova rende quell'errore impossibile invece che improbabile, ed e' anche
-il motivo per cui `prepara_ambiente` si rifiuta di scegliere i percorsi se
-`ares.config` e' gia' in memoria.
+I percorsi si derivano da quella fotografia a ogni `config.leggi_percorsi()`,
+e nessun nome di modulo li tiene: chi legge lo stato se li vede passare come
+primo parametro. Il processo separato resta comunque, perche' cio' che conta
+non e' solo dove si legge ma cosa e' gia' aperto: un lock, uno store, un
+percorso copiato in una variabile non si rileggono. Due prove nello stesso
+interprete condividerebbero la prima fotografia dell'ambiente, cioe' i
+percorsi della prima: la seconda scriverebbe dove ha preparato la prima, e il
+giorno in cui una delle due sbagliasse variabile scriverebbe nell'archivio
+vero senza che nessuno se ne accorga. Un processo per prova rende quell'errore
+impossibile invece che improbabile, ed e' anche il motivo per cui
+`prepara_ambiente` si rifiuta di scegliere i percorsi se `ares.config` e' gia'
+in memoria.
 
 Per lo stesso motivo la misura di copertura gira in modalita' parallela: un
 file per processo, uniti da `coverage combine` alla fine. La configurazione

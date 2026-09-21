@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from ares import config
 from ares.backup import files, integrity
+from ares.config import Percorsi
 from ares.state.lock import lock_stato
 from ares.state.platform_files import rendi_privato
 
@@ -24,19 +24,20 @@ _rinomina_directory = files.rinomina_directory_nuova
 class OperazioniRestore:
     """Operazioni della façade richieste dal restore, iniettate senza cicli."""
 
-    crea_snapshot_senza_lock: Callable[[str], Path]
-    risolvi_snapshot: Callable[[str], Path]
-    stato_presente: Callable[[], bool]
-    verifica_snapshot: Callable[[Any, bool], dict[str, Any]]
+    crea_snapshot_senza_lock: Callable[[Percorsi, str], Path]
+    risolvi_snapshot: Callable[[Percorsi, str], Path]
+    stato_presente: Callable[[Percorsi], bool]
+    verifica_snapshot: Callable[[Percorsi, Any, bool], dict[str, Any]]
 
 
-def _prepara_restore(snapshot: Path, manifest: dict[str, Any]) -> Path:
-    parent = config.TMP_DIR.resolve().parent
+def _prepara_restore(percorsi: Percorsi, snapshot: Path, manifest: dict[str, Any]) -> Path:
+    stato = percorsi.stato.resolve()
+    parent = stato.parent
     parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix="." + config.TMP_DIR.name + "-restore-", dir=parent))
+    staging = Path(tempfile.mkdtemp(prefix="." + stato.name + "-restore-", dir=parent))
     rendi_privato(staging)
     componenti = manifest.get("components") or {}
-    cronologia = config.CRONOLOGIA_FILE.name
+    cronologia = percorsi.cronologia_file.name
     try:
         for nome in integrity.DATABASE:
             if componenti.get(nome):
@@ -48,7 +49,7 @@ def _prepara_restore(snapshot: Path, manifest: dict[str, Any]) -> Path:
         # il senso dell'operazione, riavvolgere cio' che l'utente ha digitato
         # no. Quella dello snapshot serve al caso per cui esiste un backup:
         # tmp/ persa, e allora non c'e' niente da conservare.
-        viva = config.TMP_DIR / cronologia
+        viva = percorsi.stato / cronologia
         if viva.is_file():
             shutil.copy2(viva, staging / cronologia)
         elif componenti.get(cronologia):
@@ -118,20 +119,21 @@ def _installa_restore_per_copia(staging: Path, destinazione: Path, precedente: P
 
 
 def ripristina_snapshot(
+    percorsi: Percorsi,
     nome: str,
     snapshot_sicurezza: bool,
     operazioni: OperazioniRestore,
 ) -> Path | None:
     """Ripristina uno snapshot verificato e ritorna l'eventuale pre-restore."""
-    with lock_stato(esclusivo=True):
-        snapshot = operazioni.risolvi_snapshot(nome)
-        manifest = operazioni.verifica_snapshot(snapshot, True)
+    with lock_stato(percorsi.lock_file, esclusivo=True):
+        snapshot = operazioni.risolvi_snapshot(percorsi, nome)
+        manifest = operazioni.verifica_snapshot(percorsi, snapshot, True)
         sicurezza = None
-        if snapshot_sicurezza and operazioni.stato_presente():
-            sicurezza = operazioni.crea_snapshot_senza_lock("pre-restore")
+        if snapshot_sicurezza and operazioni.stato_presente(percorsi):
+            sicurezza = operazioni.crea_snapshot_senza_lock(percorsi, "pre-restore")
 
-        staging = _prepara_restore(snapshot, manifest)
-        destinazione = config.TMP_DIR.resolve()
+        staging = _prepara_restore(percorsi, snapshot, manifest)
+        destinazione = percorsi.stato.resolve()
         precedente = destinazione.with_name("." + destinazione.name + "-precedente-" + uuid4().hex)
         if os.name == "nt":
             # Windows puo' rifiutare il rename di directory LanceDB non vuote

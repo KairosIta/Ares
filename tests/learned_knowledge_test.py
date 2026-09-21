@@ -80,7 +80,7 @@ from ares.state.identita import Utente
 from ares.state.stores import leggi_intuizioni
 
 utente, sessione, query = sys.argv[1:4]
-lm = build_assistant(utente=Utente.da_grezzo(utente), session_id=sessione).learning_machine
+lm = build_assistant(config.leggi_percorsi(), Utente.da_grezzo(utente), session_id=sessione).learning_machine
 risultati = leggi_intuizioni(lm, Utente.da_grezzo(utente), query=query, limit=20)
 dati = [
     {
@@ -164,7 +164,7 @@ def modelli_pronti() -> tuple[bool, str]:
 
 
 def prova_store() -> None:
-    agente = build_assistant(utente=Utente.da_grezzo(UTENTE_STORE), session_id="store")
+    agente = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_STORE), session_id="store")
     lm = agente.learning_machine
     esigi(lm is not None, "LearningMachine assente")
     strumenti = strumenti_learning(lm, UTENTE_STORE, "store")
@@ -202,7 +202,7 @@ def prova_store() -> None:
     esigi(MARCATORE_STORE in testo_intuizione(risultati[0]), "il risultato non e' quello salvato")
     ok("ricerca", "contenuto strutturato ricostruito dalla ricerca ibrida")
 
-    altro = build_assistant(utente=Utente.da_grezzo(UTENTE_ALTRO), session_id="isolamento").learning_machine
+    altro = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_ALTRO), session_id="isolamento").learning_machine
     esigi(altro is not None, "LearningMachine del secondo utente assente")
     esigi(not cerca(altro, UTENTE_ALTRO, MARCATORE_STORE), "il secondo utente vede l'intuizione privata")
     ok("namespace", UTENTE_ALTRO + " non vede " + UTENTE_STORE)
@@ -214,7 +214,7 @@ def prova_store() -> None:
 
 
 def prova_agente() -> None:
-    agente = build_assistant(utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_SALVATAGGIO)
+    agente = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_SALVATAGGIO)
     avvio = time.monotonic()
     risposta = agente.run(PROMPT_SALVATAGGIO)
     durata = round(time.monotonic() - avvio, 1)
@@ -246,7 +246,7 @@ def prova_agente() -> None:
     esigi(len(presenti) >= 4, "intuizione non riconoscibile come italiana e completa: " + contenuto)
     ok("contenuto", "richiesta inglese, intuizione italiana: " + ", ".join(sorted(presenti)))
 
-    nuovo = build_assistant(utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_RIUSO)
+    nuovo = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_RIUSO)
     avvio = time.monotonic()
     riuso = nuovo.run(PROMPT_RIUSO)
     durata = round(time.monotonic() - avvio, 1)
@@ -267,15 +267,15 @@ def prova_agente() -> None:
 def prova_backup() -> None:
     from ares.backup.snapshots import crea_snapshot, ripristina_snapshot, verifica_snapshot
 
-    snapshot = crea_snapshot()
-    manifest = verifica_snapshot(snapshot, percorso_diretto=True)
+    snapshot = crea_snapshot(PERCORSI)
+    manifest = verifica_snapshot(PERCORSI, snapshot, percorso_diretto=True)
     tabelle = manifest.get("components", {}).get("lancedb", {}).get("tables", {})
     esigi(tabelle.get("learned_knowledge", 0) >= 2, "lo snapshot non contiene le intuizioni")
     ok("backup", snapshot.name + " verificato con " + str(tabelle["learned_knowledge"]) + " righe")
 
     shutil.rmtree(RADICE_STATO)
     RADICE_STATO.mkdir(parents=True)
-    ripristina_snapshot(snapshot.name, snapshot_sicurezza=False)
+    ripristina_snapshot(PERCORSI, snapshot.name, snapshot_sicurezza=False)
     riletti = rileggi_in_processo_nuovo(UTENTE_AGENTE, "dopo-restore", MARCATORE_AGENTE)
     esigi(len(riletti) == 1, "l'intuizione non sopravvive al restore")
     ok("restore", "intuizione di Ares riletta dopo il ripristino")
@@ -286,10 +286,10 @@ def main(args) -> int:
     print("Backup temporaneo:", RADICE_BACKUP)
     print()
 
-    reale_prima = fotografia(config.ARES_HOME / "stato")
+    reale_prima = fotografia(PERCORSI.home / "stato")
     avvio = time.monotonic()
     try:
-        esigi(RADICE_STATO != config.ARES_HOME / "stato", "la prova punta allo stato reale")
+        esigi(PERCORSI.home / "stato" != RADICE_STATO, "la prova punta allo stato reale")
         try:
             pronti, dettaglio = modelli_pronti()
         except (urllib.error.URLError, OSError) as errore:
@@ -307,7 +307,7 @@ def main(args) -> int:
         prova_store()
         prova_agente()
         prova_backup()
-        esigi(fotografia(config.ARES_HOME / "stato") == reale_prima, "lo stato reale e' cambiato durante la prova")
+        esigi(fotografia(PERCORSI.home / "stato") == reale_prima, "lo stato reale e' cambiato durante la prova")
         ok("stato reale", str(len(reale_prima)) + " file invariati")
     except Exception as errore:
         fallimento(errore)
@@ -337,6 +337,10 @@ if __name__ == "__main__":
     RADICE_BACKUP = RADICE_PROVA / "backup"
 
     from ares import config
+
+    # I percorsi della prova: `config` non tiene piu' nomi propri, e le
+    # funzioni qui sopra li leggono da questo globale di modulo.
+    PERCORSI = config.leggi_percorsi()
 
     # Isoliamo learned_knowledge: nessuna estrazione ALWAYS, nessun altro
     # strumento agentico e nessun workspace durante i due turni reali.

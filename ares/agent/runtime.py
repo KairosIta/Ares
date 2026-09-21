@@ -10,6 +10,7 @@ from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 
 from ares import config
+from ares.config import Percorsi
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
 
@@ -75,15 +76,15 @@ def build_learning_model() -> Ollama:
     )
 
 
-def build_knowledge() -> Knowledge:
+def build_knowledge(percorsi: Percorsi) -> Knowledge:
     """Indice vettoriale locale delle intuizioni apprese."""
-    config.prepara_archivio()
-    indice = Path(config.LANCEDB_URI)
+    config.prepara_archivio(percorsi)
+    indice = Path(percorsi.lancedb_uri)
     indice.mkdir(parents=True, exist_ok=True)
     rendi_privato(indice)
     return Knowledge(
         vector_db=LanceDb(
-            uri=config.LANCEDB_URI,
+            uri=percorsi.lancedb_uri,
             table_name="learned_knowledge",
             search_type=SearchType.hybrid,
             embedder=OllamaEmbedder(
@@ -114,7 +115,7 @@ class AresWorkspace(Workspace):
         self.add_instructions = False
 
 
-def build_workspace(modo: str | None = None) -> AresWorkspace:
+def build_workspace(percorsi: Percorsi, modo: str | None = None) -> AresWorkspace:
     """Costruisce lo spazio di lavoro sulla cartella scelta all'avvio, nella modalita' data.
 
     `modo` vuoto vale `config.MODO_PREDEFINITO`, letto adesso e non alla
@@ -127,7 +128,7 @@ def build_workspace(modo: str | None = None) -> AresWorkspace:
     l'utente. Qui si pretende soltanto che esista: crearla vorrebbe dire
     lavorare in una directory vuota nata da un refuso.
     """
-    radice = config.WORKSPACE_DIR.resolve()
+    radice = percorsi.lavoro.resolve()
     if not radice.is_dir():
         raise ValueError("La cartella di lavoro " + str(radice) + " non esiste.")
     silenziosi, confermati = config.liste_modalita(modo or config.MODO_PREDEFINITO)
