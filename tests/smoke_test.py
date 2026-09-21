@@ -2110,7 +2110,17 @@ def impostazioni_a_runtime() -> str:
         "Solo l'embedding resta locale" in " ".join(entrambi.avviso_cloud()),
         "con due ruoli cloud non resta solo l'embedding",
     )
-    esigi("ollama.com" in prompts.descrizione(mia), "la descrizione non segue le impostazioni ricevute")
+    # La descrizione segue le impostazioni in entrambe le direzioni. Si
+    # guarda cosa attraversa - un servizio remoto, o niente - e non il
+    # dominio: un confronto su una sottostringa non direbbe nulla di piu'.
+    esigi(
+        "servizio remoto" in prompts.descrizione(mia) and "esce di qui" not in prompts.descrizione(mia),
+        "con la conversazione cloud la descrizione non parla di servizio remoto",
+    )
+    esigi(
+        "esce di qui" in prompts.descrizione(locale),
+        "con modelli locali la descrizione non promette che nulla esce",
+    )
 
     # Nessuna firma deve piu' fotografare `MODO_PREDEFINITO` all'import: chi lo
     # cambia dopo deve essere ascoltato, come lo e' gia' in build_workspace.
