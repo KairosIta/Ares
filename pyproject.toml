@@ -80,7 +80,7 @@ dependencies = [
     # funzioni, disegna l'aiuto con Rich e genera il completamento della
     # shell. Sostituisce sei ArgumentParser scritti a mano. Non porta Click.
     # Il pavimento e' la versione con cui l'aiuto e' stato disegnato.
-    "cyclopts>=4.24.0",
+    "cyclopts>=4.25.3",
     # Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
     # aggiunge pywin32 solo su Windows, dove serve per conservare i lock
     # condivisi usati dalle chat concorrenti.
