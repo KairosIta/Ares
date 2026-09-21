@@ -34,7 +34,7 @@ from ares.sessions.retention import (
     trova_sessione,
 )
 from ares.state.archivi import build_db
-from ares.state.identita import UtenteNonValido, utente_canonico
+from ares.state.identita import Utente, UtenteNonValido
 
 app = nuova_app("sessions", "Retention delle sessioni e dei risultati tool di Ares")
 
@@ -77,23 +77,27 @@ def _dati_sessione(sessione: SessioneRetention) -> dict[str, Any]:
     }
 
 
-def _stato(user_id: str, come_json: bool) -> int:
-    user_id = utente_canonico(user_id)
+def _stato(user: str, come_json: bool) -> int:
+    # Il confine: da qui in poi l'identita' e' un `Utente`, e nessun passo
+    # successivo puo' riportare in giro la grafia scritta sulla riga di
+    # comando. Un id invalido solleva `UtenteNonValido`, che `_esegui` sa
+    # tradurre in un rifiuto leggibile.
+    utente = Utente.da_grezzo(user)
     db = build_db()
-    sessioni = inventario(db, user_id)
+    sessioni = inventario(db, utente)
     offload = sum(s.offload_count for s in sessioni)
     payload = sum(s.offload_bytes for s in sessioni)
     if come_json:
         UI.json(
             {
-                "user": user_id,
+                "user": utente.id,
                 "sessions": [_dati_sessione(s) for s in sessioni],
                 "offload_count": offload,
                 "offload_bytes": payload,
             }
         )
         return 0
-    UI.pair("Utente", user_id)
+    UI.pair("Utente", utente.id)
     UI.pair("Sessioni", len(sessioni))
     UI.pair("Offload indicizzati", offload)
     UI.pair("Payload logici", byte_leggibili(payload))
@@ -110,16 +114,16 @@ def _confermata(numero: int, yes: bool) -> bool:
     return conferma_scritta(frase)
 
 
-def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> int:
+def _applica(utente: Utente, sessioni: Sequence[SessioneRetention], yes: bool) -> int:
     if not _confermata(len(sessioni), yes):
         UI.line("Cancellazione annullata.", style="ares.warning")
         return ESITO_RIFIUTO
     snapshot = crea_snapshot(tipo="pre-session-prune", acquisisci_lock=False)
     UI.pair("Backup verificato", snapshot.name)
     comando = config.comando_ares("backup", "restore", snapshot.name)
-    db, store = apri_archivio(user_id)
+    db, store = apri_archivio(utente)
     try:
-        eliminate = elimina_sessioni(db, store, sessioni, user_id)
+        eliminate = elimina_sessioni(db, store, sessioni, utente)
     except StatoParziale as errore:
         # Non e' un rifiuto: qualcosa e' gia' stato cancellato. Il rendiconto
         # dice cosa, e lo snapshot appena fatto e' il punto da cui si torna
@@ -148,11 +152,11 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
 
 
 def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bool) -> int:
-    user = utente_canonico(user)
+    utente = Utente.da_grezzo(user)
     db = build_db()
     protette = set(config.SESSIONI_PROTETTE) | set(keep)
     candidate = seleziona_inattive(
-        inventario(db, user),
+        inventario(db, utente),
         giorni=older_than,
         protette=protette,
     )
@@ -166,13 +170,13 @@ def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bo
     if not apply:
         _anteprima()
         return 0
-    return _applica(user, candidate, yes)
+    return _applica(utente, candidate, yes)
 
 
 def _delete(user: str, session_id: str, apply: bool, yes: bool) -> int:
-    user = utente_canonico(user)
+    utente = Utente.da_grezzo(user)
     db = build_db()
-    sessione = trova_sessione(inventario(db, user), session_id)
+    sessione = trova_sessione(inventario(db, utente), session_id)
     UI.line("Sessione da eliminare:", style="ares.warning")
     _tabella_sessioni([sessione])
     if sessione.session_id in config.SESSIONI_PROTETTE:
@@ -183,7 +187,7 @@ def _delete(user: str, session_id: str, apply: bool, yes: bool) -> int:
     if not apply:
         _anteprima()
         return 0
-    return _applica(user, [sessione], yes)
+    return _applica(utente, [sessione], yes)
 
 
 def _anteprima() -> None:
@@ -235,7 +239,7 @@ def status(*, user: str = config.DEFAULT_USER_ID, come_json: Annotated[bool, Par
         # usa la forma canonica quando l'id ne ha una, la stessa che `_stato`
         # userebbe con l'archivio presente.
         try:
-            chi = utente_canonico(user)
+            chi = Utente.da_grezzo(user).id
         except UtenteNonValido:
             chi = user
         if come_json:

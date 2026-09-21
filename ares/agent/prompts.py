@@ -12,7 +12,7 @@ from typing import Any
 
 from ares import config
 from ares.state.git import ramo_git
-from ares.state.identita import utente_canonico
+from ares.state.identita import Utente
 
 # Gli alias di `Workspace` di Agno con il nome dello strumento che generano,
 # senza prefisso, e il verbo con cui il modello li legge. Le due liste di
@@ -113,7 +113,7 @@ def descrizione(*, interattivo: bool = True) -> str:
 
 def istruzioni_sull_ambiente(
     *,
-    user_id: str,
+    utente: Utente,
     session_id: str,
     radice_lavoro=None,
     modo: str = config.MODO_PREDEFINITO,
@@ -156,7 +156,7 @@ def istruzioni_sull_ambiente(
         + ", shell "
         + sistema
         + ". I comandi che lanci girano con i permessi dell'utente, senza sandbox.",
-        "- Utente: " + user_id + ". Conversazione: " + session_id + "." + dove,
+        "- Utente: " + utente.id + ". Conversazione: " + session_id + "." + dove,
     ]
     if interattivo and any((config.LEARN_USER_PROFILE, config.LEARN_USER_MEMORY, config.LEARN_SESSION_CONTEXT)):
         righe.append(
@@ -465,7 +465,7 @@ def istruzioni_dalla_cartella(radice_lavoro) -> list[str]:
     return [intestazione + testo + "\n--- fine di " + config.WORKSPACE_ISTRUZIONI + " ---"]
 
 
-def messaggio_di_sistema(agent: Any, *, session_id: str, user_id: str) -> str:
+def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
     """Il system message che Agno manderebbe al modello per un turno, verbatim.
 
     Non basta leggere `description` e `instructions`: Agno aggiunge da se' le
@@ -488,10 +488,11 @@ def messaggio_di_sistema(agent: Any, *, session_id: str, user_id: str) -> str:
     from agno.run.agent import RunOutput
     from agno.session import AgentSession
 
-    # La sessione si cerca con la stessa chiave con cui e' stata scritta: un
-    # `--user Demo` che qui restasse grezzo non troverebbe la sessione di
-    # `demo` e comporrebbe un prompt per una conversazione vuota.
-    user_id = utente_canonico(user_id)
+    # La sessione si cerca con la stessa chiave con cui e' stata scritta, ed
+    # e' quella canonica che porta il tipo: un `--user Demo` e' gia' stato
+    # risolto a monte, quindi qui non esiste una seconda grafia con cui
+    # cercare e non si puo' comporre il prompt di una conversazione vuota.
+    user_id = utente.id
     agent.initialize_agent()
     sessione = agent.get_session(session_id=session_id, user_id=user_id) or AgentSession(
         session_id=session_id,

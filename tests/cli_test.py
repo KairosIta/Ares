@@ -55,7 +55,7 @@ from ares.cli import cartella, chat  # noqa: E402
 from ares.cli.ui import UI  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
-from ares.state.identita import UtenteNonValido, utente_canonico  # noqa: E402
+from ares.state.identita import Utente, UtenteNonValido, utente_canonico  # noqa: E402
 from ares.state.lock import StatoOccupato, lock_stato, lock_turno  # noqa: E402
 from ares.state.stores import namespace_entita, namespace_utente  # noqa: E402
 
@@ -147,9 +147,11 @@ COSTRUZIONE = """
 import sys
 
 from ares.agent.assistant import build_assistant, build_filesystem
+from ares.state.identita import Utente
 
-build_assistant(user_id=sys.argv[1], session_id=sys.argv[2])
-build_filesystem(sys.argv[1]).write(sys.argv[3], sys.argv[4])
+utente = Utente.da_grezzo(sys.argv[1])
+build_assistant(utente=utente, session_id=sys.argv[2])
+build_filesystem(utente).write(sys.argv[3], sys.argv[4])
 """
 
 
@@ -201,51 +203,64 @@ def costruisci_archivio() -> str:
 
 COSTRUZIONE_AGENTE = """
 from ares.agent.assistant import build_assistant
+from ares.state.identita import Utente
 
-agente = build_assistant(user_id="  Demo  ", session_id="identita")
+agente = build_assistant(utente=Utente.da_grezzo("  Demo  "), session_id="identita")
 print(agente.user_id)
 """
 
 
 def identita_canonica() -> str:
-    """Una sola forma dell'utente per namespace, entita' e lock.
+    """Una sola forma dell'utente per namespace, entita', lock e profilo.
 
     Riproduce il difetto del `core-contract`: `Demo` e `demo` erano la stessa
     persona per il namespace - che minuscolizza - e due per il lock. Qui si
-    pretende che namespace, entita' e lock dicano la stessa cosa, e che un id
-    vuoto sia rifiutato invece di diventare un contenitore condiviso.
+    pretende che namespace, entita' e lock dicano la stessa cosa, che un id
+    fuori alfabeto sia rifiutato invece di diventare un contenitore
+    condiviso, e che una scrittura non canonica non possa nemmeno diventare
+    una identita': e' la garanzia che il tipo aggiunge alla regola.
     """
     esigi(utente_canonico("  Kairos ") == "kairos", "spazi e maiuscole non normalizzati")
+    demo = Utente.da_grezzo("Demo")
+    stessa = Utente.da_grezzo("demo")
+    esigi(demo == stessa, "due grafie non danno lo stesso utente")
+    esigi(demo.id == "demo" and str(demo) == "demo", "l'id canonico non e' quello atteso: " + repr(demo.id))
     esigi(
-        namespace_utente("Demo") == namespace_utente("demo") == "user/demo",
-        "il namespace non usa la forma canonica: " + repr(namespace_utente("Demo")),
+        namespace_utente(demo) == namespace_utente(stessa) == "user/demo",
+        "il namespace non usa la forma canonica: " + repr(namespace_utente(demo)),
     )
-    esigi(namespace_entita("Demo") == namespace_entita("demo"), "le entita' non seguono la stessa identita'")
+    esigi(namespace_entita(demo) == namespace_entita(stessa), "le entita' non seguono la stessa identita'")
 
-    try:
-        utente_canonico("   ")
-    except UtenteNonValido:
-        pass
-    else:
-        esigi(False, "un id utente vuoto non e' rifiutato")
+    # Il tipo non ammette una forma non canonica, e `da_grezzo` e' l'unica
+    # porta: una grafia sporca che arrivasse a uno store scriverebbe in un
+    # contenitore che nessun lettore canonico interroga, ed e' esattamente il
+    # modo in cui l'archivio si sdoppia senza un errore.
+    for scrittura in ("Demo", "  demo  ", "DEMO"):
+        try:
+            Utente(scrittura)
+        except UtenteNonValido:
+            pass
+        else:
+            esigi(False, "Utente ha accettato una forma non canonica: " + repr(scrittura))
 
     # Fuori dall'alfabeto: un separatore anniderebbe il namespace, un
     # carattere accentato verrebbe percent-encodato da Agno, uno spazio pure.
     # `.` e `..` sono nell'alfabeto ma Agno li rifiuta come segmenti di path.
-    for vietato in ("demo/personale", "café", "a b", "a:b", "demo%", ".", ".."):
+    for vietato in ("   ", "demo/personale", "café", "a b", "a:b", "demo%", ".", ".."):
         try:
-            utente_canonico(vietato)
+            Utente.da_grezzo(vietato)
         except UtenteNonValido:
             pass
         else:
-            esigi(False, "un id fuori alfabeto non e' rifiutato: " + repr(vietato))
+            esigi(False, "un id non valido non e' rifiutato: " + repr(vietato))
     # L'alfabeto esiste per questo: Agno non deve riscrivere il namespace.
     from agno.fs._paths import normalize_namespace
 
     for ammesso in ("demo", "prova_cli", "a.b-c", "utente-1"):
-        esigi(utente_canonico(ammesso) == ammesso, "un id valido e' stato rifiutato: " + repr(ammesso))
+        identita = Utente.da_grezzo(ammesso)
+        esigi(identita.id == ammesso, "un id valido e' stato rifiutato: " + repr(ammesso))
         esigi(
-            normalize_namespace(namespace_utente(ammesso)) == namespace_utente(ammesso),
+            normalize_namespace(namespace_utente(identita)) == namespace_utente(identita),
             "Agno riscriverebbe il namespace di " + repr(ammesso),
         )
     # La stessa regola vista dalla chat: un id vuoto esce "rifiutato" (2)
@@ -265,13 +280,14 @@ def identita_canonica() -> str:
     # Il lock si prova fra processi, come il resto della contesa: lo stesso
     # archivio, due grafie, un solo turno ammesso.
     codice = (
+        "from ares.state.identita import Utente\n"
         "from ares.state.lock import StatoOccupato, lock_turno\n"
         "try:\n"
-        "    with lock_turno('demo'): pass\n"
+        "    with lock_turno(Utente.da_grezzo('demo')): pass\n"
         "except StatoOccupato: pass\n"
         "else: raise RuntimeError('due grafie dello stesso utente non si contendono il lock')\n"
     )
-    with lock_turno("Demo"):
+    with lock_turno(Utente.da_grezzo("Demo")):
         figlio = subprocess.run(
             [sys.executable, "-c", codice],
             cwd=config.BASE_DIR,
@@ -281,16 +297,16 @@ def identita_canonica() -> str:
             timeout=30,
         )
     esigi(figlio.returncode == 0, "lock non allineato alla forma canonica: " + figlio.stderr[-400:])
-    return "namespace, entita' e lock concordano su Demo/demo; l'id vuoto e' rifiutato"
+    return "namespace, entita' e lock concordano su Demo/demo; il tipo rifiuta le forme non canoniche"
 
 
 def identita_agente() -> str:
     """L'agente porta la forma canonica a profilo e User Memory.
 
     Profilo e memorie non hanno namespace: la loro chiave e' `user_id`, e Agno
-    la cerca com'e'. Normalizzarla qui e' cio' che rende `Demo` e `demo` lo
-    stesso profilo; il figlio costruisce l'agente con una grafia sporca e
-    riporta quella che l'agente conserva.
+    la cerca com'e'. La grafia sporca si ferma al confine - `Utente.da_grezzo`
+    - ed e' quello che l'agente scrive nel campo che Agno usa come chiave: il
+    figlio costruisce l'agente da `"  Demo  "` e riporta quella che conserva.
     """
     figlio = subprocess.run(
         [sys.executable, "-c", COSTRUZIONE_AGENTE],
@@ -305,7 +321,7 @@ def identita_agente() -> str:
         figlio.stdout.strip() == "demo",
         "l'agente conserva la grafia non canonica: " + repr(figlio.stdout.strip()),
     )
-    return "l'agente canonizza user_id, chiave di profilo e memorie"
+    return "l'agente porta alla chiave di profilo e memorie la forma canonica"
 
 
 def id_sessione_univoci() -> str:
@@ -937,12 +953,13 @@ def chat_memoria_protetta() -> str:
         # Due processi, non due descrittori nella stessa chat: stesso utente
         # occupato, altro utente libero nello stesso archivio.
         codice = (
+            "from ares.state.identita import Utente\n"
             "from ares.state.lock import lock_turno, StatoOccupato\n"
             "try:\n"
-            "    with lock_turno('utente-turni'): pass\n"
+            "    with lock_turno(Utente.da_grezzo('utente-turni')): pass\n"
             "except StatoOccupato: pass\n"
             "else: raise RuntimeError('turno concorrente ammesso')\n"
-            "with lock_turno('altro-utente'): pass\n"
+            "with lock_turno(Utente.da_grezzo('altro-utente')): pass\n"
         )
         figlio = subprocess.run([sys.executable, "-c", codice], capture_output=True, text=True, timeout=30)
         esigi(figlio.returncode == 0, fase + ": " + figlio.stderr)
@@ -986,13 +1003,13 @@ def chat_memoria_protetta() -> str:
             contenuto = [m["content"] for m in store.get(user_id=utente).memories]
             esigi(contenuto == ["confermata nella chat B"], "memoria precedente persa o nuova non annullata")
             esigi("Non e' stato appreso" not in uscita.getvalue(), "rassicurazione falsa dopo scrittura")
-            with lock_turno(utente):
+            with lock_turno(Utente.da_grezzo(utente)):
                 pass  # Anche dopo errore o Ctrl-C il lock deve essere libero.
 
         # La contesa si rileva prima di qualsiasi lettura o inferenza,
         # anche quando l'eco e' disabilitato.
         with (
-            lock_turno(utente),
+            lock_turno(Utente.da_grezzo(utente)),
             patch.object(config, "MOSTRA_APPRENDIMENTI", False),
             patch.object(chat, "run_turn_cycle") as ciclo_spia,
             patch.object(chat, "istantanea") as lettura_spia,
@@ -1008,7 +1025,7 @@ def chat_memoria_protetta() -> str:
         # La REPL resta aperta; il comando senza terminale usa invece il
         # codice condiviso "occupato", senza avviare il modello.
         with (
-            lock_turno(utente),
+            lock_turno(Utente.da_grezzo(utente)),
             patch.object(chat, "build_assistant", lambda **k: agent),
             patch.object(chat, "CliInput", lambda **k: FintoInput(["riprova piu' tardi"])),
             patch.object(chat, "run_turn_cycle") as ciclo_spia,

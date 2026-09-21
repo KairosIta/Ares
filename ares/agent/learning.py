@@ -18,6 +18,7 @@ from agno.utils.log import log_warning
 from ares import config
 from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
+from ares.state.identita import Utente
 from ares.state.stores import namespace_entita, namespace_utente
 
 # Queste istruzioni vanno all'estrattore, che vede anche le parole
@@ -241,7 +242,7 @@ def apprendi_a_run_completato(
 
 
 def build_learning_machine(
-    db: SqliteDb, knowledge: Knowledge | None, user_id: str, *, strumenti: bool = True
+    db: SqliteDb, knowledge: Knowledge | None, utente: Utente, *, strumenti: bool = True
 ) -> AresLearningMachine:
     """Compone gli store attivi secondo i flag in config.
 
@@ -297,7 +298,7 @@ def build_learning_machine(
             config=EntityMemoryConfig(
                 db=db,
                 model=learning_model,
-                namespace=namespace_entita(user_id),
+                namespace=namespace_entita(utente),
                 max_updates_per_run=config.MAX_UPDATES_PER_RUN,
                 enable_agent_tools=strumenti,
             )
@@ -310,7 +311,7 @@ def build_learning_machine(
                 knowledge=knowledge,
                 model=learning_model,
                 mode=LearningMode.AGENTIC,
-                namespace=namespace_utente(user_id),
+                namespace=namespace_utente(utente),
                 max_updates_per_run=config.MAX_UPDATES_PER_RUN,
                 enable_agent_tools=strumenti,
             )
@@ -325,6 +326,6 @@ def build_learning_machine(
         session_context=session_context,
         entity_memory=entity_memory,
         learned_knowledge=learned_knowledge,
-        namespace=namespace_utente(user_id),
+        namespace=namespace_utente(utente),
         max_updates_per_run=config.MAX_UPDATES_PER_RUN,
     )

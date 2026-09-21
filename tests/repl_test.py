@@ -83,6 +83,7 @@ from ares.cli.render import (  # noqa: E402
 from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
 from ares.state import platform_files  # noqa: E402
 from ares.state.git import ramo_git  # noqa: E402
+from ares.state.identita import Utente  # noqa: E402
 
 
 class _MessaggioFinto:
@@ -1194,10 +1195,12 @@ def comandi() -> str:
     # Nessuno dei due tocca l'agente, quindi None basta.
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        vive = gestisci_comando("/pipppo", StatoChat(agent=None, session_id="sessione", user_id="utente"))
+        vive = gestisci_comando(
+            "/pipppo", StatoChat(agent=None, session_id="sessione", utente=Utente.da_grezzo("utente"))
+        )
     esigi(vive is True, "un comando sconosciuto chiude la sessione")
     esigi(catturato.getvalue().strip() != "", "un comando sconosciuto non dice niente")
-    vuoto = StatoChat(agent=None, session_id="sessione", user_id="utente")
+    vuoto = StatoChat(agent=None, session_id="sessione", utente=Utente.da_grezzo("utente"))
     with contextlib.redirect_stdout(io.StringIO()):
         esigi(gestisci_comando("/esci", vuoto) is False, "/esci non chiude")
         esigi(gestisci_comando("/qu", vuoto) is False, "/qu non chiude")
@@ -1238,12 +1241,14 @@ def stato_della_chat() -> str:
 
     modi: list[str] = []
 
-    def costruisci(*, user_id: str, session_id: str, debug: bool, modo: str) -> AgenteFinto:
+    def costruisci(*, utente: Utente, session_id: str, debug: bool, modo: str) -> AgenteFinto:
         costruiti.append((session_id, debug))
         modi.append(modo)
         return AgenteFinto(session_id, debug)
 
-    stato = StatoChat(agent=AgenteFinto("principale", False), session_id="principale", user_id="utente")
+    stato = StatoChat(
+        agent=AgenteFinto("principale", False), session_id="principale", utente=Utente.da_grezzo("utente")
+    )
 
     def comando(riga: str) -> str:
         catturato = io.StringIO()
@@ -1644,16 +1649,28 @@ def conversazioni_per_cartella() -> str:
     def nomi(sessioni) -> list[str]:
         return [s.session_id for s in sessioni]
 
-    esigi(nomi(leggi_sessioni(agente, "u")) == ["qui-2", "altrove-1", "vecchia", "qui-1"], "senza cartella si filtra")
     esigi(
-        nomi(leggi_sessioni(agente, "u", cartella=qui)) == ["qui-2", "vecchia", "qui-1"],
+        nomi(leggi_sessioni(agente, Utente.da_grezzo("u"))) == ["qui-2", "altrove-1", "vecchia", "qui-1"],
+        "senza cartella si filtra",
+    )
+    esigi(
+        nomi(leggi_sessioni(agente, Utente.da_grezzo("u"), cartella=qui)) == ["qui-2", "vecchia", "qui-1"],
         "il filtro per cartella non tiene quelle di qui e quelle senza cartella",
     )
-    esigi(nomi(leggi_sessioni(agente, "u", query="QUI", cartella=qui)) == ["qui-2", "qui-1"], "filtro e testo insieme")
-    esigi(nomi(sessioni_della_cartella(db, "u", qui)) == ["qui-2", "qui-1"], "resume vede sessioni non di qui")
-    esigi(nomi(sessioni_della_cartella(db, "u", qui, escludi="qui-2")) == ["qui-1"], "escludi non esclude")
+    esigi(
+        nomi(leggi_sessioni(agente, Utente.da_grezzo("u"), query="QUI", cartella=qui)) == ["qui-2", "qui-1"],
+        "filtro e testo insieme",
+    )
+    esigi(
+        nomi(sessioni_della_cartella(db, Utente.da_grezzo("u"), qui)) == ["qui-2", "qui-1"],
+        "resume vede sessioni non di qui",
+    )
+    esigi(
+        nomi(sessioni_della_cartella(db, Utente.da_grezzo("u"), qui, escludi="qui-2")) == ["qui-1"],
+        "escludi non esclude",
+    )
     esigi(db.chiamate[-1].get("include_runs") is False, "l'elenco per la ripresa carica i run di tutte")
-    leggi_sessioni(agente, "Demo")
+    leggi_sessioni(agente, Utente.da_grezzo("Demo"))
     esigi(
         db.chiamate[-1]["user_id"] == "demo",
         "le sessioni non usano la forma canonica: " + repr(db.chiamate[-1]["user_id"]),

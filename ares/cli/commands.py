@@ -16,6 +16,7 @@ from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
+from ares.state.identita import Utente
 from ares.state.stores import (
     leggi_entita,
     leggi_sessioni,
@@ -39,7 +40,7 @@ class StatoChat:
 
     agent: Agent
     session_id: str
-    user_id: str
+    utente: Utente
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
@@ -84,11 +85,11 @@ def _store(stato: StatoChat, nome: str) -> object | None:
 
 
 def _comando_profilo(stato: StatoChat, argomento: str) -> None:
-    stampa_store(_store(stato, "user_profile_store"), "Profilo", user_id=stato.user_id)
+    stampa_store(_store(stato, "user_profile_store"), "Profilo", user_id=stato.utente.id)
 
 
 def _comando_memorie(stato: StatoChat, argomento: str) -> None:
-    stampa_store(_store(stato, "user_memory_store"), "Memorie", user_id=stato.user_id)
+    stampa_store(_store(stato, "user_memory_store"), "Memorie", user_id=stato.utente.id)
 
 
 def _comando_contesto(stato: StatoChat, argomento: str) -> None:
@@ -109,7 +110,7 @@ def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
     argomento = " ".join(parole)
     qui = config.WORKSPACE_DIR if config.WORKSPACE and not tutte else None
     UI.heading("Sessioni" if qui is None else "Sessioni di questa cartella")
-    sessioni = leggi_sessioni(stato.agent, user_id=stato.user_id, query=argomento, cartella=qui)
+    sessioni = leggi_sessioni(stato.agent, stato.utente, query=argomento, cartella=qui)
     mostrate = sessioni[: config.SESSIONI_ELENCO]
     for s in mostrate:
         corrente = getattr(s, "session_id", None) == stato.session_id
@@ -167,7 +168,7 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
     elif nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
-    stato.agent = build_assistant(user_id=stato.user_id, session_id=nome, debug=stato.debug, modo=stato.modo)
+    stato.agent = build_assistant(utente=stato.utente, session_id=nome, debug=stato.debug, modo=stato.modo)
     stato.session_id = nome
     UI.pair("Sessione", nome + ("  (nuova)" if nuova else ""), style="ares.title")
     if nuova:
@@ -214,7 +215,7 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
     if nome == stato.modo:
         UI.line("Sei gia' in modalita' '" + nome + "'.", style="ares.muted")
         return
-    stato.agent = build_assistant(user_id=stato.user_id, session_id=stato.session_id, debug=stato.debug, modo=nome)
+    stato.agent = build_assistant(utente=stato.utente, session_id=stato.session_id, debug=stato.debug, modo=nome)
     stato.modo = nome
     UI.pair("Modalita'", nome, style="ares.title")
     UI.line("Stessa sessione, strumenti e prompt della modalita' nuova.", style="ares.muted")
@@ -243,7 +244,7 @@ def _comando_metriche(stato: StatoChat, argomento: str) -> None:
 
 def _comando_entita(stato: StatoChat, argomento: str) -> None:
     UI.heading("Entita'")
-    entita = leggi_entita(stato.agent.learning_machine, user_id=stato.user_id, query=argomento)
+    entita = leggi_entita(stato.agent.learning_machine, stato.utente, query=argomento)
     if not entita:
         if argomento:
             # La ricerca delle entita' e' testuale, non semantica: senza una
@@ -262,7 +263,7 @@ def _comando_entita(stato: StatoChat, argomento: str) -> None:
 
 def _comando_file(stato: StatoChat, argomento: str) -> None:
     UI.heading("Quaderno privato")
-    fs = build_filesystem(stato.user_id)
+    fs = build_filesystem(stato.utente)
     elenco = fs.list()
     if not elenco:
         UI.line("Nessun file.", style="ares.muted")
@@ -318,7 +319,7 @@ def _comando_esporta(stato: StatoChat, argomento: str) -> None:
     db = getattr(stato.agent, "db", None)
     sessione = None
     if db is not None:
-        sessione = db.get_session(session_id=stato.session_id, session_type=SessionType.AGENT, user_id=stato.user_id)
+        sessione = db.get_session(session_id=stato.session_id, session_type=SessionType.AGENT, user_id=stato.utente.id)
     scambi = len(getattr(sessione, "runs", None) or [])
     if not scambi:
         UI.line("Niente da esportare: la sessione non ha ancora turni salvati.", style="ares.muted")
@@ -410,7 +411,7 @@ def _candidati_sessione(stato: StatoChat) -> list[tuple[str, str]]:
     """`nuova` e le conversazioni di questa cartella, la corrente esclusa."""
     voci = [("nuova", "una conversazione nuova in questa cartella")]
     qui = config.WORKSPACE_DIR if config.WORKSPACE else None
-    for s in leggi_sessioni(stato.agent, user_id=stato.user_id, cartella=qui)[: config.SESSIONI_ELENCO]:
+    for s in leggi_sessioni(stato.agent, stato.utente, cartella=qui)[: config.SESSIONI_ELENCO]:
         nome = str(getattr(s, "session_id", "") or "")
         if not nome or nome == stato.session_id:
             continue

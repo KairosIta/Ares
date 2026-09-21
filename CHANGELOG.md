@@ -6,6 +6,24 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Changed
+
+- **L'identità dell'utente è un tipo, non una stringa da normalizzare.**
+  `utente_canonico` era la regola giusta, ma chiamata in otto punti — la chat,
+  il quaderno, le sessioni, il prompt, la manutenzione — e bastava un lettore
+  nuovo che se ne dimenticasse perché l'archivio si sdoppiasse in silenzio:
+  namespace in un contenitore, profilo e lock in un altro, nessun errore.
+  Ora c'è `Utente`, e la forma canonica è il tipo invece di una convenzione:
+  il costruttore rifiuta una scrittura non canonica, `da_grezzo` è l'unica
+  porta, e namespace, lock, quaderno, store, sessioni, prompt e manutenzione
+  lo ricevono già risolto. La normalizzazione avviene una volta sola al
+  confine — l'opzione della riga di comando, l'ambiente, il `user_id` riletto
+  da Agno — dove si può ancora dire perché un id è invalido. Spariscono i
+  default nella firma dei costruttori che fotografavano
+  `config.DEFAULT_USER_ID` al momento dell'import: erano una seconda risposta
+  alla domanda "per conto di chi". Nessun comportamento visibile cambia: è la
+  stessa regola, con un tipo che la tiene.
+
 ### Fixed
 
 - **Identità utente canonica in un solo punto.** `Demo` e `demo` erano la

@@ -50,6 +50,7 @@ SPAZIO_PROVA = str(RADICE_PROVA / "lavoro")
 
 from ares import config  # noqa: E402
 from ares.ops.preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
+from ares.state.identita import Utente  # noqa: E402
 
 UTENTE = "prova-e2e"
 SESSIONE = "prova-e2e"
@@ -69,16 +70,17 @@ DOMANDA = "Mi chiamo Prova e uso Linux. In una riga: a cosa serve un file di loc
 RILETTURA = """
 import sys
 from ares.agent.assistant import build_assistant
+from ares.state.identita import Utente
 from ares.state.stores import leggi_entita
 
 utente, sessione = sys.argv[1], sys.argv[2]
-lm = build_assistant(user_id=utente, session_id=sessione).learning_machine
+lm = build_assistant(utente=Utente.da_grezzo(utente), session_id=sessione).learning_machine
 
 print("user_profile", lm.user_profile_store.get(user_id=utente) is not None)
 memorie = getattr(lm.user_memory_store.get(user_id=utente), "memories", None) or []
 print("user_memory", len(memorie) > 0)
 print("session_context", lm.session_context_store.get(session_id=sessione) is not None)
-print("entity_memory", len(leggi_entita(lm, user_id=utente, limit=1000)) > 0)
+print("entity_memory", len(leggi_entita(lm, Utente.da_grezzo(utente), limit=1000)) > 0)
 """
 
 
@@ -200,7 +202,7 @@ def main() -> int:
         from ares.agent.assistant import build_assistant
 
         costruzione = time.monotonic()
-        agent = build_assistant(user_id=UTENTE, session_id=SESSIONE)
+        agent = build_assistant(utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
         ok("costruzione         ", "agente costruito in " + str(round(time.monotonic() - costruzione, 2)) + " s")
 
         print()

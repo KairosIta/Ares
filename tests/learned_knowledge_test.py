@@ -76,11 +76,12 @@ config.READ_CHAT_HISTORY = False
 config.WORKSPACE = False
 
 from ares.agent.assistant import build_assistant
+from ares.state.identita import Utente
 from ares.state.stores import leggi_intuizioni
 
 utente, sessione, query = sys.argv[1:4]
-lm = build_assistant(user_id=utente, session_id=sessione).learning_machine
-risultati = leggi_intuizioni(lm, user_id=utente, query=query, limit=20)
+lm = build_assistant(utente=Utente.da_grezzo(utente), session_id=sessione).learning_machine
+risultati = leggi_intuizioni(lm, Utente.da_grezzo(utente), query=query, limit=20)
 dati = [
     {
         "title": getattr(voce, "title", ""),
@@ -118,9 +119,10 @@ def strumenti_learning(lm, user_id: str, session_id: str) -> dict:
 
 
 def cerca(lm, user_id: str, query: str) -> list:
+    from ares.state.identita import Utente
     from ares.state.stores import leggi_intuizioni
 
-    return leggi_intuizioni(lm, user_id=user_id, query=query, limit=20)
+    return leggi_intuizioni(lm, Utente.da_grezzo(user_id), query=query, limit=20)
 
 
 def rileggi_in_processo_nuovo(user_id: str, session_id: str, query: str) -> list[dict]:
@@ -162,7 +164,7 @@ def modelli_pronti() -> tuple[bool, str]:
 
 
 def prova_store() -> None:
-    agente = build_assistant(user_id=UTENTE_STORE, session_id="store")
+    agente = build_assistant(utente=Utente.da_grezzo(UTENTE_STORE), session_id="store")
     lm = agente.learning_machine
     esigi(lm is not None, "LearningMachine assente")
     strumenti = strumenti_learning(lm, UTENTE_STORE, "store")
@@ -200,7 +202,7 @@ def prova_store() -> None:
     esigi(MARCATORE_STORE in testo_intuizione(risultati[0]), "il risultato non e' quello salvato")
     ok("ricerca", "contenuto strutturato ricostruito dalla ricerca ibrida")
 
-    altro = build_assistant(user_id=UTENTE_ALTRO, session_id="isolamento").learning_machine
+    altro = build_assistant(utente=Utente.da_grezzo(UTENTE_ALTRO), session_id="isolamento").learning_machine
     esigi(altro is not None, "LearningMachine del secondo utente assente")
     esigi(not cerca(altro, UTENTE_ALTRO, MARCATORE_STORE), "il secondo utente vede l'intuizione privata")
     ok("namespace", UTENTE_ALTRO + " non vede " + UTENTE_STORE)
@@ -212,7 +214,7 @@ def prova_store() -> None:
 
 
 def prova_agente() -> None:
-    agente = build_assistant(user_id=UTENTE_AGENTE, session_id=SESSIONE_SALVATAGGIO)
+    agente = build_assistant(utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_SALVATAGGIO)
     avvio = time.monotonic()
     risposta = agente.run(PROMPT_SALVATAGGIO)
     durata = round(time.monotonic() - avvio, 1)
@@ -244,7 +246,7 @@ def prova_agente() -> None:
     esigi(len(presenti) >= 4, "intuizione non riconoscibile come italiana e completa: " + contenuto)
     ok("contenuto", "richiesta inglese, intuizione italiana: " + ", ".join(sorted(presenti)))
 
-    nuovo = build_assistant(user_id=UTENTE_AGENTE, session_id=SESSIONE_RIUSO)
+    nuovo = build_assistant(utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_RIUSO)
     avvio = time.monotonic()
     riuso = nuovo.run(PROMPT_RIUSO)
     durata = round(time.monotonic() - avvio, 1)
@@ -348,5 +350,6 @@ if __name__ == "__main__":
     config.WORKSPACE = False
 
     from ares.agent.assistant import build_assistant
+    from ares.state.identita import Utente
 
     sys.exit(main(argomenti))

@@ -30,7 +30,7 @@ from pathlib import Path
 from ares import config
 from ares.cli.comando import ESITO_FATTO, ESITO_OCCUPATO, ESITO_RIFIUTO, nuova_app
 from ares.cli.ui import UI, byte_leggibili
-from ares.state.identita import UtenteNonValido, utente_canonico
+from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato, lock_stato
 
 app = nuova_app("inspect", "Ispeziona gli archivi di apprendimento senza toccarli")
@@ -41,7 +41,7 @@ def separatore(titolo: str) -> None:
     UI.heading(titolo)
 
 
-def _ispeziona(user: str, session: str | None, query: str, file: str | None, prompt: bool, modo: str) -> None:
+def _ispeziona(utente: Utente, session: str | None, query: str, file: str | None, prompt: bool, modo: str) -> None:
     from ares.agent.assistant import build_assistant
     from ares.agent.prompts import messaggio_di_sistema
     from ares.cli.cartella import nuovo_id_sessione
@@ -54,7 +54,7 @@ def _ispeziona(user: str, session: str | None, query: str, file: str | None, pro
     # l'aiuto non deve creare l'archivio che dice di ispezionare.
     config.prepara_archivio()
 
-    fs = build_filesystem(user)
+    fs = build_filesystem(utente)
 
     if file:
         contenuto = fs.read(file)
@@ -76,17 +76,17 @@ def _ispeziona(user: str, session: str | None, query: str, file: str | None, pro
         # restano, ma tolti dallo stdout che qui e' il testo e basta.
         configura_log_agno(False)
         session = session or nuovo_id_sessione(Path.cwd())
-        agent = build_assistant(user_id=user, session_id=session, modo=modo)
-        print(messaggio_di_sistema(agent, session_id=session, user_id=user))
+        agent = build_assistant(utente=utente, session_id=session, modo=modo)
+        print(messaggio_di_sistema(agent, session_id=session, utente=utente))
         return
 
-    agent = build_assistant(user_id=user, session_id=session or "principale")
+    agent = build_assistant(utente=utente, session_id=session or "principale")
     if not session:
         # Senza `--session` si guarda l'ultima conversazione toccata, di
         # qualunque cartella: e' quella di cui si vuole sapere cosa e' rimasto.
         from ares.state.stores import leggi_sessioni
 
-        recenti = leggi_sessioni(agent, user_id=user)
+        recenti = leggi_sessioni(agent, utente=utente)
         session = str(recenti[0].session_id) if recenti else "principale"
     lm = agent.learning_machine
     # `build_assistant` passa sempre `learning=`, quindi la macchina c'e'. I
@@ -95,23 +95,23 @@ def _ispeziona(user: str, session: str | None, query: str, file: str | None, pro
     assert lm is not None
 
     separatore("PROFILO UTENTE   (per utente, sopravvive a ogni sessione)")
-    stampa_store(lm.user_profile_store, "Profilo", user_id=user)
+    stampa_store(lm.user_profile_store, "Profilo", user_id=utente.id)
 
     separatore("MEMORIE   (osservazioni non strutturate, per utente)")
-    stampa_store(lm.user_memory_store, "Memorie", user_id=user)
+    stampa_store(lm.user_memory_store, "Memorie", user_id=utente.id)
 
     separatore("CONTESTO DI SESSIONE   (sessione: " + session + ")")
     stampa_store(lm.session_context_store, "Contesto", session_id=session)
 
     separatore("ENTITA'   (persone, progetti, sistemi)")
-    entita = leggi_entita(lm, user_id=user, query=query)
+    entita = leggi_entita(lm, utente, query=query)
     if not entita:
         UI.line("Nessuna entita' registrata.", style="ares.muted")
     for e in entita:
         UI.lines(righe_entita(e))
 
     separatore("INTUIZIONI APPRESE   (indice vettoriale LanceDB)")
-    intuizioni = leggi_intuizioni(lm, user_id=user, query=query)
+    intuizioni = leggi_intuizioni(lm, utente, query=query)
     if not intuizioni:
         UI.line("Nessuna intuizione salvata.", style="ares.muted")
     for k in intuizioni:
@@ -155,13 +155,13 @@ def ispeziona(
     # entita' e quaderno, e cercarli con una grafia diversa da quella con
     # cui sono stati scritti mostrerebbe un archivio vuoto che non lo e'.
     try:
-        user = utente_canonico(user)
+        utente = Utente.da_grezzo(user)
     except UtenteNonValido as errore:
         UI.err("Rifiutato: " + str(errore))
         return ESITO_RIFIUTO
     try:
         with lock_stato(esclusivo=False):
-            _ispeziona(user, session, query, file, prompt, modo)
+            _ispeziona(utente, session, query, file, prompt, modo)
     except StatoOccupato as errore:
         UI.err("Impossibile leggere lo stato di Ares: " + str(errore))
         UI.err("Attendi che backup o restore terminino e riprova.", style="ares.muted")

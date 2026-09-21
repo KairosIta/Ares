@@ -19,7 +19,7 @@ from agno.offload.setup import build_result_store as configura_result_store
 from agno.offload.store import ResultStore
 
 from ares.state.archivi import build_db, build_filesystem, build_result_store
-from ares.state.identita import utente_canonico
+from ares.state.identita import Utente
 
 SECONDI_AL_GIORNO = 86_400
 
@@ -66,7 +66,7 @@ class _Manutenzione:
     id = "ares-session-maintenance"
 
 
-def apri_archivio(user_id: str) -> tuple[SqliteDb, ResultStore]:
+def apri_archivio(utente: Utente) -> tuple[SqliteDb, ResultStore]:
     """Apre i due SQLite e registra il backend payload nella cascata Agno.
 
     `filesystem.db` e' intenzionalmente distinto dal database delle sessioni.
@@ -74,9 +74,8 @@ def apri_archivio(user_id: str) -> tuple[SqliteDb, ResultStore]:
     ripetuta nel processo offline: senza, Agno eliminerebbe sessione e indice
     ma non saprebbe in quale backend cercare il payload.
     """
-    user_id = utente_canonico(user_id)
     db = build_db()
-    filesystem = build_filesystem(user_id)
+    filesystem = build_filesystem(utente)
     store = configura_result_store(
         setting=build_result_store(filesystem),
         db=db,
@@ -88,12 +87,11 @@ def apri_archivio(user_id: str) -> tuple[SqliteDb, ResultStore]:
     return db, store
 
 
-def inventario(db: SqliteDb, user_id: str) -> list[SessioneRetention]:
+def inventario(db: SqliteDb, utente: Utente) -> list[SessioneRetention]:
     """Sessioni dell'utente con l'occupazione logica dei relativi offload."""
-    user_id = utente_canonico(user_id)
     sessioni = db.get_sessions(
         session_type=SessionType.AGENT,
-        user_id=user_id,
+        user_id=utente.id,
         sort_by="updated_at",
         sort_order="desc",
         include_runs=False,
@@ -167,7 +165,7 @@ def elimina_sessioni(
     db: SqliteDb,
     store: ResultStore,
     sessioni: Iterable[SessioneRetention],
-    user_id: str,
+    utente: Utente,
 ) -> int:
     """Elimina sessioni, run, contesti e offload, poi verifica la cascata.
 
@@ -176,19 +174,18 @@ def elimina_sessioni(
     guasto avvenuto, non dedotto da dove ci si e' fermati, perche' e' lo
     stato reale che l'utente deve conoscere.
     """
-    user_id = utente_canonico(user_id)
     selezionate = list(sessioni)
     if not selezionate:
         return 0
     ids = [sessione.session_id for sessione in selezionate]
     try:
-        return _elimina_e_verifica(db, store, ids, user_id)
+        return _elimina_e_verifica(db, store, ids, utente)
     except Exception as errore:
         try:
             rimaste = [
                 session_id
                 for session_id in ids
-                if db.get_session(session_id=session_id, session_type=SessionType.AGENT, user_id=user_id) is not None
+                if db.get_session(session_id=session_id, session_type=SessionType.AGENT, user_id=utente.id) is not None
             ]
         except Exception:
             # Se nemmeno la rilettura riesce, l'archivio non risponde: nessuna
@@ -198,14 +195,14 @@ def elimina_sessioni(
         raise StatoParziale(errore, eliminate, rimaste) from errore
 
 
-def _elimina_e_verifica(db: SqliteDb, store: ResultStore, ids: list[str], user_id: str) -> int:
+def _elimina_e_verifica(db: SqliteDb, store: ResultStore, ids: list[str], utente: Utente) -> int:
     righe_offload = [riga for session_id in ids for riga in db.get_tool_results_for_session(session_id, None)]
     # Questa API Agno rimuove anche i run e avvia la cascata degli offload.
     # Il ResultStore aperto sopra ha registrato filesystem.db sullo stesso db.
-    db.delete_sessions(session_ids=ids, user_id=user_id)
+    db.delete_sessions(session_ids=ids, user_id=utente.id)
 
     for session_id in ids:
-        if db.get_session(session_id=session_id, session_type=SessionType.AGENT, user_id=user_id) is not None:
+        if db.get_session(session_id=session_id, session_type=SessionType.AGENT, user_id=utente.id) is not None:
             raise ErroreRetention("sessione non eliminata: " + session_id)
         context_id = build_learning_id("session_context", session_id=session_id)
         if context_id is None:
