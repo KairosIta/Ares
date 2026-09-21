@@ -105,9 +105,9 @@ possono funzionare, ma non sono ancora nella matrice CI.
 La configurazione di riferimento è pensata per circa 16 GiB di VRAM. Il
 modello locale Qwen3.8-9B Q8_0 richiede circa 14 GB con 262k token di
 contesto quando è lui a conversare, e circa 9 GB quando fa solo l'estrazione
-delle memorie accanto a un modello cloud: in quel caso `LEARNING_NUM_CTX`
-riduce la sua finestra a 32k, perché un'estrazione riceve solo il testo del
-turno. Su hardware diverso è possibile scegliere un modello più piccolo e
+delle memorie accanto a un modello cloud: in quel caso il contesto
+dell'estrazione scende a `NUM_CTX_ESTRAZIONE` (32k), perché un'estrazione
+riceve solo il testo del turno. Su hardware diverso è possibile scegliere un modello più piccolo e
 ridurre `NUM_CTX` in [`ares/config.py`](ares/config.py).
 
 I modelli sono artefatti esterni, non inclusi nel repository: consulta la

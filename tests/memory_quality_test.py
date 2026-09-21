@@ -300,7 +300,7 @@ class QualitaMemoriaTest(unittest.TestCase):
             avvio = (
                 "import sys\nfrom evals import memory_quality as mq\n"
                 "originale = mq.subprocess.run\n"
-                "mq.metadati = lambda: {}\n"
+                "mq.metadati = lambda *a, **k: {}\n"
                 "# Copia gli argomenti del figlio prima di sostituire quelli della CLI.\n"
                 "vecchi = list(sys.argv)\n"
                 "def lancia(comando, **kwargs):\n"

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ares import config
+from ares.config import Impostazioni
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
 
@@ -75,7 +76,7 @@ def _ruolo(modello: str, *, locale: str, cloud: str) -> str:
     return modello + ", " + (cloud if config.e_modello_cloud(modello) else locale)
 
 
-def descrizione(*, interattivo: bool = True) -> str:
+def descrizione(impostazioni: Impostazioni, *, interattivo: bool = True) -> str:
     """Chi e' Ares, e dove gira davvero.
 
     La frase sulla privacy e' una promessa, e una promessa che il modello
@@ -83,13 +84,17 @@ def descrizione(*, interattivo: bool = True) -> str:
     descrizione dice invece cosa attraversa `ollama.com`, in una riga, e che
     la scelta e' stata della persona. Il dettaglio sta nella scheda di
     `istruzioni_sull_ambiente`; qui c'e' l'identita'.
+
+    I due modelli arrivano dalle impostazioni e non da `config`: questa frase
+    deve descrivere la conversazione che si sta costruendo, non quella che il
+    processo aveva in mente all'import.
     """
     inizio = "Sei Ares, l'assistente personale di una sola persona. "
     fine = " Puoi usare le memorie disponibili e rileggere gli archivi per dare continuita' al lavoro insieme."
-    conversazione = config.e_modello_cloud(config.MAIN_MODEL)
+    conversazione = config.e_modello_cloud(impostazioni.principale)
     estrazione = (
         interattivo
-        and config.e_modello_cloud(config.LEARNING_MODEL)
+        and config.e_modello_cloud(impostazioni.apprendimento)
         and any(
             (config.LEARN_USER_PROFILE, config.LEARN_USER_MEMORY, config.LEARN_SESSION_CONTEXT, config.LEARN_ENTITIES)
         )
@@ -113,21 +118,26 @@ def descrizione(*, interattivo: bool = True) -> str:
 
 def istruzioni_sull_ambiente(
     *,
+    impostazioni: Impostazioni,
     utente: Utente,
     session_id: str,
     radice_lavoro=None,
-    modo: str = config.MODO_PREDEFINITO,
+    modo: str | None = None,
     interattivo: bool = True,
 ) -> list[str]:
     """La scheda di questo avvio: quali modelli, quanto contesto, quale sistema, chi e dove.
 
-    Tutto letto da `config` e dal sistema, niente scritto a mano: una riga
-    che dicesse "9B locale" resterebbe vera nel file e falsa nel `.env`. Un
-    modello che sa di essere un modello cloud non rassicura l'utente sulla
-    privacy; uno che sa quanti token ha in vista non promette di ricordare
-    cio' che e' gia' uscito dalla finestra; uno che sa la shell non scrive
-    `bash` su Windows.
+    I modelli e il contesto vengono dalle impostazioni, il resto dal sistema:
+    niente scritto a mano, perche' una riga che dicesse "9B locale"
+    resterebbe vera nel file e falsa nel `.env`. Un modello che sa di essere
+    un modello cloud non rassicura l'utente sulla privacy; uno che sa quanti
+    token ha in vista non promette di ricordare cio' che e' gia' uscito dalla
+    finestra; uno che sa la shell non scrive `bash` su Windows.
+
+    `modo` vuoto vale `config.MODO_PREDEFINITO`, letto adesso: un default
+    nella firma lo fotograferebbe all'import.
     """
+    modo = modo or config.MODO_PREDEFINITO
     sistema, _ = _shell()
     dove = ""
     if radice_lavoro is not None:
@@ -137,14 +147,14 @@ def istruzioni_sull_ambiente(
         "Dove sei e con che cosa lavori, letto dalla configurazione di questo avvio:",
         "- Il modello che ti fa parlare e' "
         + _ruolo(
-            config.MAIN_MODEL,
+            impostazioni.principale,
             locale="in locale: questa inferenza gira sulla macchina tramite Ollama.",
             cloud="un modello cloud: il daemon Ollama di questa macchina lo inoltra a ollama.com, quindi questo "
             "prompt, la conversazione, i file che apri, l'output dei comandi e le memorie che ti vengono "
             "mostrate passano da un server remoto.",
         ),
         "- Il contesto richiesto a Ollama e' di "
-        + str(config.NUM_CTX)
+        + str(impostazioni.num_ctx)
         + " token; il limite effettivo dipende dal modello e dal servizio. Ricevi fino a "
         + str(config.NUM_HISTORY_RUNS)
         + " scambi recenti, oltre alle memorie disponibili. Per i dettagli non presenti consulta gli archivi "
@@ -163,16 +173,16 @@ def istruzioni_sull_ambiente(
             "- L'estrazione degli apprendimenti abilitati usa "
             + (
                 "lo stesso modello della conversazione."
-                if config.LEARNING_MODEL == config.MAIN_MODEL
+                if impostazioni.apprendimento == impostazioni.principale
                 else _ruolo(
-                    config.LEARNING_MODEL,
+                    impostazioni.apprendimento,
                     locale="in locale.",
                     cloud="un modello cloud: il testo dei turni e le memorie gia' salvate passano da ollama.com.",
                 )
             )
         )
     if config.LEARN_KNOWLEDGE:
-        righe.append("- Le intuizioni sono indicizzate da " + config.EMBEDDER_MODEL + ", in locale.")
+        righe.append("- Le intuizioni sono indicizzate da " + impostazioni.embedder + ", in locale.")
     if radice_lavoro is not None:
         righe.append(istruzioni_sulla_modalita(modo))
     return ["\n".join(righe)]
@@ -204,10 +214,9 @@ def istruzioni_di_collaborazione(*, interattivo: bool = True) -> list[str]:
     ]
 
 
-def istruzioni_sugli_strumenti(
-    radice_lavoro=None, modo: str = config.MODO_PREDEFINITO, *, interattivo: bool = True
-) -> list[str]:
+def istruzioni_sugli_strumenti(radice_lavoro=None, modo: str | None = None, *, interattivo: bool = True) -> list[str]:
     """Restituisce soltanto istruzioni per strumenti presenti nel cablaggio."""
+    modo = modo or config.MODO_PREDEFINITO
     dette = []
     if interattivo and config.LEARN_ENTITIES:
         dette.append(
@@ -365,7 +374,7 @@ def istruzioni_sul_quaderno() -> list[str]:
     ]
 
 
-def istruzioni_senza_terminale(radice_lavoro=None, modo: str = config.MODO_PREDEFINITO) -> list[str]:
+def istruzioni_senza_terminale(radice_lavoro=None, modo: str | None = None) -> list[str]:
     """Cosa cambia in `ares -p`: nessuno risponde e gli store non apprendono.
 
     Le conferme valgono no perche' non c'e' chi le dia; dirlo al modello
@@ -374,6 +383,7 @@ def istruzioni_senza_terminale(radice_lavoro=None, modo: str = config.MODO_PREDE
     entra in profilo e memorie viene mostrato e confermato da chi legge, e
     in una pipe non legge nessuno.
     """
+    modo = modo or config.MODO_PREDEFINITO
     confermati = strumenti_spazio(config.liste_modalita(modo)[1]) if radice_lavoro is not None else []
     testo = (
         "Questo e' un avvio con `ares -p`: un turno solo, lanciato da uno script o "

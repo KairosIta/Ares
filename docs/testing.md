@@ -29,7 +29,14 @@ scrive `ares`: le prove fanno lo stesso gesto con `chdir`.
 
 I percorsi si derivano da quella fotografia a ogni `config.leggi_percorsi()`,
 e nessun nome di modulo li tiene: chi legge lo stato se li vede passare come
-primo parametro. Il processo separato resta comunque, perché ciò che conta
+primo parametro. Vale lo stesso per i modelli, che `config.leggi_impostazioni()`
+fotografa in un `Impostazioni`: le prove se li portano dietro in un globale di
+modulo, accanto ai percorsi, e le poche che sostituiscono un nome — `MAIN_MODEL`,
+`EMBEDDER_MODEL`, `NUM_CTX` — costruiscono le impostazioni dentro la
+sostituzione, perché è lì che il confine del processo le leggerebbe. Chi
+sostituisse il nome dopo averle già lette non cambierebbe la conversazione, ed
+è esattamente il difetto che il passaggio a parametro ha tolto. Il processo
+separato resta comunque, perché ciò che conta
 non è solo dove si legge ma cosa è già aperto: un lock, uno store, un
 percorso copiato in una variabile non si rileggono. Due prove nello stesso
 interprete condividerebbero la prima fotografia dell'ambiente — cioè i

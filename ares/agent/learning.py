@@ -18,6 +18,7 @@ from agno.utils.log import log_warning
 from ares import config
 from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
+from ares.config import Impostazioni
 from ares.state.identita import Utente
 from ares.state.stores import namespace_entita, namespace_utente
 
@@ -242,7 +243,12 @@ def apprendi_a_run_completato(
 
 
 def build_learning_machine(
-    db: SqliteDb, knowledge: Knowledge | None, utente: Utente, *, strumenti: bool = True
+    db: SqliteDb,
+    knowledge: Knowledge | None,
+    utente: Utente,
+    impostazioni: Impostazioni,
+    *,
+    strumenti: bool = True,
 ) -> AresLearningMachine:
     """Compone gli store attivi secondo i flag in config.
 
@@ -250,8 +256,12 @@ def build_learning_machine(
     prompt e' cio' che Ares sa dell'utente - ma non danno al modello gli
     strumenti per scriverci: e' `ares -p`, dove nessuno legge cio' che
     entrerebbe in memoria.
+
+    `impostazioni` dice con quale modello estrarre: e' la conversazione a
+    decidere a chi affidare cio' che Ares ricorda, e il modello arriva da
+    fuori invece di essere riletto da un nome di modulo.
     """
-    learning_model = build_learning_model()
+    learning_model = build_learning_model(impostazioni)
 
     user_profile: UserProfileConfig | bool = False
     if config.LEARN_USER_PROFILE:

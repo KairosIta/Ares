@@ -22,7 +22,13 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # Solo per le annotazioni: il modulo importa `ares` dentro le funzioni,
+    # perche' l'ambiente della prova va preparato prima che `config` lo
+    # fotografasse.
+    from ares.config import Impostazioni
 
 RADICE = Path(__file__).resolve().parents[1]
 STATI = ("superato", "fallito", "da_revisionare", "non_conclusivo", "errore")
@@ -469,8 +475,7 @@ def markdown(rapporto: dict) -> str:
     return "\n".join(righe)
 
 
-def metadati() -> dict:
-    from ares import config
+def metadati(impostazioni: Impostazioni) -> dict:
 
     percorsi = [
         "ares/agent/prompts.py",
@@ -482,12 +487,12 @@ def metadati() -> dict:
         "uv.lock",
     ]
     return {
-        "modello_conversazione": config.MAIN_MODEL,
-        "modello_estrazione": config.LEARNING_MODEL,
-        "opzioni_conversazione": config.OLLAMA_OPTIONS,
-        "opzioni_estrazione": config.LEARNING_OPTIONS,
-        "think_conversazione": config.MAIN_THINK,
-        "think_estrazione": config.LEARNING_THINK,
+        "modello_conversazione": impostazioni.principale,
+        "modello_estrazione": impostazioni.apprendimento,
+        "opzioni_conversazione": impostazioni.opzioni,
+        "opzioni_estrazione": impostazioni.opzioni_apprendimento,
+        "think_conversazione": impostazioni.think,
+        "think_estrazione": impostazioni.think_apprendimento,
         "agno": version("agno"),
         "python": sys.version,
         "schema_rapporto": 3,
@@ -551,12 +556,13 @@ def _worker(caso: str, risultato: Path) -> None:
     config.LEARN_USER_PROFILE = config.LEARN_USER_MEMORY = config.LEARN_SESSION_CONTEXT = True
     config.MEMORY_AGENT_TOOLS = True
     percorsi = config.leggi_percorsi()
-    macchina: Any = build_learning_machine(build_db(percorsi), None, Utente.da_grezzo("eval-user"))
+    impostazioni = config.leggi_impostazioni()
+    macchina: Any = build_learning_machine(build_db(percorsi), None, Utente.da_grezzo("eval-user"), impostazioni)
     raccoglitore = RaccoglitoreAvvisi()
     for nome in list(logging.root.manager.loggerDict):
         if nome == "agno" or nome.startswith(("agno-", "agno.")):
             logging.getLogger(nome).addHandler(raccoglitore)
-    dati: dict[str, Any] = {"fasi": [], "metadati": metadati()}
+    dati: dict[str, Any] = {"fasi": [], "metadati": metadati(impostazioni)}
     scrivi_json(risultato, dati)
 
     def fotografia(sessione: str) -> dict:
@@ -605,7 +611,9 @@ def _worker(caso: str, risultato: Path) -> None:
                 raise RuntimeError("Il contesto di sessione non e' stato salvato.")
             scrivi_json(risultato, dati)
             sessione = "recupero-" + str(indice)
-            agente = build_assistant(percorsi, Utente.da_grezzo("eval-user"), session_id=sessione, interattivo=False)
+            agente = build_assistant(
+                percorsi, impostazioni, Utente.da_grezzo("eval-user"), session_id=sessione, interattivo=False
+            )
             prompt = messaggio_di_sistema(agente, utente=Utente.da_grezzo("eval-user"), session_id=sessione)
             voce["prompt_recupero_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()
             voce["domanda_recupero"] = fase.domanda + SONDA
@@ -701,6 +709,8 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    from ares import config
+
     p = parser()
     args = p.parse_args()
     if args.ripetizioni < 1 or args.timeout < 1:
@@ -722,7 +732,7 @@ def main() -> int:
     rapporto: dict[str, Any] = {
         "stato": "in_corso",
         "avvio_utc": datetime.now(UTC).isoformat(),
-        "metadati": metadati(),
+        "metadati": metadati(config.leggi_impostazioni()),
         "ripetizioni": args.ripetizioni,
         "casi": args.casi,
         "risultati": [],

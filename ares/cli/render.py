@@ -12,7 +12,7 @@ from ares import config
 from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
-from ares.config import Percorsi
+from ares.config import Impostazioni, Percorsi
 
 # Gli eventi che aprono un'attesa, con cio' che l'indicatore dice, e quelli
 # che la chiudono. Erano una catena di venti `elif` con lo stesso corpo:
@@ -503,19 +503,23 @@ def finestra_occupata(risposta) -> int | None:
     return ultimo
 
 
-def quota_finestra(prompt: int) -> str:
+def quota_finestra(prompt: int, impostazioni: Impostazioni) -> str:
     """La finestra occupata in percentuale, o vuoto se il tetto non e' noto.
 
     `<1` sotto l'uno per cento, perche' `0%` con qualche centinaio di token
     dentro sembra un contatore rotto.
+
+    Il tetto e' quello chiesto a Ollama per questa conversazione, non un
+    numero di modulo: la percentuale deve dire quanto della finestra che il
+    modello ha davvero e' occupata.
     """
-    if not prompt or not config.NUM_CTX:
+    if not prompt or not impostazioni.num_ctx:
         return ""
-    quota = 100.0 * prompt / config.NUM_CTX
+    quota = 100.0 * prompt / impostazioni.num_ctx
     return ("<1" if quota < 1 else str(round(quota))) + "%"
 
 
-def righe_metriche(risposta) -> list:
+def righe_metriche(risposta, impostazioni: Impostazioni) -> list:
     """Il costo del turno in una riga, o niente se non c'e' niente da dire.
 
     Un turno interrotto o fallito arriva senza metriche: la riga non si
@@ -532,8 +536,16 @@ def righe_metriche(risposta) -> list:
 
     pezzi = []
     prompt = finestra_occupata(risposta)
-    if prompt and config.NUM_CTX:
-        pezzi.append("finestra " + _token(prompt) + "/" + _token(config.NUM_CTX) + " (" + quota_finestra(prompt) + ")")
+    if prompt and impostazioni.num_ctx:
+        pezzi.append(
+            "finestra "
+            + _token(prompt)
+            + "/"
+            + _token(impostazioni.num_ctx)
+            + " ("
+            + quota_finestra(prompt, impostazioni)
+            + ")"
+        )
     if uscita:
         pezzi.append("risposta " + _token(uscita) + " tok / " + str(round(secondi_risposta, 1)) + " s")
     if appresi:

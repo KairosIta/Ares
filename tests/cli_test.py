@@ -50,9 +50,9 @@ RADICE_PROVA = prepara_ambiente("cli-test")
 
 from ares import config  # noqa: E402
 
-# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
-# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
-# e li passa a chi ne ha bisogno.
+# I percorsi della prova, letti una volta dopo `prepara_ambiente`: `config`
+# non li tiene piu' in nomi propri, quindi la prova se li porta dietro e li
+# passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
 from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
@@ -78,6 +78,11 @@ CONTENUTO_FILE = "riga di prova"
 # proposito, cosi' un tentativo di embedding si vede subito invece di
 # funzionare.
 config.OLLAMA_HOST = "http://127.0.0.1:1"
+
+# Le impostazioni si leggono dopo, perche' devono fotografare anche quel
+# porto chiuso: sono quelle che il confine del processo costruira', e una
+# prova che le fissasse prima confronterebbe due cose diverse.
+IMPOSTAZIONI = config.leggi_impostazioni()
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +163,7 @@ from ares.state.identita import Utente
 
 percorsi = config.leggi_percorsi()
 utente = Utente.da_grezzo(sys.argv[1])
-build_assistant(percorsi, utente, session_id=sys.argv[2])
+build_assistant(percorsi, config.leggi_impostazioni(), utente, session_id=sys.argv[2])
 build_filesystem(percorsi, utente).write(sys.argv[3], sys.argv[4])
 """
 
@@ -214,7 +219,9 @@ from ares import config
 from ares.agent.assistant import build_assistant
 from ares.state.identita import Utente
 
-agente = build_assistant(config.leggi_percorsi(), Utente.da_grezzo("  Demo  "), session_id="identita")
+agente = build_assistant(
+    config.leggi_percorsi(), config.leggi_impostazioni(), Utente.da_grezzo("  Demo  "), session_id="identita"
+)
 print(agente.user_id)
 """
 
@@ -1150,8 +1157,9 @@ def chat_cartella() -> str:
     originale = PERCORSI.lavoro
     costruiti: list[dict] = []
 
-    def costruisci(percorsi, utente, **argomenti):
+    def costruisci(percorsi, impostazioni, utente, **argomenti):
         argomenti["percorsi"] = percorsi
+        argomenti["impostazioni"] = impostazioni
         costruiti.append(argomenti)
         return object()
 
@@ -1192,6 +1200,10 @@ def chat_cartella() -> str:
     testo = _piatto(uscita.getvalue())
     esigi(scelta == progetto.resolve(), "--workspace non ha cambiato la cartella di lavoro: " + str(scelta))
     esigi(len(costruiti) == 1, "l'agente non e' stato costruito una volta sola: " + str(len(costruiti)))
+    esigi(
+        costruiti[0]["impostazioni"] == IMPOSTAZIONI,
+        "l'agente non ha ricevuto le impostazioni della conversazione",
+    )
     esigi(str(progetto.resolve()) in testo, "/cartella non nomina la cartella scelta: " + repr(testo))
     esigi(progetto.name in testo.split("Cartella di lavoro")[0], "il banner non nomina la cartella: " + repr(testo))
     esigi("ARES.md" in testo, "il banner non dice che c'e' un ARES.md: " + repr(testo))
@@ -1212,8 +1224,9 @@ def chat_sessioni() -> str:
 
     costruiti: list[dict] = []
 
-    def costruisci(percorsi, utente, **argomenti):
+    def costruisci(percorsi, impostazioni, utente, **argomenti):
         argomenti["percorsi"] = percorsi
+        argomenti["impostazioni"] = impostazioni
         costruiti.append(argomenti)
         return object()
 
@@ -1370,8 +1383,9 @@ def migrazione_stato() -> str:
 
     costruiti: list[dict] = []
 
-    def costruisci(percorsi, utente, **argomenti):
+    def costruisci(percorsi, impostazioni, utente, **argomenti):
         argomenti["percorsi"] = percorsi
+        argomenti["impostazioni"] = impostazioni
         costruiti.append(argomenti)
         return object()
 

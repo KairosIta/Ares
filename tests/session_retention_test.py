@@ -28,10 +28,11 @@ from sqlalchemy import text  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
-# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
-# e li passa a chi ne ha bisogno.
+# I percorsi e le impostazioni della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
+IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.agent.assistant import build_assistant, build_db  # noqa: E402
 from ares.backup.snapshots import elenco_snapshot, verifica_snapshot  # noqa: E402
 from ares.sessions.retention import apri_archivio  # noqa: E402
@@ -94,7 +95,7 @@ def fetch_page() -> str:
 
 
 def agente(user_id: str, session_id: str):
-    costruito = build_assistant(PERCORSI, utente=Utente.da_grezzo(user_id), session_id=session_id)
+    costruito = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(user_id), session_id=session_id)
     costruito.model = ModelloToolDeterministico()
     costruito.tools = [*list(costruito.tools or []), fetch_page]
     return costruito

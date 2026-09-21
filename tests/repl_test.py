@@ -55,10 +55,11 @@ from rich.text import Text  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
-# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
-# e li passa a chi ne ha bisogno.
+# I percorsi e le impostazioni della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
+IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.agent.turn_core import (  # noqa: E402
     TurnEngine,
     TurnEvent,
@@ -86,7 +87,7 @@ from ares.cli.render import (  # noqa: E402
     righe_scrittura,
 )
 from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
-from ares.config import Percorsi  # noqa: E402
+from ares.config import Impostazioni, Percorsi  # noqa: E402
 from ares.state import platform_files  # noqa: E402
 from ares.state.git import ramo_git  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -443,11 +444,11 @@ def metriche_del_turno() -> str:
         finestra_occupata(risposta) == 7097,
         "la finestra e' " + str(finestra_occupata(risposta)) + " invece di 7097",
     )
-    riga = righe_metriche(risposta)[0]
-    # Il tetto atteso si calcola da config con la stessa base 1024 del
-    # renderer, cosi' il test segue ogni modifica di NUM_CTX.
-    tetto = str(round(config.NUM_CTX / 1024.0, 1)) + "k"
-    esigi("6.9k/" + tetto in riga, "la finestra non e' resa sul tetto di config: " + repr(riga))
+    riga = righe_metriche(risposta, IMPOSTAZIONI)[0]
+    # Il tetto atteso si calcola dalle impostazioni con la stessa base 1024
+    # del renderer, cosi' il test segue ogni modifica di NUM_CTX.
+    tetto = str(round(IMPOSTAZIONI.num_ctx / 1024.0, 1)) + "k"
+    esigi("6.9k/" + tetto in riga, "la finestra non e' resa sul tetto della conversazione: " + repr(riga))
     esigi("10.7k" not in riga and "10999" not in riga, "la riga mostra la somma del run: " + repr(riga))
     # I secondi dell'apprendimento vengono da total_duration, in nanosecondi:
     # senza la divisione uscirebbero sedici miliardi.
@@ -455,8 +456,14 @@ def metriche_del_turno() -> str:
 
     # Un turno interrotto o fallito arriva senza metriche, e la riga non si
     # inventa: e' il ramo che `esegui_turno` produce dopo un Ctrl-C.
-    esigi(righe_metriche(_RunFinto(metrics=None, messages=[])) == [], "un turno senza metriche produce una riga")
-    esigi(righe_metriche(_RunFinto(metrics=RunMetrics(), messages=[])) == [], "un turno a zero produce una riga")
+    esigi(
+        righe_metriche(_RunFinto(metrics=None, messages=[]), IMPOSTAZIONI) == [],
+        "un turno senza metriche produce una riga",
+    )
+    esigi(
+        righe_metriche(_RunFinto(metrics=RunMetrics(), messages=[]), IMPOSTAZIONI) == [],
+        "un turno a zero produce una riga",
+    )
     return "finestra 7097 distinta dai 10999 del run, nanosecondi convertiti"
 
 
@@ -1209,6 +1216,7 @@ def comandi() -> str:
                 session_id="sessione",
                 utente=Utente.da_grezzo("utente"),
                 percorsi=PERCORSI,
+                impostazioni=IMPOSTAZIONI,
             ),
         )
     esigi(vive is True, "un comando sconosciuto chiude la sessione")
@@ -1218,6 +1226,7 @@ def comandi() -> str:
         session_id="sessione",
         utente=Utente.da_grezzo("utente"),
         percorsi=PERCORSI,
+        impostazioni=IMPOSTAZIONI,
     )
     with contextlib.redirect_stdout(io.StringIO()):
         esigi(gestisci_comando("/esci", vuoto) is False, "/esci non chiude")
@@ -1259,7 +1268,9 @@ def stato_della_chat() -> str:
 
     modi: list[str] = []
 
-    def costruisci(percorsi: Percorsi, utente: Utente, *, session_id: str, debug: bool, modo: str) -> AgenteFinto:
+    def costruisci(
+        percorsi: Percorsi, impostazioni: Impostazioni, utente: Utente, *, session_id: str, debug: bool, modo: str
+    ) -> AgenteFinto:
         costruiti.append((session_id, debug))
         modi.append(modo)
         return AgenteFinto(session_id, debug)
@@ -1269,6 +1280,7 @@ def stato_della_chat() -> str:
         session_id="principale",
         utente=Utente.da_grezzo("utente"),
         percorsi=PERCORSI,
+        impostazioni=IMPOSTAZIONI,
     )
 
     def comando(riga: str) -> str:
@@ -1403,6 +1415,9 @@ def stato_della_chat() -> str:
     stato.finestra = None
     esigi(riga_stato(stato) == stato.modo + " · " + stato.session_id, "la barra senza turni non e' modo e sessione")
     with patch.object(config, "NUM_CTX", 1000):
+        # La barra legge il tetto dalle impostazioni della conversazione: chi
+        # ne cambia una ne costruisce di nuove, come farebbe la chat.
+        stato.impostazioni = config.leggi_impostazioni()
         stato.finestra = 250
         esigi(riga_stato(stato).endswith(" · finestra 25%"), "la barra non dice la finestra: " + riga_stato(stato))
         stato.finestra = 3

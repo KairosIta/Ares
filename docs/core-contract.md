@@ -42,8 +42,8 @@ Le API pubbliche coprono soltanto le operazioni necessarie ad Ares.
 
 | Area | Evidenza | Conseguenza per il contratto |
 | --- | --- | --- |
-| Configurazione | `config.leggi_percorsi()` costruisce i percorsi al confine del processo; ogni lettore li riceve come primo parametro. Identità e percorsi sono due assi, non più nomi di modulo | Una conversazione deve ricevere una configurazione risolta propria, e i modelli applicativi non devono leggere né scrivere un globale |
-| Costruzione | `build_assistant` riceve percorsi, utente, sessione, modalità e `interattivo`; il workspace non è un parametro a sé | Il workspace sceglie i percorsi, non il costruttore: `--workspace` è una sostituzione locale, e resta da decidere se il progetto debba essere un campo a sé |
+| Configurazione | `config.leggi_percorsi()` e `config.leggi_impostazioni()` costruiscono, al confine del processo, i percorsi e i modelli di questa conversazione; ogni lettore li riceve come parametri. Identità, percorsi e impostazioni sono tre assi, non più nomi di modulo | Una conversazione deve ricevere una configurazione risolta propria, e i modelli applicativi non devono leggere né scrivere un globale |
+| Costruzione | `build_assistant` riceve percorsi, impostazioni, utente, sessione, modalità e `interattivo`; il workspace non è un parametro a sé | Il workspace sceglie i percorsi, non il costruttore: `--workspace` è una sostituzione locale, e resta da decidere se il progetto debba essere un campo a sé |
 | Turno | `turn_core` separa lo streaming dal terminale, ma espone `RunOutput` e oggetti generici | Conservare l'adattamento esistente e completare i dati pubblici |
 | Memoria | `cli/chat.py` coordina fotografia, differenze, conferma e ripristino | Il client che usa soltanto `turn_core` non eredita queste politiche |
 | Lock | Il lock del turno avvolge il flusso nella CLI; quello dello stato dura quanto la chat | Coordinamento e durata devono appartenere al servizio applicativo |
@@ -197,18 +197,46 @@ globali da modificare quando cambia una scheda. Collezioni di opzioni
 devono essere copiate o rese immutabili: una dataclass congelata da sola
 non impedisce la mutazione di un dizionario interno.
 
-Il primo pezzo di questa separazione è fatto, e riguarda proprio i percorsi.
+Due pezzi di questa separazione sono fatti. Il primo riguarda i percorsi.
 `ares/config.py` non tiene più un `PERCORSI` corrente né le viste che lo
 nascondevano (`TMP_DIR`, `DB_FILE`, `BACKUP_DIR`, `WORKSPACE_DIR`...), e
 `imposta_percorsi` non esiste: chi legge lo stato riceve un `Percorsi` come
 primo parametro, e l'unico punto in cui se ne costruisce uno è il confine del
 processo — i comandi della CLI nel proprio corpo, le prove all'import, dopo
 `prepara_ambiente`. L'identità è l'altro asse, e viaggia accanto: `Utente` non
-è un campo di `Percorsi`. Restano fuori da questo giro le impostazioni che non
-sono percorsi — modello, modalità, connessione Ollama — che oggi sono ancora
-nomi di modulo letti dai costruttori: sono il gruppo che il contratto chiama
-"contesto della conversazione", e diventare parametri espliciti è il passo
-successivo.
+è un campo di `Percorsi`.
+
+Il secondo riguarda i modelli. I nomi del tuning — `MAIN_MODEL`,
+`LEARNING_MODEL`, `EMBEDDER_MODEL`, `OLLAMA_HOST`, `NUM_CTX`, `KEEP_ALIVE`,
+le temperature e i due `think` — restano in `config.py` come sorgente, dove
+`.env`, ambiente e predefiniti si incontrano una volta sola all'import, ed è
+`leggi_impostazioni()` a fotografarli in un `Impostazioni` congelato alla
+porta del processo. Da lì in poi `build_chat_model`, `build_learning_model`,
+`build_knowledge`, `build_learning_machine`, `build_assistant`,
+`istruzioni_sull_ambiente`, `descrizione`, `esamina` e la riga delle metriche
+ricevono l'oggetto: due conversazioni con modelli diversi sono due oggetti, non
+due mutazioni a distanza. Le due `options` di Ollama sono proprietà derivate
+perché non sono indipendenti dalla coppia di modelli — il contesto
+dell'estrazione si stringe solo quando i due modelli sono diversi, altrimenti
+Ollama riavvierebbe il runner a ogni passaggio perdendo la cache del prompt.
+L'avviso sul cloud è un metodo del tipo, così preflight e banner non possono
+leggere una configurazione diversa da quella che stanno per avviare.
+
+La modalità non entra in `Impostazioni`: è già un parametro a ogni confine, e
+l'unico difetto reale era il default che fotografava `config.MODO_PREDEFINITO`
+all'import. `build_assistant` e le tre funzioni dei prompt lo risolvono adesso
+al momento della chiamata, come faceva già `build_workspace`; il comando
+`ares` tiene il proprio default dichiarato in `--help`.
+
+Un'eccezione è deliberata e resta: `ares/backup/snapshots.py` legge ancora i
+nomi di modulo per scrivere il manifesto dello snapshot e per il controllo di
+compatibilità con l'embedder. Quel manifesto registra com'era configurato
+*questo processo*, e la verifica dell'embedder è una garanzia esistente: non è
+una lettura di comodo da sostituire, ed è l'unico punto rimasto.
+
+Resta fuori la politica operativa e di apprendimento — i flag `LEARN_*`,
+`MOSTRA_*`, `CONFERMA_APPRENDIMENTI`, le variabili del workspace e della
+cronologia — che è il gruppo successivo.
 
 Il cambio modello o modalità si applica ai turni successivi; durante un
 turno attivo restituisce un conflitto, salvo futura operazione dedicata.

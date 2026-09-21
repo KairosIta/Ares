@@ -8,6 +8,40 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Anche i modelli viaggiano come parametro: nasce `Impostazioni`.**
+  I nomi del tuning in `ares/config.py` — `MAIN_MODEL`, `LEARNING_MODEL`,
+  `EMBEDDER_MODEL`, `EMBEDDER_DIMENSIONS`, `OLLAMA_HOST`, `KEEP_ALIVE`,
+  `NUM_CTX`, `TEMPERATURE`, i due `think` — erano l'ultimo pezzo di
+  configurazione che i costruttori rileggevano da soli: `build_chat_model()`,
+  `build_learning_model()`, `build_knowledge(percorsi)` e
+  `build_assistant(percorsi, utente, ...)` decidevano a chi parlare guardando
+  un nome di modulo, e una firma non lo diceva. Ora `config.leggi_impostazioni()`
+  li fotografa in un `Impostazioni` congelato al confine del processo — la chat
+  e i suoi comandi nel proprio corpo, preflight all'inizio, le prove
+  all'import — e da lì in poi l'oggetto si passa: `build_chat_model(impostazioni)`,
+  `build_learning_model(impostazioni)`,
+  `build_learning_machine(db, knowledge, utente, impostazioni)`,
+  `build_assistant(percorsi, impostazioni, utente, ...)`. I costruttori dei
+  prompt (`descrizione`, `istruzioni_sull_ambiente`), il preflight e la riga
+  delle metriche ricevono le stesse impostazioni, quindi l'avviso sul cloud e
+  la percentuale di finestra descrivono la conversazione che si sta avviando e
+  non quella che il processo aveva in mente all'import. Due conversazioni con
+  modelli diversi nello stesso processo sono due oggetti, non due mutazioni a
+  distanza. `OLLAMA_OPTIONS` e `LEARNING_OPTIONS` spariscono come nomi e
+  diventano proprietà del tipo, perché il contesto dell'estrazione dipende
+  dalla coppia di modelli: si stringe a `NUM_CTX_ESTRAZIONE` solo quando sono
+  diversi, altrimenti Ollama riavvierebbe il runner a ogni passaggio perdendo
+  la cache del prompt. La modalità resta fuori dal tipo — è già un parametro a
+  ogni confine — ma `build_assistant` e le tre funzioni dei prompt smettono di
+  fotografare `config.MODO_PREDEFINITO` nella firma e lo risolvono alla
+  chiamata, come faceva già `build_workspace`. I nomi del tuning restano in
+  `config.py` come sorgente, quindi continuano a funzionare i `.env`,
+  `ARES_MAIN_MODEL` e le sostituzioni delle prove. Eccezione deliberata:
+  `ares/backup/snapshots.py` legge ancora i nomi di modulo, perché il
+  manifesto dello snapshot deve registrare com'era configurato *questo*
+  processo e il controllo di compatibilità dell'embedder è una garanzia
+  esistente. Nessun comportamento visibile cambia.
+
 - **I percorsi viaggiano come parametro, non come nomi di modulo.**
   `ares/config.py` teneva un `PERCORSI` corrente e le dieci viste che lo
   nascondevano — `ARES_HOME`, `TMP_DIR`, `DB_FILE`, `FS_DB_FILE`,

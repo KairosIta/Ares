@@ -12,6 +12,13 @@ da `leggi_percorsi` all'avvio e passato a chi ne ha bisogno: qui non c'e' un
 erano viste di quell'oggetto e ne nascondevano la provenienza. Chi legge lo
 stato lo riceve come parametro; l'unico punto in cui si costruisce e' il
 confine del processo.
+
+Lo stesso vale per i modelli: gli undici nomi del tuning restano la sorgente
+- `.env`, ambiente e predefiniti si incontrano all'import - e
+`leggi_impostazioni` li fotografa in un `Impostazioni` immutabile che i
+costruttori ricevono. Le due domande sono separate di proposito: `Percorsi`
+dice dove sta lo stato, `Impostazioni` a chi si parla, e l'identita' e' il
+terzo asse. Nessuno dei tre e' un nome di modulo che qualcuno riscrive.
 """
 
 import os
@@ -19,7 +26,7 @@ import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import dotenv_values
 
@@ -83,7 +90,7 @@ MODELLO_CLOUD = "glm-5.3-flash:cloud"
 
 # Agente principale. Conversazione ed estrazione delle memorie possono usare
 # un modello cloud, ciascuna per scelta esplicita nel `.env`; l'embedder no:
-# `assistant_runtime` rifiuta di costruirlo su un nome cloud, cosi' il
+# `build_knowledge` rifiuta di costruirlo su un nome cloud, cosi' il
 # confine sta nel codice e non in un commento.
 #
 # Il valore distribuito e' quello locale. Il progetto promette in copertina
@@ -125,7 +132,7 @@ MAIN_MODEL = AMBIENTE.get("ARES_MAIN_MODEL") or MODELLO_LOCALE
 # invece MAIN_MODEL anche qui, per evitare lo swap dei pesi fra la risposta
 # e l'apprendimento: e' il default distribuito, in cui i due ruoli
 # coincidono. Puntando `ARES_MAIN_MODEL` al cloud si separano da soli, e
-# `LEARNING_NUM_CTX` qui sotto se ne accorge senza che si tocchi niente.
+# `Impostazioni.num_ctx_apprendimento` se ne accorge senza toccare niente.
 LEARNING_MODEL = AMBIENTE.get("ARES_LEARNING_MODEL") or MODELLO_LOCALE
 
 
@@ -142,43 +149,10 @@ def e_modello_cloud(nome: str) -> bool:
     return bool(separatore) and (tag == "cloud" or tag.endswith("-cloud"))
 
 
-def avviso_cloud() -> list[str]:
-    """Righe che dicono cosa esce dalla macchina; vuoto se niente esce.
-
-    Nominano i ruoli cloud, cio' che mandano fuori e cio' che resta locale.
-    Preflight e chat le stampano tali e quali: un avviso che riguarda dove
-    finiscono le parole deve dire la stessa cosa ovunque lo si legga. E deve
-    dire tutto: con la conversazione in cloud non escono solo "prompt e
-    risposte", ma ogni cosa che il modello riceve - i file che legge,
-    l'output dei comandi, profilo e memorie iniettati nel contesto, le
-    conversazioni passate che rilegge.
-    """
-    conversazione = e_modello_cloud(MAIN_MODEL)
-    estrazione = e_modello_cloud(LEARNING_MODEL)
-    if conversazione and estrazione:
-        return [
-            "Conversazione ed estrazione delle memorie sono cloud: prompt, risposte, file letti, output dei",
-            "comandi, memorie e conversazioni rilette escono dalla macchina verso ollama.com.",
-            "Solo l'embedding resta locale.",
-        ]
-    if conversazione:
-        return [
-            "Il modello conversazionale e' cloud: prompt, risposte, file letti, output dei comandi, memorie",
-            "iniettate e conversazioni rilette escono dalla macchina verso ollama.com.",
-            "Estrazione delle memorie ed embedding restano locali.",
-        ]
-    if estrazione:
-        return [
-            "Il modello di estrazione e' cloud: il testo dei turni e le memorie gia' salvate",
-            "escono dalla macchina verso ollama.com. Conversazione ed embedding restano locali.",
-        ]
-    return []
-
-
 # Embedder unico per le collezioni LanceDB. Indici e query devono usare lo
 # stesso modello e la stessa dimensionalita'. E' il solo ruolo che resta
 # locale sempre, qualunque cosa dica il `.env`: cambiare embedder
-# invaliderebbe l'indice gia' scritto, e `assistant_runtime` rifiuta un nome
+# invaliderebbe l'indice gia' scritto, e `build_knowledge` rifiuta un nome
 # cloud per questo ruolo.
 EMBEDDER_MODEL = "nomic-embed-text-v2-moe"
 EMBEDDER_DIMENSIONS = 768
@@ -213,11 +187,6 @@ KEEP_ALIVE = "30m"
 
 TEMPERATURE = 0.7
 
-OLLAMA_OPTIONS = {
-    "num_ctx": NUM_CTX,
-    "temperature": TEMPERATURE,
-}
-
 # Il modello ragiona prima di rispondere e Ollama glielo accende di default.
 # `think` e' un parametro top-level dell'API. Resta attivo per la risposta e
 # viene disattivato per le estrazioni strutturate, dove aggiungerebbe latenza.
@@ -236,15 +205,136 @@ LEARNING_THINK = False
 # locale in entrambi i ruoli un `num_ctx` diverso costringe Ollama a
 # riavviare il runner a ogni passaggio fra risposta ed estrazione, e col
 # runner se ne va la cache del prompt: il turno dopo rielabora da capo
-# tutta la conversazione. In quel caso l'estrazione usa NUM_CTX.
-LEARNING_NUM_CTX = 32768 if LEARNING_MODEL != MAIN_MODEL else NUM_CTX
+# tutta la conversazione. In quel caso l'estrazione usa NUM_CTX. La scelta
+# sta in `Impostazioni.num_ctx_apprendimento`, perche' dipende da quali due
+# modelli sono: un numero solo, deciso qui all'import, non potrebbe seguirli.
+NUM_CTX_ESTRAZIONE = 32768
 
 # Estrazione memorie: temperatura bassa, perche' e' un compito di
 # trascrizione strutturata e non di conversazione.
-LEARNING_OPTIONS = {
-    "num_ctx": LEARNING_NUM_CTX,
-    "temperature": 0.2,
-}
+TEMPERATURE_ESTRAZIONE = 0.2
+
+
+# ---------------------------------------------------------------------------
+# Impostazioni della conversazione
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Impostazioni:
+    """Con quali modelli parla una conversazione, e come li raggiunge.
+
+    E' il secondo asse risolto al confine del processo, accanto a `Percorsi`:
+    i percorsi dicono *dove* sta lo stato, le impostazioni dicono *a chi* si
+    parla e con quale connessione. Stanno fuori da `Percorsi` per la stessa
+    ragione per cui ne sta fuori l'identita': sono domande diverse, e
+    tenerle nello stesso oggetto faceva sembrare che cambiare modello
+    cambiasse archivio.
+
+    I campi sono i valori risolti, non le variabili d'ambiente: chi vuole
+    due conversazioni con modelli diversi ne costruisce due, e nessuna
+    rilegge niente a meta' strada.
+
+    Le due `options` di Ollama sono proprieta' e non campi perche' non sono
+    indipendenti dai modelli: `num_ctx_apprendimento` dipende da quali due
+    modelli sono, e un campo accanto a `apprendimento` potrebbe contraddirlo.
+    """
+
+    principale: str
+    apprendimento: str
+    embedder: str
+    embedder_dimensioni: int
+    host: str
+    keep_alive: str
+    num_ctx: int
+    temperatura: float
+    temperatura_apprendimento: float
+    think: bool
+    think_apprendimento: bool
+
+    @property
+    def num_ctx_apprendimento(self) -> int:
+        """Il contesto dell'estrazione: stretto se i due modelli sono diversi.
+
+        Con lo stesso modello in entrambi i ruoli un `num_ctx` diverso
+        costringe Ollama a riavviare il runner a ogni passaggio fra risposta
+        ed estrazione - e col runner se ne va la cache del prompt, quindi il
+        turno dopo rielabora da capo la conversazione. Il risparmio di VRAM
+        vale solo quando sono due modelli distinti, ed e' la coppia a
+        deciderlo, non un numero scelto a mano.
+        """
+        return NUM_CTX_ESTRAZIONE if self.apprendimento != self.principale else self.num_ctx
+
+    @property
+    def opzioni(self) -> dict[str, Any]:
+        return {"num_ctx": self.num_ctx, "temperature": self.temperatura}
+
+    @property
+    def opzioni_apprendimento(self) -> dict[str, Any]:
+        return {"num_ctx": self.num_ctx_apprendimento, "temperature": self.temperatura_apprendimento}
+
+    def avviso_cloud(self) -> list[str]:
+        """Righe che dicono cosa esce dalla macchina; vuoto se niente esce.
+
+        Nominano i ruoli cloud, cio' che mandano fuori e cio' che resta
+        locale. Preflight e chat le stampano tali e quali: un avviso che
+        riguarda dove finiscono le parole deve dire la stessa cosa ovunque lo
+        si legga. E deve dire tutto: con la conversazione in cloud non escono
+        solo "prompt e risposte", ma ogni cosa che il modello riceve - i file
+        che legge, l'output dei comandi, profilo e memorie iniettati nel
+        contesto, le conversazioni passate che rilegge.
+        """
+        conversazione = e_modello_cloud(self.principale)
+        estrazione = e_modello_cloud(self.apprendimento)
+        if conversazione and estrazione:
+            return [
+                "Conversazione ed estrazione delle memorie sono cloud: prompt, risposte, file letti, output dei",
+                "comandi, memorie e conversazioni rilette escono dalla macchina verso ollama.com.",
+                "Solo l'embedding resta locale.",
+            ]
+        if conversazione:
+            return [
+                "Il modello conversazionale e' cloud: prompt, risposte, file letti, output dei comandi, memorie",
+                "iniettate e conversazioni rilette escono dalla macchina verso ollama.com.",
+                "Estrazione delle memorie ed embedding restano locali.",
+            ]
+        if estrazione:
+            return [
+                "Il modello di estrazione e' cloud: il testo dei turni e le memorie gia' salvate",
+                "escono dalla macchina verso ollama.com. Conversazione ed embedding restano locali.",
+            ]
+        return []
+
+
+def leggi_impostazioni() -> Impostazioni:
+    """Le impostazioni di questa conversazione, lette quando servono.
+
+    `leggi_percorsi` rilegge l'ambiente che gli si passa; qui i valori sono
+    gia' risolti nei nomi qui sopra, dove `.env`, ambiente e predefiniti si
+    incontrano una volta sola all'import. Questa funzione li fotografa in un
+    oggetto immutabile al confine del processo - la chat e i suoi comandi nel
+    proprio corpo, preflight all'inizio, le prove all'import.
+
+    I nomi restano la sorgente, come `AMBIENTE` lo e' per i percorsi, e
+    nessuno li muta: chi costruisce un agente riceve l'oggetto. Il giorno in
+    cui una prova o una UI vorranno due conversazioni con modelli diversi
+    costruiranno due `Impostazioni`, invece di riscrivere un nome di modulo
+    che il resto del processo non vede cambiare.
+    """
+    return Impostazioni(
+        principale=MAIN_MODEL,
+        apprendimento=LEARNING_MODEL,
+        embedder=EMBEDDER_MODEL,
+        embedder_dimensioni=EMBEDDER_DIMENSIONS,
+        host=OLLAMA_HOST,
+        keep_alive=KEEP_ALIVE,
+        num_ctx=NUM_CTX,
+        temperatura=TEMPERATURE,
+        temperatura_apprendimento=TEMPERATURE_ESTRAZIONE,
+        think=MAIN_THINK,
+        think_apprendimento=LEARNING_THINK,
+    )
+
 
 # `save_session_context` passa da una tool call con quattro argomenti. Ollama
 # puo' restituire JSON troncato senza sollevare un errore: Agno vede una

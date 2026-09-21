@@ -36,7 +36,7 @@ from ares.agent.runtime import (
     build_result_store,
     build_workspace,
 )
-from ares.config import Percorsi
+from ares.config import Impostazioni, Percorsi
 from ares.state.identita import Utente
 from ares.state.stores import CHIAVE_CARTELLA, con_run, sessioni_della_cartella
 
@@ -61,11 +61,12 @@ __all__ = [
 
 def build_assistant(
     percorsi: Percorsi,
+    impostazioni: Impostazioni,
     utente: Utente,
     session_id: str = "principale",
     debug: bool = False,
     interattivo: bool = True,
-    modo: str = config.MODO_PREDEFINITO,
+    modo: str | None = None,
 ) -> Agent:
     """Assembla l'assistente completo senza nascondere dipendenze globali.
 
@@ -81,12 +82,20 @@ def build_assistant(
 
     `modo` e' una delle chiavi di `config.MODALITA`: decide quali strumenti
     dello spazio di lavoro girano da soli, quali chiedono e quali non ci
-    sono, e il prompt lo dice.
+    sono, e il prompt lo dice. Vuoto vale `config.MODO_PREDEFINITO`, letto
+    adesso: un default nella firma lo fotograferebbe all'import, e chi lo
+    cambia dopo non verrebbe ascoltato.
 
     `percorsi` e' dove stanno stato, backup e cartella di lavoro, e non ha
     un valore predefinito: chi costruisce l'agente lo ha gia' in mano dal
     confine del processo, e un `config.PERCORSI` qui dentro sarebbe di nuovo
     una risposta ambientale alla domanda "quale archivio".
+
+    `impostazioni` e' con quali modelli parla questa conversazione, e come
+    li raggiunge. Sta accanto a `percorsi` perche' e' l'altra meta' della
+    stessa risposta: la prima dice dove, la seconda a chi. Nessuno dei due
+    e' un nome di modulo, quindi due conversazioni con modelli diversi sono
+    due oggetti e non due mutazioni a distanza.
 
     `utente` e' l'identita' gia' canonica, e non ha un valore predefinito:
     un default nella firma sarebbe una seconda risposta alla domanda "per
@@ -94,10 +103,11 @@ def build_assistant(
     che Agno usa come chiave di profilo e User Memory e' `utente.id`, ed e'
     quello per cui namespace, lock e sessioni parlano.
     """
+    modo = modo or config.MODO_PREDEFINITO
     db = build_db(percorsi)
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
     # store learned_knowledge nel namespace globale del framework.
-    knowledge = build_knowledge(percorsi) if config.LEARN_KNOWLEDGE else None
+    knowledge = build_knowledge(percorsi, impostazioni) if config.LEARN_KNOWLEDGE else None
     fs = build_filesystem(percorsi, utente)
     spazio = build_workspace(percorsi, modo) if config.WORKSPACE else None
 
@@ -112,8 +122,8 @@ def build_assistant(
     return Agent(
         name="Ares",
         add_name_to_context=True,
-        description=descrizione(interattivo=interattivo),
-        model=build_chat_model(),
+        description=descrizione(impostazioni, interattivo=interattivo),
+        model=build_chat_model(impostazioni),
         db=db,
         user_id=utente.id,
         session_id=session_id,
@@ -122,6 +132,7 @@ def build_assistant(
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
         instructions=[
             *istruzioni_sull_ambiente(
+                impostazioni=impostazioni,
                 utente=utente,
                 session_id=session_id,
                 radice_lavoro=spazio.root if spazio is not None else None,
@@ -136,7 +147,7 @@ def build_assistant(
             *istruzioni_sulle_conversazioni(precedenti, cartella=spazio.root if spazio is not None else None),
             *istruzioni_sul_quaderno(),
         ],
-        learning=build_learning_machine(db=db, knowledge=knowledge, utente=utente, strumenti=interattivo),
+        learning=build_learning_machine(db, knowledge, utente, impostazioni, strumenti=interattivo),
         post_hooks=[apprendi_a_run_completato] if interattivo else [],
         add_learnings_to_context=True,
         add_history_to_context=True,
@@ -160,9 +171,10 @@ def build_assistant(
 
 
 if __name__ == "__main__":
-    agent = build_assistant(config.leggi_percorsi(), Utente.da_grezzo(config.DEFAULT_USER_ID))
+    impostazioni = config.leggi_impostazioni()
+    agent = build_assistant(config.leggi_percorsi(), impostazioni, Utente.da_grezzo(config.DEFAULT_USER_ID))
     print("Assistente costruito.")
-    print("Modello:", config.MAIN_MODEL)
+    print("Modello:", impostazioni.principale)
     macchina = agent.learning_machine
     assert macchina is not None
     print("Store attivi:", list(macchina.stores.keys()))

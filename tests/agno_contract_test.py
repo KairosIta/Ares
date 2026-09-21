@@ -79,10 +79,11 @@ from agno.models.response import ModelResponse  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
-# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
-# e li passa a chi ne ha bisogno.
+# I percorsi e le impostazioni della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
+IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.agent.assistant import build_assistant  # noqa: E402
 from ares.agent.learning import build_session_context_store  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
@@ -234,7 +235,7 @@ class ContatoreEstrazioni:
 
 
 def agente():
-    costruito = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
+    costruito = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
     costruito.model = ModelloScript(copione_cancellazione())
     return costruito
 
