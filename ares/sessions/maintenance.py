@@ -34,6 +34,7 @@ from ares.sessions.retention import (
     trova_sessione,
 )
 from ares.state.archivi import build_db
+from ares.state.identita import UtenteNonValido, utente_canonico
 
 app = nuova_app("sessions", "Retention delle sessioni e dei risultati tool di Ares")
 
@@ -77,6 +78,7 @@ def _dati_sessione(sessione: SessioneRetention) -> dict[str, Any]:
 
 
 def _stato(user_id: str, come_json: bool) -> int:
+    user_id = utente_canonico(user_id)
     db = build_db()
     sessioni = inventario(db, user_id)
     offload = sum(s.offload_count for s in sessioni)
@@ -146,6 +148,7 @@ def _applica(user_id: str, sessioni: Sequence[SessioneRetention], yes: bool) -> 
 
 
 def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bool) -> int:
+    user = utente_canonico(user)
     db = build_db()
     protette = set(config.SESSIONI_PROTETTE) | set(keep)
     candidate = seleziona_inattive(
@@ -167,6 +170,7 @@ def _prune(user: str, older_than: int, keep: Sequence[str], apply: bool, yes: bo
 
 
 def _delete(user: str, session_id: str, apply: bool, yes: bool) -> int:
+    user = utente_canonico(user)
     db = build_db()
     sessione = trova_sessione(inventario(db, user), session_id)
     UI.line("Sessione da eliminare:", style="ares.warning")
@@ -212,7 +216,7 @@ def _esegui(
     return esegui_protetto(
         azione,
         esclusivo=apply,
-        rifiuti=(ErroreRetention, ErroreBackup),
+        rifiuti=(ErroreRetention, ErroreBackup, UtenteNonValido),
         riprova="Chiudi la chat e attendi che le altre manutenzioni terminino.",
     )
 
@@ -227,8 +231,15 @@ def status(*, user: str = config.DEFAULT_USER_ID, come_json: Annotated[bool, Par
     """
 
     def vuoto() -> int:
+        # Senza archivio non si interroga niente: l'eco della risposta JSON
+        # usa la forma canonica quando l'id ne ha una, la stessa che `_stato`
+        # userebbe con l'archivio presente.
+        try:
+            chi = utente_canonico(user)
+        except UtenteNonValido:
+            chi = user
         if come_json:
-            UI.json({"user": user, "sessions": [], "offload_count": 0, "offload_bytes": 0})
+            UI.json({"user": chi, "sessions": [], "offload_count": 0, "offload_bytes": 0})
             return 0
         UI.line("Nessun archivio di Ares trovato in " + str(config.DB_FILE), style="ares.muted")
         return 0

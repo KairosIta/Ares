@@ -6,6 +6,37 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Identità utente canonica in un solo punto.** `Demo` e `demo` erano la
+  stessa persona per il namespace — che lo minuscolizza — e due persone
+  diverse per profilo, User Memory e lock dei turni: due chat sullo stesso
+  archivio scrivevano lo stesso profilo credendo di essere sole, e ciò che
+  l'una scriveva l'altra non lo vedeva. La forma dell'id — spazi ai bordi e
+  maiuscole — ora si decide in `ares/state/identita.py`, e namespace,
+  profilo/memorie (via `build_assistant`), lock, manutenzione e ispezione la
+  usano tutti. Un id che si riduce a vuoto è rifiutato invece di diventare un
+  contenitore condiviso. L'alfabeto ammesso è ristretto a lettere e cifre
+  ASCII, punto, trattino e trattino basso: un id con `/`, spazi o caratteri
+  accentati è rifiutato all'ingresso, invece di finire in un namespace che
+  Agno percent-encoda (`café` → `caf%c3%a9`) o che si annida sotto quello di
+  un altro utente. Con gli id già in minuscolo e ASCII, come `kairos` nel
+  `.env`, nessun archivio cambia posto. **Un id non canonico già in uso,
+  invece, cambia posto:** profilo, memorie e sessioni scritte con la grafia
+  vecchia non compaiono più sotto la nuova, mentre entità, intuizioni e
+  quaderno erano già minuscoli e restano. Non c'è migrazione: la premessa
+  della roadmap è che non ci siano dati da conservare.
+
+- **L'ID di sessione non collide più.** Il nome della cartella troncato più i
+  secondi non distingueva due progetti omonimi — due `api/` in due posti — né
+  due avvii nello stesso secondo: la seconda conversazione riusava la riga
+  della prima. L'id conserva il prefisso leggibile e aggiunge una coda
+  casuale; `tests/cli_test.py` lo prova su entrambi i casi.
+
+Verifica locale del 2026-09-21: otto prove offline verdi con copertura al 90%
+su Linux/Python 3.12; `ruff check`, `ruff format --check` e `mypy ares` (51
+file) puliti. Le prove con Ollama non sono state eseguite in questo giro.
+
 ## [0.7.1] - 2026-09-13
 
 Correzioni di integrità dei dati e sicurezza operativa: restore Windows,

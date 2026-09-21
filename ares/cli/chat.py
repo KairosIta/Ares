@@ -59,6 +59,7 @@ from ares.cli.ui import UI
 from ares.ops import migrazione
 from ares.state.archivi import build_db
 from ares.state.git import ramo_git
+from ares.state.identita import UtenteNonValido, utente_canonico
 from ares.state.lock import StatoOccupato, lock_stato, lock_turno
 from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
 
@@ -271,12 +272,23 @@ def _esegui_chat(
     """La chat. Restituisce il codice di uscita secondo la tabella di `cli/comando.py`.
 
     1 se lo stato non e' pronto o la cartella non esiste; 2 se la cartella
-    e' rifiutata, non c'e' niente da riprendere o `-p` chiede una modalita'
-    che scrive o esegue senza conferma (`auto`, `modifiche`).
+    e' rifiutata, l'utente non e' valido, non c'e' niente da riprendere o `-p`
+    chiede una modalita' che scrive o esegue senza conferma (`auto`,
+    `modifiche`).
 
     Con `-p` su stdout esce la risposta e nient'altro: avvisi, rifiuti,
     strumenti e metriche vanno su stderr, da prima della prima riga.
     """
+    # L'identita' si risolve qui, una volta sola per tutta la chat: la
+    # sessione da riprendere, la chiave di profilo e User Memory e il lock
+    # dei turni devono parlare dello stesso utente, e `Demo` e `demo` sono
+    # la stessa persona. A valle nessuno normalizza piu', quindi non esiste
+    # una seconda regola che possa divergere.
+    try:
+        user = utente_canonico(user)
+    except UtenteNonValido as errore:
+        UI.line("Utente non valido: " + str(errore) + ".", style="ares.error")
+        return ESITO_RIFIUTO
     with UI.solo_risposte() if prompt is not None else nullcontext():
         return _apri_chat(
             session=session,
