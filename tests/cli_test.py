@@ -33,6 +33,7 @@ import tempfile
 import threading
 import time
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from types import SimpleNamespace
@@ -50,11 +51,13 @@ from ares import config  # noqa: E402
 from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
-from ares.cli import chat  # noqa: E402
+from ares.cli import cartella, chat  # noqa: E402
 from ares.cli.ui import UI  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
+from ares.state.identita import UtenteNonValido, utente_canonico  # noqa: E402
 from ares.state.lock import StatoOccupato, lock_stato, lock_turno  # noqa: E402
+from ares.state.stores import namespace_entita, namespace_utente  # noqa: E402
 
 UTENTE = "prova-cli"
 SESSIONE = "cli"
@@ -189,6 +192,138 @@ def costruisci_archivio() -> str:
     esigi(Path(config.DB_FILE).is_file(), "il database dell'agente non e' stato creato")
     esigi(Path(config.FS_DB_FILE).is_file(), "il database del filesystem non e' stato creato")
     return "costruito in un processo separato, che non lo tiene aperto"
+
+
+# ---------------------------------------------------------------------------
+# Identita' e sessioni
+# ---------------------------------------------------------------------------
+
+
+COSTRUZIONE_AGENTE = """
+from ares.agent.assistant import build_assistant
+
+agente = build_assistant(user_id="  Demo  ", session_id="identita")
+print(agente.user_id)
+"""
+
+
+def identita_canonica() -> str:
+    """Una sola forma dell'utente per namespace, entita' e lock.
+
+    Riproduce il difetto del `core-contract`: `Demo` e `demo` erano la stessa
+    persona per il namespace - che minuscolizza - e due per il lock. Qui si
+    pretende che namespace, entita' e lock dicano la stessa cosa, e che un id
+    vuoto sia rifiutato invece di diventare un contenitore condiviso.
+    """
+    esigi(utente_canonico("  Kairos ") == "kairos", "spazi e maiuscole non normalizzati")
+    esigi(
+        namespace_utente("Demo") == namespace_utente("demo") == "user/demo",
+        "il namespace non usa la forma canonica: " + repr(namespace_utente("Demo")),
+    )
+    esigi(namespace_entita("Demo") == namespace_entita("demo"), "le entita' non seguono la stessa identita'")
+
+    try:
+        utente_canonico("   ")
+    except UtenteNonValido:
+        pass
+    else:
+        esigi(False, "un id utente vuoto non e' rifiutato")
+
+    # Fuori dall'alfabeto: un separatore anniderebbe il namespace, un
+    # carattere accentato verrebbe percent-encodato da Agno, uno spazio pure.
+    # `.` e `..` sono nell'alfabeto ma Agno li rifiuta come segmenti di path.
+    for vietato in ("demo/personale", "café", "a b", "a:b", "demo%", ".", ".."):
+        try:
+            utente_canonico(vietato)
+        except UtenteNonValido:
+            pass
+        else:
+            esigi(False, "un id fuori alfabeto non e' rifiutato: " + repr(vietato))
+    # L'alfabeto esiste per questo: Agno non deve riscrivere il namespace.
+    from agno.fs._paths import normalize_namespace
+
+    for ammesso in ("demo", "prova_cli", "a.b-c", "utente-1"):
+        esigi(utente_canonico(ammesso) == ammesso, "un id valido e' stato rifiutato: " + repr(ammesso))
+        esigi(
+            normalize_namespace(namespace_utente(ammesso)) == namespace_utente(ammesso),
+            "Agno riscriverebbe il namespace di " + repr(ammesso),
+        )
+    # La stessa regola vista dalla chat: un id vuoto esce "rifiutato" (2)
+    # prima di toccare l'archivio, non con un traceback.
+    with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+        codice = chat.avvia(session=SESSIONE, user="   ")
+    esigi(codice == 2, "la chat non rifiuta un utente vuoto: " + repr(codice))
+
+    # Anche `inspect` segue la tabella dei codici: "rifiutato" e non zero,
+    # sia dalla funzione sia dall'alias `ares-inspect`.
+    with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+        codice_inspect = inspect_learning.ispeziona(user="   ")
+        codice_alias = inspect_learning.main(["--user", "   "])
+    esigi(codice_inspect == 2, "inspect non rifiuta un utente vuoto: " + repr(codice_inspect))
+    esigi(codice_alias == 2, "l'alias ares-inspect perde il codice di uscita: " + repr(codice_alias))
+
+    # Il lock si prova fra processi, come il resto della contesa: lo stesso
+    # archivio, due grafie, un solo turno ammesso.
+    codice = (
+        "from ares.state.lock import StatoOccupato, lock_turno\n"
+        "try:\n"
+        "    with lock_turno('demo'): pass\n"
+        "except StatoOccupato: pass\n"
+        "else: raise RuntimeError('due grafie dello stesso utente non si contendono il lock')\n"
+    )
+    with lock_turno("Demo"):
+        figlio = subprocess.run(
+            [sys.executable, "-c", codice],
+            cwd=config.BASE_DIR,
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    esigi(figlio.returncode == 0, "lock non allineato alla forma canonica: " + figlio.stderr[-400:])
+    return "namespace, entita' e lock concordano su Demo/demo; l'id vuoto e' rifiutato"
+
+
+def identita_agente() -> str:
+    """L'agente porta la forma canonica a profilo e User Memory.
+
+    Profilo e memorie non hanno namespace: la loro chiave e' `user_id`, e Agno
+    la cerca com'e'. Normalizzarla qui e' cio' che rende `Demo` e `demo` lo
+    stesso profilo; il figlio costruisce l'agente con una grafia sporca e
+    riporta quella che l'agente conserva.
+    """
+    figlio = subprocess.run(
+        [sys.executable, "-c", COSTRUZIONE_AGENTE],
+        cwd=config.BASE_DIR,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    esigi(figlio.returncode == 0, "costruzione dell'agente fallita: " + figlio.stderr[-800:])
+    esigi(
+        figlio.stdout.strip() == "demo",
+        "l'agente conserva la grafia non canonica: " + repr(figlio.stdout.strip()),
+    )
+    return "l'agente canonizza user_id, chiave di profilo e memorie"
+
+
+def id_sessione_univoci() -> str:
+    """Due cartelle omonime, o lo stesso istante, non producono lo stesso id.
+
+    Era il secondo difetto riprodotto nel `core-contract`: il nome della
+    cartella troncato piu' i secondi non distingue `/a/api` da `/b/api`, e la
+    seconda conversazione avrebbe riusato la riga della prima.
+    """
+    quando = datetime(2026, 9, 21, 12, 0, 0)
+    a = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando, suffisso="aaa111")
+    b = cartella.nuovo_id_sessione(Path("/progetti/b/api"), quando, suffisso="bbb222")
+    esigi(a == "api-20260921-120000-aaa111", "formato dell'id inatteso: " + repr(a))
+    esigi(a != b, "cartelle omonime producono lo stesso id")
+    primo = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando)
+    secondo = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando)
+    esigi(primo != secondo, "due avvii nello stesso istante producono lo stesso id")
+    return "id distinti per cartelle omonime e nello stesso istante"
 
 
 # ---------------------------------------------------------------------------
@@ -1473,6 +1608,9 @@ def main() -> int:
     print()
     try:
         ok("archivio", costruisci_archivio())
+        ok("identita' utente", identita_canonica())
+        ok("identita' agente", identita_agente())
+        ok("id sessione", id_sessione_univoci())
 
         for nome, prova in (
             ("preflight pronto", preflight_pronto),

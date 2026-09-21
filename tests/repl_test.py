@@ -1653,15 +1653,21 @@ def conversazioni_per_cartella() -> str:
     esigi(nomi(sessioni_della_cartella(db, "u", qui)) == ["qui-2", "qui-1"], "resume vede sessioni non di qui")
     esigi(nomi(sessioni_della_cartella(db, "u", qui, escludi="qui-2")) == ["qui-1"], "escludi non esclude")
     esigi(db.chiamate[-1].get("include_runs") is False, "l'elenco per la ripresa carica i run di tutte")
+    leggi_sessioni(agente, "Demo")
+    esigi(
+        db.chiamate[-1]["user_id"] == "demo",
+        "le sessioni non usano la forma canonica: " + repr(db.chiamate[-1]["user_id"]),
+    )
     esigi(cartella_sessione(Sessione("x")) is None and cartella_sessione(prima) == qui, "cartella_sessione")
     righe = righe_sessione(prima, con_cartella=True)
     esigi(any("cartella: " + qui in r for r in righe), "con_cartella non la mostra: " + repr(righe))
     esigi(not any("cartella:" in r for r in righe_sessione(prima)), "la cartella compare anche senza chiederla")
 
     momento = datetime(2026, 9, 7, 9, 15, 30)
-    ident = cartella.nuovo_id_sessione(Path("/x/Mio Progetto_2"), momento)
-    esigi(ident == "mio-progetto-2-20260907-091530", "id nuovo inatteso: " + ident)
-    esigi(cartella.nuovo_id_sessione(Path("/"), momento) == "cartella-20260907-091530", "la radice non ha un ripiego")
+    ident = cartella.nuovo_id_sessione(Path("/x/Mio Progetto_2"), momento, suffisso="abc123")
+    esigi(ident == "mio-progetto-2-20260907-091530-abc123", "id nuovo inatteso: " + ident)
+    radice = cartella.nuovo_id_sessione(Path("/"), momento, suffisso="abc123")
+    esigi(radice == "cartella-20260907-091530-abc123", "la radice non ha un ripiego")
 
     testo = istruzioni_sulle_conversazioni([prima], cartella=qui)
     esigi(len(testo) == 1, "le conversazioni precedenti non danno una istruzione sola")

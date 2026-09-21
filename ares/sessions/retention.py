@@ -19,6 +19,7 @@ from agno.offload.setup import build_result_store as configura_result_store
 from agno.offload.store import ResultStore
 
 from ares.state.archivi import build_db, build_filesystem, build_result_store
+from ares.state.identita import utente_canonico
 
 SECONDI_AL_GIORNO = 86_400
 
@@ -73,6 +74,7 @@ def apri_archivio(user_id: str) -> tuple[SqliteDb, ResultStore]:
     ripetuta nel processo offline: senza, Agno eliminerebbe sessione e indice
     ma non saprebbe in quale backend cercare il payload.
     """
+    user_id = utente_canonico(user_id)
     db = build_db()
     filesystem = build_filesystem(user_id)
     store = configura_result_store(
@@ -88,6 +90,7 @@ def apri_archivio(user_id: str) -> tuple[SqliteDb, ResultStore]:
 
 def inventario(db: SqliteDb, user_id: str) -> list[SessioneRetention]:
     """Sessioni dell'utente con l'occupazione logica dei relativi offload."""
+    user_id = utente_canonico(user_id)
     sessioni = db.get_sessions(
         session_type=SessionType.AGENT,
         user_id=user_id,
@@ -173,6 +176,7 @@ def elimina_sessioni(
     guasto avvenuto, non dedotto da dove ci si e' fermati, perche' e' lo
     stato reale che l'utente deve conoscere.
     """
+    user_id = utente_canonico(user_id)
     selezionate = list(sessioni)
     if not selezionate:
         return 0

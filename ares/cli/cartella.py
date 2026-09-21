@@ -14,6 +14,7 @@ che `ares init` scrive.
 
 import os
 import re
+import secrets
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -149,17 +150,29 @@ def file_modificati(percorso: Path) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-def nuovo_id_sessione(radice: Path, adesso: datetime | None = None) -> str:
-    """L'identificativo di una conversazione nuova: la cartella e il momento.
+def nuovo_id_sessione(radice: Path, adesso: datetime | None = None, *, suffisso: str | None = None) -> str:
+    """L'identificativo di una conversazione nuova: la cartella, il momento, un caso.
 
     Leggibile in `/sessioni` e in `ares sessions status` senza decodificare
-    niente: `ares-20260907-091530` dice dove e quando. I secondi bastano a
-    distinguere due avvii nella stessa cartella; il nome viene ridotto a
-    lettere, cifre e trattini perche' finisce in una riga di comando.
+    niente: `ares-20260907-091530-4f2a91` dice dove e quando. Il nome e' il
+    titolo, non l'identita' del dato.
+
+    La coda casuale non e' un ornamento. Cartella piu' secondo non
+    distingue due cose che succedono davvero: due progetti omonimi - due
+    `api/` in due posti - e due avvii nello stesso secondo producevano lo
+    stesso id, cioe' la stessa riga nella tabella delle sessioni. La prima
+    conversazione avrebbe assorbito la seconda, o l'avrebbe sovrascritta,
+    senza un errore. La coda rende l'id unico lasciando il prefisso che si
+    legge a colpo d'occhio.
+
+    `suffisso` esiste per le prove: senza, la coda e' casuale. `adesso` fa
+    lo stesso per il momento, ed e' la ragione per cui entrambi sono
+    parametri invece di due chiamate a `datetime` e `secrets` nel corpo.
     """
     nome = re.sub(r"[^a-z0-9]+", "-", radice.name.casefold()).strip("-") or "cartella"
     momento = (adesso or datetime.now()).strftime("%Y%m%d-%H%M%S")
-    return nome[:40] + "-" + momento
+    coda = secrets.token_hex(3) if suffisso is None else suffisso
+    return nome[:40] + "-" + momento + "-" + coda
 
 
 def scegli_sessione(sessioni: Sequence[Any]) -> str | None:

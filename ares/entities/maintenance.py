@@ -47,6 +47,7 @@ from ares.entities.models import (
     PianoFusione,
     StatisticheFusione,
 )
+from ares.state.identita import UtenteNonValido
 from ares.state.stores import namespace_entita
 
 app = nuova_app("entities", "Manutenzione offline delle entita' di Ares")
@@ -320,7 +321,7 @@ def merge(
 
 
 def _esegui(azione: Callable[[], int], *, esclusivo: bool) -> int:
-    return esegui_protetto(azione, esclusivo=esclusivo, rifiuti=(ErroreManutenzione, ErroreBackup))
+    return esegui_protetto(azione, esclusivo=esclusivo, rifiuti=(ErroreManutenzione, ErroreBackup, UtenteNonValido))
 
 
 def main(argv: Iterable[str] | None = None) -> int:

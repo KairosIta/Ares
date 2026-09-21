@@ -24,11 +24,13 @@ entita' gia' salvate - senza aprire il turno. Una modifica ai prompt si
 giudica leggendo questo, non i pezzi in `prompts.py`.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from ares import config
-from ares.cli.comando import nuova_app
+from ares.cli.comando import ESITO_FATTO, ESITO_OCCUPATO, ESITO_RIFIUTO, nuova_app
 from ares.cli.ui import UI, byte_leggibili
+from ares.state.identita import UtenteNonValido, utente_canonico
 from ares.state.lock import StatoOccupato, lock_stato
 
 app = nuova_app("inspect", "Ispeziona gli archivi di apprendimento senza toccarli")
@@ -138,7 +140,7 @@ def ispeziona(
     file: str | None = None,
     prompt: bool = False,
     modo: config.Modo = config.MODO_PREDEFINITO,
-) -> None:
+) -> int:
     """Profilo, memorie, contesto, entita', intuizioni e file dell'agente.
 
     Args:
@@ -149,19 +151,29 @@ def ispeziona(
         prompt: stampa solo il system message che la chat manderebbe al modello da questa cartella.
         modo: con --prompt, la modalita' del prompt da stampare: manuale, modifiche, piano o auto.
     """
+    # Stessa forma canonica della chat: qui si leggono profilo, memorie,
+    # entita' e quaderno, e cercarli con una grafia diversa da quella con
+    # cui sono stati scritti mostrerebbe un archivio vuoto che non lo e'.
+    try:
+        user = utente_canonico(user)
+    except UtenteNonValido as errore:
+        UI.err("Rifiutato: " + str(errore))
+        return ESITO_RIFIUTO
     try:
         with lock_stato(esclusivo=False):
             _ispeziona(user, session, query, file, prompt, modo)
     except StatoOccupato as errore:
         UI.err("Impossibile leggere lo stato di Ares: " + str(errore))
         UI.err("Attendi che backup o restore terminino e riprova.", style="ares.muted")
+        return ESITO_OCCUPATO
+    return ESITO_FATTO
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> int:
     from ares.cli.app import esegui
 
-    esegui("inspect")
+    return esegui("inspect", argv)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

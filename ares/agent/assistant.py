@@ -36,6 +36,7 @@ from ares.agent.runtime import (
     build_result_store,
     build_workspace,
 )
+from ares.state.identita import utente_canonico
 from ares.state.stores import CHIAVE_CARTELLA, con_run, sessioni_della_cartella
 
 __all__ = [
@@ -79,7 +80,12 @@ def build_assistant(
     `modo` e' una delle chiavi di `config.MODALITA`: decide quali strumenti
     dello spazio di lavoro girano da soli, quali chiedono e quali non ci
     sono, e il prompt lo dice.
+
+    `user_id` viene portato alla forma canonica qui, una volta, e da qui in
+    poi e' quello che Agno usa come chiave di profilo e User Memory: e' il
+    punto in cui la grafia scritta sulla riga di comando smette di contare.
     """
+    user_id = utente_canonico(user_id)
     db = build_db()
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
     # store learned_knowledge nel namespace globale del framework.

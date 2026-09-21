@@ -22,6 +22,7 @@ from agno.db.base import SessionType
 from agno.learn.utils import values_match_query
 
 from ares import config
+from ares.state.identita import utente_canonico
 
 # Query usata quando chi chiama non ne ha una: recall() e' semantica e senza
 # query non restituisce niente, quindi serve qualcosa di abbastanza largo da
@@ -40,11 +41,12 @@ def namespace_utente(user_id: str) -> str:
     La barra invece dei due punti perche' il FileSystem di Agno normalizza i
     namespace in forma URL-safe: `user:demo` finisce nel database come
     `user%3ademo`, mentre `user/demo` resta leggibile con qualsiasi
-    client SQLite. L'id va in minuscolo per lo stesso motivo: il FileSystem
-    lo farebbe comunque, e senza questo `Demo` scriverebbe i file in un
-    posto e le memorie in un altro.
+    client SQLite. La forma dell'id - spazi e maiuscole - arriva da
+    `utente_canonico`, la stessa che usano profilo, memorie e lock: qui non
+    si normalizza una seconda volta, altrimenti le due regole tornerebbero a
+    divergere.
     """
-    return "user/" + user_id.strip().lower()
+    return "user/" + utente_canonico(user_id)
 
 
 def namespace_entita(user_id: str) -> str:
@@ -170,7 +172,15 @@ def cartella_sessione(sessione: Any) -> str | None:
 
 
 def _sessioni_db(db: Any, user_id: str, *, con_run: bool = True) -> list[Any]:
-    """Tutte le sessioni dell'utente dal database, dalla piu' toccata di recente."""
+    """Tutte le sessioni dell'utente dal database, dalla piu' toccata di recente.
+
+    L'id passa da `utente_canonico` come quello di namespace, lock e profilo:
+    `leggi_sessioni` e `sessioni_della_cartella` sono porte pubbliche, e una
+    che cercasse con la grafia grezza non troverebbe le sessioni scritte con
+    quella canonica. Cosi' la regola vale anche per chi chiamasse con un id
+    non normalizzato, senza doverlo ripetere in ogni chiamante.
+    """
+    user_id = utente_canonico(user_id)
     return list(
         db.get_sessions(
             session_type=SessionType.AGENT,

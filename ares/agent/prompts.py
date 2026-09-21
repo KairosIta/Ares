@@ -12,6 +12,7 @@ from typing import Any
 
 from ares import config
 from ares.state.git import ramo_git
+from ares.state.identita import utente_canonico
 
 # Gli alias di `Workspace` di Agno con il nome dello strumento che generano,
 # senza prefisso, e il verbo con cui il modello li legge. Le due liste di
@@ -487,6 +488,10 @@ def messaggio_di_sistema(agent: Any, *, session_id: str, user_id: str) -> str:
     from agno.run.agent import RunOutput
     from agno.session import AgentSession
 
+    # La sessione si cerca con la stessa chiave con cui e' stata scritta: un
+    # `--user Demo` che qui restasse grezzo non troverebbe la sessione di
+    # `demo` e comporrebbe un prompt per una conversazione vuota.
+    user_id = utente_canonico(user_id)
     agent.initialize_agent()
     sessione = agent.get_session(session_id=session_id, user_id=user_id) or AgentSession(
         session_id=session_id,
