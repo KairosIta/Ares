@@ -16,10 +16,10 @@ perche' chi legge "ok" deve sapere che quel ruolo esce dalla macchina. Se
 manca, il comando per rimediare include `ollama signin`: senza l'accesso il
 pull riesce ma la prima richiesta no.
 
-Non accende nessun modello e non lascia niente su disco: legge da `config`,
-il cui import non crea piu' nulla, e non chiama `prepara_archivio()`. Un
-comando che deve dire se l'ambiente funziona non e' il posto giusto per
-creare l'archivio.
+Non accende nessun modello e non lascia niente su disco: `esamina` riceve le
+impostazioni di cio' che si sta per avviare, e il loro import non crea piu'
+nulla, ne' chiama `prepara_archivio()`. Un comando che deve dire se l'ambiente
+funziona non e' il posto giusto per creare l'archivio.
 """
 
 import json
@@ -34,6 +34,7 @@ from cyclopts import Parameter
 from ares import config
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, nuova_app
 from ares.cli.ui import UI
+from ares.config import Impostazioni
 
 app = nuova_app("preflight", "Controlla che Ollama risponda e che i modelli ci siano")
 
@@ -63,24 +64,28 @@ def stessa_etichetta(richiesto: str, presente: str) -> bool:
     return normalizza(richiesto) == normalizza(presente)
 
 
-def esamina() -> dict[str, Any]:
+def esamina(impostazioni: Impostazioni) -> dict[str, Any]:
     """Il preflight come dati: cosa serve, cosa c'e', cosa manca.
 
     Separato dalla stampa perche' `--json` e la tabella devono dire le
     stesse cose, e perche' il verdetto - `pronto` - va deciso una volta.
+
+    `impostazioni` e' cio' che si sta per avviare - server, modelli, avviso
+    sul cloud - e arriva da fuori: un preflight che leggesse `config` da
+    solo direbbe se parte un'altra conversazione, non questa.
     """
     esito: dict[str, Any] = {
-        "server": config.OLLAMA_HOST,
+        "server": impostazioni.host,
         "raggiungibile": False,
         "modelli_scaricati": None,
         "modelli": [],
         "mancanti": [],
-        "avviso_cloud": config.avviso_cloud(),
+        "avviso_cloud": impostazioni.avviso_cloud(),
         "pronto": False,
         "errore": None,
     }
     try:
-        presenti = modelli_disponibili(config.OLLAMA_HOST)
+        presenti = modelli_disponibili(impostazioni.host)
     except (urllib.error.URLError, OSError) as e:
         esito["errore"] = str(e)
         return esito
@@ -95,9 +100,9 @@ def esamina() -> dict[str, Any]:
     # vale con lo stesso modello cloud in entrambi.
     richiesti: dict[str, list[str]] = {}
     for modello, ruolo in (
-        (config.MAIN_MODEL, "conversazione"),
-        (config.LEARNING_MODEL, "estrazione delle memorie"),
-        (config.EMBEDDER_MODEL, "embedding delle intuizioni"),
+        (impostazioni.principale, "conversazione"),
+        (impostazioni.apprendimento, "estrazione delle memorie"),
+        (impostazioni.embedder, "embedding delle intuizioni"),
     ):
         richiesti.setdefault(modello, []).append(ruolo)
 
@@ -127,7 +132,7 @@ def controlla(*, come_json: Annotated[bool, Parameter(name="--json")] = False) -
     Args:
         come_json: stampa l'esito come JSON, per gli script; il codice di uscita non cambia.
     """
-    esito = esamina()
+    esito = esamina(config.leggi_impostazioni())
     if come_json:
         UI.json(esito)
         return ESITO_FATTO if esito["pronto"] else ESITO_GUASTO

@@ -50,10 +50,11 @@ SPAZIO_PROVA = str(RADICE_PROVA / "lavoro")
 
 from ares import config  # noqa: E402
 
-# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
-# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
-# e li passa a chi ne ha bisogno.
+# I percorsi e le impostazioni della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
+IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.ops.preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
 
@@ -81,7 +82,9 @@ from ares.state.identita import Utente
 from ares.state.stores import leggi_entita
 
 utente, sessione = sys.argv[1], sys.argv[2]
-lm = build_assistant(config.leggi_percorsi(), Utente.da_grezzo(utente), session_id=sessione).learning_machine
+lm = build_assistant(
+    config.leggi_percorsi(), config.leggi_impostazioni(), Utente.da_grezzo(utente), session_id=sessione
+).learning_machine
 
 print("user_profile", lm.user_profile_store.get(user_id=utente) is not None)
 memorie = getattr(lm.user_memory_store.get(user_id=utente), "memories", None) or []
@@ -194,22 +197,22 @@ def main() -> int:
         # Ollama spento non e' un difetto dell'agente, ed e' l'unico esito di
         # questa prova che non va contato come fallimento del codice.
         try:
-            presenti = [m.get("name", "") for m in modelli_disponibili(config.OLLAMA_HOST)]
+            presenti = [m.get("name", "") for m in modelli_disponibili(IMPOSTAZIONI.host)]
         except (urllib.error.URLError, OSError) as errore:
             print("SALTATA  ollama -", errore)
             print()
             print("Questa prova ha bisogno del modello. Avvia il server con: ollama serve")
             return 2
         esigi(
-            any(stessa_etichetta(config.MAIN_MODEL, nome) for nome in presenti),
-            config.MAIN_MODEL + " non e' scaricato: ollama pull " + config.MAIN_MODEL,
+            any(stessa_etichetta(IMPOSTAZIONI.principale, nome) for nome in presenti),
+            IMPOSTAZIONI.principale + " non e' scaricato: ollama pull " + IMPOSTAZIONI.principale,
         )
-        ok("modello presente    ", config.MAIN_MODEL + " su " + config.OLLAMA_HOST)
+        ok("modello presente    ", IMPOSTAZIONI.principale + " su " + IMPOSTAZIONI.host)
 
         from ares.agent.assistant import build_assistant
 
         costruzione = time.monotonic()
-        agent = build_assistant(PERCORSI, Utente.da_grezzo(UTENTE), session_id=SESSIONE)
+        agent = build_assistant(PERCORSI, IMPOSTAZIONI, Utente.da_grezzo(UTENTE), session_id=SESSIONE)
         ok("costruzione         ", "agente costruito in " + str(round(time.monotonic() - costruzione, 2)) + " s")
 
         print()

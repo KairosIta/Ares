@@ -35,12 +35,12 @@ def costruisci_parser() -> argparse.ArgumentParser:
 
 
 def modello_presente() -> bool:
-    presenti = [modello.get("name", "") for modello in modelli_disponibili(config.OLLAMA_HOST)]
-    return any(stessa_etichetta(config.LEARNING_MODEL, nome) for nome in presenti)
+    presenti = [modello.get("name", "") for modello in modelli_disponibili(IMPOSTAZIONI.host)]
+    return any(stessa_etichetta(IMPOSTAZIONI.apprendimento, nome) for nome in presenti)
 
 
 def prova_temperatura(temperatura: float, tentativi: int, gruppo: int) -> dict:
-    modello = build_learning_model()
+    modello = build_learning_model(IMPOSTAZIONI)
     modello.options = {**(modello.options or {}), "temperature": temperatura}
     store = build_session_context_store(build_db(PERCORSI), modello)
     risultati = {"immediati": 0, "recuperati": 0, "falliti": 0, "secondi": 0.0}
@@ -87,7 +87,7 @@ def prova_temperatura(temperatura: float, tentativi: int, gruppo: int) -> dict:
 def main(args) -> int:
     try:
         if not modello_presente():
-            print("SALTATA: modello assente:", config.LEARNING_MODEL)
+            print("SALTATA: modello assente:", IMPOSTAZIONI.apprendimento)
             if not args.conserva:
                 shutil.rmtree(RADICE_PROVA, ignore_errors=True)
             return 2
@@ -153,9 +153,10 @@ if __name__ == "__main__":
     from ares.agent.assistant import build_db, build_learning_model, build_session_context_store
     from ares.ops.preflight import modelli_disponibili, stessa_etichetta
 
-    # I percorsi della prova: le funzioni qui sopra li leggono da questo
-    # globale di modulo, come gia' fanno con `MESSAGGI`.
+    # I percorsi e le impostazioni della prova: le funzioni qui sopra li
+    # leggono da questi globali di modulo, come gia' fanno con `MESSAGGI`.
     PERCORSI = config.leggi_percorsi()
+    IMPOSTAZIONI = config.leggi_impostazioni()
 
     MESSAGGI = [
         Message(

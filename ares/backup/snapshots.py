@@ -250,6 +250,11 @@ def _crea_snapshot_senza_lock(percorsi: Percorsi, tipo: str = "manuale") -> Path
             "agno_version": _versione_agno(),
             "ares_version": ares.__version__,
             "git": _git(),
+            # Eccezione deliberata: qui si leggono i nomi di modulo e non un
+            # `Impostazioni`. Il manifesto registra com'era configurato
+            # *questo* processo quando lo snapshot e' nato, ed e' l'unico
+            # posto in cui la configurazione va scritta invece che ricevuta:
+            # il backup non ha una conversazione, ha un archivio.
             "models": {
                 "main": config.MAIN_MODEL,
                 "learning": config.LEARNING_MODEL,

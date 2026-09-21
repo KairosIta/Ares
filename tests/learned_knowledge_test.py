@@ -80,7 +80,9 @@ from ares.state.identita import Utente
 from ares.state.stores import leggi_intuizioni
 
 utente, sessione, query = sys.argv[1:4]
-lm = build_assistant(config.leggi_percorsi(), Utente.da_grezzo(utente), session_id=sessione).learning_machine
+lm = build_assistant(
+    config.leggi_percorsi(), config.leggi_impostazioni(), Utente.da_grezzo(utente), session_id=sessione
+).learning_machine
 risultati = leggi_intuizioni(lm, Utente.da_grezzo(utente), query=query, limit=20)
 dati = [
     {
@@ -153,8 +155,8 @@ def rileggi_in_processo_nuovo(user_id: str, session_id: str, query: str) -> list
 def modelli_pronti() -> tuple[bool, str]:
     from ares.ops.preflight import modelli_disponibili, stessa_etichetta
 
-    presenti = [modello.get("name", "") for modello in modelli_disponibili(config.OLLAMA_HOST)]
-    richiesti = (config.MAIN_MODEL, config.LEARNING_MODEL, config.EMBEDDER_MODEL)
+    presenti = [modello.get("name", "") for modello in modelli_disponibili(IMPOSTAZIONI.host)]
+    richiesti = (IMPOSTAZIONI.principale, IMPOSTAZIONI.apprendimento, IMPOSTAZIONI.embedder)
     mancanti = [
         richiesto for richiesto in richiesti if not any(stessa_etichetta(richiesto, presente) for presente in presenti)
     ]
@@ -164,7 +166,7 @@ def modelli_pronti() -> tuple[bool, str]:
 
 
 def prova_store() -> None:
-    agente = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_STORE), session_id="store")
+    agente = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_STORE), session_id="store")
     lm = agente.learning_machine
     esigi(lm is not None, "LearningMachine assente")
     strumenti = strumenti_learning(lm, UTENTE_STORE, "store")
@@ -202,7 +204,9 @@ def prova_store() -> None:
     esigi(MARCATORE_STORE in testo_intuizione(risultati[0]), "il risultato non e' quello salvato")
     ok("ricerca", "contenuto strutturato ricostruito dalla ricerca ibrida")
 
-    altro = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_ALTRO), session_id="isolamento").learning_machine
+    altro = build_assistant(
+        PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_ALTRO), session_id="isolamento"
+    ).learning_machine
     esigi(altro is not None, "LearningMachine del secondo utente assente")
     esigi(not cerca(altro, UTENTE_ALTRO, MARCATORE_STORE), "il secondo utente vede l'intuizione privata")
     ok("namespace", UTENTE_ALTRO + " non vede " + UTENTE_STORE)
@@ -214,7 +218,9 @@ def prova_store() -> None:
 
 
 def prova_agente() -> None:
-    agente = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_SALVATAGGIO)
+    agente = build_assistant(
+        PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_SALVATAGGIO
+    )
     avvio = time.monotonic()
     risposta = agente.run(PROMPT_SALVATAGGIO)
     durata = round(time.monotonic() - avvio, 1)
@@ -246,7 +252,7 @@ def prova_agente() -> None:
     esigi(len(presenti) >= 4, "intuizione non riconoscibile come italiana e completa: " + contenuto)
     ok("contenuto", "richiesta inglese, intuizione italiana: " + ", ".join(sorted(presenti)))
 
-    nuovo = build_assistant(PERCORSI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_RIUSO)
+    nuovo = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_RIUSO)
     avvio = time.monotonic()
     riuso = nuovo.run(PROMPT_RIUSO)
     durata = round(time.monotonic() - avvio, 1)
@@ -338,9 +344,11 @@ if __name__ == "__main__":
 
     from ares import config
 
-    # I percorsi della prova: `config` non tiene piu' nomi propri, e le
-    # funzioni qui sopra li leggono da questo globale di modulo.
+    # I percorsi e le impostazioni della prova: `config` non tiene piu' nomi
+    # propri per nessuno dei due, e le funzioni qui sopra li leggono da questi
+    # globali di modulo.
     PERCORSI = config.leggi_percorsi()
+    IMPOSTAZIONI = config.leggi_impostazioni()
 
     # Isoliamo learned_knowledge: nessuna estrazione ALWAYS, nessun altro
     # strumento agentico e nessun workspace durante i due turni reali.

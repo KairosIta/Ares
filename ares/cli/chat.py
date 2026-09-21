@@ -56,7 +56,7 @@ from ares.cli.editor import CliInput
 from ares.cli.log import configura_log_agno
 from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
 from ares.cli.ui import UI
-from ares.config import Percorsi
+from ares.config import Impostazioni, Percorsi
 from ares.ops import migrazione
 from ares.state.archivi import build_db
 from ares.state.git import ramo_git
@@ -74,7 +74,7 @@ def riga_stato(stato: StatoChat) -> str:
     finche' non c'e' stato un turno.
     """
     pezzi = [stato.modo, stato.session_id]
-    quota = quota_finestra(stato.finestra or 0)
+    quota = quota_finestra(stato.finestra or 0, stato.impostazioni)
     if quota:
         pezzi.append("finestra " + quota)
     return " · ".join(pezzi)
@@ -258,7 +258,7 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
     )
     risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli)
     if stato.metriche and risposta is not None:
-        for riga in righe_metriche(risposta):
+        for riga in righe_metriche(risposta, stato.impostazioni):
             UI.metrics(riga)
     return ESITO_FATTO if risposta is not None else ESITO_GUASTO
 
@@ -299,9 +299,11 @@ def _esegui_chat(
     # viaggiano per parametro: nessuno li rilegge a meta' strada, e la
     # cartella scelta con --workspace e' un `replace` sul proprio oggetto.
     percorsi = config.leggi_percorsi()
+    impostazioni = config.leggi_impostazioni()
     with UI.solo_risposte() if prompt is not None else nullcontext():
         return _apri_chat(
             percorsi=percorsi,
+            impostazioni=impostazioni,
             session=session,
             utente=utente,
             debug=debug,
@@ -317,6 +319,7 @@ def _esegui_chat(
 def _apri_chat(
     *,
     percorsi: Percorsi,
+    impostazioni: Impostazioni,
     session: str | None,
     utente: Utente,
     debug: bool,
@@ -385,7 +388,9 @@ def _apri_chat(
             return ESITO_RIFIUTO
 
     configura_log_agno(debug)
-    agent = build_assistant(percorsi, utente, session_id=session, debug=debug, interattivo=prompt is None, modo=modo)
+    agent = build_assistant(
+        percorsi, impostazioni, utente, session_id=session, debug=debug, interattivo=prompt is None, modo=modo
+    )
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
     # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa
@@ -396,6 +401,7 @@ def _apri_chat(
         session_id=session,
         utente=utente,
         percorsi=percorsi,
+        impostazioni=impostazioni,
         debug=debug,
         metriche=config.MOSTRA_METRICHE or metriche,
         modo=modo,
@@ -421,7 +427,7 @@ def _apri_chat(
     if radice is not None and cartella.file_istruzioni(radice).is_file():
         istruzioni = config.WORKSPACE_ISTRUZIONI
     UI.banner(
-        modello=config.MAIN_MODEL,
+        modello=impostazioni.principale,
         sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
         utente=utente.id,
         cartella=str(radice) if radice is not None else None,
@@ -438,7 +444,7 @@ def _apri_chat(
     # una preferenza da ricordare. Vale per la conversazione e per
     # l'estrazione delle memorie, che il `.env` puo' mandare in cloud
     # separatamente: le righe sono le stesse del preflight.
-    avviso_cloud = config.avviso_cloud()
+    avviso_cloud = impostazioni.avviso_cloud()
     if avviso_cloud:
         UI.line(" ".join(avviso_cloud), style="ares.warning")
         UI.line(
@@ -491,7 +497,7 @@ def _apri_chat(
         if risposta is not None:
             stato.finestra = finestra_occupata(risposta) or stato.finestra
             if stato.metriche:
-                for riga in righe_metriche(risposta):
+                for riga in righe_metriche(risposta, stato.impostazioni):
                     UI.metrics(riga)
         UI.blank()
 

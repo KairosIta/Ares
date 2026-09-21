@@ -17,10 +17,11 @@ from agno.learn.utils import build_learning_id  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
-# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
-# e li passa a chi ne ha bisogno.
+# I percorsi e le impostazioni della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
+IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.backup.snapshots import elenco_snapshot, verifica_snapshot  # noqa: E402
 from ares.entities.maintenance import (  # noqa: E402
     ErroreManutenzione,

@@ -30,7 +30,7 @@ from pathlib import Path
 from ares import config
 from ares.cli.comando import ESITO_FATTO, ESITO_OCCUPATO, ESITO_RIFIUTO, nuova_app
 from ares.cli.ui import UI, byte_leggibili
-from ares.config import Percorsi
+from ares.config import Impostazioni, Percorsi
 from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato, lock_stato
 
@@ -43,7 +43,14 @@ def separatore(titolo: str) -> None:
 
 
 def _ispeziona(
-    percorsi: Percorsi, utente: Utente, session: str | None, query: str, file: str | None, prompt: bool, modo: str
+    percorsi: Percorsi,
+    impostazioni: Impostazioni,
+    utente: Utente,
+    session: str | None,
+    query: str,
+    file: str | None,
+    prompt: bool,
+    modo: str,
 ) -> None:
     from ares.agent.assistant import build_assistant
     from ares.agent.prompts import messaggio_di_sistema
@@ -79,11 +86,11 @@ def _ispeziona(
         # restano, ma tolti dallo stdout che qui e' il testo e basta.
         configura_log_agno(False)
         session = session or nuovo_id_sessione(Path.cwd())
-        agent = build_assistant(percorsi, utente, session_id=session, modo=modo)
+        agent = build_assistant(percorsi, impostazioni, utente, session_id=session, modo=modo)
         print(messaggio_di_sistema(agent, session_id=session, utente=utente))
         return
 
-    agent = build_assistant(percorsi, utente, session_id=session or "principale")
+    agent = build_assistant(percorsi, impostazioni, utente, session_id=session or "principale")
     if not session:
         # Senza `--session` si guarda l'ultima conversazione toccata, di
         # qualunque cartella: e' quella di cui si vuole sapere cosa e' rimasto.
@@ -163,9 +170,10 @@ def ispeziona(
         UI.err("Rifiutato: " + str(errore))
         return ESITO_RIFIUTO
     percorsi = config.leggi_percorsi()
+    impostazioni = config.leggi_impostazioni()
     try:
         with lock_stato(percorsi.lock_file, esclusivo=False):
-            _ispeziona(percorsi, utente, session, query, file, prompt, modo)
+            _ispeziona(percorsi, impostazioni, utente, session, query, file, prompt, modo)
     except StatoOccupato as errore:
         UI.err("Impossibile leggere lo stato di Ares: " + str(errore))
         UI.err("Attendi che backup o restore terminino e riprova.", style="ares.muted")

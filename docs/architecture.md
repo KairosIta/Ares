@@ -285,3 +285,24 @@ parametro, e l'unico punto in cui se ne costruisce uno è il confine del
 processo. La chat ne costruisce uno con la cartella scelta da `--workspace`,
 che da lì in poi è quello che i costruttori ricevono; ed è così che due
 insiemi di percorsi nello stesso processo non si confondono.
+
+I modelli sono l'altro oggetto, `Impostazioni`: modello della conversazione,
+modello dell'estrazione, embedder e sue dimensioni, indirizzo e `keep_alive`
+di Ollama, contesto, temperature e i due `think`. I nomi del tuning restano in
+`config.py` come sorgente - `.env`, ambiente e predefiniti si incontrano una
+volta sola all'import - ed è `leggi_impostazioni()` a fotografarli quando
+serve: la chat e i suoi comandi nel proprio corpo, preflight all'inizio, le
+prove all'import. Da lì in poi `build_chat_model`, `build_learning_model`,
+`build_knowledge`, `build_learning_machine`, `build_assistant` e le funzioni
+dei prompt ricevono l'oggetto, quindi due conversazioni con modelli diversi
+nello stesso processo sono due `Impostazioni` e non due mutazioni a distanza.
+`OLLAMA_OPTIONS` e `LEARNING_OPTIONS` non esistono più come nomi: sono
+proprietà del tipo, perché il contesto dell'estrazione dipende da quali due
+modelli sono - si stringe solo quando sono diversi, altrimenti Ollama
+riavvierebbe il runner a ogni passaggio perdendo la cache del prompt.
+`avviso_cloud()` è un metodo, così preflight e banner dicono quello che la
+conversazione che stanno per avviare farà uscire davvero. L'eccezione
+deliberata è `ares/backup/snapshots.py`, che legge ancora i nomi di modulo per
+il manifesto dello snapshot e per la compatibilità dell'embedder: quello è il
+resoconto di come era configurato questo processo, ed è una garanzia
+esistente, non una lettura di comodo.

@@ -10,7 +10,7 @@ from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 
 from ares import config
-from ares.config import Percorsi
+from ares.config import Impostazioni, Percorsi
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
 
@@ -43,40 +43,44 @@ def _esigi_locale(nome: str, ruolo: str) -> str:
     return nome
 
 
-def build_chat_model() -> Ollama:
+def build_chat_model(impostazioni: Impostazioni) -> Ollama:
     """Modello conversazionale, con il contesto esteso oltre il default di Ollama.
 
-    Locale o cloud secondo `config.MAIN_MODEL`; l'host resta comunque
-    `config.OLLAMA_HOST`, perche' e' il daemon a inoltrare i modelli cloud.
+    Locale o cloud secondo `impostazioni.principale`; l'host resta comunque
+    quello delle impostazioni, perche' e' il daemon a inoltrare i modelli
+    cloud. Chi costruisce decide a chi si parla: qui non si rilegge un nome
+    di modulo, che il resto del processo non vedrebbe cambiare.
     """
     return Ollama(
-        id=config.MAIN_MODEL,
-        host=config.OLLAMA_HOST,
-        options=config.OLLAMA_OPTIONS,
-        keep_alive=config.KEEP_ALIVE,
+        id=impostazioni.principale,
+        host=impostazioni.host,
+        options=impostazioni.opzioni,
+        keep_alive=impostazioni.keep_alive,
         # `think` non e' una option di Ollama ma un parametro top-level
         # dell'API, e Agno non lo espone: request_params viene fuso nei
         # kwargs di ogni chiamata al client, streaming compreso.
-        request_params={"think": config.MAIN_THINK},
+        request_params={"think": impostazioni.think},
     )
 
 
-def build_learning_model() -> Ollama:
+def build_learning_model(impostazioni: Impostazioni) -> Ollama:
     """Modello a bassa temperatura usato per l'estrazione strutturata.
 
-    Locale o cloud secondo `config.LEARNING_MODEL`, come la conversazione:
-    e' l'utente a decidere nel `.env` a chi affidare cio' che Ares ricorda.
+    Locale o cloud secondo `impostazioni.apprendimento`, come la
+    conversazione: e' l'utente a decidere nel `.env` a chi affidare cio' che
+    Ares ricorda. Il contesto e' quello dell'estrazione, piu' stretto quando
+    i due modelli sono diversi - la regola sta sul tipo, non qui.
     """
     return Ollama(
-        id=config.LEARNING_MODEL,
-        host=config.OLLAMA_HOST,
-        options=config.LEARNING_OPTIONS,
-        keep_alive=config.KEEP_ALIVE,
-        request_params={"think": config.LEARNING_THINK},
+        id=impostazioni.apprendimento,
+        host=impostazioni.host,
+        options=impostazioni.opzioni_apprendimento,
+        keep_alive=impostazioni.keep_alive,
+        request_params={"think": impostazioni.think_apprendimento},
     )
 
 
-def build_knowledge(percorsi: Percorsi) -> Knowledge:
+def build_knowledge(percorsi: Percorsi, impostazioni: Impostazioni) -> Knowledge:
     """Indice vettoriale locale delle intuizioni apprese."""
     config.prepara_archivio(percorsi)
     indice = Path(percorsi.lancedb_uri)
@@ -88,9 +92,9 @@ def build_knowledge(percorsi: Percorsi) -> Knowledge:
             table_name="learned_knowledge",
             search_type=SearchType.hybrid,
             embedder=OllamaEmbedder(
-                id=_esigi_locale(config.EMBEDDER_MODEL, "EMBEDDER_MODEL"),
-                host=config.OLLAMA_HOST,
-                dimensions=config.EMBEDDER_DIMENSIONS,
+                id=_esigi_locale(impostazioni.embedder, "EMBEDDER_MODEL"),
+                host=impostazioni.host,
+                dimensions=impostazioni.embedder_dimensioni,
             ),
         ),
     )

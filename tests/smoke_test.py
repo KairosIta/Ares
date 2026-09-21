@@ -56,7 +56,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
@@ -79,10 +79,11 @@ from agno.tools.workspace import Workspace  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi della prova, letti una volta dopo `prepara_ambiente`:
-# `config` non li tiene piu' in nomi propri, quindi la prova se li porta dietro
-# e li passa a chi ne ha bisogno.
+# I percorsi e le impostazioni della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
+IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.agent.assistant import (  # noqa: E402
     AresLearningMachine,
     AresSessionContextStore,
@@ -441,9 +442,19 @@ def chiamate_locali(agent, lm) -> str:
     if lm.knowledge is not None:
         componenti.append(("embedder", lm.knowledge.vector_db.embedder))
 
+    # L'agente e' stato costruito con queste impostazioni: se i modelli non
+    # sono quelli, il confine del processo non e' arrivato fino in fondo.
+    esigi(
+        agent.model.id == IMPOSTAZIONI.principale,
+        "l'agente usa " + str(agent.model.id) + " invece di " + IMPOSTAZIONI.principale,
+    )
+    esigi(agent.model.host == IMPOSTAZIONI.host, "l'agente non usa l'host delle impostazioni")
     for nome, componente in componenti:
         host = getattr(componente, "host", None)
-        esigi(host == config.OLLAMA_HOST, nome + " ha host " + repr(host) + " invece di " + repr(config.OLLAMA_HOST))
+        esigi(
+            host == IMPOSTAZIONI.host,
+            nome + " ha host " + repr(host) + " invece di " + repr(IMPOSTAZIONI.host),
+        )
         if nome == "embedder":
             esigi(
                 not config.e_modello_cloud(componente.id),
@@ -451,12 +462,12 @@ def chiamate_locali(agent, lm) -> str:
             )
         elif nome != "agente":
             esigi(
-                componente.id == config.LEARNING_MODEL,
-                nome + " usa " + componente.id + " invece di LEARNING_MODEL " + config.LEARNING_MODEL,
+                componente.id == IMPOSTAZIONI.apprendimento,
+                nome + " usa " + componente.id + " invece di " + IMPOSTAZIONI.apprendimento,
             )
     esigi(
-        "localhost" in config.OLLAMA_HOST or "127.0.0.1" in config.OLLAMA_HOST,
-        "config.OLLAMA_HOST non e' locale: " + config.OLLAMA_HOST,
+        "localhost" in IMPOSTAZIONI.host or "127.0.0.1" in IMPOSTAZIONI.host,
+        "l'host della conversazione non e' locale: " + IMPOSTAZIONI.host,
     )
     # La chiave non serve: e' il daemon, dopo `ollama signin`, a inoltrare i
     # modelli cloud. Nell'ambiente di Ares farebbe solo aggiungere un header
@@ -474,10 +485,10 @@ def chiamate_locali(agent, lm) -> str:
         os.environ.get("AGNO_TELEMETRY", "").lower() != "true",
         "AGNO_TELEMETRY=true nell'ambiente riaccende la telemetria nonostante telemetry=False",
     )
-    esito = str(len(componenti)) + " componenti su " + config.OLLAMA_HOST + ", telemetria spenta"
+    esito = str(len(componenti)) + " componenti su " + IMPOSTAZIONI.host + ", telemetria spenta"
     if config.e_modello_cloud(agent.model.id):
         esito += ", agente cloud"
-    if config.e_modello_cloud(config.LEARNING_MODEL):
+    if config.e_modello_cloud(IMPOSTAZIONI.apprendimento):
         esito += ", estrazione cloud"
     return esito
 
@@ -500,23 +511,23 @@ def ruoli_locali() -> str:
 
     with patch.object(config, "EMBEDDER_MODEL", "glm-5.3-flash:cloud"):
         try:
-            runtime.build_knowledge(PERCORSI)
+            runtime.build_knowledge(PERCORSI, config.leggi_impostazioni())
         except ValueError as errore:
             esigi("EMBEDDER_MODEL" in str(errore), "l'errore non nomina EMBEDDER_MODEL: " + str(errore))
         else:
             raise AssertionError("EMBEDDER_MODEL cloud non ha fermato la costruzione")
 
     with patch.object(config, "LEARNING_MODEL", "glm-5.3-flash:cloud"):
-        modello = runtime.build_learning_model()
+        modello = runtime.build_learning_model(config.leggi_impostazioni())
         esigi(modello.id == "glm-5.3-flash:cloud", "LEARNING_MODEL cloud non e' stato costruito com'e'")
         esigi(modello.host == config.OLLAMA_HOST, "LEARNING_MODEL cloud non passa dal daemon locale")
-        avviso = " ".join(config.avviso_cloud())
+        avviso = " ".join(config.leggi_impostazioni().avviso_cloud())
         esigi("memorie" in avviso and "escono dalla macchina" in avviso, "l'avviso non dice che le memorie escono")
         with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"):
-            avviso = " ".join(config.avviso_cloud())
+            avviso = " ".join(config.leggi_impostazioni().avviso_cloud())
             esigi("Solo l'embedding resta locale" in avviso, "con entrambi i ruoli cloud non resta solo l'embedding")
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
-        esigi(config.avviso_cloud() == [], "l'avviso compare con soli modelli locali")
+        esigi(config.leggi_impostazioni().avviso_cloud() == [], "l'avviso compare con soli modelli locali")
     return "due forme di tag riconosciute, l'embedder rifiuta il cloud, l'estrazione lo accetta e lo dice"
 
 
@@ -542,9 +553,9 @@ def contesto_esteso(agent, lm) -> str:
     # il runner a ogni passaggio fra risposta ed estrazione e perde la cache
     # del prompt. Con modelli diversi l'estrazione puo' stare sotto NUM_CTX,
     # mai sopra: il tetto lo decide comunque il modello conversazionale.
-    if config.MAIN_MODEL == config.LEARNING_MODEL:
+    if IMPOSTAZIONI.principale == IMPOSTAZIONI.apprendimento:
         esigi(len(set(valori)) == 1, "stesso modello con num_ctx diversi: " + str(sorted(set(valori))))
-    esigi(max(valori) == config.NUM_CTX, "un num_ctx supera NUM_CTX: " + str(sorted(set(valori))))
+    esigi(max(valori) == IMPOSTAZIONI.num_ctx, "un num_ctx supera NUM_CTX: " + str(sorted(set(valori))))
     return "num_ctx da " + str(min(valori)) + " a " + str(max(valori)) + " su " + str(len(modelli)) + " modelli"
 
 
@@ -557,8 +568,8 @@ def ragionamento_modelli(agent, lm) -> str:
     """
     chat_params = getattr(agent.model, "request_params", None) or {}
     esigi(
-        chat_params.get("think") is config.MAIN_THINK,
-        "l'agente passa think=" + repr(chat_params.get("think")) + " invece di " + repr(config.MAIN_THINK),
+        chat_params.get("think") is IMPOSTAZIONI.think,
+        "l'agente passa think=" + repr(chat_params.get("think")) + " invece di " + repr(IMPOSTAZIONI.think),
     )
 
     estrattori = []
@@ -568,13 +579,20 @@ def ragionamento_modelli(agent, lm) -> str:
             continue
         params = getattr(modello, "request_params", None) or {}
         esigi(
-            params.get("think") is config.LEARNING_THINK,
-            nome + " passa think=" + repr(params.get("think")) + " invece di " + repr(config.LEARNING_THINK),
+            params.get("think") is IMPOSTAZIONI.think_apprendimento,
+            nome + " passa think=" + repr(params.get("think")) + " invece di " + repr(IMPOSTAZIONI.think_apprendimento),
         )
         estrattori.append(nome)
 
     esigi(estrattori, "nessun estrattore disponibile per verificare think")
-    return "chat=" + str(config.MAIN_THINK) + ", " + str(len(estrattori)) + " estrattori=" + str(config.LEARNING_THINK)
+    return (
+        "chat="
+        + str(IMPOSTAZIONI.think)
+        + ", "
+        + str(len(estrattori))
+        + " estrattori="
+        + str(IMPOSTAZIONI.think_apprendimento)
+    )
 
 
 def schemi_importabili(lm) -> str:
@@ -653,8 +671,8 @@ def identita(agent) -> str:
 def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
     """Il modello sa quali modelli e' , quanto contesto ha, su che sistema gira e chi ha davanti.
 
-    La scheda e' la prima istruzione e viene letta da `config` e dal sistema:
-    qui si controlla che ogni valore ci arrivi davvero, e che la descrizione
+    La scheda e' la prima istruzione e viene letta dalle impostazioni e dal
+    sistema: qui si controlla che ogni valore ci arrivi davvero, e che la descrizione
     e la scheda cambino quando un modello e' cloud. La frase "nessuna
     conversazione esce di qui" e' una promessa che il modello ripete: deve
     comparire solo quando e' vera.
@@ -666,43 +684,51 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
     scheda = agent.instructions[0]
     esigi(isinstance(scheda, str) and scheda.startswith("Dove sei"), "la scheda non e' la prima istruzione")
     for valore, nome in (
-        (config.MAIN_MODEL, "MAIN_MODEL"),
-        (config.EMBEDDER_MODEL, "EMBEDDER_MODEL"),
-        (str(config.NUM_CTX), "NUM_CTX"),
+        (IMPOSTAZIONI.principale, "MAIN_MODEL"),
+        (IMPOSTAZIONI.embedder, "EMBEDDER_MODEL"),
+        (str(IMPOSTAZIONI.num_ctx), "NUM_CTX"),
         (str(config.NUM_HISTORY_RUNS), "NUM_HISTORY_RUNS"),
         (platform.system(), "il sistema"),
         (user_id, "l'utente"),
         (session_id, "la sessione"),
     ):
         esigi(valore in scheda, "la scheda non dice " + nome + ": " + repr(valore))
-    if config.LEARNING_MODEL == config.MAIN_MODEL:
+    if IMPOSTAZIONI.apprendimento == IMPOSTAZIONI.principale:
         esigi("lo stesso modello" in scheda, "con un modello solo la scheda non lo dice")
     else:
-        esigi(config.LEARNING_MODEL in scheda, "la scheda non dice LEARNING_MODEL")
+        esigi(IMPOSTAZIONI.apprendimento in scheda, "la scheda non dice LEARNING_MODEL")
     if config.WORKSPACE:
         esigi(str(PERCORSI.lavoro.resolve()) in scheda, "la scheda non dice la cartella di lavoro")
 
     # Locale e cloud, a prescindere dal `.env` di questa macchina.
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
-        locale = prompts.descrizione()
-        scheda_locale = prompts.istruzioni_sull_ambiente(utente=Utente.da_grezzo(user_id), session_id=session_id)[0]
+        impostazioni_locali = config.leggi_impostazioni()
+        locale = prompts.descrizione(impostazioni_locali)
+        scheda_locale = prompts.istruzioni_sull_ambiente(
+            impostazioni=impostazioni_locali, utente=Utente.da_grezzo(user_id), session_id=session_id
+        )[0]
     esigi("esce di qui" in locale and "ollama.com" not in locale, "in locale la descrizione parla di cloud")
     esigi("in locale" in scheda_locale and "server remoto" not in scheda_locale, "in locale la scheda parla di cloud")
     with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
-        cloud = prompts.descrizione()
-        scheda_cloud = prompts.istruzioni_sull_ambiente(utente=Utente.da_grezzo(user_id), session_id=session_id)[0]
+        impostazioni_cloud = config.leggi_impostazioni()
+        cloud = prompts.descrizione(impostazioni_cloud)
+        scheda_cloud = prompts.istruzioni_sull_ambiente(
+            impostazioni=impostazioni_cloud, utente=Utente.da_grezzo(user_id), session_id=session_id
+        )[0]
     esigi(
         "esce di qui" not in cloud and "ti fa parlare sta su ollama.com" in cloud,
         "con la conversazione in cloud la descrizione promette privacy",
     )
     esigi("server remoto" in scheda_cloud and "qwen3:9b, in locale" in scheda_cloud, "la scheda non distingue i ruoli")
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "gpt-oss:120b-cloud"):
-        estrazione = prompts.descrizione()
+        estrazione = prompts.descrizione(config.leggi_impostazioni())
     esigi("estrae le memorie dai vostri turni sta su ollama.com" in estrazione, "l'estrazione in cloud non e' detta")
 
     # La shell segue il sistema: `bash -lc` non esiste su Windows.
     with patch.object(os, "name", "nt"):
-        finestre = prompts.istruzioni_sull_ambiente(utente=Utente.da_grezzo(user_id), session_id=session_id)[0]
+        finestre = prompts.istruzioni_sull_ambiente(
+            impostazioni=IMPOSTAZIONI, utente=Utente.da_grezzo(user_id), session_id=session_id
+        )[0]
         strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro))
     esigi("shell PowerShell" in finestre and "'powershell'" in strumenti_nt, "su Windows il prompt parla di bash")
     with patch.object(os, "name", "posix"):
@@ -863,7 +889,11 @@ def modalita() -> str:
             else:
                 esigi(strumento not in consegnati, nome + ": " + strumento + " arriva benche' escluso")
         scheda = prompts.istruzioni_sull_ambiente(
-            utente=Utente.da_grezzo("u"), session_id="s", radice_lavoro=spazio.root, modo=nome
+            impostazioni=IMPOSTAZIONI,
+            utente=Utente.da_grezzo("u"),
+            session_id="s",
+            radice_lavoro=spazio.root,
+            modo=nome,
         )[0]
         esigi("Modalita' " + nome in scheda, nome + ": la scheda non la nomina")
         paragrafo = " ".join(prompts.istruzioni_sugli_strumenti(spazio.root, nome))
@@ -900,7 +930,9 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
 
     from ares.agent.prompts import messaggio_di_sistema
 
-    muto = build_assistant(PERCORSI, utente=Utente.da_grezzo(user_id), session_id=session_id + "-p", interattivo=False)
+    muto = build_assistant(
+        PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(user_id), session_id=session_id + "-p", interattivo=False
+    )
     esigi(not muto.post_hooks, "in -p il post-hook di apprendimento e' agganciato")
     assert muto.learning_machine is not None
     _ = muto.result_store
@@ -1003,7 +1035,12 @@ def prompt_e_capacita() -> str:
             precedente.metadata = {"cartella": str(PERCORSI.lavoro.resolve())}
             db.upsert_session(precedente)
             agente = build_assistant(
-                PERCORSI, utente=Utente.da_grezzo(utente), session_id=utente, modo=modo, interattivo=interattivo
+                PERCORSI,
+                IMPOSTAZIONI,
+                utente=Utente.da_grezzo(utente),
+                session_id=utente,
+                modo=modo,
+                interattivo=interattivo,
             )
             prompt = messaggio_di_sistema(agente, session_id=utente, utente=Utente.da_grezzo(utente))
             esigi(
@@ -1493,6 +1530,7 @@ def entita_cercate(agent, user_id: str) -> str:
                 session_id="sessione",
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
+                impostazioni=IMPOSTAZIONI,
             ),
         )
     stampato = catturato.getvalue()
@@ -1596,6 +1634,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                     session_id=session_id,
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
+                    impostazioni=IMPOSTAZIONI,
                 ),
             )
         troncato = catturato.getvalue()
@@ -1610,6 +1649,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                     session_id=session_id,
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
+                    impostazioni=IMPOSTAZIONI,
                 ),
             )
         esigi(
@@ -1632,6 +1672,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                 session_id=session_id,
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
+                impostazioni=IMPOSTAZIONI,
             ),
         )
     stampato = catturato.getvalue()
@@ -1651,6 +1692,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                 session_id=session_id,
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
+                impostazioni=IMPOSTAZIONI,
             ),
         )
     presente = catturato.getvalue()
@@ -1674,6 +1716,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                     session_id=session_id,
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
+                    impostazioni=IMPOSTAZIONI,
                 ),
             )
         oltre = catturato.getvalue()
@@ -1696,6 +1739,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                 session_id=session_id,
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
+                impostazioni=IMPOSTAZIONI,
             ),
         )
     filtrato = catturato.getvalue()
@@ -1728,6 +1772,7 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
                     session_id=session_id,
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
+                    impostazioni=IMPOSTAZIONI,
                 ),
             )
         esigi(vive is True, riga + " chiude la sessione")
@@ -1970,6 +2015,120 @@ def percorsi_a_runtime() -> str:
     return "letti da un ambiente dato, derivati coerenti, nessun nome di modulo che li nasconda"
 
 
+def impostazioni_a_runtime() -> str:
+    """I modelli sono un oggetto costruito quando serve, non nomi riletti a meta' strada.
+
+    `leggi_impostazioni` fotografa i nomi del tuning alla porta del processo,
+    e da li' in poi chi costruisce un modello riceve l'oggetto. La prova lo
+    pretende in due modi: un `Impostazioni` costruito a mano - modelli, host e
+    contesto tutti diversi da quelli del `.env` - deve arrivare fino ai
+    costruttori e all'avviso sul cloud, e i default che fotografavano
+    `MODO_PREDEFINITO` all'import non devono esistere piu' in nessuna firma.
+
+    E' la stessa lezione dei percorsi: finche' il valore stava in un nome di
+    modulo, una firma non diceva da dove venisse, e chi lo cambiava dopo non
+    veniva ascoltato.
+    """
+    import inspect
+    from dataclasses import fields
+
+    from ares.agent import prompts, runtime
+    from ares.config import NUM_CTX_ESTRAZIONE, Impostazioni, leggi_impostazioni
+
+    mia = Impostazioni(
+        principale="prova-conversazione:cloud",
+        apprendimento="prova-estrazione:9b",
+        embedder="prova-embedder",
+        embedder_dimensioni=64,
+        host="http://127.0.0.1:9",
+        keep_alive="1m",
+        num_ctx=4096,
+        temperatura=0.1,
+        temperatura_apprendimento=0.05,
+        think=False,
+        think_apprendimento=False,
+    )
+
+    # Il tipo e' immutabile, e la modalita' non ne fa parte: e' gia' un
+    # parametro a ogni confine, e ficcarla qui la farebbe sembrare una
+    # proprieta' del modello.
+    esigi("modo" not in {campo.name for campo in fields(Impostazioni)}, "la modalita' e' finita dentro Impostazioni")
+    try:
+        mia.num_ctx = 8192  # type: ignore[misc]
+    except FrozenInstanceError:
+        pass
+    else:
+        raise AssertionError("Impostazioni non e' immutabile")
+
+    # I due costruttori seguono l'oggetto, non il modulo: nome, host, opzioni
+    # e pensiero vengono tutti da li'.
+    conversazione = runtime.build_chat_model(mia)
+    esigi(
+        conversazione.id == mia.principale and conversazione.host == mia.host,
+        "build_chat_model non usa le impostazioni ricevute",
+    )
+    esigi(
+        conversazione.options == {"num_ctx": 4096, "temperature": 0.1},
+        "build_chat_model non usa il contesto ricevuto: " + repr(conversazione.options),
+    )
+    esigi(
+        conversazione.request_params == {"think": False},
+        "il pensiero della conversazione non viene dalle impostazioni",
+    )
+    estrazione = runtime.build_learning_model(mia)
+    esigi(
+        estrazione.id == mia.apprendimento and estrazione.host == mia.host,
+        "build_learning_model non usa le impostazioni ricevute",
+    )
+    # Due modelli diversi: l'estrazione scende al contesto dell'estrazione, e
+    # la regola sta sul tipo perche' dipende dalla coppia.
+    esigi(
+        mia.num_ctx_apprendimento == NUM_CTX_ESTRAZIONE,
+        "con due modelli diversi l'estrazione non usa il contesto suo",
+    )
+    esigi(
+        estrazione.options == {"num_ctx": NUM_CTX_ESTRAZIONE, "temperature": 0.05},
+        "build_learning_model non usa il contesto dell'estrazione: " + repr(estrazione.options),
+    )
+    esigi(estrazione.request_params == {"think": False}, "il pensiero dell'estrazione non viene dalle impostazioni")
+    # Stesso modello in entrambi i ruoli: il contesto torna uno solo, o
+    # Ollama riavvierebbe il runner a ogni passaggio perdendo la cache.
+    sola = replace(mia, apprendimento=mia.principale)
+    esigi(sola.num_ctx_apprendimento == sola.num_ctx, "con un modello solo l'estrazione cambia contesto")
+
+    # L'avviso segue l'oggetto e non il `.env` di questa macchina, quindi la
+    # prova vale ovunque: locale tace, cloud dice cosa esce.
+    locale = replace(mia, principale="prova-conversazione:9b", apprendimento="prova-estrazione:9b")
+    esigi(locale.avviso_cloud() == [], "l'avviso compare con modelli locali costruiti a mano")
+    esigi("memorie" in " ".join(mia.avviso_cloud()), "con l'estrazione cloud l'avviso non nomina le memorie")
+    entrambi = replace(mia, apprendimento="prova-estrazione:cloud")
+    esigi(
+        "Solo l'embedding resta locale" in " ".join(entrambi.avviso_cloud()),
+        "con due ruoli cloud non resta solo l'embedding",
+    )
+    esigi("ollama.com" in prompts.descrizione(mia), "la descrizione non segue le impostazioni ricevute")
+
+    # Nessuna firma deve piu' fotografare `MODO_PREDEFINITO` all'import: chi lo
+    # cambia dopo deve essere ascoltato, come lo e' gia' in build_workspace.
+    for funzione in (
+        build_assistant,
+        prompts.istruzioni_sull_ambiente,
+        prompts.istruzioni_sugli_strumenti,
+        prompts.istruzioni_senza_terminale,
+    ):
+        default = inspect.signature(funzione).parameters["modo"].default
+        esigi(default is None, funzione.__name__ + " fotografa ancora MODO_PREDEFINITO nella firma")
+
+    # I nomi sorgente restano, come `AMBIENTE` per i percorsi; quello che non
+    # deve restare e' un nome derivato che qualcuno possa leggere al posto
+    # dell'oggetto.
+    for nome in ("OLLAMA_OPTIONS", "LEARNING_OPTIONS", "LEARNING_NUM_CTX"):
+        esigi(not hasattr(config, nome), "config espone ancora " + nome + ": e' un canale invisibile")
+    esigi(isinstance(leggi_impostazioni(), Impostazioni), "leggi_impostazioni non restituisce un Impostazioni")
+
+    return "modelli dall'oggetto, contesto derivato dalla coppia, nessun default fotografato all'import"
+
+
 def import_senza_effetti() -> str:
     """Importare `config` non tocca il disco.
 
@@ -2042,7 +2201,7 @@ def main() -> int:
     reale_prima = stato_archivio_reale()
 
     try:
-        agent = build_assistant(PERCORSI, utente=Utente.da_grezzo(args.user), session_id=args.session)
+        agent = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(args.user), session_id=args.session)
     except Exception as errore:
         print("FALLITO  costruzione -", type(errore).__name__ + ":", errore)
         return 1
@@ -2092,6 +2251,7 @@ def main() -> int:
             ("indice vettoriale   ", lambda: indice_vettoriale(lm)),
             ("archivio privato    ", lambda: archivio_privato()),
             ("percorsi a runtime  ", percorsi_a_runtime),
+            ("impostazioni a runtime", impostazioni_a_runtime),
             ("import senza effetti", lambda: import_senza_effetti()),
             ("archivio vero intatto", lambda: archivio_vero_intatto(reale_prima)),
         )

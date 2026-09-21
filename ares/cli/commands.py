@@ -14,7 +14,7 @@ from ares.agent.assistant import build_assistant
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
-from ares.config import Percorsi
+from ares.config import Impostazioni, Percorsi
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
@@ -43,12 +43,18 @@ class StatoChat:
     destinazione - e ricostruirli a ogni comando leggerebbe la directory
     corrente al momento sbagliato: con `--workspace` la cartella di lavoro
     e' quella scelta all'avvio, non quella del processo.
+
+    Le impostazioni stanno qui per la stessa ragione: `/sessione` e `/modo`
+    ricostruiscono l'agente, e devono ricostruirlo con gli stessi modelli
+    della conversazione che stanno cambiando, non con quelli che il processo
+    leggerebbe adesso.
     """
 
     agent: Agent
     session_id: str
     utente: Utente
     percorsi: Percorsi
+    impostazioni: Impostazioni
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
@@ -176,7 +182,9 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
     elif nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
-    stato.agent = build_assistant(stato.percorsi, stato.utente, session_id=nome, debug=stato.debug, modo=stato.modo)
+    stato.agent = build_assistant(
+        stato.percorsi, stato.impostazioni, stato.utente, session_id=nome, debug=stato.debug, modo=stato.modo
+    )
     stato.session_id = nome
     UI.pair("Sessione", nome + ("  (nuova)" if nuova else ""), style="ares.title")
     if nuova:
@@ -224,7 +232,7 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
         UI.line("Sei gia' in modalita' '" + nome + "'.", style="ares.muted")
         return
     stato.agent = build_assistant(
-        stato.percorsi, stato.utente, session_id=stato.session_id, debug=stato.debug, modo=nome
+        stato.percorsi, stato.impostazioni, stato.utente, session_id=stato.session_id, debug=stato.debug, modo=nome
     )
     stato.modo = nome
     UI.pair("Modalita'", nome, style="ares.title")
@@ -347,7 +355,7 @@ def _comando_esporta(stato: StatoChat, argomento: str) -> None:
         return
     esisteva = destinazione.exists()
     try:
-        destinazione.write_text(testo_conversazione(sessione, modello=config.MAIN_MODEL), encoding="utf-8")
+        destinazione.write_text(testo_conversazione(sessione, modello=stato.impostazioni.principale), encoding="utf-8")
     except OSError as errore:
         UI.line("Impossibile scrivere " + str(destinazione) + ": " + str(errore), style="ares.error")
         return
