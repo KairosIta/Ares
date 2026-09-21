@@ -61,6 +61,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from _comune import NON_CONCLUSIVO, esegui, esigi, prepara_ambiente, pulisci
 
@@ -465,8 +466,11 @@ def chiamate_locali(agent, lm) -> str:
                 componente.id == IMPOSTAZIONI.apprendimento,
                 nome + " usa " + componente.id + " invece di " + IMPOSTAZIONI.apprendimento,
             )
+    # Il nome dell'host e non una sottostringa: `127.0.0.1.example.com`
+    # conterrebbe "127.0.0.1" senza essere locale, e questa prova deve
+    # accorgersene invece di lasciar passare un daemon remoto.
     esigi(
-        "localhost" in IMPOSTAZIONI.host or "127.0.0.1" in IMPOSTAZIONI.host,
+        urlsplit(IMPOSTAZIONI.host).hostname in ("localhost", "127.0.0.1", "::1"),
         "l'host della conversazione non e' locale: " + IMPOSTAZIONI.host,
     )
     # La chiave non serve: e' il daemon, dopo `ollama signin`, a inoltrare i
