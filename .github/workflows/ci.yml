@@ -113,7 +113,13 @@ jobs:
     # risultare mancanti su ogni PR.
     name: Python ${{ matrix.py }} · ${{ matrix.os }}
     needs: modifiche
-    if: always() && needs.modifiche.outputs.solo_documenti != 'true'
+    # Il job gira *sempre*, e a saltare sono i passi pesanti qui sotto. Non e'
+    # una preferenza: un job a matrice saltato da una condizione non espande la
+    # matrice, quindi i nomi richiesti "Python 3.12 · ubuntu-24.04" e
+    # "Python 3.12 · windows-latest" non vengono mai creati e il ruleset
+    # blocca il merge. `always()` tiene il nome in vita anche se `modifiche`
+    # fallisce: in quel caso l'output e' vuoto e i passi girano lo stesso.
+    if: always()
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
@@ -156,8 +162,12 @@ jobs:
       - name: Installa uv
         run: python -m pip install --disable-pip-version-check uv==0.12.2
 
+      # Da qui in giu' i passi pesanti, e sono questi a saltare quando il
+      # commit tocca solo `*.md`/`docs/`: il job resta in piedi perche' il nome
+      # obbligatorio esista, ma non sincronizza l'ambiente, non compila e non
+      # esegue le prove.
       - name: Sincronizza l’ambiente
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && needs.modifiche.outputs.solo_documenti != 'true'
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: |
@@ -165,7 +175,7 @@ jobs:
           uv pip check --python "${{ matrix.python }}"
 
       - name: Prepara l’ambiente Windows
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.modifiche.outputs.solo_documenti != 'true'
         shell: pwsh
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
@@ -177,7 +187,7 @@ jobs:
       # stesso venv lo aggiunge senza toccare il resto: e' un secondo passo,
       # non una variante dello script.
       - name: Aggiungi gli strumenti di sviluppo
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.modifiche.outputs.solo_documenti != 'true'
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: uv sync --locked --python python
@@ -186,6 +196,7 @@ jobs:
       # `turn_core.py`, aggiunto dopo. Qui l'esclusione e' esplicita e il
       # resto e' automatico: un modulo nuovo entra da solo.
       - name: Compila il codice
+        if: needs.modifiche.outputs.solo_documenti != 'true'
         run: ${{ matrix.python }} -m compileall -q -x "([\\/])(\.venv|\.git|htmlcov)([\\/]|$)" .
 
       # Un passo solo, e la stessa riga che si scrive in locale: tre passi
@@ -198,4 +209,5 @@ jobs:
       # `platform_files` esistono per Windows, e misurati solo su Ubuntu
       # risultavano scoperti anche quando il runner Windows li attraversava.
       - name: Prove offline
+        if: needs.modifiche.outputs.solo_documenti != 'true'
         run: ${{ matrix.python }} tests/run.py --copertura
