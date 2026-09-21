@@ -26,9 +26,25 @@ on:
   push:
     branches:
       - main
+    # L'audit confronta le versioni bloccate con gli advisory: ha senso quando
+    # cambia l'insieme delle dipendenze, non a ogni commit. Il giro
+    # settimanale qui sotto resta senza filtro, perche' un advisory cambia
+    # senza che nessuno committi - ed e' l'unico motivo per cui questo
+    # workflow esiste separato dalla CI.
+    paths:
+      - uv.lock
+      - pyproject.toml
+      - .github/workflows/audit.yml
   pull_request:
+    paths:
+      - uv.lock
+      - pyproject.toml
+      - .github/workflows/audit.yml
+  # Il cron di GitHub e' in UTC, e `Europe/Rome` d'estate e' UTC+2. Le 04:00
+  # UTC sono le 06:00 in Italia: il giro e' pronto quando inizia la giornata,
+  # e non parte piu' insieme a CodeQL (05:00 UTC) e a Dependabot (06:00 UTC).
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 4 * * 1"
   workflow_dispatch:
 
 permissions:

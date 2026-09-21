@@ -15,8 +15,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Serve un job che guardi *cosa* e' cambiato, perche' i tre check richiesti
+  # dal ruleset non si possono spegnere con `paths-ignore`: una workflow
+  # saltata per percorso lascia i check in "Pending" e blocca il merge per
+  # sempre. Un job saltato da una condizione, invece, riporta "Success" - e'
+  # il documento GitHub a dirlo - quindi il nome obbligatorio resta e il
+  # lavoro non gira quando il commit tocca solo la documentazione.
+  modifiche:
+    name: Cosa cambia
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      solo_documenti: ${{ steps.filtro.outputs.solo_documenti }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Il diff ha bisogno del commit di partenza, non solo dell'ultimo.
+          fetch-depth: 0
+
+      # Un falso "solo documenti" salterebbe le prove, quindi il default e'
+      # "cambia qualcosa": se la base non si legge, se il diff fallisce o se
+      # l'elenco e' vuoto, i job girano. Si risparmia solo quando si e'
+      # sicuri, mai il contrario.
+      - name: Guarda cosa e' cambiato
+        id: filtro
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          solo="false"
+          if [ -n "${BASE:-}" ] && git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            cambiati=$(git diff --name-only "$BASE" "$GITHUB_SHA" || true)
+            if [ -n "$cambiati" ]; then
+              altro=$(printf '%s\n' "$cambiati" | grep -vE '^$|\.md$|^docs/' || true)
+              if [ -z "$altro" ]; then
+                solo="true"
+              fi
+            fi
+          fi
+          echo "solo_documenti=$solo" >> "$GITHUB_OUTPUT"
+
   qualita:
     name: Analisi statica
+    needs: modifiche
+    # `always()` perche' su un `modifiche` fallito l'output e' vuoto: la
+    # condizione diventa vera e il lavoro gira lo stesso. Un check
+    # obbligatorio non deve poter saltare perche' e' fallito chi lo decide.
+    if: always() && needs.modifiche.outputs.solo_documenti != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -64,6 +112,8 @@ jobs:
     # "Python 3.12 · windows-latest", e un nome cambiato li avrebbe fatti
     # risultare mancanti su ogni PR.
     name: Python ${{ matrix.py }} · ${{ matrix.os }}
+    needs: modifiche
+    if: always() && needs.modifiche.outputs.solo_documenti != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
