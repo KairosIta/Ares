@@ -20,6 +20,16 @@ updates:
         dependency-type: development
       produzione:
         dependency-type: production
+        # Questi tre restano fuori dal gruppo apposta. `agno` e' il framework,
+        # `openai` il client che parla col modello, `lancedb` l'indice: un
+        # gruppo li fonderebbe in un merge solo, che e' il contrario di cio'
+        # che serve loro. Ognuno va letto e provato per conto suo, e senza
+        # gruppo Dependabot apre per loro una PR singola come faceva prima.
+        # Il gruppo copre il runtime che si aggiorna senza storia.
+        exclude-patterns:
+          - agno
+          - openai
+          - lancedb
     labels:
       - dependencies
     # Il backend di build e' l'unica dipendenza esclusa, e per un motivo che
