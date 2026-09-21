@@ -19,13 +19,27 @@ on:
   push:
     branches:
       - main
+    # CodeQL segue il dato nel codice: se il commit tocca solo la
+    # documentazione, il codice e' identico e l'ultima analisi vale ancora.
+    # Filtrare qui e' sicuro perche' CodeQL non e' un check obbligatorio - in
+    # `ci.yml`, dove i tre nomi sono richiesti, lo stesso filtro lascerebbe i
+    # check in "Pending" e bloccherebbe il merge.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   # Il codice sta fermo, le regole no: una query aggiunta a monte trova cose
   # in un file che nessuno tocca da mesi. Senza questo passaggio periodico
   # l'analisi direbbe soltanto cio' che si sapeva l'ultima volta che si e'
   # scritto qualcosa.
+  # Il cron di GitHub e' in UTC. Le 05:00 UTC sono le 07:00 in Italia, un'ora
+  # dopo l'audit (04:00 UTC) e un'ora prima di Dependabot (06:00 UTC): i tre
+  # non partono piu' nello stesso minuto.
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 5 * * 1"
   workflow_dispatch:
 
 concurrency:
