@@ -15,6 +15,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- `docs/testing.md` diceva che «`--tutte` alza il numero» e `tests/run.py`
+  ripeteva che metà di ciò che resta scoperto sta nei percorsi che solo le
+  prove con Ollama attraversano. Misurato il 22 settembre 2026: i due rapporti
+  sono identici, riga per riga e ramo per ramo — 4.324 istruzioni, 309
+  scoperte, 1.334 rami, 90%. Le prove con Ollama verificano il comportamento
+  del modello, non aggiungono righe coperte.
+- I numeri di copertura in `docs/testing.md` erano quelli del 13 settembre.
+  Ora sono quelli del 22, con la data accanto.
 - `SECURITY.md` dichiarava supportata la linea 0.7.x dopo il rilascio della
   0.8.0; i collegamenti in coda a questo file erano ancora fermi alla 0.7.1, e
   la voce `[0.8.0]` mancava. La CI era verde lo stesso: quei file non li legge
