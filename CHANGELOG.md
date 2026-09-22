@@ -8,6 +8,16 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- `tests/scoping_test.py` (`ambiti`), l'undicesima prova offline: tiene ferme
+  le due premesse dello studio sugli ambiti da cui dipendono la provenienza
+  delle memorie e la composizione a mano del blocco delle intuizioni. Con il
+  modello a copione verifica che una chiave in più in una voce di memoria si
+  scriva con le API pubbliche, sopravviva a un `update_memory`, si riallinei e
+  non arrivi al modello; con un embedder a vettori fissi verifica che il filtro
+  per namespace sia applicato dopo il limite — zero risultati in ambito con
+  limite 5 e 30 su trenta documenti fuori ambito — mentre quello dell'owner è
+  una clausola del motore. Se Agno cambia una delle due premesse, il
+  fallimento arriva qui e non in produzione.
 - `docs/project-scopes.md`, lo studio sui primi due punti della roadmap:
   identità stabile e memoria per progetto, ambiti applicati dal codice. Contiene
   le evidenze nel codice e in Agno 3.0.9, le misure offline riproducibili, le

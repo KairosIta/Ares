@@ -55,6 +55,7 @@ PROVE = (
     ("repl", "repl_test.py", False, "conferme, rendering, editor e comandi, senza l'agente"),
     ("sessioni", "session_retention_test.py", False, "offload, retention, cascata e restore"),
     ("contratto", "agno_contract_test.py", False, "estrazione, conferma, retry del contesto e limiti dichiarati"),
+    ("ambiti", "scoping_test.py", False, "provenienza delle memorie e filtro per namespace delle intuizioni"),
     ("costo", "learning_cost_test.py", False, "quante inferenze costa un turno, e quanto pesano"),
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),

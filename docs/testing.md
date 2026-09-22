@@ -187,7 +187,7 @@ tutto.
 .venv/bin/python tests/run.py
 ```
 
-Sono dieci. `smoke` costruisce l'agente e semina gli store, e controlla
+Sono undici. `smoke` costruisce l'agente e semina gli store, e controlla
 assemblaggio, isolamento, lock, propagazione simulata del run completo alla
 macchina di apprendimento e l'eco di ciò che entra in memoria. Del post-hook
 controlla anche le due guardie: un run senza messaggi e un post-hook senza
@@ -227,6 +227,26 @@ alla 3.0.5 mentre il lock era alla 3.0.9: adesso una patch che sale senza
 allineare le dichiarazioni rende rossa questa prova, e il messaggio nomina il
 file. Restano fuori `CHANGELOG.md` e `docs/memory-quality.md`, che citano le
 versioni di allora.
+`ambiti` tiene ferme le due premesse dello studio sugli ambiti
+([project-scopes](project-scopes.md#34-esito-delle-due-verifiche-preliminari))
+da cui dipendono la provenienza delle memorie e la composizione a mano del
+blocco delle intuizioni. Con il modello a copione dell'altra prova verifica
+che una chiave in più in una voce di memoria — la provenienza — si scriva con
+le API pubbliche degli store, sopravviva a un `update_memory` che cambia il
+contenuto, si riallinei con la stessa scrittura, e **non** arrivi al modello:
+il prompt di estrazione porta solo `{id, content}`, ed è per questo che la
+classificazione non può essere del modello. Con un embedder a vettori fissi
+— nessun modello, i documenti arrivano a LanceDB con il vettore già dentro —
+verifica che il filtro per namespace sia applicato sui metadati *dopo* il
+limite: con trenta documenti fuori ambito più vicini alla domanda di cinque in
+ambito, la ricerca del progetto restituisce zero con limite 5 e con limite 30,
+e li restituisce tutti solo quando il limite supera i documenti fuori ambito;
+nella stessa tabella il filtro dell'owner è invece una clausola del motore e
+restituisce cinque righe su cinque. Le due prove non provano la proposta — il
+registro dei progetti e il blocco composto non esistono — provano le premesse:
+se Agno cambia l'una o l'altra, il fallimento arriva qui invece che in
+produzione, e le misure del §3.4 dello studio smettono di essere due script
+usa-e-getta. I messaggi nominano la pagina da aggiornare.
 `costo` misura le tre estrazioni `ALWAYS` con lo stesso genere di modello
 finto, che però conta le chiamate e risponde scrivendo: tre chiamate al
 modello di apprendimento per turno, una per store — profilo e memorie non
@@ -301,7 +321,7 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse dieci prove, con la misura, su Ubuntu con Python 3.12
+La CI esegue le stesse undici prove, con la misura, su Ubuntu con Python 3.12
 e 3.13 e su Windows con la 3.12. Sul runner Windows l'ambiente nasce
 direttamente da `setup.ps1 -SkipPreflight`, così la CI verifica anche il
 percorso d'installazione senza richiedere Ollama; un secondo `uv sync --locked` sullo
