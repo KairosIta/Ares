@@ -19,6 +19,15 @@ Lo stesso vale per i modelli: gli undici nomi del tuning restano la sorgente
 costruttori ricevono. Le due domande sono separate di proposito: `Percorsi`
 dice dove sta lo stato, `Impostazioni` a chi si parla, e l'identita' e' il
 terzo asse. Nessuno dei tre e' un nome di modulo che qualcuno riscrive.
+
+Il quarto asse e' la politica: cosa una conversazione impara, quanto
+contesto storico vede, come lavora nella cartella e cosa mostra di cio' che
+ha imparato. Anche qui i nomi restano la sorgente e `leggi_politica` li
+fotografa in una `Politica` fatta di quattro gruppi - `Apprendimento`,
+`Cronologia`, `Workspace`, `Mostra` - che i costruttori e i prompt
+ricevono. Non e' cosmesi: il prompt deve dire la verita' su cio' che il
+modello puo' fare e su cio' che la persona vedra', e un flag riletto da un
+modulo a meta' turno poteva cambiare sotto i piedi di un'altra sessione.
 """
 
 import os
@@ -836,6 +845,199 @@ def modalita_scrive_in_silenzio(modo: str) -> bool:
 # in questa sessione. E' la rete per il caso in cui il modello si immagini il
 # contenuto di un file e lo riscriva da zero convinto di modificarlo.
 WORKSPACE_READ_BEFORE_WRITE = True
+
+
+# ---------------------------------------------------------------------------
+# Politica della conversazione
+# ---------------------------------------------------------------------------
+#
+# Il quarto asse risolto al confine del processo, dopo percorsi, modelli e
+# identita'. I nomi qui sopra restano la sorgente - `.env` non c'entra, sono
+# decisioni versionate - e `leggi_politica` li fotografa nei quattro gruppi
+# che seguono. Le domande sono separate perche' lo sono le risposte: cosa
+# Ares impara di te, quanto contesto storico vede, come si muove nella
+# cartella, e cosa ti mostra di cio' che ha imparato.
+#
+# Perche' un oggetto e non quattro parametri sparsi: il prompt deve dire la
+# verita' su cio' che il modello puo' fare - quali store si aggiornano da
+# soli, quali strumenti esistono, se una scrittura in memoria verra'
+# mostrata e potra' essere rifiutata - e quella verita' e' la stessa che
+# governa il comportamento. Detta da un flag riletto a meta' turno poteva
+# cambiare fra la costruzione dell'agente e il turno che lo usa.
+#
+# Restano fuori, e non per dimenticanza: `DATETIME_FORMAT`,
+# `TOOL_RESULT_THRESHOLD_CHARS` con `OFFLOAD_TOOL_RESULTS`,
+# `ENTITA_FINESTRA_RICERCA` e `CRONOLOGIA_RIGHE` sono configurazione
+# dell'applicazione o del deposito dei risultati, non una politica che due
+# conversazioni potrebbero volere diversa; `BACKUP_*`, `SESSIONI_PROTETTE` e
+# `SESSION_RETENTION_DAYS` sono operazioni di manutenzione; `BASE_DIR`,
+# `VECCHIO_*` e `DEFAULT_USER_ID` non sono politiche di nessuno.
+
+
+@dataclass(frozen=True)
+class Apprendimento:
+    """Cosa Ares impara, da solo e su richiesta, e quanto costa.
+
+    I nomi dicono la cosa, non il flag che li ha prodotti: `memorie_datate`
+    e' la scelta di schema di `DATE_MEMORIE`, e `strumenti_memoria` e' la
+    possibilita' di correggere a mano cio' che l'estrazione ha scritto.
+    """
+
+    profilo: bool
+    memorie: bool
+    contesto: bool
+    entita: bool
+    intuizioni: bool
+    memorie_datate: bool
+    max_aggiornamenti: int
+    tentativi_contesto: int
+    strumenti_memoria: bool
+
+    @property
+    def automatici(self) -> bool:
+        """Vero se almeno uno store si aggiorna dopo ogni risposta, senza strumenti.
+
+        E' il gruppo che paga una chiamata al modello per turno, ed e' anche
+        quello che `descrizione` e il prompt nominano quando dicono che Ares
+        impara da solo.
+        """
+        return self.profilo or self.memorie or self.contesto
+
+    @property
+    def agentici(self) -> bool:
+        """Vero se almeno uno store si aggiorna solo quando il modello lo decide."""
+        return self.entita or self.intuizioni
+
+
+@dataclass(frozen=True)
+class Cronologia:
+    """Quanto contesto storico entra in vista, e quanto ne resta fuori.
+
+    `sessioni_passate` e `cronologia_chat` accendono gli strumenti con cui il
+    modello va a rileggere cio' che non ha in finestra; gli altri quattro
+    numeri decidono quanto ne riceve senza chiedere - e due di loro
+    difendono la finestra, non l'altezza del terminale: e' `Mostra.sessioni`
+    a contare l'elenco di `/sessioni`.
+    """
+
+    sessioni_passate: bool
+    cronologia_chat: bool
+    turni: int
+    strumenti_dalla_cronologia: int
+    sessioni_ricerca: int
+    sessioni_anteprima: int
+    sessioni_nel_prompt: int
+
+
+@dataclass(frozen=True)
+class Workspace:
+    """Come Ares lavora nella cartella, quando la cartella c'e'.
+
+    La cartella in se' e' `Percorsi.lavoro`: qui sta solo la politica - se
+    lo spazio di lavoro esiste, come si chiama il file delle regole, quanto
+    ne entra nel prompt, con quale prefisso i suoi strumenti si distinguono
+    dal quaderno, e se una scrittura su un file esistente pretende una
+    lettura prima.
+    """
+
+    attivo: bool
+    istruzioni: str
+    istruzioni_max_byte: int
+    prefisso: str
+    leggi_prima_di_scrivere: bool
+
+
+@dataclass(frozen=True)
+class Mostra:
+    """Cosa la persona vede del turno, e cosa le viene chiesto.
+
+    `metriche` ed `esito_strumenti` sono pannelli; `apprendimenti` e
+    `conferma_apprendimenti` non sono solo quello, perche' il prompt li
+    nomina al modello: la riga che dice "la persona vede cosa entra in
+    profilo e memorie" e' falsa se l'eco e' spenta, ed e' la stessa riga che
+    le dice che un no riporta gli archivi indietro.
+    """
+
+    metriche: bool
+    esito_strumenti: bool
+    esito_righe: int
+    esito_larghezza: int
+    apprendimenti: bool
+    conferma_apprendimenti: bool
+    sessioni: int
+
+
+@dataclass(frozen=True)
+class Politica:
+    """Cosa una conversazione impara, vede, mostra e come lavora.
+
+    E' il quarto e ultimo asse risolto al confine del processo: `Percorsi`
+    dice dove sta lo stato, `Impostazioni` a chi si parla, `Utente` per
+    conto di chi, `Politica` cosa e' permesso e cosa si vede. Chi costruisce
+    un agente riceve l'oggetto intero e non rilegge un nome di modulo, cosi'
+    due conversazioni con politiche diverse sono due oggetti e non due
+    mutazioni che il resto del processo non vede.
+    """
+
+    apprendimento: Apprendimento
+    cronologia: Cronologia
+    workspace: Workspace
+    mostra: Mostra
+
+
+def leggi_politica() -> Politica:
+    """La politica di questa conversazione, fotografata quando serve.
+
+    Come `leggi_impostazioni`, e per la stessa ragione: i nomi qui sopra
+    restano la sorgente e questa funzione li copia in un oggetto immutabile
+    al confine del processo - la chat e i suoi comandi nel proprio corpo,
+    `inspect` all'inizio, le prove all'import dopo aver regolato i flag.
+
+    Chi costruisce un agente riceve il risultato. Il giorno in cui due
+    conversazioni vorranno politiche diverse - una senza apprendimento
+    automatico, una sola lettura - costruiranno due `Politica` con
+    `dataclasses.replace`, invece di riscrivere un nome che l'altra sta
+    usando.
+    """
+    return Politica(
+        apprendimento=Apprendimento(
+            profilo=LEARN_USER_PROFILE,
+            memorie=LEARN_USER_MEMORY,
+            contesto=LEARN_SESSION_CONTEXT,
+            entita=LEARN_ENTITIES,
+            intuizioni=LEARN_KNOWLEDGE,
+            memorie_datate=DATE_MEMORIE,
+            max_aggiornamenti=MAX_UPDATES_PER_RUN,
+            tentativi_contesto=SESSION_CONTEXT_RETRIES,
+            strumenti_memoria=MEMORY_AGENT_TOOLS,
+        ),
+        cronologia=Cronologia(
+            sessioni_passate=SEARCH_PAST_SESSIONS,
+            cronologia_chat=READ_CHAT_HISTORY,
+            turni=NUM_HISTORY_RUNS,
+            strumenti_dalla_cronologia=MAX_TOOL_CALLS_FROM_HISTORY,
+            sessioni_ricerca=PAST_SESSIONS_LIMIT,
+            sessioni_anteprima=PAST_SESSION_RUNS_PREVIEW,
+            sessioni_nel_prompt=SESSIONI_RECENTI_NEL_PROMPT,
+        ),
+        workspace=Workspace(
+            attivo=WORKSPACE,
+            istruzioni=WORKSPACE_ISTRUZIONI,
+            istruzioni_max_byte=WORKSPACE_ISTRUZIONI_MAX_BYTE,
+            prefisso=WORKSPACE_PREFIX,
+            leggi_prima_di_scrivere=WORKSPACE_READ_BEFORE_WRITE,
+        ),
+        mostra=Mostra(
+            metriche=MOSTRA_METRICHE,
+            esito_strumenti=MOSTRA_ESITO_STRUMENTI,
+            esito_righe=ESITO_RIGHE,
+            esito_larghezza=ESITO_LARGHEZZA,
+            apprendimenti=MOSTRA_APPRENDIMENTI,
+            conferma_apprendimenti=CONFERMA_APPRENDIMENTI,
+            sessioni=SESSIONI_ELENCO,
+        ),
+    )
+
 
 # ---------------------------------------------------------------------------
 # Identita'

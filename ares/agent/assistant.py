@@ -36,7 +36,7 @@ from ares.agent.runtime import (
     build_result_store,
     build_workspace,
 )
-from ares.config import Impostazioni, Percorsi
+from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.identita import Utente
 from ares.state.stores import CHIAVE_CARTELLA, con_run, sessioni_della_cartella
 
@@ -62,6 +62,7 @@ __all__ = [
 def build_assistant(
     percorsi: Percorsi,
     impostazioni: Impostazioni,
+    politica: Politica,
     utente: Utente,
     session_id: str = "principale",
     debug: bool = False,
@@ -97,6 +98,13 @@ def build_assistant(
     e' un nome di modulo, quindi due conversazioni con modelli diversi sono
     due oggetti e non due mutazioni a distanza.
 
+    `politica` e' cosa questa conversazione impara, quanto contesto storico
+    vede, come si muove nella cartella e cosa mostra di cio' che ha
+    imparato. Da qui vengono gli store che esistono davvero, i limiti della
+    cronologia e i paragrafi del prompt che li descrivono: leggerli da
+    `config` a meta' costruzione permetterebbe a un'altra sessione di
+    cambiare sotto i piedi cio' che questa sta per dichiarare al modello.
+
     `utente` e' l'identita' gia' canonica, e non ha un valore predefinito:
     un default nella firma sarebbe una seconda risposta alla domanda "per
     conto di chi", decisa all'import invece che da chi costruisce. Il valore
@@ -107,22 +115,22 @@ def build_assistant(
     db = build_db(percorsi)
     # Passare Knowledge con il flag spento farebbe costruire comunque lo
     # store learned_knowledge nel namespace globale del framework.
-    knowledge = build_knowledge(percorsi, impostazioni) if config.LEARN_KNOWLEDGE else None
+    knowledge = build_knowledge(percorsi, impostazioni) if politica.apprendimento.intuizioni else None
     fs = build_filesystem(percorsi, utente)
-    spazio = build_workspace(percorsi, modo) if config.WORKSPACE else None
+    spazio = build_workspace(percorsi, politica, modo) if politica.workspace.attivo else None
 
     metadata = None
     precedenti: list = []
     if spazio is not None:
         metadata = {CHIAVE_CARTELLA: str(spazio.root)}
-        if config.SEARCH_PAST_SESSIONS:
+        if politica.cronologia.sessioni_passate:
             recenti = sessioni_della_cartella(db, utente, spazio.root, escludi=session_id)
-            precedenti = [con_run(db, s) for s in recenti[: config.SESSIONI_RECENTI_NEL_PROMPT]]
+            precedenti = [con_run(db, s) for s in recenti[: politica.cronologia.sessioni_nel_prompt]]
 
     return Agent(
         name="Ares",
         add_name_to_context=True,
-        description=descrizione(impostazioni, interattivo=interattivo),
+        description=descrizione(impostazioni, politica, interattivo=interattivo),
         model=build_chat_model(impostazioni),
         db=db,
         user_id=utente.id,
@@ -133,30 +141,39 @@ def build_assistant(
         instructions=[
             *istruzioni_sull_ambiente(
                 impostazioni=impostazioni,
+                politica=politica,
                 utente=utente,
                 session_id=session_id,
                 radice_lavoro=spazio.root if spazio is not None else None,
                 modo=modo,
                 interattivo=interattivo,
             ),
-            *([] if interattivo else istruzioni_senza_terminale(spazio.root if spazio is not None else None, modo)),
+            *(
+                []
+                if interattivo
+                else istruzioni_senza_terminale(spazio.root if spazio is not None else None, modo, politica=politica)
+            ),
             *istruzioni_di_collaborazione(interattivo=interattivo),
-            *istruzioni_sulla_memoria(interattivo=interattivo),
-            *istruzioni_sugli_strumenti(spazio.root if spazio is not None else None, modo, interattivo=interattivo),
-            *istruzioni_dalla_cartella(spazio.root if spazio is not None else None),
-            *istruzioni_sulle_conversazioni(precedenti, cartella=spazio.root if spazio is not None else None),
+            *istruzioni_sulla_memoria(politica=politica, interattivo=interattivo),
+            *istruzioni_sugli_strumenti(
+                spazio.root if spazio is not None else None, modo, politica=politica, interattivo=interattivo
+            ),
+            *istruzioni_dalla_cartella(spazio.root if spazio is not None else None, politica),
+            *istruzioni_sulle_conversazioni(
+                precedenti, cartella=spazio.root if spazio is not None else None, politica=politica
+            ),
             *istruzioni_sul_quaderno(),
         ],
-        learning=build_learning_machine(db, knowledge, utente, impostazioni, strumenti=interattivo),
+        learning=build_learning_machine(db, knowledge, utente, impostazioni, politica, strumenti=interattivo),
         post_hooks=[apprendi_a_run_completato] if interattivo else [],
         add_learnings_to_context=True,
         add_history_to_context=True,
-        num_history_runs=config.NUM_HISTORY_RUNS,
-        max_tool_calls_from_history=config.MAX_TOOL_CALLS_FROM_HISTORY,
-        search_past_sessions=config.SEARCH_PAST_SESSIONS,
-        num_past_sessions_to_search=config.PAST_SESSIONS_LIMIT,
-        num_past_session_runs_in_search=config.PAST_SESSION_RUNS_PREVIEW,
-        read_chat_history=config.READ_CHAT_HISTORY,
+        num_history_runs=politica.cronologia.turni,
+        max_tool_calls_from_history=politica.cronologia.strumenti_dalla_cronologia,
+        search_past_sessions=politica.cronologia.sessioni_passate,
+        num_past_sessions_to_search=politica.cronologia.sessioni_ricerca,
+        num_past_session_runs_in_search=politica.cronologia.sessioni_anteprima,
+        read_chat_history=politica.cronologia.cronologia_chat,
         add_datetime_to_context=True,
         datetime_format=config.DATETIME_FORMAT,
         timezone_identifier="Europe/Rome",
@@ -172,7 +189,8 @@ def build_assistant(
 
 if __name__ == "__main__":
     impostazioni = config.leggi_impostazioni()
-    agent = build_assistant(config.leggi_percorsi(), impostazioni, Utente.da_grezzo(config.DEFAULT_USER_ID))
+    politica = config.leggi_politica()
+    agent = build_assistant(config.leggi_percorsi(), impostazioni, politica, Utente.da_grezzo(config.DEFAULT_USER_ID))
     print("Assistente costruito.")
     print("Modello:", impostazioni.principale)
     macchina = agent.learning_machine

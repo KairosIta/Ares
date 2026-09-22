@@ -10,7 +10,7 @@ from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 
 from ares import config
-from ares.config import Impostazioni, Percorsi
+from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
 
@@ -119,12 +119,15 @@ class AresWorkspace(Workspace):
         self.add_instructions = False
 
 
-def build_workspace(percorsi: Percorsi, modo: str | None = None) -> AresWorkspace:
+def build_workspace(percorsi: Percorsi, politica: Politica, modo: str | None = None) -> AresWorkspace:
     """Costruisce lo spazio di lavoro sulla cartella scelta all'avvio, nella modalita' data.
 
     `modo` vuoto vale `config.MODO_PREDEFINITO`, letto adesso e non alla
     definizione della funzione: un default nella firma fotografa il valore
     all'import, e una prova che lo cambia con `patch.object` non lo vedrebbe.
+    La modalita' resta un parametro a se' e non entra nella politica: e' gia'
+    esplicita a ogni confine, e la politica dice il resto - prefisso e lettura
+    prima della scrittura - che non cambia da un turno all'altro.
 
     La cartella e' quella dell'utente, decisa e autorizzata da
     `cli/cartella.py` prima di arrivare qui: i rischi - la home, il disco
@@ -138,8 +141,8 @@ def build_workspace(percorsi: Percorsi, modo: str | None = None) -> AresWorkspac
     silenziosi, confermati = config.liste_modalita(modo or config.MODO_PREDEFINITO)
     return AresWorkspace(
         radice,
-        prefisso=config.WORKSPACE_PREFIX,
+        prefisso=politica.workspace.prefisso,
         allowed=silenziosi,
         confirm=confermati,
-        require_read_before_write=config.WORKSPACE_READ_BEFORE_WRITE,
+        require_read_before_write=politica.workspace.leggi_prima_di_scrivere,
     )

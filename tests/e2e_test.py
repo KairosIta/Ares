@@ -50,11 +50,12 @@ SPAZIO_PROVA = str(RADICE_PROVA / "lavoro")
 
 from ares import config  # noqa: E402
 
-# I percorsi e le impostazioni della prova, letti una volta dopo
-# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
+# I percorsi, le impostazioni e la politica della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei tre,
 # quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
+POLITICA = config.leggi_politica()
 from ares.ops.preflight import modelli_disponibili, stessa_etichetta  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
 
@@ -83,7 +84,11 @@ from ares.state.stores import leggi_entita
 
 utente, sessione = sys.argv[1], sys.argv[2]
 lm = build_assistant(
-    config.leggi_percorsi(), config.leggi_impostazioni(), Utente.da_grezzo(utente), session_id=sessione
+    config.leggi_percorsi(),
+    config.leggi_impostazioni(),
+    config.leggi_politica(),
+    Utente.da_grezzo(utente),
+    session_id=sessione,
 ).learning_machine
 
 print("user_profile", lm.user_profile_store.get(user_id=utente) is not None)
@@ -212,7 +217,7 @@ def main() -> int:
         from ares.agent.assistant import build_assistant
 
         costruzione = time.monotonic()
-        agent = build_assistant(PERCORSI, IMPOSTAZIONI, Utente.da_grezzo(UTENTE), session_id=SESSIONE)
+        agent = build_assistant(PERCORSI, IMPOSTAZIONI, POLITICA, Utente.da_grezzo(UTENTE), session_id=SESSIONE)
         ok("costruzione         ", "agente costruito in " + str(round(time.monotonic() - costruzione, 2)) + " s")
 
         print()

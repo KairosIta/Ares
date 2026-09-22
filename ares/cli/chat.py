@@ -56,7 +56,7 @@ from ares.cli.editor import CliInput
 from ares.cli.log import configura_log_agno
 from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
 from ares.cli.ui import UI
-from ares.config import Impostazioni, Percorsi
+from ares.config import Impostazioni, Percorsi, Politica
 from ares.ops import migrazione
 from ares.state.archivi import build_db
 from ares.state.git import ramo_git
@@ -80,14 +80,14 @@ def riga_stato(stato: StatoChat) -> str:
     return " · ".join(pezzi)
 
 
-def _turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput) -> RunOutput | None:
+def _turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica) -> RunOutput | None:
     """Il turno vero, senza le difese: le pause per autorizzare uno strumento."""
     with UI.stream() as flusso:
         risposta = run_turn_cycle(
             agent,
             testo,
-            on_event=lambda evento: mostra_evento(flusso, evento),
-            resolve_pause=lambda output: chiedi_conferme(output, input_cli, percorsi),
+            on_event=lambda evento: mostra_evento(flusso, evento, politica.mostra),
+            resolve_pause=lambda output: chiedi_conferme(output, input_cli, percorsi, politica),
         )
 
     if risposta is not None and risposta.is_paused:
@@ -98,14 +98,16 @@ def _turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput) -> RunOut
     return risposta
 
 
-def esegui_turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput) -> RunOutput | None:
+def esegui_turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica) -> RunOutput | None:
     """Serializza il turno e la conferma con le altre chat dello stesso utente."""
     identita = Utente.da_grezzo(getattr(agent, "user_id", None) or config.DEFAULT_USER_ID)
     with lock_turno(percorsi, identita):
-        return _esegui_turno_protetto(percorsi, agent, testo, input_cli)
+        return _esegui_turno_protetto(percorsi, agent, testo, input_cli, politica)
 
 
-def _esegui_turno_protetto(percorsi: Percorsi, agent, testo: str, input_cli: CliInput) -> RunOutput | None:
+def _esegui_turno_protetto(
+    percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica
+) -> RunOutput | None:
     """Un turno intero, con una rete sotto per cio' che Agno non prende.
 
     Questa rete cattura molto meno di quanto sembri, e vale la pena dire cosa
@@ -128,11 +130,11 @@ def _esegui_turno_protetto(percorsi: Percorsi, agent, testo: str, input_cli: Cli
     """
     # La fotografia precede il turno e non il post-hook: `update_user_memory`
     # scrive durante il run, e una lettura fatta dopo la risposta non lo
-    # vedrebbe. Spenta in config, non si legge niente.
-    stato = istantanea(agent) if config.MOSTRA_APPRENDIMENTI else None
+    # vedrebbe. Spenta nella politica, non si legge niente.
+    stato = istantanea(agent) if politica.mostra.apprendimenti else None
     risposta = None
     try:
-        risposta = _turno(percorsi, agent, testo, input_cli)
+        risposta = _turno(percorsi, agent, testo, input_cli, politica)
     except KeyboardInterrupt:
         # Il context manager del renderer ha gia' chiuso l'anteprima e reso
         # permanente l'eventuale Markdown parziale.
@@ -155,7 +157,7 @@ def _esegui_turno_protetto(percorsi: Percorsi, agent, testo: str, input_cli: Cli
         # sarebbe il caso in cui l'eco serve di piu'.
         righe = variazioni(riduci(stato), fotografa(agent))
         UI.learned(righe)
-        if righe and config.CONFERMA_APPRENDIMENTI:
+        if righe and politica.mostra.conferma_apprendimenti:
             _conferma_apprendimenti(agent, stato, input_cli)
     return risposta
 
@@ -185,7 +187,7 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
 
 
 def _sessione_da_aprire(
-    percorsi: Percorsi, utente: Utente, radice: Path | None, *, riprendi: bool, scegli: bool
+    percorsi: Percorsi, utente: Utente, radice: Path | None, *, riprendi: bool, scegli: bool, politica: Politica
 ) -> tuple[str | None, str]:
     """Quale conversazione aprire quando `--session` non lo dice, e come chiamarla nel banner.
 
@@ -212,7 +214,7 @@ def _sessione_da_aprire(
     if scegli:
         UI.heading("Conversazioni in " + str(radice))
         scelta = cartella.scegli_sessione(
-            [con_run(build_db(percorsi), s) for s in precedenti[: config.SESSIONI_ELENCO]]
+            [con_run(build_db(percorsi), s) for s in precedenti[: politica.mostra.sessioni]]
         )
         if scelta is None:
             UI.line("Nessuna conversazione ripresa.", style="ares.muted")
@@ -256,7 +258,7 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
         interactive=False,
         fallback_input=lambda _etichetta: "",
     )
-    risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli)
+    risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli, stato.politica)
     if stato.metriche and risposta is not None:
         for riga in righe_metriche(risposta, stato.impostazioni):
             UI.metrics(riga)
@@ -300,10 +302,12 @@ def _esegui_chat(
     # cartella scelta con --workspace e' un `replace` sul proprio oggetto.
     percorsi = config.leggi_percorsi()
     impostazioni = config.leggi_impostazioni()
+    politica = config.leggi_politica()
     with UI.solo_risposte() if prompt is not None else nullcontext():
         return _apri_chat(
             percorsi=percorsi,
             impostazioni=impostazioni,
+            politica=politica,
             session=session,
             utente=utente,
             debug=debug,
@@ -320,6 +324,7 @@ def _apri_chat(
     *,
     percorsi: Percorsi,
     impostazioni: Impostazioni,
+    politica: Politica,
     session: str | None,
     utente: Utente,
     debug: bool,
@@ -362,7 +367,7 @@ def _apri_chat(
     # stato. `workspace` e' `--workspace`; senza, e' quella da cui si e'
     # lanciato `ares`, che `leggi_percorsi` ha gia' letto.
     radice: Path | None = None
-    if config.WORKSPACE:
+    if politica.workspace.attivo:
         try:
             radice = cartella.scegli(workspace, percorsi)
         except ValueError as errore:
@@ -383,13 +388,22 @@ def _apri_chat(
 
     etichetta = ""
     if session is None:
-        session, etichetta = _sessione_da_aprire(percorsi, utente, radice, riprendi=riprendi, scegli=scegli)
+        session, etichetta = _sessione_da_aprire(
+            percorsi, utente, radice, riprendi=riprendi, scegli=scegli, politica=politica
+        )
         if session is None:
             return ESITO_RIFIUTO
 
     configura_log_agno(debug)
     agent = build_assistant(
-        percorsi, impostazioni, utente, session_id=session, debug=debug, interattivo=prompt is None, modo=modo
+        percorsi,
+        impostazioni,
+        politica,
+        utente,
+        session_id=session,
+        debug=debug,
+        interattivo=prompt is None,
+        modo=modo,
     )
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
@@ -402,8 +416,9 @@ def _apri_chat(
         utente=utente,
         percorsi=percorsi,
         impostazioni=impostazioni,
+        politica=politica,
         debug=debug,
-        metriche=config.MOSTRA_METRICHE or metriche,
+        metriche=politica.mostra.metriche or metriche,
         modo=modo,
     )
 
@@ -424,8 +439,8 @@ def _apri_chat(
         )
 
     istruzioni = None
-    if radice is not None and cartella.file_istruzioni(radice).is_file():
-        istruzioni = config.WORKSPACE_ISTRUZIONI
+    if radice is not None and cartella.file_istruzioni(radice, politica.workspace.istruzioni).is_file():
+        istruzioni = politica.workspace.istruzioni
     UI.banner(
         modello=impostazioni.principale,
         sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
@@ -489,7 +504,7 @@ def _apri_chat(
             continue
 
         try:
-            risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli)
+            risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli, stato.politica)
         except StatoOccupato as errore:
             UI.line(str(errore), style="ares.warning")
             UI.blank()

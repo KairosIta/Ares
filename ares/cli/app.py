@@ -164,13 +164,17 @@ def init() -> int:
     """
     from ares.cli import cartella
 
+    # Il nome del file viene dalla politica letta qui, al confine del
+    # comando: `init` e la chat devono guardare lo stesso nome, e un nome
+    # riletto da `config` dentro `cartella.py` poteva divergere da questo.
+    politica = config.leggi_politica()
     try:
-        destinazione = cartella.scrivi_scheletro(Path.cwd())
+        destinazione = cartella.scrivi_scheletro(Path.cwd(), politica.workspace.istruzioni)
     except FileExistsError as errore:
         UI.err("ERRORE: " + str(errore))
         return ESITO_GUASTO
     except OSError as errore:
-        UI.err("ERRORE: impossibile scrivere " + config.WORKSPACE_ISTRUZIONI + ": " + str(errore))
+        UI.err("ERRORE: impossibile scrivere " + politica.workspace.istruzioni + ": " + str(errore))
         return ESITO_GUASTO
     UI.pair("Scritto", str(destinazione), style="ares.title")
     UI.line("Compilalo con le regole del progetto: Ares lo leggera' al prossimo avvio qui.", style="ares.muted")

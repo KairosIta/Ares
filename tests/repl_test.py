@@ -55,11 +55,14 @@ from rich.text import Text  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi e le impostazioni della prova, letti una volta dopo
-# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
-# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
+# I percorsi, le impostazioni e la politica della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei tre,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno. Dove la
+# prova cambia un flag con `patch.object` la politica si rilegge dentro il
+# `with`: una fotografia presa prima non vedrebbe il cambiamento.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
+POLITICA = config.leggi_politica()
 from ares.agent.turn_core import (  # noqa: E402
     TurnEngine,
     TurnEvent,
@@ -87,7 +90,7 @@ from ares.cli.render import (  # noqa: E402
     righe_scrittura,
 )
 from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
-from ares.config import Impostazioni, Percorsi  # noqa: E402
+from ares.config import Impostazioni, Percorsi, Politica  # noqa: E402
 from ares.state import platform_files  # noqa: E402
 from ares.state.git import ramo_git  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -160,12 +163,12 @@ def scritture_in_memoria() -> str:
     evento = TurnEvent(kind=TurnEventKind.TOOL_COMPLETED, tool=salvataggio)
     flusso = FlussoFinto()
     with patch.object(config, "MOSTRA_APPRENDIMENTI", True), patch.object(config, "MOSTRA_ESITO_STRUMENTI", True):
-        render.mostra_evento(flusso, evento)
+        render.mostra_evento(flusso, evento, config.leggi_politica().mostra)
     esigi(len(flusso.gruppi) == 2, "esito ed eco non sono due gruppi: " + repr(flusso.gruppi))
     esigi(flusso.gruppi[1][0] == "   in memoria: save_learning", "l'eco non segue l'esito")
     flusso = FlussoFinto()
     with patch.object(config, "MOSTRA_APPRENDIMENTI", False), patch.object(config, "MOSTRA_ESITO_STRUMENTI", True):
-        render.mostra_evento(flusso, evento)
+        render.mostra_evento(flusso, evento, config.leggi_politica().mostra)
     esigi(len(flusso.gruppi) == 1, "con l'eco spento le righe compaiono lo stesso")
     return "argomenti interi per save_learning, niente per read_file, e il flag li accende"
 
@@ -374,7 +377,7 @@ def conferme_applicate() -> str:
         ignorato = RequisitoFinto("interno", da_confermare=False)
         accettato = RequisitoFinto(config.WORKSPACE_PREFIX + "delete_file")
         input_si = InputFinto("sì")
-        risolti = chiedi_conferme(RispostaFinta([ignorato, accettato]), input_si, PERCORSI)
+        risolti = chiedi_conferme(RispostaFinta([ignorato, accettato]), input_si, PERCORSI, POLITICA)
         esigi(risolti == 1, "un requisito che non chiede conferma viene contato")
         esigi(accettato.confermato and accettato.rifiutato == "mai", "il sì non conferma il requisito")
         esigi(not ignorato.confermato and ignorato.rifiutato == "mai", "un requisito interno viene modificato")
@@ -383,7 +386,7 @@ def conferme_applicate() -> str:
 
         rifiutato = RequisitoFinto(config.WORKSPACE_PREFIX + "run_command")
         input_no = InputFinto("no", "comando troppo ampio")
-        risolti = chiedi_conferme(RispostaFinta([rifiutato]), input_no, PERCORSI)
+        risolti = chiedi_conferme(RispostaFinta([rifiutato]), input_no, PERCORSI, POLITICA)
         esigi(risolti == 1, "un rifiuto non risolve il requisito")
         esigi(not rifiutato.confermato, "un no conferma comunque il requisito")
         esigi(rifiutato.rifiutato == "comando troppo ampio", "il motivo del rifiuto non arriva al requirement")
@@ -394,11 +397,15 @@ def conferme_applicate() -> str:
             RispostaFinta([interrotto]),
             InputFinto(KeyboardInterrupt(), EOFError()),
             PERCORSI,
+            POLITICA,
         )
         esigi(risolti == 1, "Ctrl-C lascia irrisolto il requisito")
         esigi(interrotto.rifiutato is None, "Ctrl-C inventa un motivo di rifiuto")
         esigi(ui.righe_vuote == 2, "Ctrl-C/EOF non chiudono pulitamente le due richieste")
-        esigi(chiedi_conferme(RispostaFinta([]), InputFinto(), PERCORSI) == 0, "una pausa ignota risulta risolta")
+        esigi(
+            chiedi_conferme(RispostaFinta([]), InputFinto(), PERCORSI, POLITICA) == 0,
+            "una pausa ignota risulta risolta",
+        )
     finally:
         render.UI = ui_originale
 
@@ -491,36 +498,39 @@ def esito_strumenti() -> str:
         result="prima riga\nseconda riga\nterza riga\nquarta riga\nquinta riga",
         metrics=ToolCallMetrics(duration=0.42),
     )
-    righe = righe_esito(riuscito)
+    righe = righe_esito(riuscito, POLITICA.mostra)
     esigi(righe[0].strip().startswith("esito: "), "l'esito non si annuncia: " + repr(righe))
     esigi("58 caratteri" in righe[0], "i caratteri non sono contati: " + repr(righe[0]))
     esigi("0.4 s" in righe[0], "la durata non e' resa: " + repr(righe[0]))
     esigi(
-        len(righe) == 1 + config.ESITO_RIGHE + 1,
-        "l'anteprima non si ferma a " + str(config.ESITO_RIGHE) + " righe: " + repr(righe),
+        len(righe) == 1 + POLITICA.mostra.esito_righe + 1,
+        "l'anteprima non si ferma a " + str(POLITICA.mostra.esito_righe) + " righe: " + repr(righe),
     )
     esigi("(+ altre 2 righe)" in righe[-1], "il taglio in altezza non si dichiara: " + repr(righe[-1]))
 
     # Una riga sola avanzata: "altre 1 righe" e' comparso in una prova vera.
-    quattro = righe_esito(ToolExecution(result="a\nb\nc\nd"))
+    quattro = righe_esito(ToolExecution(result="a\nb\nc\nd"), POLITICA.mostra)
     esigi("un'altra riga" in quattro[-1], "il singolare non e' reso: " + repr(quattro[-1]))
-    esatte = righe_esito(ToolExecution(result="a\nb\nc"))
+    esatte = righe_esito(ToolExecution(result="a\nb\nc"), POLITICA.mostra)
     esigi(
         "+" not in esatte[-1],
         "un taglio viene annunciato dove non c'e': " + repr(esatte[-1]),
     )
 
     # Larghezza: una riga sola, lunghissima, come la restituisce un comando.
-    lunga = righe_esito(ToolExecution(result="x" * 400))
-    esigi(len(lunga[1]) <= config.ESITO_LARGHEZZA + 6, "il taglio in larghezza non avviene: " + str(len(lunga[1])))
+    lunga = righe_esito(ToolExecution(result="x" * 400), POLITICA.mostra)
+    esigi(
+        len(lunga[1]) <= POLITICA.mostra.esito_larghezza + 6,
+        "il taglio in larghezza non avviene: " + str(len(lunga[1])),
+    )
     esigi(lunga[1].endswith("..."), "il taglio in larghezza non si dichiara: " + repr(lunga[1]))
     esigi("400 caratteri" in lunga[0], "la misura vera si perde nel troncamento: " + repr(lunga[0]))
 
     # La durata manca sul percorso di ripresa dopo una conferma: il segmento
     # deve sparire, non stampare zero.
-    senza = righe_esito(ToolExecution(result="ok"))
+    senza = righe_esito(ToolExecution(result="ok"), POLITICA.mostra)
     esigi(" s" not in senza[0], "senza metriche compare comunque una durata: " + repr(senza[0]))
-    vuoto = righe_esito(ToolExecution(result=None))
+    vuoto = righe_esito(ToolExecution(result=None), POLITICA.mostra)
     esigi(vuoto == ["   esito: nessun contenuto"], "un risultato vuoto non e' detto: " + repr(vuoto))
 
     # Il conto vero: quante volte compare l'errore attraversando i due eventi
@@ -537,14 +547,14 @@ def esito_strumenti() -> str:
     ]
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
-        mostra_flusso(normalize_events(flusso))
+        mostra_flusso(normalize_events(flusso), mostra=POLITICA.mostra)
     reso = catturato.getvalue()
     esigi(reso.count("pippo.md") == 1, "l'errore compare " + str(reso.count("pippo.md")) + " volte:\n" + reso)
     esigi("esito:" not in reso, "un tool fallito viene annunciato come riuscito:\n" + reso)
     esigi("errore: FileNotFoundError: pippo.md" in reso, "l'errore non e' reso:\n" + reso)
 
     # Un evento di errore senza testo non deve passare per riuscito.
-    muto = righe_esito(ToolExecution(tool_call_error=True), errore="")
+    muto = righe_esito(ToolExecution(tool_call_error=True), POLITICA.mostra, errore="")
     esigi(muto == ["   errore: senza messaggio"], "un errore muto sparisce: " + repr(muto))
 
     return "errore reso una volta sola, anteprima tagliata in righe e larghezza"
@@ -821,6 +831,7 @@ def indicatore_attivita() -> str:
             ]
         ),
         ui=UiFinta(registrato),
+        mostra=POLITICA.mostra,
     )
     etichette = [valore for azione, valore in registrato.chiamate if azione == "start"]
     esigi("Ares sta elaborando..." in etichette, "il modello non attiva l'indicatore")
@@ -1217,6 +1228,7 @@ def comandi() -> str:
                 utente=Utente.da_grezzo("utente"),
                 percorsi=PERCORSI,
                 impostazioni=IMPOSTAZIONI,
+                politica=POLITICA,
             ),
         )
     esigi(vive is True, "un comando sconosciuto chiude la sessione")
@@ -1227,6 +1239,7 @@ def comandi() -> str:
         utente=Utente.da_grezzo("utente"),
         percorsi=PERCORSI,
         impostazioni=IMPOSTAZIONI,
+        politica=POLITICA,
     )
     with contextlib.redirect_stdout(io.StringIO()):
         esigi(gestisci_comando("/esci", vuoto) is False, "/esci non chiude")
@@ -1269,7 +1282,14 @@ def stato_della_chat() -> str:
     modi: list[str] = []
 
     def costruisci(
-        percorsi: Percorsi, impostazioni: Impostazioni, utente: Utente, *, session_id: str, debug: bool, modo: str
+        percorsi: Percorsi,
+        impostazioni: Impostazioni,
+        politica: Politica,
+        utente: Utente,
+        *,
+        session_id: str,
+        debug: bool,
+        modo: str,
     ) -> AgenteFinto:
         costruiti.append((session_id, debug))
         modi.append(modo)
@@ -1281,6 +1301,7 @@ def stato_della_chat() -> str:
         utente=Utente.da_grezzo("utente"),
         percorsi=PERCORSI,
         impostazioni=IMPOSTAZIONI,
+        politica=POLITICA,
     )
 
     def comando(riga: str) -> str:
@@ -1582,26 +1603,26 @@ def cartella_di_lavoro() -> str:
         esigi(cartella.file_modificati(vero) == 1, "un file nuovo non viene contato")
 
     # ARES.md: assente, presente, vuoto, oltre il tetto; e lo scheletro.
-    esigi(istruzioni_dalla_cartella(lavoro) == [], "senza ARES.md ci sono istruzioni")
-    esigi(istruzioni_dalla_cartella(None) == [], "senza cartella ci sono istruzioni")
+    esigi(istruzioni_dalla_cartella(lavoro, POLITICA) == [], "senza ARES.md ci sono istruzioni")
+    esigi(istruzioni_dalla_cartella(None, POLITICA) == [], "senza cartella ci sono istruzioni")
     progetto = RADICE_PROVA / "progetto"
     progetto.mkdir()
-    scritto = cartella.scrivi_scheletro(progetto)
+    scritto = cartella.scrivi_scheletro(progetto, POLITICA.workspace.istruzioni)
     esigi(scritto == progetto / "ARES.md" and scritto.is_file(), "lo scheletro non e' stato scritto")
     try:
-        cartella.scrivi_scheletro(progetto)
+        cartella.scrivi_scheletro(progetto, POLITICA.workspace.istruzioni)
     except FileExistsError:
         pass
     else:
         esigi(False, "lo scheletro ha sovrascritto un ARES.md esistente")
-    istruzioni = istruzioni_dalla_cartella(progetto)
+    istruzioni = istruzioni_dalla_cartella(progetto, POLITICA)
     esigi(len(istruzioni) == 1 and "Istruzioni per Ares" in istruzioni[0], "ARES.md non entra nelle istruzioni")
     esigi("ARES.md" in istruzioni[0] and "troncato" not in istruzioni[0], "un file corto viene detto troncato")
     scritto.write_text("   \n", encoding="utf-8")
-    esigi(istruzioni_dalla_cartella(progetto) == [], "un ARES.md vuoto produce un'istruzione")
+    esigi(istruzioni_dalla_cartella(progetto, POLITICA) == [], "un ARES.md vuoto produce un'istruzione")
     scritto.write_text("regola " * 100, encoding="utf-8")
     with patch.object(config, "WORKSPACE_ISTRUZIONI_MAX_BYTE", 50):
-        lungo = istruzioni_dalla_cartella(progetto)
+        lungo = istruzioni_dalla_cartella(progetto, config.leggi_politica())
     esigi(len(lungo) == 1 and "piu' lungo del tetto" in lungo[0], "un file oltre il tetto non lo dice")
     esigi(lungo[0].count("regola") <= 8, "il file oltre il tetto non e' stato troncato")
     # Dati fra due righe, non ordini: l'intestazione dice come leggerlo e il
@@ -1728,13 +1749,16 @@ def conversazioni_per_cartella() -> str:
     radice = cartella.nuovo_id_sessione(Path("/"), momento, suffisso="abc123")
     esigi(radice == "cartella-20260907-091530-abc123", "la radice non ha un ripiego")
 
-    testo = istruzioni_sulle_conversazioni([prima], cartella=qui)
+    testo = istruzioni_sulle_conversazioni([prima], cartella=qui, politica=POLITICA)
     esigi(len(testo) == 1, "le conversazioni precedenti non danno una istruzione sola")
     esigi(
         all(p in testo[0] for p in ("qui-1", "prima domanda qui", "read_past_session", qui, "1 scambio")),
         "l'istruzione non ha id, inizio, strumento e cartella: " + testo[0],
     )
-    esigi(istruzioni_sulle_conversazioni([], cartella=qui) == [], "senza precedenti c'e' un'istruzione")
+    esigi(
+        istruzioni_sulle_conversazioni([], cartella=qui, politica=POLITICA) == [],
+        "senza precedenti c'e' un'istruzione",
+    )
 
     def scelta(risposta) -> str | None:
         def finto_input(_etichetta: str = "") -> str:

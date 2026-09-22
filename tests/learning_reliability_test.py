@@ -42,7 +42,7 @@ def modello_presente() -> bool:
 def prova_temperatura(temperatura: float, tentativi: int, gruppo: int) -> dict:
     modello = build_learning_model(IMPOSTAZIONI)
     modello.options = {**(modello.options or {}), "temperature": temperatura}
-    store = build_session_context_store(build_db(PERCORSI), modello)
+    store = build_session_context_store(build_db(PERCORSI), modello, POLITICA)
     risultati = {"immediati": 0, "recuperati": 0, "falliti": 0, "secondi": 0.0}
 
     for indice in range(1, tentativi + 1):
@@ -153,10 +153,12 @@ if __name__ == "__main__":
     from ares.agent.assistant import build_db, build_learning_model, build_session_context_store
     from ares.ops.preflight import modelli_disponibili, stessa_etichetta
 
-    # I percorsi e le impostazioni della prova: le funzioni qui sopra li
-    # leggono da questi globali di modulo, come gia' fanno con `MESSAGGI`.
+    # I percorsi, le impostazioni e la politica della prova: le funzioni qui
+    # sopra li leggono da questi globali di modulo, come gia' fanno con
+    # `MESSAGGI`.
     PERCORSI = config.leggi_percorsi()
     IMPOSTAZIONI = config.leggi_impostazioni()
+    POLITICA = config.leggi_politica()
 
     MESSAGGI = [
         Message(

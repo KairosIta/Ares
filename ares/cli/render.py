@@ -8,11 +8,10 @@ from typing import Any
 
 from agno.run.agent import RunOutput
 
-from ares import config
 from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
-from ares.config import Impostazioni, Percorsi
+from ares.config import Impostazioni, Mostra, Percorsi, Politica
 
 # Gli eventi che aprono un'attesa, con cio' che l'indicatore dice, e quelli
 # che la chiudono. Erano una catena di venti `elif` con lo stesso corpo:
@@ -36,57 +35,61 @@ FINI_ATTESA = frozenset(
 )
 
 
-def _strumento_avviato(flusso, evento: TurnEvent) -> None:
+def _strumento_avviato(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     flusso.activity_stopped()
     nome = getattr(evento.tool, "tool_name", None) or "?"
     flusso.tool_started(nome)
     flusso.activity_started(nome + " in esecuzione...")
 
 
-def _strumento_concluso(flusso, evento: TurnEvent) -> None:
+def _strumento_concluso(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     flusso.activity_stopped()
     # Uno strumento fallito emette Completed **e poi** Error, non l'uno o
     # l'altro. La guardia evita un esito riuscito prima dell'errore.
     if getattr(evento.tool, "tool_call_error", False):
         return
-    if config.MOSTRA_ESITO_STRUMENTI:
-        flusso.tool_result(righe_esito(evento.tool))
-    if config.MOSTRA_APPRENDIMENTI:
+    if mostra.esito_strumenti:
+        flusso.tool_result(righe_esito(evento.tool, mostra))
+    if mostra.apprendimenti:
         scrittura = righe_scrittura(evento.tool)
         if scrittura:
             flusso.tool_result(scrittura)
 
 
-def _strumento_fallito(flusso, evento: TurnEvent) -> None:
+def _strumento_fallito(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     flusso.activity_stopped()
     errore = evento.error or getattr(evento.tool, "result", None) or ""
-    if config.MOSTRA_ESITO_STRUMENTI:
-        flusso.tool_result(righe_esito(evento.tool, errore=errore), errore=True)
+    if mostra.esito_strumenti:
+        flusso.tool_result(righe_esito(evento.tool, mostra, errore=errore), errore=True)
 
 
-def _contenuto(flusso, evento: TurnEvent) -> None:
+def _contenuto(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     if isinstance(evento.content, str):
         flusso.content(evento.content)
 
 
-def _errore_run(flusso, evento: TurnEvent) -> None:
+def _errore_run(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     flusso.activity_stopped()
     flusso.run_error(evento.content)
 
 
-def _annullato(flusso, evento: TurnEvent) -> None:
+def _annullato(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     flusso.activity_stopped()
     flusso.cancelled()
 
 
-def _chiuso(flusso, evento: TurnEvent) -> None:
+def _chiuso(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     # Una run, una continuazione o l'output conclusivo: il commit qui
     # garantisce che un'eventuale conferma venga dopo il testo prodotto.
     flusso.activity_stopped()
     flusso.flush()
 
 
-AZIONI: dict[TurnEventKind, Callable[[Any, TurnEvent], None]] = {
+# Ogni azione riceve anche le scelte di visualizzazione, che solo alcune
+# usano: e' il prezzo di una tabella invece di una catena di if, come per i
+# comandi della REPL. Cosi' l'evento e la politica che lo governa restano
+# due parametri distinti, e nessuna azione rilegge un nome di modulo.
+AZIONI: dict[TurnEventKind, Callable[[Any, TurnEvent, Mostra], None]] = {
     TurnEventKind.TOOL_STARTED: _strumento_avviato,
     TurnEventKind.TOOL_COMPLETED: _strumento_concluso,
     TurnEventKind.TOOL_ERROR: _strumento_fallito,
@@ -99,7 +102,7 @@ AZIONI: dict[TurnEventKind, Callable[[Any, TurnEvent], None]] = {
 }
 
 
-def mostra_evento(flusso, evento: TurnEvent) -> None:
+def mostra_evento(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     """Adatta un evento neutro del core ai componenti della CLI."""
     tipo = evento.kind
     if tipo in ATTESE:
@@ -109,10 +112,10 @@ def mostra_evento(flusso, evento: TurnEvent) -> None:
     else:
         azione = AZIONI.get(tipo)
         if azione is not None:
-            azione(flusso, evento)
+            azione(flusso, evento, mostra)
 
 
-def mostra_flusso(eventi, *, ui=None) -> RunOutput | None:
+def mostra_flusso(eventi, *, mostra: Mostra, ui=None) -> RunOutput | None:
     """Mostra uno stream di eventi del core e restituisce il suo output.
 
     E' il piccolo adapter riusabile nei test. Il ciclo completo usa la stessa
@@ -121,10 +124,10 @@ def mostra_flusso(eventi, *, ui=None) -> RunOutput | None:
     """
     renderer = UI if ui is None else ui
     with renderer.stream() as flusso:
-        return consume_events(eventi, lambda evento: mostra_evento(flusso, evento))
+        return consume_events(eventi, lambda evento: mostra_evento(flusso, evento, mostra))
 
 
-def anteprima_risultato(testo: str) -> list:
+def anteprima_risultato(testo: str, mostra: Mostra) -> list:
     """Le prime righe di un risultato, tagliate in altezza e in larghezza.
 
     Qui si tronca, e altrove no: `righe_argomento` non taglia mai perche'
@@ -134,14 +137,16 @@ def anteprima_risultato(testo: str) -> list:
     vorrebbe dire far scorrere via la risposta dell'agente.
 
     Il taglio si dichiara sempre, in righe e in caratteri: un'anteprima che
-    non dice di essere un'anteprima e' peggio di nessuna anteprima.
+    non dice di essere un'anteprima e' peggio di nessuna anteprima. Quanto
+    tagliare lo dice la politica: e' una scelta di visualizzazione, e due
+    client possono volerne due diverse.
     """
     righe_testo = testo.splitlines()
     rese = []
-    for riga in righe_testo[: config.ESITO_RIGHE]:
+    for riga in righe_testo[: mostra.esito_righe]:
         riga = riga.rstrip()
-        if len(riga) > config.ESITO_LARGHEZZA:
-            riga = riga[: config.ESITO_LARGHEZZA - 3] + "..."
+        if len(riga) > mostra.esito_larghezza:
+            riga = riga[: mostra.esito_larghezza - 3] + "..."
         rese.append("   | " + riga)
     restanti = len(righe_testo) - len(rese)
     if restanti == 1:
@@ -151,7 +156,7 @@ def anteprima_risultato(testo: str) -> list:
     return rese
 
 
-def righe_esito(strumento, errore=None) -> list:
+def righe_esito(strumento, mostra: Mostra, errore=None) -> list:
     """Come e' finita una chiamata a uno strumento.
 
     Il conteggio dei caratteri sta prima dell'anteprima perche' e' l'unica
@@ -169,9 +174,9 @@ def righe_esito(strumento, errore=None) -> list:
         if not testo:
             return ["   errore: senza messaggio"]
         righe_errore = testo.splitlines()
-        if len(righe_errore) == 1 and len(righe_errore[0]) <= config.ESITO_LARGHEZZA:
+        if len(righe_errore) == 1 and len(righe_errore[0]) <= mostra.esito_larghezza:
             return ["   errore: " + righe_errore[0]]
-        return ["   errore:", *anteprima_risultato(testo)]
+        return ["   errore:", *anteprima_risultato(testo, mostra)]
 
     risultato = getattr(strumento, "result", None)
     testo = "" if risultato is None else str(risultato)
@@ -181,7 +186,7 @@ def righe_esito(strumento, errore=None) -> list:
         # Sotto il decimo di secondo l'arrotondamento a una cifra scriverebbe
         # "in 0.0 s", che sembra un guasto del cronometro.
         misura += " in " + ("<0.1" if durata < 0.1 else str(round(durata, 1))) + " s"
-    return ["   esito: " + misura, *anteprima_risultato(testo)]
+    return ["   esito: " + misura, *anteprima_risultato(testo, mostra)]
 
 
 # Gli strumenti con cui il modello scrive da solo nella memoria durevole.
@@ -398,12 +403,17 @@ def righe_richiesta(esecuzione, radice=None) -> list:
     return righe
 
 
-def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi) -> int:
+def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi, politica: Politica) -> int:
     """Chiede il permesso per gli strumenti in pausa. Ritorna quanti ne ha risolti.
 
     Il conto serve a non restare appesi: se il turno e' in pausa per un
     motivo che qui non si sa gestire, nessun requisito viene risolto e
     `continue_run` si rifermerebbe allo stesso punto, all'infinito.
+
+    Il prefisso degli strumenti dello spazio di lavoro viene dalla politica:
+    e' quello che distingue un percorso della cartella da un file del
+    quaderno, e senza si mostrerebbe il contenuto sbagliato nella richiesta
+    di autorizzazione.
     """
     risolti = 0
     for requisito in risposta.active_requirements or []:
@@ -411,7 +421,7 @@ def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi) -> int:
             continue
         esecuzione = requisito.tool_execution
         nome = str(esecuzione.tool_name or "")
-        radice = percorsi.lavoro if nome.startswith(config.WORKSPACE_PREFIX) else None
+        radice = percorsi.lavoro if nome.startswith(politica.workspace.prefisso) else None
         UI.confirmation(righe_richiesta(esecuzione, radice=radice))
         try:
             scelta = input_cli.ask("Autorizzi? [s/N] ").strip().lower()

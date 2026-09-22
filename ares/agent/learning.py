@@ -15,10 +15,9 @@ from agno.learn.stores import EntityMemoryStore, LearnedKnowledgeStore, SessionC
 from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
 
-from ares import config
 from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
-from ares.config import Impostazioni
+from ares.config import Impostazioni, Politica
 from ares.state.identita import Utente
 from ares.state.stores import namespace_entita, namespace_utente
 
@@ -66,9 +65,20 @@ class AresLearningMachine(LearningMachine):
 
 
 class AresSessionContextStore(SessionContextStore):
-    """Riprova soltanto una tool call di contesto che non ha scritto nulla."""
+    """Riprova soltanto una tool call di contesto che non ha scritto nulla.
+
+    Il numero di tentativi arriva dal costruttore e non da un nome di modulo:
+    e' la politica della conversazione che ha costruito lo store, e leggerla
+    qui a meta' estrazione permetterebbe a un'altra sessione di cambiarla
+    sotto. `__init__` passa tutto ad Agno senza fissarne la firma, che cambia
+    fra le versioni.
+    """
 
     last_extraction_attempts = 0
+
+    def __init__(self, *args, tentativi_contesto: int = 0, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.tentativi_contesto = tentativi_contesto
 
     def _extract_once(self, *args, **kwargs) -> str:
         return super().extract_and_save(*args, **kwargs)
@@ -77,7 +87,7 @@ class AresSessionContextStore(SessionContextStore):
         return await super().aextract_and_save(*args, **kwargs)
 
     def extract_and_save(self, *args, **kwargs) -> str:
-        massimo = 1 + max(0, config.SESSION_CONTEXT_RETRIES)
+        massimo = 1 + max(0, self.tentativi_contesto)
         risultato = "No updates needed"
         self.last_extraction_attempts = 0
         for tentativo in range(1, massimo + 1):
@@ -90,13 +100,13 @@ class AresSessionContextStore(SessionContextStore):
                     "Session context non salvato: ripeto l'estrazione "
                     + str(tentativo)
                     + "/"
-                    + str(config.SESSION_CONTEXT_RETRIES)
+                    + str(self.tentativi_contesto)
                 )
         log_warning("Session context non salvato dopo " + str(self.last_extraction_attempts) + " tentativi")
         return risultato
 
     async def aextract_and_save(self, *args, **kwargs) -> str:
-        massimo = 1 + max(0, config.SESSION_CONTEXT_RETRIES)
+        massimo = 1 + max(0, self.tentativi_contesto)
         risultato = "No updates needed"
         self.last_extraction_attempts = 0
         for tentativo in range(1, massimo + 1):
@@ -109,7 +119,7 @@ class AresSessionContextStore(SessionContextStore):
                     "Session context non salvato: ripeto l'estrazione "
                     + str(tentativo)
                     + "/"
-                    + str(config.SESSION_CONTEXT_RETRIES)
+                    + str(self.tentativi_contesto)
                 )
         log_warning("Session context non salvato dopo " + str(self.last_extraction_attempts) + " tentativi")
         return risultato
@@ -195,21 +205,22 @@ class AresLearnedKnowledgeStore(LearnedKnowledgeStore):
         )
 
 
-def build_session_context_store(db: SqliteDb, model: Ollama) -> AresSessionContextStore:
-    """Costruisce lo store di contesto con retry mirato."""
+def build_session_context_store(db: SqliteDb, model: Ollama, politica: Politica) -> AresSessionContextStore:
+    """Costruisce lo store di contesto con retry mirato, secondo la politica."""
     return AresSessionContextStore(
         config=SessionContextConfig(
             db=db,
             mode=LearningMode.ALWAYS,
             model=model,
             enable_planning=True,
-            max_updates_per_run=config.MAX_UPDATES_PER_RUN,
+            max_updates_per_run=politica.apprendimento.max_aggiornamenti,
             instructions=CRITERI_ESTRAZIONE + "Nel contesto di sessione distingui obiettivo, piano proposto, "
             "decisioni accettate e avanzamento verificato. Un'azione tentata o fallita non e' completata. "
             "Nel riepilogo descrivi un programma futuro come programma: non aggiungere 'non ancora "
             "avviata' o 'non ha iniziato' se l'utente non lo ha dichiarato. In progress inserisci "
             "solo avanzamenti sostenuti dal turno, non obiettivi o intenzioni.",
-        )
+        ),
+        tentativi_contesto=politica.apprendimento.tentativi_contesto,
     )
 
 
@@ -247,29 +258,33 @@ def build_learning_machine(
     knowledge: Knowledge | None,
     utente: Utente,
     impostazioni: Impostazioni,
+    politica: Politica,
     *,
     strumenti: bool = True,
 ) -> AresLearningMachine:
-    """Compone gli store attivi secondo i flag in config.
+    """Compone gli store attivi secondo la politica della conversazione.
 
     Con `strumenti=False` gli store restano - il contesto che iniettano nel
     prompt e' cio' che Ares sa dell'utente - ma non danno al modello gli
     strumenti per scriverci: e' `ares -p`, dove nessuno legge cio' che
     entrerebbe in memoria.
 
-    `impostazioni` dice con quale modello estrarre: e' la conversazione a
-    decidere a chi affidare cio' che Ares ricorda, e il modello arriva da
-    fuori invece di essere riletto da un nome di modulo.
+    `impostazioni` dice con quale modello estrarre, `politica.apprendimento`
+    quali store esistono e con quali limiti: le due risposte arrivano da
+    fuori invece di essere rilette da nomi di modulo, cosi' la macchina
+    descrive la conversazione che la riceve e non quella che il processo
+    aveva in mente all'import.
     """
     learning_model = build_learning_model(impostazioni)
+    apprendimento = politica.apprendimento
 
     user_profile: UserProfileConfig | bool = False
-    if config.LEARN_USER_PROFILE:
+    if apprendimento.profilo:
         user_profile = UserProfileConfig(
             mode=LearningMode.ALWAYS,
             schema=AresProfile,
             model=learning_model,
-            max_updates_per_run=config.MAX_UPDATES_PER_RUN,
+            max_updates_per_run=apprendimento.max_aggiornamenti,
             instructions=(
                 CRITERI_ESTRAZIONE + "Cattura solo cio' che resta vero oltre questa conversazione. "
                 "Le preferenze durature e il contesto professionale vanno nel profilo; "
@@ -281,14 +296,14 @@ def build_learning_machine(
     # classi che la scrivono in italiano: la macchina accetta istanze gia'
     # fatte e non le completa, quindi db, modello e limiti vanno passati.
     user_memory: AresUserMemoryStore | bool = False
-    if config.LEARN_USER_MEMORY:
+    if apprendimento.memorie:
         user_memory_config = UserMemoryConfig(
             db=db,
             mode=LearningMode.ALWAYS,
             model=learning_model,
-            schema=AresMemories if config.DATE_MEMORIE else None,
-            max_updates_per_run=config.MAX_UPDATES_PER_RUN,
-            enable_agent_tools=config.MEMORY_AGENT_TOOLS and strumenti,
+            schema=AresMemories if apprendimento.memorie_datate else None,
+            max_updates_per_run=apprendimento.max_aggiornamenti,
+            enable_agent_tools=apprendimento.strumenti_memoria and strumenti,
             instructions=(
                 CRITERI_ESTRAZIONE + "Registra osservazioni che non entrano in un campo strutturato: "
                 "abitudini, vincoli, opinioni espresse, cose che l'utente ha provato "
@@ -299,30 +314,30 @@ def build_learning_machine(
         user_memory = AresUserMemoryStore(config=user_memory_config)
 
     session_context: AresSessionContextStore | bool = False
-    if config.LEARN_SESSION_CONTEXT:
-        session_context = build_session_context_store(db, learning_model)
+    if apprendimento.contesto:
+        session_context = build_session_context_store(db, learning_model, politica)
 
     entity_memory: AresEntityMemoryStore | bool = False
-    if config.LEARN_ENTITIES:
+    if apprendimento.entita:
         entity_memory = AresEntityMemoryStore(
             config=EntityMemoryConfig(
                 db=db,
                 model=learning_model,
                 namespace=namespace_entita(utente),
-                max_updates_per_run=config.MAX_UPDATES_PER_RUN,
+                max_updates_per_run=apprendimento.max_aggiornamenti,
                 enable_agent_tools=strumenti,
             )
         )
 
     learned_knowledge: AresLearnedKnowledgeStore | bool = False
-    if config.LEARN_KNOWLEDGE:
+    if apprendimento.intuizioni:
         learned_knowledge = AresLearnedKnowledgeStore(
             config=LearnedKnowledgeConfig(
                 knowledge=knowledge,
                 model=learning_model,
                 mode=LearningMode.AGENTIC,
                 namespace=namespace_utente(utente),
-                max_updates_per_run=config.MAX_UPDATES_PER_RUN,
+                max_updates_per_run=apprendimento.max_aggiornamenti,
                 enable_agent_tools=strumenti,
             )
         )
@@ -337,5 +352,5 @@ def build_learning_machine(
         entity_memory=entity_memory,
         learned_knowledge=learned_knowledge,
         namespace=namespace_utente(utente),
-        max_updates_per_run=config.MAX_UPDATES_PER_RUN,
+        max_updates_per_run=apprendimento.max_aggiornamenti,
     )

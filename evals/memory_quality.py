@@ -557,7 +557,12 @@ def _worker(caso: str, risultato: Path) -> None:
     config.MEMORY_AGENT_TOOLS = True
     percorsi = config.leggi_percorsi()
     impostazioni = config.leggi_impostazioni()
-    macchina: Any = build_learning_machine(build_db(percorsi), None, Utente.da_grezzo("eval-user"), impostazioni)
+    # La politica si fotografa qui, dopo i flag regolati sopra: gli store
+    # della misura sono quelli che questa `Politica` descrive.
+    politica = config.leggi_politica()
+    macchina: Any = build_learning_machine(
+        build_db(percorsi), None, Utente.da_grezzo("eval-user"), impostazioni, politica
+    )
     raccoglitore = RaccoglitoreAvvisi()
     for nome in list(logging.root.manager.loggerDict):
         if nome == "agno" or nome.startswith(("agno-", "agno.")):
@@ -612,7 +617,12 @@ def _worker(caso: str, risultato: Path) -> None:
             scrivi_json(risultato, dati)
             sessione = "recupero-" + str(indice)
             agente = build_assistant(
-                percorsi, impostazioni, Utente.da_grezzo("eval-user"), session_id=sessione, interattivo=False
+                percorsi,
+                impostazioni,
+                politica,
+                Utente.da_grezzo("eval-user"),
+                session_id=sessione,
+                interattivo=False,
             )
             prompt = messaggio_di_sistema(agente, utente=Utente.da_grezzo("eval-user"), session_id=sessione)
             voce["prompt_recupero_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()

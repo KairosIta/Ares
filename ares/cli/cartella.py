@@ -233,17 +233,24 @@ delle regole del progetto, non delle cose da fare oggi.
 """
 
 
-def file_istruzioni(percorso: Path) -> Path:
-    return percorso / config.WORKSPACE_ISTRUZIONI
+def file_istruzioni(percorso: Path, nome: str) -> Path:
+    """Il file delle regole dentro la cartella.
+
+    Il nome arriva da fuori e non da un default nella firma: un default
+    fotograferebbe `config.WORKSPACE_ISTRUZIONI` all'import, e chi lo cambia
+    dopo - o una conversazione con una politica sua - scriverebbe e
+    leggerebbe due file diversi senza accorgersene.
+    """
+    return percorso / nome
 
 
-def scrivi_scheletro(percorso: Path) -> Path:
+def scrivi_scheletro(percorso: Path, nome: str) -> Path:
     """Scrive `ARES.md` nella cartella, se non c'e' gia'.
 
     Un file che esiste non si tocca: contiene le regole di qualcuno, e
     uno scheletro al suo posto sarebbe una perdita silenziosa.
     """
-    destinazione = file_istruzioni(percorso)
+    destinazione = file_istruzioni(percorso, nome)
     if destinazione.exists():
         raise FileExistsError(str(destinazione) + " esiste gia'.")
     destinazione.write_text(SCHELETRO, encoding="utf-8")
