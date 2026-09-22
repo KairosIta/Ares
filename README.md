@@ -369,7 +369,7 @@ I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
 
 ```bash
 # Le prove offline: cablaggio, retention, costo dell'apprendimento, backup/restore,
-# entità, CLI e valutazione
+# entità, CLI, valutazione e coerenza della versione dichiarata
 .venv/bin/python tests/run.py
 
 # Anche quelle che accendono Ollama, incluso un turno completo
