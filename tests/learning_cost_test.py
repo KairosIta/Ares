@@ -41,6 +41,7 @@ from _comune import esegui, esigi, prepara_ambiente, pulisci
 # sola all'import.
 RADICE_PROVA = prepara_ambiente("learning-cost-test")
 
+from _doppi import tool_call  # noqa: E402
 from agno.models.base import Model  # noqa: E402
 from agno.models.message import Message, MessageMetrics  # noqa: E402
 from agno.models.response import ModelResponse  # noqa: E402
@@ -83,14 +84,6 @@ ARGOMENTI_DI_SALVATAGGIO: dict[str, dict[str, Any]] = {
 # La prima riga del turno finto: sta in ogni copia della conversazione che le
 # estrazioni rimandano al modello, e serve a verificarlo.
 APERTURA = "Come organizzo i moduli di Ares?"
-
-
-def tool_call(nome: str, **argomenti: Any) -> dict[str, Any]:
-    return {
-        "id": "call-" + nome,
-        "type": "function",
-        "function": {"name": nome, "arguments": json.dumps(argomenti)},
-    }
 
 
 def nome_strumento(funzione: Any) -> str:

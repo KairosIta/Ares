@@ -12,7 +12,6 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -20,10 +19,8 @@ from _comune import esegui, esigi, ok, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("session-retention-test")
 
+from _doppi import ModelloACopione, tool_call  # noqa: E402
 from agno.fs import FileSystem  # noqa: E402
-from agno.models.base import Model  # noqa: E402
-from agno.models.message import MessageMetrics  # noqa: E402
-from agno.models.response import ModelResponse  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from ares import config  # noqa: E402
@@ -47,46 +44,9 @@ SESSIONE_ALTRUI = "altrui-vecchia"
 PAYLOAD = "\n".join("riga " + str(numero) + ": " + "x" * 80 for numero in range(350))
 
 
-class ModelloToolDeterministico(Model):
-    """Chiede una volta ``fetch_page`` e poi conclude il turno."""
-
-    def __init__(self) -> None:
-        super().__init__(id="scripted-offload", name="scripted-offload", provider="test")
-        self.chiamate = 0
-
-    def _prossima(self) -> ModelResponse:
-        self.chiamate += 1
-        if self.chiamate == 1:
-            return ModelResponse(
-                role="assistant",
-                tool_calls=[
-                    {
-                        "id": "call-offload",
-                        "type": "function",
-                        "function": {"name": "fetch_page", "arguments": "{}"},
-                    }
-                ],
-                response_usage=MessageMetrics(),
-            )
-        return ModelResponse(role="assistant", content="fatto", response_usage=MessageMetrics())
-
-    def invoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        return self._prossima()
-
-    async def ainvoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        return self._prossima()
-
-    def invoke_stream(self, *args: Any, **kwargs: Any) -> Iterator[ModelResponse]:
-        yield self._prossima()
-
-    async def ainvoke_stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ModelResponse]:
-        yield self._prossima()
-
-    def _parse_provider_response(self, response: Any, **kwargs: Any) -> ModelResponse:
-        return response
-
-    def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
-        return response
+def modello_di_offload() -> ModelloACopione:
+    """Un turno che chiede una pagina e poi chiude: e' il run che offloada."""
+    return ModelloACopione("scripted-offload", [[tool_call("fetch_page")]])
 
 
 def fetch_page() -> str:
@@ -98,13 +58,13 @@ def agente(user_id: str, session_id: str, politica: config.Politica):
     costruito = build_assistant(
         PERCORSI, IMPOSTAZIONI, politica, utente=Utente.da_grezzo(user_id), session_id=session_id
     )
-    costruito.model = ModelloToolDeterministico()
+    costruito.model = modello_di_offload()
     costruito.tools = [*list(costruito.tools or []), fetch_page]
     return costruito
 
 
 def esegui_offload(agent, session_id: str, user_id: str) -> tuple[str, dict[str, Any]]:
-    agent.model = ModelloToolDeterministico()
+    agent.model = modello_di_offload()
     output = agent.run("vai", session_id=session_id, user_id=user_id)
     messaggi_tool = [messaggio for messaggio in output.messages or [] if messaggio.role == "tool"]
     esigi(len(messaggi_tool) == 1, "il run non contiene un solo risultato tool")

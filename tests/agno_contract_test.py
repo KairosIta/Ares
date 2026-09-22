@@ -68,9 +68,7 @@ e' proprio se ha scritto.
 """
 
 import asyncio
-import json
 import re
-from collections.abc import AsyncIterator, Iterator
 from dataclasses import replace
 from importlib.metadata import version
 from pathlib import Path
@@ -84,6 +82,7 @@ from _comune import esegui, esigi, prepara_ambiente, pulisci
 RADICE_PROVA = prepara_ambiente("agno-contract-test")
 RADICE = Path(__file__).resolve().parent.parent
 
+from _doppi import ModelloACopione, tool_call  # noqa: E402
 from agno.learn import (  # noqa: E402
     LearningMachine,
     LearningMode,
@@ -91,7 +90,6 @@ from agno.learn import (  # noqa: E402
     UserProfileConfig,
 )
 from agno.learn.stores import UserMemoryStore, UserProfileStore  # noqa: E402
-from agno.models.base import Model  # noqa: E402
 from agno.models.message import Message, MessageMetrics  # noqa: E402
 from agno.models.response import ModelResponse  # noqa: E402
 
@@ -113,52 +111,6 @@ from ares.state.identita import Utente  # noqa: E402
 UTENTE = "prova-contratto"
 SESSIONE = "contratto"
 NOME_FILE = "da-cancellare.txt"
-
-
-def tool_call(nome: str, **argomenti: Any) -> dict[str, Any]:
-    return {
-        "id": "call-" + nome,
-        "type": "function",
-        "function": {"name": nome, "arguments": json.dumps(argomenti)},
-    }
-
-
-class ModelloScript(Model):
-    """Risponde con le tool call decise dalla prova, poi conclude con "fatto".
-
-    Ogni chiamata consuma una voce del copione; esaurito, il modello chiude
-    il turno. Lo stesso oggetto vale per `invoke` e `invoke_stream`, perche'
-    `turn_core` usa lo streaming e la prova deve attraversare quella via.
-    """
-
-    def __init__(self, copione: list[list[dict[str, Any]]]) -> None:
-        super().__init__(id="scripted-contract", name="scripted-contract", provider="test")
-        self.copione = list(copione)
-        self.chiamate = 0
-
-    def _prossima(self) -> ModelResponse:
-        self.chiamate += 1
-        if self.copione:
-            return ModelResponse(role="assistant", tool_calls=self.copione.pop(0), response_usage=MessageMetrics())
-        return ModelResponse(role="assistant", content="fatto", response_usage=MessageMetrics())
-
-    def invoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        return self._prossima()
-
-    async def ainvoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
-        return self._prossima()
-
-    def invoke_stream(self, *args: Any, **kwargs: Any) -> Iterator[ModelResponse]:
-        yield self._prossima()
-
-    async def ainvoke_stream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ModelResponse]:
-        yield self._prossima()
-
-    def _parse_provider_response(self, response: Any, **kwargs: Any) -> ModelResponse:
-        return response
-
-    def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
-        return response
 
 
 def copione_cancellazione() -> list[list[dict[str, Any]]]:
@@ -269,7 +221,7 @@ class ContatoreEstrazioni:
 
 def agente():
     costruito = build_assistant(PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
-    costruito.model = ModelloScript(copione_cancellazione())
+    costruito.model = ModelloACopione("scripted-contract", copione_cancellazione())
     return costruito
 
 
@@ -368,7 +320,7 @@ def ciclo_hitl() -> str:
     esigi(eventi.count(TurnEventKind.TOOL_COMPLETED) == 2, "attesi due strumenti completati: " + str(eventi))
     esigi(agent.model.chiamate == 3, "chiamate al modello: " + str(agent.model.chiamate) + ", attese 3")
 
-    agent.model = ModelloScript(copione_cancellazione())
+    agent.model = ModelloACopione("scripted-contract", copione_cancellazione())
     cliente, risposta = turno(agent, "rifiuto", file)
     esigi(risposta is not None and not risposta.is_paused, "il run rifiutato e' ancora in pausa")
     esigi(file.exists(), "il file e' stato cancellato nonostante il rifiuto")
@@ -380,7 +332,7 @@ def ciclo_hitl() -> str:
     return "conferma cancella, rifiuto conserva, stesso run_id e motivo consegnato"
 
 
-class ModelloContesto(ModelloScript):
+class ModelloContesto(ModelloACopione):
     """Salva il contesto soltanto ai tentativi elencati; agli altri tace.
 
     `SessionContextStore.extract_and_save` fa `model_copy = deepcopy(self.model)`
@@ -397,7 +349,7 @@ class ModelloContesto(ModelloScript):
     """
 
     def __init__(self, riesce_ai: set[int]) -> None:
-        super().__init__([])
+        super().__init__("scripted-contesto")
         self.riesce_ai = set(riesce_ai)
         self.tentativi = 0
         self.deve_chiudere = False
