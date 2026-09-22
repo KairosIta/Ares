@@ -35,7 +35,13 @@ modulo, accanto ai percorsi, e le poche che sostituiscono un nome — `MAIN_MODE
 `EMBEDDER_MODEL`, `NUM_CTX` — costruiscono le impostazioni dentro la
 sostituzione, perché è lì che il confine del processo le leggerebbe. Chi
 sostituisse il nome dopo averle già lette non cambierebbe la conversazione, ed
-è esattamente il difetto che il passaggio a parametro ha tolto. Il processo
+è esattamente il difetto che il passaggio a parametro ha tolto. Lo stesso vale
+per la politica, che `config.leggi_politica()` fotografa in una `Politica`: una
+prova che accende o spegne un flag — `MOSTRA_APPRENDIMENTI`,
+`CONFERMA_APPRENDIMENTI`, `SESSIONI_ELENCO`, `WORKSPACE_ISTRUZIONI_MAX_BYTE` —
+passa l'oggetto costruito dentro il `with` a chi ne ha bisogno, o una
+fotografia presa prima non vedrebbe il cambiamento. `tests/smoke_test.py`
+custodisce la prova che lo pretende: `politica a runtime`. Il processo
 separato resta comunque, perché ciò che conta
 non è solo dove si legge ma cosa è già aperto: un lock, uno store, un
 percorso copiato in una variabile non si rileggono. Due prove nello stesso

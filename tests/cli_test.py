@@ -79,10 +79,11 @@ CONTENUTO_FILE = "riga di prova"
 # funzionare.
 config.OLLAMA_HOST = "http://127.0.0.1:1"
 
-# Le impostazioni si leggono dopo, perche' devono fotografare anche quel
-# porto chiuso: sono quelle che il confine del processo costruira', e una
+# Impostazioni e politica si leggono dopo, perche' devono fotografare anche
+# quel porto chiuso: sono quelle che il confine del processo costruira', e una
 # prova che le fissasse prima confronterebbe due cose diverse.
 IMPOSTAZIONI = config.leggi_impostazioni()
+POLITICA = config.leggi_politica()
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +164,7 @@ from ares.state.identita import Utente
 
 percorsi = config.leggi_percorsi()
 utente = Utente.da_grezzo(sys.argv[1])
-build_assistant(percorsi, config.leggi_impostazioni(), utente, session_id=sys.argv[2])
+build_assistant(percorsi, config.leggi_impostazioni(), config.leggi_politica(), utente, session_id=sys.argv[2])
 build_filesystem(percorsi, utente).write(sys.argv[3], sys.argv[4])
 """
 
@@ -220,7 +221,11 @@ from ares.agent.assistant import build_assistant
 from ares.state.identita import Utente
 
 agente = build_assistant(
-    config.leggi_percorsi(), config.leggi_impostazioni(), Utente.da_grezzo("  Demo  "), session_id="identita"
+    config.leggi_percorsi(),
+    config.leggi_impostazioni(),
+    config.leggi_politica(),
+    Utente.da_grezzo("  Demo  "),
+    session_id="identita",
 )
 print(agente.user_id)
 """
@@ -783,7 +788,7 @@ def chat_turno() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "run_turn_cycle", ciclo_ok), redirect_stdout(uscita):
-        risposta = chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
+        risposta = chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
     esigi(risposta is not None, "un turno riuscito non restituisce la risposta")
 
     # Pausa che il client non sa risolvere: il ciclo si ferma e lo dice.
@@ -792,7 +797,7 @@ def chat_turno() -> str:
         patch.object(chat, "run_turn_cycle", lambda *a, **k: FintaRisposta(is_paused=True)),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
     esigi("in pausa" in _piatto(uscita.getvalue()), "una pausa irrisolta resta muta")
 
     # Ctrl-C fuori dal turno: nessun apprendimento, e non e' un errore.
@@ -801,7 +806,10 @@ def chat_turno() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "run_turn_cycle", ciclo_interrotto), redirect_stdout(uscita):
-        esigi(chat.esegui_turno(PERCORSI, object(), "ciao", input_cli) is None, "un'interruzione non restituisce None")
+        esigi(
+            chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica()) is None,
+            "un'interruzione non restituisce None",
+        )
     testo = _piatto(uscita.getvalue())
     esigi("Interrotto" in testo, "l'interruzione non viene detta")
     esigi("fallito" not in testo, "un Ctrl-C viene presentato come un guasto")
@@ -812,7 +820,10 @@ def chat_turno() -> str:
 
     uscita = io.StringIO()
     with patch.object(chat, "run_turn_cycle", ciclo_rotto), redirect_stdout(uscita):
-        esigi(chat.esegui_turno(PERCORSI, object(), "ciao", input_cli) is None, "un guasto non restituisce None")
+        esigi(
+            chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica()) is None,
+            "un guasto non restituisce None",
+        )
     testo = _piatto(uscita.getvalue())
     esigi("RuntimeError" in testo, "il tipo dell'errore non compare")
     esigi("archivio irraggiungibile" in testo, "il messaggio dell'errore non compare")
@@ -859,7 +870,9 @@ def chat_turno() -> str:
             patch.object(config, "CONFERMA_APPRENDIMENTI", conferma),
             redirect_stdout(uscita),
         ):
-            chat.esegui_turno(PERCORSI, object(), "ricorda che preferisco config.py", input_cli)
+            chat.esegui_turno(
+                PERCORSI, object(), "ricorda che preferisco config.py", input_cli, config.leggi_politica()
+            )
         return _piatto(uscita.getvalue()), input_cli.domande
 
     testo, domande = turno_che_scrive([""])
@@ -901,7 +914,9 @@ def chat_turno() -> str:
         patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(PERCORSI, object(), "ricorda che preferisco config.py", InputInterrotto([]))
+        chat.esegui_turno(
+            PERCORSI, object(), "ricorda che preferisco config.py", InputInterrotto([]), config.leggi_politica()
+        )
     esigi(ripristini == [], "un Ctrl-C alla domanda ha ripristinato")
 
     # Con la conferma spenta l'eco compare e la domanda no.
@@ -923,7 +938,7 @@ def chat_turno() -> str:
         patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
     esigi(input_cli.domande == [], "un turno senza scritture fa una domanda: " + repr(input_cli.domande))
 
     # Spento in config non si legge nemmeno l'archivio.
@@ -937,7 +952,7 @@ def chat_turno() -> str:
         patch.object(config, "MOSTRA_APPRENDIMENTI", False),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli)
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
     esigi(letture == [], "con l'eco spento l'archivio viene letto lo stesso")
     esigi("appreso" not in _piatto(uscita.getvalue()), "con l'eco spento compare una riga di eco")
     return (
@@ -1017,7 +1032,7 @@ def chat_memoria_protetta() -> str:
                 patch.object(config, "CONFERMA_APPRENDIMENTI", True),
                 redirect_stdout(uscita),
             ):
-                risposta = chat.esegui_turno(PERCORSI, agent, "ricorda", InputProtetto([]))
+                risposta = chat.esegui_turno(PERCORSI, agent, "ricorda", InputProtetto([]), config.leggi_politica())
             esigi((risposta is None) == (errore is not None), "esito del turno errato")
             esigi(fasi == ["istantanea", "turno", "conferma", "ripristino"], "lock incompleto: " + repr(fasi))
             contenuto = [m["content"] for m in store.get(user_id=utente).memories]
@@ -1035,7 +1050,7 @@ def chat_memoria_protetta() -> str:
             patch.object(chat, "istantanea") as lettura_spia,
         ):
             try:
-                chat.esegui_turno(PERCORSI, agent, "non deve partire", FintoInput([]))
+                chat.esegui_turno(PERCORSI, agent, "non deve partire", FintoInput([]), config.leggi_politica())
             except StatoOccupato:
                 pass
             else:
@@ -1157,9 +1172,10 @@ def chat_cartella() -> str:
     originale = PERCORSI.lavoro
     costruiti: list[dict] = []
 
-    def costruisci(percorsi, impostazioni, utente, **argomenti):
+    def costruisci(percorsi, impostazioni, politica, utente, **argomenti):
         argomenti["percorsi"] = percorsi
         argomenti["impostazioni"] = impostazioni
+        argomenti["politica"] = politica
         costruiti.append(argomenti)
         return object()
 
@@ -1204,6 +1220,10 @@ def chat_cartella() -> str:
         costruiti[0]["impostazioni"] == IMPOSTAZIONI,
         "l'agente non ha ricevuto le impostazioni della conversazione",
     )
+    esigi(
+        costruiti[0]["politica"] == POLITICA,
+        "l'agente non ha ricevuto la politica della conversazione",
+    )
     esigi(str(progetto.resolve()) in testo, "/cartella non nomina la cartella scelta: " + repr(testo))
     esigi(progetto.name in testo.split("Cartella di lavoro")[0], "il banner non nomina la cartella: " + repr(testo))
     esigi("ARES.md" in testo, "il banner non dice che c'e' un ARES.md: " + repr(testo))
@@ -1224,9 +1244,10 @@ def chat_sessioni() -> str:
 
     costruiti: list[dict] = []
 
-    def costruisci(percorsi, impostazioni, utente, **argomenti):
+    def costruisci(percorsi, impostazioni, politica, utente, **argomenti):
         argomenti["percorsi"] = percorsi
         argomenti["impostazioni"] = impostazioni
+        argomenti["politica"] = politica
         costruiti.append(argomenti)
         return object()
 
@@ -1383,9 +1404,10 @@ def migrazione_stato() -> str:
 
     costruiti: list[dict] = []
 
-    def costruisci(percorsi, impostazioni, utente, **argomenti):
+    def costruisci(percorsi, impostazioni, politica, utente, **argomenti):
         argomenti["percorsi"] = percorsi
         argomenti["impostazioni"] = impostazioni
+        argomenti["politica"] = politica
         costruiti.append(argomenti)
         return object()
 

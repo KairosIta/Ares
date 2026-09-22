@@ -14,7 +14,7 @@ from ares.agent.assistant import build_assistant
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
-from ares.config import Impostazioni, Percorsi
+from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
@@ -48,6 +48,11 @@ class StatoChat:
     ricostruiscono l'agente, e devono ricostruirlo con gli stessi modelli
     della conversazione che stanno cambiando, non con quelli che il processo
     leggerebbe adesso.
+
+    La politica sta qui per la terza volta e per la stessa ragione: i comandi
+    leggono se lo spazio di lavoro c'e', come si chiama il file delle regole
+    e quante sessioni elencare, e devono rispondere della conversazione che
+    hanno davanti. `build_assistant`, quando ricostruisce, la riceve da qui.
     """
 
     agent: Agent
@@ -55,6 +60,7 @@ class StatoChat:
     utente: Utente
     percorsi: Percorsi
     impostazioni: Impostazioni
+    politica: Politica
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
@@ -122,10 +128,10 @@ def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
     if tutte:
         parole = parole[1:]
     argomento = " ".join(parole)
-    qui = stato.percorsi.lavoro if config.WORKSPACE and not tutte else None
+    qui = stato.percorsi.lavoro if stato.politica.workspace.attivo and not tutte else None
     UI.heading("Sessioni" if qui is None else "Sessioni di questa cartella")
     sessioni = leggi_sessioni(stato.agent, stato.utente, query=argomento, cartella=qui)
-    mostrate = sessioni[: config.SESSIONI_ELENCO]
+    mostrate = sessioni[: stato.politica.mostra.sessioni]
     for s in mostrate:
         corrente = getattr(s, "session_id", None) == stato.session_id
         for riga in righe_sessione(s, corrente=corrente, con_cartella=tutte):
@@ -175,7 +181,7 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         # viene dalla cartella e dal momento. `nuova` e' percio' una parola
         # riservata, e una sessione che si chiamasse cosi' non e' raggiungibile
         # da qui; `ares --session nuova` la apre lo stesso.
-        if not config.WORKSPACE:
+        if not stato.politica.workspace.attivo:
             UI.line("Senza cartella di lavoro il nome lo scegli tu: /sessione <nome>.", style="ares.warning")
             return
         nome = cartella.nuovo_id_sessione(stato.percorsi.lavoro)
@@ -183,7 +189,13 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
     stato.agent = build_assistant(
-        stato.percorsi, stato.impostazioni, stato.utente, session_id=nome, debug=stato.debug, modo=stato.modo
+        stato.percorsi,
+        stato.impostazioni,
+        stato.politica,
+        stato.utente,
+        session_id=nome,
+        debug=stato.debug,
+        modo=stato.modo,
     )
     stato.session_id = nome
     UI.pair("Sessione", nome + ("  (nuova)" if nuova else ""), style="ares.title")
@@ -232,7 +244,13 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
         UI.line("Sei gia' in modalita' '" + nome + "'.", style="ares.muted")
         return
     stato.agent = build_assistant(
-        stato.percorsi, stato.impostazioni, stato.utente, session_id=stato.session_id, debug=stato.debug, modo=nome
+        stato.percorsi,
+        stato.impostazioni,
+        stato.politica,
+        stato.utente,
+        session_id=stato.session_id,
+        debug=stato.debug,
+        modo=nome,
     )
     stato.modo = nome
     UI.pair("Modalita'", nome, style="ares.title")
@@ -298,7 +316,7 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
     anche dopo la conferma.
     """
     UI.heading("Cartella di lavoro")
-    if not config.WORKSPACE:
+    if not stato.politica.workspace.attivo:
         UI.line("Lo spazio di lavoro e' spento in config.py.", style="ares.muted")
         return
     radice = stato.percorsi.lavoro
@@ -315,11 +333,13 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
         UI.pair("git", ramo + ", " + stato_git)
     else:
         UI.pair("git", "non e' un repository", style="ares.muted")
-    if cartella.file_istruzioni(radice).is_file():
-        UI.pair("istruzioni", config.WORKSPACE_ISTRUZIONI + ", letto all'avvio")
+    if cartella.file_istruzioni(radice, stato.politica.workspace.istruzioni).is_file():
+        UI.pair("istruzioni", stato.politica.workspace.istruzioni + ", letto all'avvio")
     else:
         UI.pair(
-            "istruzioni", "nessun " + config.WORKSPACE_ISTRUZIONI + "; `ares init` ne scrive uno", style="ares.muted"
+            "istruzioni",
+            "nessun " + stato.politica.workspace.istruzioni + "; `ares init` ne scrive uno",
+            style="ares.muted",
         )
     for motivo in cartella.rischi(radice, stato.percorsi):
         UI.line("attenzione: la cartella " + motivo, style="ares.warning")
@@ -344,7 +364,7 @@ def _comando_esporta(stato: StatoChat, argomento: str) -> None:
         return
     # Un percorso relativo parte dalla cartella di lavoro, che con
     # `--workspace` non e' quella del processo; uno assoluto resta com'e'.
-    radice = stato.percorsi.lavoro if config.WORKSPACE else Path.cwd()
+    radice = stato.percorsi.lavoro if stato.politica.workspace.attivo else Path.cwd()
     esplicito = bool(argomento)
     if esplicito:
         destinazione = radice / Path(argomento.split()[0]).expanduser()
@@ -428,8 +448,8 @@ def _candidati_modo() -> list[tuple[str, str]]:
 def _candidati_sessione(stato: StatoChat) -> list[tuple[str, str]]:
     """`nuova` e le conversazioni di questa cartella, la corrente esclusa."""
     voci = [("nuova", "una conversazione nuova in questa cartella")]
-    qui = stato.percorsi.lavoro if config.WORKSPACE else None
-    for s in leggi_sessioni(stato.agent, stato.utente, cartella=qui)[: config.SESSIONI_ELENCO]:
+    qui = stato.percorsi.lavoro if stato.politica.workspace.attivo else None
+    for s in leggi_sessioni(stato.agent, stato.utente, cartella=qui)[: stato.politica.mostra.sessioni]:
         nome = str(getattr(s, "session_id", "") or "")
         if not nome or nome == stato.session_id:
             continue

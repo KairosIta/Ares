@@ -306,3 +306,23 @@ deliberata è `ares/backup/snapshots.py`, che legge ancora i nomi di modulo per
 il manifesto dello snapshot e per la compatibilità dell'embedder: quello è il
 resoconto di come era configurato questo processo, ed è una garanzia
 esistente, non una lettura di comodo.
+
+La politica è il terzo oggetto, `Politica`: cosa una conversazione impara
+(`Apprendimento`), quanto contesto storico vede (`Cronologia`), come si muove
+nella cartella (`Workspace`) e cosa mostra di ciò che ha imparato (`Mostra`).
+Anche qui i nomi - `LEARN_*`, `MOSTRA_*`, `CONFERMA_APPRENDIMENTI`, `WORKSPACE*`,
+`SEARCH_PAST_SESSIONS`, `READ_CHAT_HISTORY`, `NUM_HISTORY_RUNS`,
+`SESSIONI_ELENCO` - restano in `config.py` come sorgente, ed è
+`leggi_politica()` a fotografarli alla porta del processo. Da lì in poi
+`build_learning_machine`, `build_session_context_store`, `build_workspace`,
+`build_assistant`, le funzioni dei prompt e il client della CLI ricevono
+l'oggetto. Il motivo è lo stesso dei modelli, ma qui si vede meglio: il
+paragrafo che spiega la memoria al modello descriveva store ed eco da `config`,
+quindi poteva promettere che una scrittura sarebbe comparsa sotto la risposta
+mentre l'eco era spenta; adesso descrive la stessa fotografia che ha costruito
+gli store. `Apprendimento.automatici` e `Apprendimento.agentici` sono proprietà
+derivate, perché il prompt le usa al posto di tre `or` allineati a mano.
+Restano fuori `modo` (già parametro a ogni confine), `OFFLOAD_TOOL_RESULTS` e
+`TOOL_RESULT_THRESHOLD_CHARS` (configurazione dell'indice), `DATETIME_FORMAT`,
+`CRONOLOGIA_RIGHE` ed `ENTITA_FINESTRA_RICERCA` (formato del client), e le
+costanti di backup e retention (garanzie, non politica).

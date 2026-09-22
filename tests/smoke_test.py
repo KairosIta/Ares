@@ -80,11 +80,14 @@ from agno.tools.workspace import Workspace  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi e le impostazioni della prova, letti una volta dopo
-# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
-# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
+# I percorsi, le impostazioni e la politica della prova, letti una volta dopo
+# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei tre,
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno. Dove la
+# prova cambia un flag con `patch.object` la politica si rilegge dentro il
+# `with`: una fotografia presa prima non vedrebbe il cambiamento.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
+POLITICA = config.leggi_politica()
 from ares.agent.assistant import (  # noqa: E402
     AresLearningMachine,
     AresSessionContextStore,
@@ -322,6 +325,11 @@ def retry_contesto(lm) -> str:
             self.esiti = iter(esiti)
             self.chiamate = 0
             self.context_updated = False
+            # Il tetto dei tentativi e' un attributo dell'istanza e la finta
+            # non attraversa `super().__init__`: se lo prende dalla politica
+            # come fa il costruttore vero, cosi' il ciclo qui sotto prova
+            # davvero il valore configurato.
+            self.tentativi_contesto = config.leggi_politica().apprendimento.tentativi_contesto
 
         def _extract_once(self, *args, **kwargs):
             self.chiamate += 1
@@ -368,7 +376,7 @@ def retry_contesto(lm) -> str:
         config.SESSION_CONTEXT_RETRIES = retry_originali
         modulo_apprendimento.log_warning = log_originale
 
-    if config.LEARN_SESSION_CONTEXT:
+    if POLITICA.apprendimento.contesto:
         esigi(
             isinstance(lm.session_context_store, AresSessionContextStore),
             "l'agente non usa AresSessionContextStore",
@@ -701,23 +709,29 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
         esigi("lo stesso modello" in scheda, "con un modello solo la scheda non lo dice")
     else:
         esigi(IMPOSTAZIONI.apprendimento in scheda, "la scheda non dice LEARNING_MODEL")
-    if config.WORKSPACE:
+    if POLITICA.workspace.attivo:
         esigi(str(PERCORSI.lavoro.resolve()) in scheda, "la scheda non dice la cartella di lavoro")
 
     # Locale e cloud, a prescindere dal `.env` di questa macchina.
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
         impostazioni_locali = config.leggi_impostazioni()
-        locale = prompts.descrizione(impostazioni_locali)
+        locale = prompts.descrizione(impostazioni_locali, POLITICA)
         scheda_locale = prompts.istruzioni_sull_ambiente(
-            impostazioni=impostazioni_locali, utente=Utente.da_grezzo(user_id), session_id=session_id
+            impostazioni=impostazioni_locali,
+            politica=POLITICA,
+            utente=Utente.da_grezzo(user_id),
+            session_id=session_id,
         )[0]
     esigi("esce di qui" in locale and "ollama.com" not in locale, "in locale la descrizione parla di cloud")
     esigi("in locale" in scheda_locale and "server remoto" not in scheda_locale, "in locale la scheda parla di cloud")
     with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
         impostazioni_cloud = config.leggi_impostazioni()
-        cloud = prompts.descrizione(impostazioni_cloud)
+        cloud = prompts.descrizione(impostazioni_cloud, POLITICA)
         scheda_cloud = prompts.istruzioni_sull_ambiente(
-            impostazioni=impostazioni_cloud, utente=Utente.da_grezzo(user_id), session_id=session_id
+            impostazioni=impostazioni_cloud,
+            politica=POLITICA,
+            utente=Utente.da_grezzo(user_id),
+            session_id=session_id,
         )[0]
     esigi(
         "esce di qui" not in cloud and "ti fa parlare sta su ollama.com" in cloud,
@@ -725,18 +739,21 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
     )
     esigi("server remoto" in scheda_cloud and "qwen3:9b, in locale" in scheda_cloud, "la scheda non distingue i ruoli")
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "gpt-oss:120b-cloud"):
-        estrazione = prompts.descrizione(config.leggi_impostazioni())
+        estrazione = prompts.descrizione(config.leggi_impostazioni(), POLITICA)
     esigi("estrae le memorie dai vostri turni sta su ollama.com" in estrazione, "l'estrazione in cloud non e' detta")
 
     # La shell segue il sistema: `bash -lc` non esiste su Windows.
     with patch.object(os, "name", "nt"):
         finestre = prompts.istruzioni_sull_ambiente(
-            impostazioni=IMPOSTAZIONI, utente=Utente.da_grezzo(user_id), session_id=session_id
+            impostazioni=IMPOSTAZIONI,
+            politica=POLITICA,
+            utente=Utente.da_grezzo(user_id),
+            session_id=session_id,
         )[0]
-        strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro))
+        strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro, politica=POLITICA))
     esigi("shell PowerShell" in finestre and "'powershell'" in strumenti_nt, "su Windows il prompt parla di bash")
     with patch.object(os, "name", "posix"):
-        strumenti_posix = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro))
+        strumenti_posix = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro, politica=POLITICA))
     esigi("'bash', '-lc'" in strumenti_posix, "su POSIX il prompt non suggerisce bash")
     return "modelli, contesto, sistema, utente e cartella nella scheda; descrizione e scheda seguono il cloud"
 
@@ -784,14 +801,14 @@ def strumenti(agent, user_id: str) -> str:
             nomi.add(getattr(voce, "name", None) or getattr(voce, "__name__", ""))
 
     attesi = {}
-    if config.SEARCH_PAST_SESSIONS:
+    if POLITICA.cronologia.sessioni_passate:
         attesi["search_past_sessions"] = "SEARCH_PAST_SESSIONS"
         attesi["read_past_session"] = "SEARCH_PAST_SESSIONS"
-    if config.READ_CHAT_HISTORY:
+    if POLITICA.cronologia.cronologia_chat:
         attesi["get_chat_history"] = "READ_CHAT_HISTORY"
-    if config.LEARN_USER_MEMORY and config.MEMORY_AGENT_TOOLS:
+    if POLITICA.apprendimento.memorie and POLITICA.apprendimento.strumenti_memoria:
         attesi["update_user_memory"] = "MEMORY_AGENT_TOOLS"
-    if config.LEARN_KNOWLEDGE:
+    if POLITICA.apprendimento.intuizioni:
         attesi["search_learnings"] = "LEARN_KNOWLEDGE"
         attesi["save_learning"] = "LEARN_KNOWLEDGE"
     if config.OFFLOAD_TOOL_RESULTS:
@@ -812,7 +829,7 @@ def strumenti(agent, user_id: str) -> str:
         "remember_about",
         "search_learnings",
         "save_learning",
-        *(nome for nome, _ in strumenti_spazio([*silenziosi, *confermati])),
+        *(nome for nome, _ in strumenti_spazio([*silenziosi, *confermati], POLITICA)),
     ):
         if nome in istruzioni:
             esigi(nome in nomi, "le istruzioni nominano " + nome + ", che non arriva al modello")
@@ -880,7 +897,7 @@ def modalita() -> str:
     tutti = set(Workspace._ALIASES)
     esiti = []
     for nome, (silenziosi, confermati) in config.MODALITA.items():
-        spazio = build_workspace(PERCORSI, nome)
+        spazio = build_workspace(PERCORSI, POLITICA, nome)
         consegnati = {f.name: f for f in spazio.functions.values()}
         for alias in tutti:
             strumento = config.WORKSPACE_PREFIX + Workspace._ALIASES[alias]
@@ -894,13 +911,14 @@ def modalita() -> str:
                 esigi(strumento not in consegnati, nome + ": " + strumento + " arriva benche' escluso")
         scheda = prompts.istruzioni_sull_ambiente(
             impostazioni=IMPOSTAZIONI,
+            politica=POLITICA,
             utente=Utente.da_grezzo("u"),
             session_id="s",
             radice_lavoro=spazio.root,
             modo=nome,
         )[0]
         esigi("Modalita' " + nome in scheda, nome + ": la scheda non la nomina")
-        paragrafo = " ".join(prompts.istruzioni_sugli_strumenti(spazio.root, nome))
+        paragrafo = " ".join(prompts.istruzioni_sugli_strumenti(spazio.root, nome, politica=POLITICA))
         for alias in tutti:
             strumento = config.WORKSPACE_PREFIX + Workspace._ALIASES[alias]
             esigi(
@@ -935,7 +953,12 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
     from ares.agent.prompts import messaggio_di_sistema
 
     muto = build_assistant(
-        PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(user_id), session_id=session_id + "-p", interattivo=False
+        PERCORSI,
+        IMPOSTAZIONI,
+        POLITICA,
+        utente=Utente.da_grezzo(user_id),
+        session_id=session_id + "-p",
+        interattivo=False,
     )
     esigi(not muto.post_hooks, "in -p il post-hook di apprendimento e' agganciato")
     assert muto.learning_machine is not None
@@ -964,7 +987,7 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
         "ares -p" in istruzioni and "L'apprendimento e' disattivato" in istruzioni,
         "il prompt non dice che e' -p",
     )
-    for nome, _ in strumenti_spazio(config.liste_modalita(config.MODO_PREDEFINITO)[1]):
+    for nome, _ in strumenti_spazio(config.liste_modalita(config.MODO_PREDEFINITO)[1], POLITICA):
         esigi(nome in istruzioni, "il prompt di -p non nomina " + nome + " fra gli strumenti rifiutati")
     prompt = messaggio_di_sistema(muto, session_id=session_id + "-p", utente=Utente.da_grezzo(user_id))
     esigi("<user_memory>" in prompt or "<user_profile>" in prompt, "in -p il contesto di memoria non entra nel prompt")
@@ -1008,7 +1031,12 @@ def prompt_e_capacita() -> str:
         "get_chat_history",
         "read_result",
         "search_result",
-        *(nome for nome, _ in strumenti_spazio(["read", "list", "search", "write", "edit", "move", "delete", "shell"])),
+        *(
+            nome
+            for nome, _ in strumenti_spazio(
+                ["read", "list", "search", "write", "edit", "move", "delete", "shell"], POLITICA
+            )
+        ),
     }
     flag = (
         "LEARN_USER_PROFILE",
@@ -1038,9 +1066,13 @@ def prompt_e_capacita() -> str:
             )
             precedente.metadata = {"cartella": str(PERCORSI.lavoro.resolve())}
             db.upsert_session(precedente)
+            # Dentro l'ExitStack: gli agenti di questo ciclo devono nascere
+            # con i flag spenti dal caso, e la politica li fotografa qui.
+            politica = config.leggi_politica()
             agente = build_assistant(
                 PERCORSI,
                 IMPOSTAZIONI,
+                politica,
                 utente=Utente.da_grezzo(utente),
                 session_id=utente,
                 modo=modo,
@@ -1048,7 +1080,8 @@ def prompt_e_capacita() -> str:
             )
             prompt = messaggio_di_sistema(agente, session_id=utente, utente=Utente.da_grezzo(utente))
             esigi(
-                (precedente.session_id in prompt) == (config.WORKSPACE and config.SEARCH_PAST_SESSIONS),
+                (precedente.session_id in prompt)
+                == (politica.workspace.attivo and politica.cronologia.sessioni_passate),
                 f"caso {indice}: il blocco delle conversazioni non segue la disponibilita' della ricerca",
             )
             voci = agente.get_tools(
@@ -1068,9 +1101,9 @@ def prompt_e_capacita() -> str:
             esigi("CRITICAL RULES" not in prompt, f"caso {indice}: guida inglese di Agno")
             if not interattivo:
                 esigi("Si aggiornano da soli" not in prompt, f"caso {indice}: estrazione promessa in -p")
-            if modo == "piano" and config.WORKSPACE:
+            if modo == "piano" and politica.workspace.attivo:
                 esigi("Memoria e quaderno seguono le regole" in prompt, "piano promette sola lettura globale")
-            if not config.LEARN_KNOWLEDGE:
+            if not politica.apprendimento.intuizioni:
                 esigi("Le intuizioni sono indicizzate" not in prompt, "indice annunciato con flag spento")
     return str(len(casi)) + " prompt composti coerenti con modalita', interattivita' e strumenti consegnati"
 
@@ -1078,7 +1111,7 @@ def prompt_e_capacita() -> str:
 def protezione_contesto(agent, user_id: str) -> str:
     """I risultati grandi sono lossless, locali e non gonfiano il prompt."""
     esigi(
-        agent.max_tool_calls_from_history == config.MAX_TOOL_CALLS_FROM_HISTORY,
+        agent.max_tool_calls_from_history == POLITICA.cronologia.strumenti_dalla_cronologia,
         "il limite delle tool call storiche non arriva all'agente",
     )
     if not config.OFFLOAD_TOOL_RESULTS:
@@ -1143,7 +1176,7 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
     from agno.session.agent import AgentSession
 
     istruzioni = " ".join(t for t in agent.instructions if isinstance(t, str))
-    if not config.WORKSPACE:
+    if not POLITICA.workspace.attivo:
         esigi(
             config.WORKSPACE_PREFIX not in istruzioni,
             "le istruzioni parlano dello spazio di lavoro, che e' spento in config.py",
@@ -1207,7 +1240,7 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
     scelta_vera = PERCORSI.lavoro
     inesistente = replace(PERCORSI, lavoro=scelta_vera / "non-esiste")
     try:
-        build_workspace(inesistente)
+        build_workspace(inesistente, POLITICA)
     except ValueError:
         pass
     else:
@@ -1535,6 +1568,7 @@ def entita_cercate(agent, user_id: str) -> str:
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
                 impostazioni=IMPOSTAZIONI,
+                politica=config.leggi_politica(),
             ),
         )
     stampato = catturato.getvalue()
@@ -1639,6 +1673,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
                     impostazioni=IMPOSTAZIONI,
+                    politica=config.leggi_politica(),
                 ),
             )
         troncato = catturato.getvalue()
@@ -1654,6 +1689,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
                     impostazioni=IMPOSTAZIONI,
+                    politica=config.leggi_politica(),
                 ),
             )
         esigi(
@@ -1677,6 +1713,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
                 impostazioni=IMPOSTAZIONI,
+                politica=config.leggi_politica(),
             ),
         )
     stampato = catturato.getvalue()
@@ -1697,6 +1734,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
                 impostazioni=IMPOSTAZIONI,
+                politica=config.leggi_politica(),
             ),
         )
     presente = catturato.getvalue()
@@ -1721,6 +1759,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
                     impostazioni=IMPOSTAZIONI,
+                    politica=config.leggi_politica(),
                 ),
             )
         oltre = catturato.getvalue()
@@ -1744,6 +1783,7 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
                 utente=Utente.da_grezzo(user_id),
                 percorsi=PERCORSI,
                 impostazioni=IMPOSTAZIONI,
+                politica=config.leggi_politica(),
             ),
         )
     filtrato = catturato.getvalue()
@@ -1777,6 +1817,7 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
                     utente=Utente.da_grezzo(user_id),
                     percorsi=PERCORSI,
                     impostazioni=IMPOSTAZIONI,
+                    politica=config.leggi_politica(),
                 ),
             )
         esigi(vive is True, riga + " chiude la sessione")
@@ -2037,7 +2078,7 @@ def impostazioni_a_runtime() -> str:
     from dataclasses import fields
 
     from ares.agent import prompts, runtime
-    from ares.config import NUM_CTX_ESTRAZIONE, Impostazioni, leggi_impostazioni
+    from ares.config import NUM_CTX_ESTRAZIONE, Impostazioni, leggi_impostazioni, leggi_politica
 
     mia = Impostazioni(
         principale="prova-conversazione:cloud",
@@ -2113,12 +2154,14 @@ def impostazioni_a_runtime() -> str:
     # La descrizione segue le impostazioni in entrambe le direzioni. Si
     # guarda cosa attraversa - un servizio remoto, o niente - e non il
     # dominio: un confronto su una sottostringa non direbbe nulla di piu'.
+    politica = leggi_politica()
+    descrizione_cloud = prompts.descrizione(mia, politica)
     esigi(
-        "servizio remoto" in prompts.descrizione(mia) and "esce di qui" not in prompts.descrizione(mia),
+        "servizio remoto" in descrizione_cloud and "esce di qui" not in descrizione_cloud,
         "con la conversazione cloud la descrizione non parla di servizio remoto",
     )
     esigi(
-        "esce di qui" in prompts.descrizione(locale),
+        "esce di qui" in prompts.descrizione(locale, politica),
         "con modelli locali la descrizione non promette che nulla esce",
     )
 
@@ -2141,6 +2184,143 @@ def impostazioni_a_runtime() -> str:
     esigi(isinstance(leggi_impostazioni(), Impostazioni), "leggi_impostazioni non restituisce un Impostazioni")
 
     return "modelli dall'oggetto, contesto derivato dalla coppia, nessun default fotografato all'import"
+
+
+def politica_a_runtime() -> str:
+    """La politica viaggia come oggetto, e il prompt descrive quella che c'e'.
+
+    `leggi_politica` fotografa i nomi alla porta del processo; da li' in poi
+    chi costruisce l'agente e chi compone il prompt ricevono l'oggetto. La
+    prova lo pretende in tre modi: una fotografia non vede i cambiamenti
+    arrivati dopo, i gruppi sono immutabili e non contengono cio' che non e'
+    politica - la modalita', l'offload, i formati - e un prompt composto con
+    una politica scelta a mano descrive quella e non il `.env`.
+
+    E' la stessa lezione dei percorsi e dei modelli: finche' il valore stava
+    in un nome di modulo, una firma non diceva da dove venisse, e chi lo
+    cambiava dopo non veniva ascoltato.
+    """
+    from dataclasses import fields
+
+    from ares.agent import prompts
+    from ares.config import Politica, leggi_politica
+
+    mia = leggi_politica()
+    esigi(isinstance(mia, Politica), "leggi_politica non restituisce un Politica")
+
+    # I quattro gruppi sono un vocabolario chiuso, e i loro nomi dicono cosa
+    # non e' politica: `modo` e' gia' un parametro a ogni confine, l'offload e
+    # i formati sono configurazione dell'indice e del client.
+    esigi(
+        [campo.name for campo in fields(Politica)] == ["apprendimento", "cronologia", "workspace", "mostra"],
+        "Politica non e' fatta dei quattro gruppi dichiarati",
+    )
+    fuori = {"modo", "offload_tool_results", "offload", "datetime_format", "cronologia_righe", "sessioni_protette"}
+    esigi(
+        not fuori & {campo.name for campo in fields(Politica)},
+        "Politica ha assorbito configurazione che non le appartiene",
+    )
+    try:
+        mia.mostra.metriche = not mia.mostra.metriche  # type: ignore[misc]
+    except FrozenInstanceError:
+        pass
+    else:
+        raise AssertionError("Mostra non e' immutabile")
+
+    # Le proprieta' derivate seguono i campi, non una seconda lista da tenere
+    # allineata: sono cio' che il prompt usa al posto dei tre `or`.
+    esigi(
+        mia.apprendimento.automatici
+        == (mia.apprendimento.profilo or mia.apprendimento.memorie or mia.apprendimento.contesto),
+        "`automatici` non deriva dai tre store ALWAYS",
+    )
+    esigi(
+        mia.apprendimento.agentici == (mia.apprendimento.entita or mia.apprendimento.intuizioni),
+        "`agentici` non deriva dai due store agentici",
+    )
+
+    # La fotografia e' un'istantanea: un flag cambiato dopo non la tocca, e
+    # una fotografia nuova lo vede. E' l'opposto di un nome di modulo.
+    with patch.object(config, "MOSTRA_APPRENDIMENTI", not mia.mostra.apprendimenti):
+        dentro = leggi_politica()
+    esigi(
+        dentro.mostra.apprendimenti != mia.mostra.apprendimenti,
+        "un flag cambiato non entra in una fotografia nuova",
+    )
+    esigi(leggi_politica() == mia, "la fotografia non torna com'era dopo il patch")
+
+    # Un prompt composto su una politica scelta a mano descrive quella: con
+    # gli store tutti spenti non promette estrazioni automatiche, e senza eco
+    # non dice che le scritture compaiono sotto la risposta.
+    muta = replace(
+        mia,
+        apprendimento=replace(
+            mia.apprendimento, profilo=False, memorie=False, contesto=False, entita=False, intuizioni=False
+        ),
+        cronologia=replace(mia.cronologia, sessioni_passate=False, cronologia_chat=False),
+        mostra=replace(mia.mostra, apprendimenti=True, conferma_apprendimenti=True),
+    )
+    memoria = " ".join(prompts.istruzioni_sulla_memoria(politica=muta, interattivo=True))
+    esigi("Si aggiornano da soli" not in memoria, "il prompt promette store automatici che la politica non ha")
+    esigi("Si aggiornano solo con gli strumenti" not in memoria, "il prompt promette store agentici spenti")
+    esigi(
+        "compare sotto la risposta" not in memoria,
+        "con nessun profilo ne' memoria da mostrare il prompt promette comunque l'eco",
+    )
+
+    # I due store che l'eco riguarda, accesi: la frase segue `Mostra`, e la
+    # conferma cambia il verbo. Con l'eco spenta la frase non compare affatto.
+    con_eco = replace(mia, apprendimento=replace(mia.apprendimento, profilo=True, memorie=True))
+    con_rifiuto = " ".join(
+        prompts.istruzioni_sulla_memoria(
+            politica=replace(con_eco, mostra=replace(con_eco.mostra, apprendimenti=True, conferma_apprendimenti=True)),
+            interattivo=True,
+        )
+    )
+    senza_rifiuto = " ".join(
+        prompts.istruzioni_sulla_memoria(
+            politica=replace(con_eco, mostra=replace(con_eco.mostra, apprendimenti=True, conferma_apprendimenti=False)),
+            interattivo=True,
+        )
+    )
+    spenta = " ".join(
+        prompts.istruzioni_sulla_memoria(
+            politica=replace(con_eco, mostra=replace(con_eco.mostra, apprendimenti=False)), interattivo=True
+        )
+    )
+    esigi("puo' rifiutarlo" in con_rifiuto, "con la conferma accesa il prompt non offre il rifiuto")
+    esigi(
+        "lo legge." in senza_rifiuto and "puo' rifiutarlo" not in senza_rifiuto,
+        "con la conferma spenta il prompt minaccia un rifiuto che non c'e'",
+    )
+    esigi("compare sotto la risposta" not in spenta, "con l'eco spenta il prompt dice che le scritture si vedono")
+
+    # Gli strumenti della cronologia: nominati con la politica accesa, taciuti
+    # con quella spenta. E' l'invito a chiamare il vuoto che questa prova
+    # impedisce.
+    acceso = " ".join(prompts.istruzioni_sugli_strumenti(None, politica=mia, interattivo=True))
+    spento = " ".join(prompts.istruzioni_sugli_strumenti(None, politica=muta, interattivo=True))
+    esigi("read_past_session" in acceso and "get_chat_history" in acceso, "il prompt non nomina la cronologia accesa")
+    esigi(
+        "read_past_session" not in spento and "get_chat_history" not in spento,
+        "il prompt nomina strumenti della cronologia che la politica spegne",
+    )
+
+    # E l'oggetto arriva fino all'agente: con il workspace spento la sessione
+    # non porta una cartella, e la ricerca fra le conversazioni non parte.
+    senza_spazio = replace(muta, workspace=replace(mia.workspace, attivo=False))
+    agent = build_assistant(PERCORSI, IMPOSTAZIONI, senza_spazio, utente=Utente.da_grezzo("prova-politica"))
+    esigi(agent.metadata is None, "con il workspace spento l'agente registra comunque una cartella")
+    esigi(
+        agent.search_past_sessions is False,
+        "la ricerca fra le conversazioni non segue la politica ricevuta",
+    )
+    esigi(
+        agent.num_history_runs == senza_spazio.cronologia.turni,
+        "i turni di cronologia non seguono la politica ricevuta",
+    )
+
+    return "fotografia, immutabilita', campi esclusi e prompt coerente con la politica ricevuta"
 
 
 def import_senza_effetti() -> str:
@@ -2215,7 +2395,9 @@ def main() -> int:
     reale_prima = stato_archivio_reale()
 
     try:
-        agent = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(args.user), session_id=args.session)
+        agent = build_assistant(
+            PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(args.user), session_id=args.session
+        )
     except Exception as errore:
         print("FALLITO  costruzione -", type(errore).__name__ + ":", errore)
         return 1
@@ -2266,6 +2448,7 @@ def main() -> int:
             ("archivio privato    ", lambda: archivio_privato()),
             ("percorsi a runtime  ", percorsi_a_runtime),
             ("impostazioni a runtime", impostazioni_a_runtime),
+            ("politica a runtime  ", politica_a_runtime),
             ("import senza effetti", lambda: import_senza_effetti()),
             ("archivio vero intatto", lambda: archivio_vero_intatto(reale_prima)),
         )

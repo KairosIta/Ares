@@ -81,7 +81,11 @@ from ares.state.stores import leggi_intuizioni
 
 utente, sessione, query = sys.argv[1:4]
 lm = build_assistant(
-    config.leggi_percorsi(), config.leggi_impostazioni(), Utente.da_grezzo(utente), session_id=sessione
+    config.leggi_percorsi(),
+    config.leggi_impostazioni(),
+    config.leggi_politica(),
+    Utente.da_grezzo(utente),
+    session_id=sessione,
 ).learning_machine
 risultati = leggi_intuizioni(lm, Utente.da_grezzo(utente), query=query, limit=20)
 dati = [
@@ -166,7 +170,9 @@ def modelli_pronti() -> tuple[bool, str]:
 
 
 def prova_store() -> None:
-    agente = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_STORE), session_id="store")
+    agente = build_assistant(
+        PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(UTENTE_STORE), session_id="store"
+    )
     lm = agente.learning_machine
     esigi(lm is not None, "LearningMachine assente")
     strumenti = strumenti_learning(lm, UTENTE_STORE, "store")
@@ -205,7 +211,7 @@ def prova_store() -> None:
     ok("ricerca", "contenuto strutturato ricostruito dalla ricerca ibrida")
 
     altro = build_assistant(
-        PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_ALTRO), session_id="isolamento"
+        PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(UTENTE_ALTRO), session_id="isolamento"
     ).learning_machine
     esigi(altro is not None, "LearningMachine del secondo utente assente")
     esigi(not cerca(altro, UTENTE_ALTRO, MARCATORE_STORE), "il secondo utente vede l'intuizione privata")
@@ -219,7 +225,7 @@ def prova_store() -> None:
 
 def prova_agente() -> None:
     agente = build_assistant(
-        PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_SALVATAGGIO
+        PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_SALVATAGGIO
     )
     avvio = time.monotonic()
     risposta = agente.run(PROMPT_SALVATAGGIO)
@@ -252,7 +258,9 @@ def prova_agente() -> None:
     esigi(len(presenti) >= 4, "intuizione non riconoscibile come italiana e completa: " + contenuto)
     ok("contenuto", "richiesta inglese, intuizione italiana: " + ", ".join(sorted(presenti)))
 
-    nuovo = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_RIUSO)
+    nuovo = build_assistant(
+        PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(UTENTE_AGENTE), session_id=SESSIONE_RIUSO
+    )
     avvio = time.monotonic()
     riuso = nuovo.run(PROMPT_RIUSO)
     durata = round(time.monotonic() - avvio, 1)
@@ -344,9 +352,9 @@ if __name__ == "__main__":
 
     from ares import config
 
-    # I percorsi e le impostazioni della prova: `config` non tiene piu' nomi
-    # propri per nessuno dei due, e le funzioni qui sopra li leggono da questi
-    # globali di modulo.
+    # I percorsi, le impostazioni e la politica della prova: `config` non
+    # tiene piu' nomi propri per nessuno dei tre, e le funzioni qui sopra li
+    # leggono da questi globali di modulo.
     PERCORSI = config.leggi_percorsi()
     IMPOSTAZIONI = config.leggi_impostazioni()
 
@@ -360,6 +368,11 @@ if __name__ == "__main__":
     config.SEARCH_PAST_SESSIONS = False
     config.READ_CHAT_HISTORY = False
     config.WORKSPACE = False
+
+    # Le due fotografie si prendono dopo i flag: gli agenti di questa prova
+    # devono nascere con gli store spenti qui sopra, non con quelli del
+    # `.env` letto all'import.
+    POLITICA = config.leggi_politica()
 
     from ares.agent.assistant import build_assistant
     from ares.state.identita import Utente

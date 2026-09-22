@@ -56,6 +56,7 @@ e' proprio se ha scritto.
 import asyncio
 import json
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -81,7 +82,9 @@ from ares import config  # noqa: E402
 
 # I percorsi e le impostazioni della prova, letti una volta dopo
 # `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
-# quindi la prova se li porta dietro e li passa a chi ne ha bisogno.
+# quindi la prova se li porta dietro e li passa a chi ne ha bisogno. La
+# politica si legge invece in `main()`, dopo aver spento gli store: quella di
+# questo import avrebbe ancora tutti gli apprendimenti accesi.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.agent.assistant import build_assistant  # noqa: E402
@@ -235,7 +238,7 @@ class ContatoreEstrazioni:
 
 
 def agente():
-    costruito = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
+    costruito = build_assistant(PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(UTENTE), session_id=SESSIONE)
     costruito.model = ModelloScript(copione_cancellazione())
     return costruito
 
@@ -387,22 +390,32 @@ MESSAGGI_CONTESTO = [
 ]
 
 
-def store_contesto(riesce_ai: set[int]):
+def store_contesto(riesce_ai: set[int], tentativi: int | None = None):
+    """Lo store di contesto della prova.
+
+    `tentativi` esiste per provare che il numero viaggia come parametro e non
+    viene riletto da `config` dentro il ciclo: la prova ne chiede uno diverso
+    da quello configurato e pretende che sia quello a valere.
+    """
+    politica = POLITICA
+    if tentativi is not None:
+        politica = replace(POLITICA, apprendimento=replace(POLITICA.apprendimento, tentativi_contesto=tentativi))
     return build_session_context_store(
         build_db(
             PERCORSI,
         ),
         ModelloContesto(riesce_ai),
+        politica,
     )
 
 
 def contesto_riprova() -> str:
     """Il retry ripete solo cio' che non ha scritto, e si ferma appena scrive."""
     esigi(
-        config.SESSION_CONTEXT_RETRIES >= 1,
-        "la prova vuole almeno un retry configurato: " + str(config.SESSION_CONTEXT_RETRIES),
+        POLITICA.apprendimento.tentativi_contesto >= 1,
+        "la prova vuole almeno un retry configurato: " + str(POLITICA.apprendimento.tentativi_contesto),
     )
-    massimo = 1 + config.SESSION_CONTEXT_RETRIES
+    massimo = 1 + POLITICA.apprendimento.tentativi_contesto
 
     # Al primo colpo: nessuna ripetizione, e il contesto e' davvero in archivio.
     store = store_contesto({1})
@@ -443,7 +456,17 @@ def contesto_riprova() -> str:
     )
     esigi(store.get(session_id="async") is not None, "il contesto asincrono non e' in archivio")
 
-    return "1 al primo colpo, " + str(massimo) + " al tetto, 2 recuperato, sincrono e asincrono"
+    # Il numero viene dalla politica ricevuta, non da un nome di modulo: con
+    # tre tentativi chiesti all'oggetto, il ciclo si ferma a tre anche se il
+    # `.env` ne configura un altro.
+    store = store_contesto(set(), tentativi=3)
+    store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="parametro", user_id=UTENTE)
+    esigi(
+        store.last_extraction_attempts == 4,
+        "il tetto dei tentativi non segue la politica: " + str(store.last_extraction_attempts),
+    )
+
+    return "1 al primo colpo, " + str(massimo) + " al tetto, 2 recuperato, sincrono e asincrono, 4 dal parametro"
 
 
 def memoria_non_confermabile() -> str:
@@ -480,6 +503,7 @@ def memoria_non_confermabile() -> str:
 
 
 def main() -> int:
+    global POLITICA
     # Gli store di apprendimento e LanceDB non servono: spegnerli impedisce
     # che una prova dichiarata offline accenda Ollama. Il porto chiuso rende
     # esplicito un eventuale tentativo.
@@ -489,6 +513,9 @@ def main() -> int:
     config.LEARN_ENTITIES = False
     config.LEARN_KNOWLEDGE = False
     config.OLLAMA_HOST = "http://127.0.0.1:1"
+    # Dopo i flag, non all'import: l'agente di questa prova deve nascere senza
+    # store di apprendimento, o costruirebbe LanceDB e chiamerebbe l'embedder.
+    POLITICA = config.leggi_politica()
 
     riuscita = False
     try:

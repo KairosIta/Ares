@@ -94,8 +94,10 @@ def fetch_page() -> str:
     return PAYLOAD
 
 
-def agente(user_id: str, session_id: str):
-    costruito = build_assistant(PERCORSI, IMPOSTAZIONI, utente=Utente.da_grezzo(user_id), session_id=session_id)
+def agente(user_id: str, session_id: str, politica: config.Politica):
+    costruito = build_assistant(
+        PERCORSI, IMPOSTAZIONI, politica, utente=Utente.da_grezzo(user_id), session_id=session_id
+    )
     costruito.model = ModelloToolDeterministico()
     costruito.tools = [*list(costruito.tools or []), fetch_page]
     return costruito
@@ -166,6 +168,10 @@ def main() -> int:
     config.LEARN_KNOWLEDGE = False
     config.WORKSPACE = False
     config.OLLAMA_HOST = "http://127.0.0.1:1"
+    # La politica si fotografa qui e non all'import: i flag appena spenti
+    # devono valere per l'agente che questa prova costruisce, altrimenti
+    # nascerebbero gli store di apprendimento e con loro l'embedder.
+    politica = config.leggi_politica()
 
     riuscita = False
     try:
@@ -179,10 +185,10 @@ def main() -> int:
         chiudi_engine(solo_db)
         ok("status puro", "nessun payload backend creato per una lettura")
 
-        principale = agente(UTENTE, SESSIONE_VECCHIA)
+        principale = agente(UTENTE, SESSIONE_VECCHIA, politica)
         vecchio_id, vecchia_riga = esegui_offload(principale, SESSIONE_VECCHIA, UTENTE)
         recente_id, _ = esegui_offload(principale, SESSIONE_RECENTE, UTENTE)
-        altrui = agente(ALTRO_UTENTE, SESSIONE_ALTRUI)
+        altrui = agente(ALTRO_UTENTE, SESSIONE_ALTRUI, politica)
         altrui_id, _ = esegui_offload(altrui, SESSIONE_ALTRUI, ALTRO_UTENTE)
 
         adesso = int(time.time())

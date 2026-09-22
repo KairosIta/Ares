@@ -197,7 +197,7 @@ globali da modificare quando cambia una scheda. Collezioni di opzioni
 devono essere copiate o rese immutabili: una dataclass congelata da sola
 non impedisce la mutazione di un dizionario interno.
 
-Due pezzi di questa separazione sono fatti. Il primo riguarda i percorsi.
+Tre pezzi di questa separazione sono fatti. Il primo riguarda i percorsi.
 `ares/config.py` non tiene più un `PERCORSI` corrente né le viste che lo
 nascondevano (`TMP_DIR`, `DB_FILE`, `BACKUP_DIR`, `WORKSPACE_DIR`...), e
 `imposta_percorsi` non esiste: chi legge lo stato riceve un `Percorsi` come
@@ -222,11 +222,32 @@ Ollama riavvierebbe il runner a ogni passaggio perdendo la cache del prompt.
 L'avviso sul cloud è un metodo del tipo, così preflight e banner non possono
 leggere una configurazione diversa da quella che stanno per avviare.
 
-La modalità non entra in `Impostazioni`: è già un parametro a ogni confine, e
-l'unico difetto reale era il default che fotografava `config.MODO_PREDEFINITO`
-all'import. `build_assistant` e le tre funzioni dei prompt lo risolvono adesso
-al momento della chiamata, come faceva già `build_workspace`; il comando
-`ares` tiene il proprio default dichiarato in `--help`.
+Il terzo riguarda la politica: cosa una conversazione impara, quanto contesto
+storico vede, come lavora nella cartella e cosa mostra di ciò che ha imparato.
+Anche qui i nomi restano la sorgente — `LEARN_*`, `MOSTRA_*`,
+`CONFERMA_APPRENDIMENTI`, `WORKSPACE*`, `SEARCH_PAST_SESSIONS`,
+`READ_CHAT_HISTORY`, `NUM_HISTORY_RUNS`, `SESSIONI_ELENCO` — ed è
+`leggi_politica()` a fotografarli in una `Politica` congelata fatta di quattro
+gruppi: `Apprendimento`, `Cronologia`, `Workspace`, `Mostra`. Da lì in poi
+`build_learning_machine`, `build_session_context_store`, `build_workspace`,
+`build_assistant`, le funzioni dei prompt e il client della CLI ricevono
+l'oggetto. Il caso che rende la cosa concreta è il prompt: `istruzioni_sulla_memoria`
+descriveva store ed eco da `config`, quindi poteva promettere che una scrittura
+sarebbe comparsa sotto la risposta mentre l'eco era spenta. Adesso descrive la
+stessa fotografia che ha costruito gli store, e non può descriverne altri.
+
+Restano fuori da `Politica`, con una ragione: `modo`, che è già un parametro a
+ogni confine; `OFFLOAD_TOOL_RESULTS` e `TOOL_RESULT_THRESHOLD_CHARS`, che sono
+configurazione dell'indice; `DATETIME_FORMAT`, `CRONOLOGIA_RIGHE` e
+`ENTITA_FINESTRA_RICERCA`, che sono formato del client; `BACKUP_*`,
+`SESSION_RETENTION_DAYS` e `SESSIONI_PROTETTE`, che sono retention e garanzie.
+
+La modalità non entra in `Impostazioni` né in `Politica`: è già un parametro a
+ogni confine, e l'unico difetto reale era il default che fotografava
+`config.MODO_PREDEFINITO` all'import. `build_assistant` e le tre funzioni dei
+prompt lo risolvono adesso al momento della chiamata, come faceva già
+`build_workspace`; il comando `ares` tiene il proprio default dichiarato in
+`--help`.
 
 Un'eccezione è deliberata e resta: `ares/backup/snapshots.py` legge ancora i
 nomi di modulo per scrivere il manifesto dello snapshot e per il controllo di
@@ -234,9 +255,9 @@ compatibilità con l'embedder. Quel manifesto registra com'era configurato
 *questo processo*, e la verifica dell'embedder è una garanzia esistente: non è
 una lettura di comodo da sostituire, ed è l'unico punto rimasto.
 
-Resta fuori la politica operativa e di apprendimento — i flag `LEARN_*`,
-`MOSTRA_*`, `CONFERMA_APPRENDIMENTI`, le variabili del workspace e della
-cronologia — che è il gruppo successivo.
+Tutti e tre i pezzi di questa separazione sono fatti: percorsi e identità,
+modelli e politica viaggiano come parametri, e nessuno di essi è più un nome di
+modulo riletto a metà strada.
 
 Il cambio modello o modalità si applica ai turni successivi; durante un
 turno attivo restituisce un conflitto, salvo futura operazione dedicata.

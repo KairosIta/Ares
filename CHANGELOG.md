@@ -8,6 +8,43 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Anche la politica viaggia come parametro: nasce `Politica`.**
+  I flag operativi e di apprendimento in `ares/config.py` — `LEARN_USER_PROFILE`,
+  `LEARN_USER_MEMORY`, `LEARN_SESSION_CONTEXT`, `LEARN_ENTITIES`,
+  `LEARN_KNOWLEDGE`, `MEMORY_AGENT_TOOLS`, `MAX_UPDATES_PER_RUN`,
+  `SESSION_CONTEXT_RETRIES`, `DATE_MEMORIE`, `SEARCH_PAST_SESSIONS`,
+  `READ_CHAT_HISTORY`, `NUM_HISTORY_RUNS`, `MAX_TOOL_CALLS_FROM_HISTORY`,
+  `PAST_SESSIONS_LIMIT`, `PAST_SESSION_RUNS_PREVIEW`,
+  `SESSIONI_RECENTI_NEL_PROMPT`, `WORKSPACE`, `WORKSPACE_ISTRUZIONI`,
+  `WORKSPACE_ISTRUZIONI_MAX_BYTE`, `WORKSPACE_PREFIX`,
+  `WORKSPACE_READ_BEFORE_WRITE`, `MOSTRA_METRICHE`, `MOSTRA_ESITO_STRUMENTI`,
+  `ESITO_RIGHE`, `ESITO_LARGHEZZA`, `MOSTRA_APPRENDIMENTI`,
+  `CONFERMA_APPRENDIMENTI`, `SESSIONI_ELENCO` — erano l'ultimo pezzo di
+  configurazione che i costruttori rileggevano da soli. Ora
+  `config.leggi_politica()` li fotografa in una `Politica` congelata al confine
+  del processo, fatta di quattro gruppi: `Apprendimento`, `Cronologia`,
+  `Workspace`, `Mostra`. Da lì in poi l'oggetto si passa:
+  `build_learning_machine(db, knowledge, utente, impostazioni, politica)`,
+  `build_session_context_store(db, modello, politica)`,
+  `build_workspace(percorsi, politica, modo)`,
+  `build_assistant(percorsi, impostazioni, politica, utente, ...)`, le funzioni
+  dei prompt, il client della CLI e gli `StatoChat`. Il caso che rende la cosa
+  concreta è il prompt: `istruzioni_sulla_memoria` descriveva store ed eco da
+  `config`, quindi poteva promettere che una scrittura sarebbe comparsa sotto
+  la risposta mentre l'eco era spenta; adesso descrive la stessa fotografia che
+  ha costruito gli store, e non può descriverne altri. Il tetto dei tentativi
+  di `save_session_context`, prima riletto dentro il ciclo di estrazione,
+  viaggia con l'istanza dello store. `Apprendimento.automatici` e
+  `Apprendimento.agentici` sono proprietà derivate, perché il prompt le usa al
+  posto di tre `or` allineati a mano. Restano fuori `modo` (già parametro a
+  ogni confine), `OFFLOAD_TOOL_RESULTS` e `TOOL_RESULT_THRESHOLD_CHARS`
+  (configurazione dell'indice), `DATETIME_FORMAT`, `CRONOLOGIA_RIGHE` ed
+  `ENTITA_FINESTRA_RICERCA` (formato del client) e le costanti di backup e
+  retention (garanzie, non politica). I nomi restano in `config.py` come
+  sorgente, quindi continuano a funzionare `.env` e le sostituzioni delle
+  prove, purché la fotografia avvenga dentro la sostituzione. Nessun
+  comportamento visibile cambia.
+
 - **Anche i modelli viaggiano come parametro: nasce `Impostazioni`.**
   I nomi del tuning in `ares/config.py` — `MAIN_MODEL`, `LEARNING_MODEL`,
   `EMBEDDER_MODEL`, `EMBEDDER_DIMENSIONS`, `OLLAMA_HOST`, `KEEP_ALIVE`,
