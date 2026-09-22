@@ -77,7 +77,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
+from _comune import esegui, esigi, prepara_ambiente, pulisci
 
 # I percorsi vanno scelti prima di importare config, che li legge una volta
 # sola all'import.
@@ -655,23 +655,20 @@ def main() -> int:
     # store di apprendimento, o costruirebbe LanceDB e chiamerebbe l'embedder.
     POLITICA = config.leggi_politica()
 
-    riuscita = False
-    try:
-        ok("estrazione singola", estrazione_singola())
-        ok("ciclo HITL", ciclo_hitl())
-        ok("retry contesto", contesto_riprova())
-        ok("memoria non confermabile", memoria_non_confermabile())
-        ok("versione dichiarata", versione_dichiarata())
-        riuscita = True
-        return 0
-    except Exception as errore:
-        fallimento(errore)
+    falliti, _ = esegui(
+        (
+            ("estrazione singola", estrazione_singola),
+            ("ciclo HITL", ciclo_hitl),
+            ("retry contesto", contesto_riprova),
+            ("memoria non confermabile", memoria_non_confermabile),
+            ("versione dichiarata", versione_dichiarata),
+        )
+    )
+    if falliti:
+        print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
-    finally:
-        if riuscita:
-            pulisci(RADICE_PROVA)
-        else:
-            print("Archivio della prova conservato:", RADICE_PROVA)
+    pulisci(RADICE_PROVA)
+    return 0
 
 
 if __name__ == "__main__":

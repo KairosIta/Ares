@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
-from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
+from _comune import esegui, esigi, ok, prepara_ambiente, pulisci
 
 RADICE_PROVA = prepara_ambiente("session-retention-test")
 
@@ -158,7 +158,14 @@ def chiudi_engine(*oggetti: object) -> None:
             visti.add(id(engine))
 
 
-def main() -> int:
+def retention() -> str:
+    """La sequenza della prova, dal primo status al restore.
+
+    E' una sequenza sola e non controlli indipendenti: ogni passo dipende
+    da quello prima, e un guasto al primo renderebbe falso il secondo.
+    Per questo e' una prova sola per `esegui`, che il fallimento lo
+    riporta comunque con il nome del controllo.
+    """
     # L'apprendimento e LanceDB non fanno parte di questa prova. Spegnerli
     # impedisce che un test dichiarato offline accenda Ollama di nascosto.
     config.LEARN_USER_PROFILE = False
@@ -173,131 +180,85 @@ def main() -> int:
     # nascerebbero gli store di apprendimento e con loro l'embedder.
     politica = config.leggi_politica()
 
-    riuscita = False
-    try:
-        solo_db = build_db(
+    solo_db = build_db(
+        PERCORSI,
+    )
+    esigi(not Path(PERCORSI.fs_db_file).exists(), "aprire il solo archivio sessioni ha creato filesystem.db")
+    stato_vuoto = esegui_cli("status", "--user", UTENTE)
+    esigi(stato_vuoto.returncode == 0 and "Sessioni: 0" in stato_vuoto.stdout, "status vuoto fallito")
+    esigi(not Path(PERCORSI.fs_db_file).exists(), "uno status in sola lettura ha creato filesystem.db")
+    chiudi_engine(solo_db)
+    ok("status puro", "nessun payload backend creato per una lettura")
+
+    principale = agente(UTENTE, SESSIONE_VECCHIA, politica)
+    vecchio_id, vecchia_riga = esegui_offload(principale, SESSIONE_VECCHIA, UTENTE)
+    recente_id, _ = esegui_offload(principale, SESSIONE_RECENTE, UTENTE)
+    altrui = agente(ALTRO_UTENTE, SESSIONE_ALTRUI, politica)
+    altrui_id, _ = esegui_offload(altrui, SESSIONE_ALTRUI, ALTRO_UTENTE)
+
+    adesso = int(time.time())
+    imposta_ultimo_uso(principale.db, SESSIONE_VECCHIA, adesso - 365 * 86_400)
+    imposta_ultimo_uso(principale.db, SESSIONE_RECENTE, adesso)
+    imposta_ultimo_uso(altrui.db, SESSIONE_ALTRUI, adesso - 365 * 86_400)
+    principale.db.upsert_learning(
+        id="session_context_" + SESSIONE_VECCHIA,
+        learning_type="session_context",
+        content={"summary": "contesto da ripristinare"},
+        # Simula una riga storica priva del proprietario: la retention e'
+        # per session_id e deve rimuoverla comunque.
+        user_id=None,
+        session_id=SESSIONE_VECCHIA,
+    )
+
+    sessione_salvata = principale.db.get_session(session_id=SESSIONE_VECCHIA, deserialize=False)
+    esigi(
+        PAYLOAD not in json.dumps(sessione_salvata, default=str),
+        "la sessione persistita contiene il payload intero",
+    )
+    esigi(len(PAYLOAD) > config.TOOL_RESULT_THRESHOLD_CHARS, "il payload non supera piu' la soglia Ares")
+    ok("Agent.run", str(len(PAYLOAD)) + " caratteri sostituiti e riletti")
+
+    stato = esegui_cli("status", "--user", UTENTE)
+    esigi(stato.returncode == 0, "status fallito: " + stato.stderr)
+    esigi("Sessioni: 2" in stato.stdout and "Offload indicizzati: 2" in stato.stdout, "status incompleto")
+
+    stato_json = esegui_cli("status", "--user", UTENTE, "--json")
+    esigi(stato_json.returncode == 0, "status --json fallito: " + stato_json.stderr)
+    dati = json.loads(stato_json.stdout)
+    esigi(
+        {s["session_id"] for s in dati["sessions"]} == {SESSIONE_VECCHIA, SESSIONE_RECENTE}
+        and dati["offload_count"] == 2,
+        "status --json non riporta sessioni e offload: " + stato_json.stdout,
+    )
+
+    anteprima = esegui_cli("prune", "--user", UTENTE, "--older-than", "180")
+    esigi(anteprima.returncode == 0, "anteprima prune fallita: " + anteprima.stderr)
+    esigi(SESSIONE_VECCHIA in anteprima.stdout, "la sessione inattiva non compare nell'anteprima")
+    esigi(SESSIONE_RECENTE not in anteprima.stdout.split("Protette:")[0], "la sessione recente e' candidata")
+    esigi(principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None, "l'anteprima ha cancellato la sessione")
+    esigi(
+        not elenco_snapshot(
             PERCORSI,
-        )
-        esigi(not Path(PERCORSI.fs_db_file).exists(), "aprire il solo archivio sessioni ha creato filesystem.db")
-        stato_vuoto = esegui_cli("status", "--user", UTENTE)
-        esigi(stato_vuoto.returncode == 0 and "Sessioni: 0" in stato_vuoto.stdout, "status vuoto fallito")
-        esigi(not Path(PERCORSI.fs_db_file).exists(), "uno status in sola lettura ha creato filesystem.db")
-        chiudi_engine(solo_db)
-        ok("status puro", "nessun payload backend creato per una lettura")
+        ),
+        "l'anteprima ha creato uno snapshot",
+    )
+    ok("anteprima", "una candidata, principale protetta, nessuna scrittura")
 
-        principale = agente(UTENTE, SESSIONE_VECCHIA, politica)
-        vecchio_id, vecchia_riga = esegui_offload(principale, SESSIONE_VECCHIA, UTENTE)
-        recente_id, _ = esegui_offload(principale, SESSIONE_RECENTE, UTENTE)
-        altrui = agente(ALTRO_UTENTE, SESSIONE_ALTRUI, politica)
-        altrui_id, _ = esegui_offload(altrui, SESSIONE_ALTRUI, ALTRO_UTENTE)
+    protetta = esegui_cli("delete", SESSIONE_RECENTE, "--user", UTENTE)
+    esigi(protetta.returncode == 0, "anteprima delete fallita: " + protetta.stderr)
+    esigi("protetta dal prune" in protetta.stdout, "la cancellazione esatta non segnala la protezione")
+    esigi(
+        principale.db.get_session(session_id=SESSIONE_RECENTE) is not None,
+        "delete senza --apply ha scritto",
+    )
+    yes_solo = esegui_cli("prune", "--user", UTENTE, "--older-than", "180", "--yes")
+    esigi(
+        yes_solo.returncode == 2 and "--yes richiede --apply" in yes_solo.stderr,
+        "--yes da solo accettato",
+    )
 
-        adesso = int(time.time())
-        imposta_ultimo_uso(principale.db, SESSIONE_VECCHIA, adesso - 365 * 86_400)
-        imposta_ultimo_uso(principale.db, SESSIONE_RECENTE, adesso)
-        imposta_ultimo_uso(altrui.db, SESSIONE_ALTRUI, adesso - 365 * 86_400)
-        principale.db.upsert_learning(
-            id="session_context_" + SESSIONE_VECCHIA,
-            learning_type="session_context",
-            content={"summary": "contesto da ripristinare"},
-            # Simula una riga storica priva del proprietario: la retention e'
-            # per session_id e deve rimuoverla comunque.
-            user_id=None,
-            session_id=SESSIONE_VECCHIA,
-        )
-
-        sessione_salvata = principale.db.get_session(session_id=SESSIONE_VECCHIA, deserialize=False)
-        esigi(
-            PAYLOAD not in json.dumps(sessione_salvata, default=str),
-            "la sessione persistita contiene il payload intero",
-        )
-        esigi(len(PAYLOAD) > config.TOOL_RESULT_THRESHOLD_CHARS, "il payload non supera piu' la soglia Ares")
-        ok("Agent.run", str(len(PAYLOAD)) + " caratteri sostituiti e riletti")
-
-        stato = esegui_cli("status", "--user", UTENTE)
-        esigi(stato.returncode == 0, "status fallito: " + stato.stderr)
-        esigi("Sessioni: 2" in stato.stdout and "Offload indicizzati: 2" in stato.stdout, "status incompleto")
-
-        stato_json = esegui_cli("status", "--user", UTENTE, "--json")
-        esigi(stato_json.returncode == 0, "status --json fallito: " + stato_json.stderr)
-        dati = json.loads(stato_json.stdout)
-        esigi(
-            {s["session_id"] for s in dati["sessions"]} == {SESSIONE_VECCHIA, SESSIONE_RECENTE}
-            and dati["offload_count"] == 2,
-            "status --json non riporta sessioni e offload: " + stato_json.stdout,
-        )
-
-        anteprima = esegui_cli("prune", "--user", UTENTE, "--older-than", "180")
-        esigi(anteprima.returncode == 0, "anteprima prune fallita: " + anteprima.stderr)
-        esigi(SESSIONE_VECCHIA in anteprima.stdout, "la sessione inattiva non compare nell'anteprima")
-        esigi(SESSIONE_RECENTE not in anteprima.stdout.split("Protette:")[0], "la sessione recente e' candidata")
-        esigi(
-            principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None, "l'anteprima ha cancellato la sessione"
-        )
-        esigi(
-            not elenco_snapshot(
-                PERCORSI,
-            ),
-            "l'anteprima ha creato uno snapshot",
-        )
-        ok("anteprima", "una candidata, principale protetta, nessuna scrittura")
-
-        protetta = esegui_cli("delete", SESSIONE_RECENTE, "--user", UTENTE)
-        esigi(protetta.returncode == 0, "anteprima delete fallita: " + protetta.stderr)
-        esigi("protetta dal prune" in protetta.stdout, "la cancellazione esatta non segnala la protezione")
-        esigi(
-            principale.db.get_session(session_id=SESSIONE_RECENTE) is not None,
-            "delete senza --apply ha scritto",
-        )
-        yes_solo = esegui_cli("prune", "--user", UTENTE, "--older-than", "180", "--yes")
-        esigi(
-            yes_solo.returncode == 2 and "--yes richiede --apply" in yes_solo.stderr,
-            "--yes da solo accettato",
-        )
-
-        with lock_stato(PERCORSI.lock_file, esclusivo=False):
-            bloccata = esegui_cli(
-                "prune",
-                "--user",
-                UTENTE,
-                "--older-than",
-                "180",
-                "--apply",
-                "--yes",
-            )
-        esigi(
-            bloccata.returncode == 3 and "Chiudi la chat" in bloccata.stderr,
-            "prune partito con una chat aperta",
-        )
-        esigi(
-            principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None,
-            "prune bloccato ha scritto",
-        )
-        esigi(
-            not elenco_snapshot(
-                PERCORSI,
-            ),
-            "prune bloccato ha creato uno snapshot",
-        )
-
-        # Un rifiuto che arriva come eccezione, non come `return`: `--yes` da
-        # solo lo decide la firma del comando, un id inesistente lo scopre
-        # `trova_sessione` sotto il lock. Sono due strade diverse per lo
-        # stesso 2, e finora era provata solo la prima.
-        inesistente = esegui_cli("delete", "sessione-che-non-esiste", "--user", UTENTE)
-        esigi(
-            inesistente.returncode == 2 and "Rifiutato:" in inesistente.stderr,
-            "un id inesistente non esce con 2: " + str(inesistente.returncode) + " " + inesistente.stderr,
-        )
-
-        # Un guasto, che e' un'altra cosa ancora: la directory dei backup e'
-        # in realta' un file, quindi lo snapshot che precede ogni
-        # cancellazione non si puo' creare. Vale 1 e non 3, perche' riprovare
-        # non serve finche' quel file sta li'. Cio' che conta oltre al codice
-        # e' la riga dopo: il prune si ferma prima di cancellare. Lo snapshot
-        # e' la rete, e senza rete non si salta.
-        non_directory = RADICE_PROVA / "backup-non-e-una-directory"
-        non_directory.write_text("un file dove ci si aspetta una cartella\n", encoding="utf-8")
-        guasta = esegui_cli(
+    with lock_stato(PERCORSI.lock_file, esclusivo=False):
+        bloccata = esegui_cli(
             "prune",
             "--user",
             UTENTE,
@@ -305,108 +266,148 @@ def main() -> int:
             "180",
             "--apply",
             "--yes",
-            ambiente={"ARES_BACKUP_DIR": str(non_directory)},
         )
-        esigi(
-            guasta.returncode == 1 and "ERRORE:" in guasta.stderr,
-            "un backup impossibile non esce con 1: " + str(guasta.returncode) + " " + guasta.stderr,
-        )
-        esigi(
-            principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None,
-            "il prune ha cancellato senza essere riuscito a fare lo snapshot",
-        )
-        ok("guardie CLI", "delete protetta, --yes vincolato, e i codici 1, 2 e 3 dal contorno comune")
-
-        applicazione = esegui_cli("prune", "--user", UTENTE, "--older-than", "180", "--apply", "--yes")
-        esigi(applicazione.returncode == 0, "prune fallito: " + applicazione.stderr + applicazione.stdout)
-        snapshot = elenco_snapshot(
+    esigi(
+        bloccata.returncode == 3 and "Chiudi la chat" in bloccata.stderr,
+        "prune partito con una chat aperta",
+    )
+    esigi(
+        principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None,
+        "prune bloccato ha scritto",
+    )
+    esigi(
+        not elenco_snapshot(
             PERCORSI,
-        )
-        esigi(len(snapshot) == 1, "il prune non ha creato esattamente uno snapshot")
-        verifica_snapshot(PERCORSI, snapshot[0], percorso_diretto=True)
-        store = principale.result_store
-        esigi(store is not None, "store perso dopo il run")
-        esigi(principale.db.get_session(session_id=SESSIONE_VECCHIA) is None, "sessione inattiva ancora presente")
-        esigi(principale.db.get_session(session_id=SESSIONE_RECENTE) is not None, "sessione recente eliminata")
-        esigi(
-            altrui.db.get_session(session_id=SESSIONE_ALTRUI, user_id=ALTRO_UTENTE) is not None, "utente altrui toccato"
-        )
-        esigi(store.get_row(vecchio_id) is None, "indice dell'offload eliminato ancora presente")
-        fs_vecchio = FileSystem(backend=store.fs.backend, namespace=str(vecchia_riga["namespace"]))
-        esigi(fs_vecchio.read(str(vecchia_riga["path"])) is None, "payload dell'offload eliminato ancora presente")
-        esigi(store.get_row(recente_id) is not None, "offload della sessione conservata eliminato")
-        esigi(altrui.result_store.get_row(altrui_id) is not None, "offload dell'altro utente eliminato")
-        esigi(
-            principale.db.get_learning(
-                learning_type="session_context",
-                session_id=SESSIONE_VECCHIA,
-            )
-            is None,
-            "contesto della sessione eliminata ancora presente",
-        )
-        ok("cascata", "sessione, run, contesto, indice e payload eliminati")
+        ),
+        "prune bloccato ha creato uno snapshot",
+    )
 
-        # Il limite per singolo risultato e' una quota Agno, non la soglia
-        # Ares. Il fallback deve essere esplicito e non promettere lossless.
-        from agno.offload.store import MAX_RESULT_BYTES
+    # Un rifiuto che arriva come eccezione, non come `return`: `--yes` da
+    # solo lo decide la firma del comando, un id inesistente lo scopre
+    # `trova_sessione` sotto il lock. Sono due strade diverse per lo
+    # stesso 2, e finora era provata solo la prima.
+    inesistente = esegui_cli("delete", "sessione-che-non-esiste", "--user", UTENTE)
+    esigi(
+        inesistente.returncode == 2 and "Rifiutato:" in inesistente.stderr,
+        "un id inesistente non esce con 2: " + str(inesistente.returncode) + " " + inesistente.stderr,
+    )
 
-        rifiutato = store.offload_for_model(
-            session_id="prova-quota",
-            run_id="run-quota",
-            tool_call_id="call-quota",
-            tool_name="fetch_page",
-            tool_args={},
-            output="q" * (MAX_RESULT_BYTES + 1),
-            user_id=UTENTE,
-        )
-        esigi('stored="false"' in rifiutato, "il superamento quota non e' dichiarato")
-        esigi(len(rifiutato) < 5_000, "il fallback di quota gonfia comunque il contesto")
-        esigi(store.live_ids("prova-quota") == [], "un risultato rifiutato ha lasciato un indice")
-        ok("quota Agno", str(MAX_RESULT_BYTES) + " byte: rifiuto esplicito e compatto")
+    # Un guasto, che e' un'altra cosa ancora: la directory dei backup e'
+    # in realta' un file, quindi lo snapshot che precede ogni
+    # cancellazione non si puo' creare. Vale 1 e non 3, perche' riprovare
+    # non serve finche' quel file sta li'. Cio' che conta oltre al codice
+    # e' la riga dopo: il prune si ferma prima di cancellare. Lo snapshot
+    # e' la rete, e senza rete non si salta.
+    non_directory = RADICE_PROVA / "backup-non-e-una-directory"
+    non_directory.write_text("un file dove ci si aspetta una cartella\n", encoding="utf-8")
+    guasta = esegui_cli(
+        "prune",
+        "--user",
+        UTENTE,
+        "--older-than",
+        "180",
+        "--apply",
+        "--yes",
+        ambiente={"ARES_BACKUP_DIR": str(non_directory)},
+    )
+    esigi(
+        guasta.returncode == 1 and "ERRORE:" in guasta.stderr,
+        "un backup impossibile non esce con 1: " + str(guasta.returncode) + " " + guasta.stderr,
+    )
+    esigi(
+        principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None,
+        "il prune ha cancellato senza essere riuscito a fare lo snapshot",
+    )
+    ok("guardie CLI", "delete protetta, --yes vincolato, e i codici 1, 2 e 3 dal contorno comune")
 
-        # Il restore sostituisce la directory dello stato: chiudere gli engine
-        # simula l'uso reale e rende la prova valida anche su Windows.
-        chiudi_engine(
-            principale.db,
-            store.fs.backend,
-            altrui.db,
-            altrui.result_store.fs.backend,
+    applicazione = esegui_cli("prune", "--user", UTENTE, "--older-than", "180", "--apply", "--yes")
+    esigi(applicazione.returncode == 0, "prune fallito: " + applicazione.stderr + applicazione.stdout)
+    snapshot = elenco_snapshot(
+        PERCORSI,
+    )
+    esigi(len(snapshot) == 1, "il prune non ha creato esattamente uno snapshot")
+    verifica_snapshot(PERCORSI, snapshot[0], percorso_diretto=True)
+    store = principale.result_store
+    esigi(store is not None, "store perso dopo il run")
+    esigi(principale.db.get_session(session_id=SESSIONE_VECCHIA) is None, "sessione inattiva ancora presente")
+    esigi(principale.db.get_session(session_id=SESSIONE_RECENTE) is not None, "sessione recente eliminata")
+    esigi(altrui.db.get_session(session_id=SESSIONE_ALTRUI, user_id=ALTRO_UTENTE) is not None, "utente altrui toccato")
+    esigi(store.get_row(vecchio_id) is None, "indice dell'offload eliminato ancora presente")
+    fs_vecchio = FileSystem(backend=store.fs.backend, namespace=str(vecchia_riga["namespace"]))
+    esigi(fs_vecchio.read(str(vecchia_riga["path"])) is None, "payload dell'offload eliminato ancora presente")
+    esigi(store.get_row(recente_id) is not None, "offload della sessione conservata eliminato")
+    esigi(altrui.result_store.get_row(altrui_id) is not None, "offload dell'altro utente eliminato")
+    esigi(
+        principale.db.get_learning(
+            learning_type="session_context",
+            session_id=SESSIONE_VECCHIA,
         )
-        del principale, altrui, store, fs_vecchio
-        gc.collect()
-        ripristino = subprocess.run(
-            [sys.executable, "-m", "ares.backup", "restore", snapshot[0].name, "--yes", "--skip-safety"],
-            cwd=config.BASE_DIR,
-            env=os.environ.copy(),
-            capture_output=True,
-            text=True,
-            timeout=180,
-            check=False,
+        is None,
+        "contesto della sessione eliminata ancora presente",
+    )
+    ok("cascata", "sessione, run, contesto, indice e payload eliminati")
+
+    # Il limite per singolo risultato e' una quota Agno, non la soglia
+    # Ares. Il fallback deve essere esplicito e non promettere lossless.
+    from agno.offload.store import MAX_RESULT_BYTES
+
+    rifiutato = store.offload_for_model(
+        session_id="prova-quota",
+        run_id="run-quota",
+        tool_call_id="call-quota",
+        tool_name="fetch_page",
+        tool_args={},
+        output="q" * (MAX_RESULT_BYTES + 1),
+        user_id=UTENTE,
+    )
+    esigi('stored="false"' in rifiutato, "il superamento quota non e' dichiarato")
+    esigi(len(rifiutato) < 5_000, "il fallback di quota gonfia comunque il contesto")
+    esigi(store.live_ids("prova-quota") == [], "un risultato rifiutato ha lasciato un indice")
+    ok("quota Agno", str(MAX_RESULT_BYTES) + " byte: rifiuto esplicito e compatto")
+
+    # Il restore sostituisce la directory dello stato: chiudere gli engine
+    # simula l'uso reale e rende la prova valida anche su Windows.
+    chiudi_engine(
+        principale.db,
+        store.fs.backend,
+        altrui.db,
+        altrui.result_store.fs.backend,
+    )
+    del principale, altrui, store, fs_vecchio
+    gc.collect()
+    ripristino = subprocess.run(
+        [sys.executable, "-m", "ares.backup", "restore", snapshot[0].name, "--yes", "--skip-safety"],
+        cwd=config.BASE_DIR,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    esigi(ripristino.returncode == 0, "restore fallito: " + ripristino.stderr + ripristino.stdout)
+    db_ripristinato, store_ripristinato = apri_archivio(PERCORSI, Utente.da_grezzo(UTENTE))
+    esigi(db_ripristinato.get_session(session_id=SESSIONE_VECCHIA) is not None, "sessione non ripristinata")
+    esigi(store_ripristinato.payload(vecchio_id) == PAYLOAD, "payload offloaded non ripristinato")
+    esigi(
+        db_ripristinato.get_learning(
+            learning_type="session_context",
+            session_id=SESSIONE_VECCHIA,
         )
-        esigi(ripristino.returncode == 0, "restore fallito: " + ripristino.stderr + ripristino.stdout)
-        db_ripristinato, store_ripristinato = apri_archivio(PERCORSI, Utente.da_grezzo(UTENTE))
-        esigi(db_ripristinato.get_session(session_id=SESSIONE_VECCHIA) is not None, "sessione non ripristinata")
-        esigi(store_ripristinato.payload(vecchio_id) == PAYLOAD, "payload offloaded non ripristinato")
-        esigi(
-            db_ripristinato.get_learning(
-                learning_type="session_context",
-                session_id=SESSIONE_VECCHIA,
-            )
-            is not None,
-            "contesto della sessione non ripristinato",
-        )
-        chiudi_engine(db_ripristinato, store_ripristinato.fs.backend)
-        ok("backup/restore", "kairos.db e filesystem.db ricongiunti senza perdita")
-        riuscita = True
-        return 0
-    except Exception as errore:
-        fallimento(errore)
+        is not None,
+        "contesto della sessione non ripristinato",
+    )
+    chiudi_engine(db_ripristinato, store_ripristinato.fs.backend)
+    ok("backup/restore", "kairos.db e filesystem.db ricongiunti senza perdita")
+    return "status puro, Agent.run, anteprima, guardie CLI, cascata, quota Agno, backup/restore"
+
+
+def main() -> int:
+    falliti, _ = esegui((("retention sessioni", retention),))
+    if falliti:
+        print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
-    finally:
-        if riuscita:
-            pulisci(RADICE_PROVA)
-        else:
-            print("Archivio della prova conservato:", RADICE_PROVA)
+    pulisci(RADICE_PROVA)
+    return 0
 
 
 if __name__ == "__main__":

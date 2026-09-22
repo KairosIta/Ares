@@ -35,7 +35,7 @@ from dataclasses import replace
 from typing import Any
 from unittest.mock import patch
 
-from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
+from _comune import esegui, esigi, prepara_ambiente, pulisci
 
 # I percorsi vanno scelti prima di importare config, che li legge una volta
 # sola all'import.
@@ -403,22 +403,19 @@ def la_scrittura_arriva_negli_store() -> str:
 
 
 def main() -> int:
-    riuscita = False
-    try:
-        ok("costo estrazioni", costo_delle_tre_estrazioni())
-        ok("politica spegne il costo", la_politica_spegne_il_costo())
-        ok("modello che non ubbidisce", il_modello_che_non_ubbidisce())
-        ok("scrittura negli store", la_scrittura_arriva_negli_store())
-        riuscita = True
-        return 0
-    except Exception as errore:
-        fallimento(errore)
+    falliti, _ = esegui(
+        (
+            ("costo estrazioni", costo_delle_tre_estrazioni),
+            ("politica spegne il costo", la_politica_spegne_il_costo),
+            ("modello che non ubbidisce", il_modello_che_non_ubbidisce),
+            ("scrittura negli store", la_scrittura_arriva_negli_store),
+        )
+    )
+    if falliti:
+        print("Archivio della prova conservato:", RADICE_PROVA)
         return 1
-    finally:
-        if riuscita:
-            pulisci(RADICE_PROVA)
-        else:
-            print("Archivio della prova conservato:", RADICE_PROVA)
+    pulisci(RADICE_PROVA)
+    return 0
 
 
 if __name__ == "__main__":
