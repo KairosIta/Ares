@@ -32,9 +32,13 @@ mai: il ramo piu' delicato dell'apprendimento era verificato solo a mano.
 Il retry si regge su tre fatti di Agno - `extract_and_save` esiste con
 quel nome, `context_updated` viene azzerato all'inizio e acceso solo se
 il modello ha eseguito uno strumento, `aextract_and_save` e' il gemello
-asincrono - e se uno cadesse Ares ripeterebbe all'infinito o non
-ripeterebbe mai, in silenzio. Qui il modello e' di nuovo un copione, cosi'
-il caso "fallisce e poi recupera" e' deterministico invece che sperato.
+asincrono, che e' codice diverso e non lo stesso corpo con un `await` davanti -
+e se uno cadesse Ares ripeterebbe all'infinito o non ripeterebbe mai, in
+silenzio. Qui il modello e' di nuovo un copione, cosi' il caso "fallisce e poi
+recupera" e' deterministico invece che sperato, e i tre casi - primo colpo,
+tetto, recupero - si attraversano su entrambi i percorsi. Nello stesso punto si
+attraversa l'`aprocess` che Ares azzera per il percorso asincrono: Ares non usa
+`arun`, quindi quella riga nessun'altra prova la esegue.
 La terza superficie, il flag `stop_after_tool_call` su profilo e memorie, non
 si controlla qui: `learning_cost_test.py` la esercita con un modello finto e
 conta le chiamate, che e' una prova piu' diretta di un controllo di firma.
@@ -221,13 +225,19 @@ class ContatoreEstrazioni:
     Quella anticipata si conta sull'istanza, perche' e' li' che Agno la
     cerca: se sparisse dal framework, l'override di Ares sarebbe codice
     morto e la prova lo direbbe.
+
+    Il gemello asincrono si conta allo stesso modo, su `vere_async` e sulla
+    classe base: Ares non usa `arun`, quindi l'unico modo di sapere che la
+    sua `aprocess` non e' codice morto - e che non estrae - e' attraversarla.
     """
 
     def __init__(self, macchina) -> None:
         self.vere: list[list[Any]] = []
+        self.vere_async: list[list[Any]] = []
         self.anticipate = 0
         self.macchina = macchina
         self._originale = LearningMachine.process
+        self._originale_async = LearningMachine.aprocess
 
     def __enter__(self):
         contatore = self
@@ -236,17 +246,24 @@ class ContatoreEstrazioni:
             contatore.vere.append(list(kwargs.get("messages") or []))
             return contatore._originale(istanza, *args, **kwargs)
 
+        async def aprocess_vero(istanza, *args, **kwargs):
+            contatore.vere_async.append(list(kwargs.get("messages") or []))
+            return await contatore._originale_async(istanza, *args, **kwargs)
+
         def process_anticipato(*args, **kwargs):
             contatore.anticipate += 1
             return None
 
         self._patch = patch.object(LearningMachine, "process", process_vero)
+        self._patch_async = patch.object(LearningMachine, "aprocess", aprocess_vero)
         self._patch.__enter__()
+        self._patch_async.__enter__()
         self.macchina.process = process_anticipato
         return self
 
     def __exit__(self, *_):
         self._patch.__exit__(None, None, None)
+        self._patch_async.__exit__(None, None, None)
         del self.macchina.process
 
 
@@ -304,12 +321,26 @@ def estrazione_singola() -> str:
         len(messaggi_estratti) == len(risposta.messages or []),
         "l'estrazione riceve un run diverso da quello restituito",
     )
+
+    # Il gemello asincrono, fuori dal contatore di sopra: qui si attraversa la
+    # riga di Ares, non quella di Agno. Ares non usa `arun`, quindi senza
+    # questa chiamata l'override asincrono resterebbe l'unica riga mai
+    # eseguita di learning.py, e un Agno che estraesse dal percorso asincrono
+    # imparerebbe da un run a meta' senza che la prova sincrona se ne accorga.
+    with ContatoreEstrazioni(agent.learning_machine) as contatore_asincrono:
+        asyncio.run(agent.learning_machine.aprocess(messages=[], user_id=UTENTE, session_id=SESSIONE))
+    esigi(
+        not contatore_asincrono.vere_async,
+        "la `aprocess` di Ares non azzera l'estrazione asincrona: "
+        + str(len(contatore_asincrono.vere_async))
+        + " estrazioni",
+    )
     return (
         "1 estrazione su "
         + str(len(messaggi_estratti))
         + " messaggi, "
         + str(contatore.anticipate)
-        + " anticipata azzerata"
+        + " anticipata azzerata, asincrona ferma"
     )
 
 
@@ -460,7 +491,29 @@ def contesto_riprova() -> str:
     esigi(store.get(session_id="recuperato") is not None, "il contesto recuperato non e' in archivio")
 
     # Il gemello asincrono: stessa logica, e va attraversata perche' e' codice
-    # diverso, non lo stesso corpo con un await davanti.
+    # diverso, non lo stesso corpo con un await davanti. I tre casi sono gli
+    # stessi del sincrono: senza il primo e il tetto, il ramo che esce dal
+    # ciclo resterebbe scoperto proprio nel corpo asincrono.
+    store = store_contesto({1})
+    asyncio.run(store.aextract_and_save(messages=MESSAGGI_CONTESTO, session_id="async-subito", user_id=UTENTE))
+    esigi(
+        store.last_extraction_attempts == 1,
+        "tentativi asincroni con successo immediato: " + str(store.last_extraction_attempts),
+    )
+    esigi(store.get(session_id="async-subito") is not None, "il contesto asincrono del primo colpo non e' in archivio")
+
+    store = store_contesto(set())
+    asyncio.run(store.aextract_and_save(messages=MESSAGGI_CONTESTO, session_id="async-mai", user_id=UTENTE))
+    esigi(
+        store.last_extraction_attempts == massimo,
+        "tentativi asincroni senza mai salvare: " + str(store.last_extraction_attempts) + ", atteso " + str(massimo),
+    )
+    esigi(not store.was_updated, "`was_updated` e' vero sul percorso asincrono senza scrittura")
+    esigi(
+        store.get(session_id="async-mai") is None,
+        "un'estrazione asincrona che non ha scritto ha lasciato un contesto",
+    )
+
     store = store_contesto({2})
     asyncio.run(store.aextract_and_save(messages=MESSAGGI_CONTESTO, session_id="async", user_id=UTENTE))
     esigi(
@@ -479,7 +532,11 @@ def contesto_riprova() -> str:
         "il tetto dei tentativi non segue la politica: " + str(store.last_extraction_attempts),
     )
 
-    return "1 al primo colpo, " + str(massimo) + " al tetto, 2 recuperato, sincrono e asincrono, 4 dal parametro"
+    return (
+        "1 al primo colpo, "
+        + str(massimo)
+        + " al tetto e 2 recuperato, nei due percorsi sincrono e asincrono, 4 dal parametro"
+    )
 
 
 def memoria_non_confermabile() -> str:

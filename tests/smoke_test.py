@@ -311,7 +311,32 @@ def apprendimento_post_run(agent) -> str:
         apprendi_a_run_completato in (agent.post_hooks or []),
         "il post-hook di apprendimento non e' collegato all'agente",
     )
-    return "callback anticipato spento, un post-hook sui " + str(len(messaggi)) + " messaggi completi"
+
+    # Le due meta' della guardia: un run senza messaggi e un post-hook senza
+    # agente non estraggono. Un'estrazione da un run vuoto non ha niente da
+    # imparare e passerebbe comunque dal modello, quindi la riga va tenuta
+    # chiusa da una prova invece che solo scritta.
+    prima = len(chiamate)
+    apprendi_a_run_completato(
+        run_output=SimpleNamespace(messages=[], user_id="prova", session_id="prova"),
+        agent=agente_finto,
+        session=sessione_finta,
+        user_id="prova",
+        run_context=contesto_finto,
+    )
+    apprendi_a_run_completato(
+        run_output=output_finto,
+        agent=None,
+        session=sessione_finta,
+        user_id="prova",
+        run_context=contesto_finto,
+    )
+    esigi(len(chiamate) == prima, "il post-hook ha estratto da un run vuoto o senza agente")
+    return (
+        "callback anticipato spento, un post-hook sui "
+        + str(len(messaggi))
+        + " messaggi completi, niente da un run vuoto o senza agente"
+    )
 
 
 def retry_contesto(lm) -> str:
@@ -880,6 +905,32 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     for atteso in attesi:
         esigi(atteso in prompt, "manca dal prompt: " + atteso)
     return str(len(attesi)) + " blocchi italiani presenti, 5 frasi inglesi di Agno assenti"
+
+
+def istruzioni_fuori_modalita() -> str:
+    """Fuori da AGENTIC le istruzioni italiane delle intuizioni non entrano.
+
+    Ares costruisce questo store solo in `AGENTIC`, quindi il ripiego si
+    attraversa qui e non in produzione: serve a chi lo costruisse con
+    un'altra modalita', per non iniettare ordini di salvataggio in uno store
+    che non li ha. L'esito e' quello di Agno, che per una modalita' diversa
+    non scrive istruzioni: il blocco italiano deve restare fuori.
+    """
+    from agno.learn import LearnedKnowledgeConfig, LearningMode
+    from agno.learn.stores import LearnedKnowledgeStore
+
+    from ares.agent.learning import AresLearnedKnowledgeStore
+
+    store = AresLearnedKnowledgeStore(
+        config=LearnedKnowledgeConfig(knowledge=None, model=None, mode=LearningMode.ALWAYS, enable_agent_tools=True)
+    )
+    testo = store.instructions()
+    esigi(
+        testo == LearnedKnowledgeStore.instructions(store),
+        "fuori da AGENTIC Ares non lascia passare le istruzioni di Agno: " + testo[:80],
+    )
+    esigi("<istruzioni_intuizioni>" not in testo, "la guida AGENTIC entra in uno store che non e' AGENTIC")
+    return "fuori da AGENTIC passano le istruzioni di Agno, non quelle italiane"
 
 
 def modalita() -> str:
@@ -2428,6 +2479,7 @@ def main() -> int:
             ("ambiente nel prompt ", lambda: ambiente_nel_prompt(agent, args.user, args.session)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
             ("prompt in italiano  ", lambda: prompt_in_italiano(agent, args.user, args.session)),
+            ("istruzioni modalita'", istruzioni_fuori_modalita),
             ("modalita            ", modalita),
             ("colpo singolo       ", lambda: colpo_singolo(args.user, args.session)),
             ("prompt e capacita'  ", prompt_e_capacita),
