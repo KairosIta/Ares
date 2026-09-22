@@ -4,7 +4,7 @@ Contratto con Agno: estrazione, conferma, retry e limiti dichiarati
 Uso:
     .venv/bin/python tests/agno_contract_test.py
 
-Quattro cose Ares le da' per vere di Agno, e nessuna prova le chiedeva ad
+Cinque cose Ares le da' per vere di Agno, e nessuna prova le chiedeva ad
 Agno.
 
 La prima: l'apprendimento avviene una volta per turno, sul run completo.
@@ -45,6 +45,13 @@ limite dichiarato va sorvegliato come un'invariante: il giorno in cui Agno
 lo togliesse, questa prova diventa rossa e la documentazione va riscritta
 invece di restare vera per abitudine.
 
+La quinta: la versione di Agno che i documenti dichiarano e' quella
+installata. Il numero sta a mano in piu' posti - il badge del README, la
+roadmap, `docs/agno.md`, il commento di `AresLearningMachine` - e la 3.0.5
+era rimasta in uno di essi col lock gia' alla 3.0.9. Un numero vecchio non
+fa fallire niente: e' una pagina che descrive un altro programma. Qui
+l'installato e' il metro, e la prova dice quali file allineare.
+
 Niente modello e niente rete: il modello e' uno script che emette le tool
 call decise dalla prova, come in `session_retention_test.py`. Nei primi due
 controlli gli store di apprendimento sono spenti, e l'estrazione e' un
@@ -55,8 +62,10 @@ e' proprio se ha scritto.
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import replace
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -66,6 +75,7 @@ from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 # I percorsi vanno scelti prima di importare config, che li legge una volta
 # sola all'import.
 RADICE_PROVA = prepara_ambiente("agno-contract-test")
+RADICE = Path(__file__).resolve().parent.parent
 
 from agno.learn import (  # noqa: E402
     LearningMachine,
@@ -502,6 +512,74 @@ def memoria_non_confermabile() -> str:
     return "PROPOSE e HITL rifiutati da profilo e memorie, ALWAYS accettata"
 
 
+# Dove la versione di Agno e' dichiarata: le pagine e il commento che la
+# nominano per dire cosa Ares usa adesso. `CHANGELOG.md` e
+# `docs/memory-quality.md` sono fuori di proposito - il primo racconta cosa e'
+# cambiato, il secondo misure datate con la versione di allora - e le prove
+# non si controllano da sole. La lista e' esplicita perche' una pagina che
+# smettesse di nominare la versione non deve sparire dal controllo in
+# silenzio: se una di queste non la cita piu', la prova e' rossa e si decide
+# se toglierla dall'elenco.
+FILE_CHE_DICHIARANO = (
+    "README.md",
+    "ROADMAP.md",
+    "SECURITY.md",
+    "ares/agent/learning.py",
+    "docs/agno.md",
+    "docs/architecture.md",
+    "docs/core-contract.md",
+)
+VERSIONE_AGNO = re.compile(r"Agno (\d+\.\d+\.\d+)")
+CARTELLE_DICHIARANTI = ("ares", "docs", "evals")
+FILE_DI_RADICE = ("README.md", "ROADMAP.md", "SECURITY.md")
+VERSIONI_STORICHE = ("docs/memory-quality.md",)
+
+
+def _testi_dichiaranti() -> list[tuple[str, str]]:
+    """I file in cui una versione di Agno puo' comparire, e il loro testo."""
+    percorsi = [RADICE / nome for nome in FILE_DI_RADICE]
+    for cartella in CARTELLE_DICHIARANTI:
+        for modello in ("*.py", "*.md"):
+            percorsi.extend(sorted((RADICE / cartella).rglob(modello)))
+    testi = []
+    for percorso in percorsi:
+        if not percorso.is_file() or "__pycache__" in percorso.parts:
+            continue
+        relativo = percorso.relative_to(RADICE).as_posix()
+        if relativo in VERSIONI_STORICHE:
+            continue
+        testi.append((relativo, percorso.read_text(encoding="utf-8")))
+    return testi
+
+
+def versione_dichiarata() -> str:
+    """La versione di Agno nei documenti e' quella installata.
+
+    Il numero e' scritto a mano in piu' posti e nessuno di essi si accorge di
+    invecchiare: il commento di `AresLearningMachine` citava la 3.0.5 mentre
+    il lock era gia' alla 3.0.9, e una pagina che descrive la versione
+    sbagliata resta verde finche' qualcuno non la rilegge.
+
+    Il metro e' l'installato, non una copia: `uv.lock` decide la patch, la CI
+    installa quella, e le prove di contratto qui sopra girano su quella. Due
+    controlli: le pagine di `FILE_CHE_DICHIARANO` devono nominare la versione
+    installata, e nessun altro file deve nominarne una diversa. Salire di
+    patch senza allineare le dichiarazioni rende questa prova rossa, e il
+    messaggio nomina il file da correggere.
+    """
+    installata = version("agno")
+    testi = dict(_testi_dichiaranti())
+    for relativo in FILE_CHE_DICHIARANO:
+        esigi(installata in testi.get(relativo, ""), relativo + " non dichiara Agno " + installata)
+    for relativo, testo in testi.items():
+        for citata in sorted(set(VERSIONE_AGNO.findall(testo))):
+            esigi(
+                citata == installata,
+                relativo + " cita Agno " + citata + " mentre l'installato e' " + installata,
+            )
+    return "Agno " + installata + " in " + str(len(FILE_CHE_DICHIARANO)) + " dichiarazioni"
+
+
 def main() -> int:
     global POLITICA
     # Gli store di apprendimento e LanceDB non servono: spegnerli impedisce
@@ -523,6 +601,7 @@ def main() -> int:
         ok("ciclo HITL", ciclo_hitl())
         ok("retry contesto", contesto_riprova())
         ok("memoria non confermabile", memoria_non_confermabile())
+        ok("versione dichiarata", versione_dichiarata())
         riuscita = True
         return 0
     except Exception as errore:
