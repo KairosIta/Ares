@@ -6,6 +6,27 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-22
+
+Il contratto del nucleo è completo: percorsi, impostazioni, identità e
+politica attraversano i costruttori come parametri, e le globali mutate da
+`imposta_percorsi` non esistono più. Due workspace nello stesso processo — o
+una UI desktop — ora ci stanno sopra. Insieme arriva la coerenza della
+memoria: `Demo` e `demo` sono lo stesso utente ovunque, gli id di sessione
+non collidono più, e due finestre note (la conferma della memoria e il
+ripristino) vengono dichiarate invece che taciute. Chiude il giro la misura
+del costo dell'apprendimento, che entra nella suite come prova.
+Release minor: nessuna migrazione dei dati e nessun cambio d'uso della CLI,
+ma chi importa i moduli di Ares trova `leggi_percorsi()`,
+`leggi_impostazioni()` e `leggi_politica()` al posto delle globali
+riassegnate, e `Utente` al posto della stringa da normalizzare.
+
+Verifica locale del 2026-09-22: nove prove offline verdi con copertura al 90%
+su Linux/Python 3.12; `ruff check`, `ruff format --check` e `mypy ares` (53
+file) puliti. Con Ollama, `e2e`, `affidabilita` e `intuizioni` verdi su
+`deepseek-v4.1-flash:cloud` (70,9 s); nel turno di `e2e` l'apprendimento ha
+speso 5.602 token di ingresso e 424 di uscita.
+
 ### Added
 
 - **La misura del costo dell'apprendimento.** `tests/learning_cost_test.py`
@@ -184,12 +205,6 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   allineare le pagine rende la prova rossa, e il messaggio nomina il file da
   correggere; `CHANGELOG.md` e `docs/memory-quality.md` restano fuori, perché
   citano le versioni di allora.
-
-Verifica locale del 2026-09-22: nove prove offline verdi con copertura al 90%
-su Linux/Python 3.12; `ruff check`, `ruff format --check` e `mypy ares` (53
-file) puliti. Con Ollama, `e2e`, `affidabilita` e `intuizioni` verdi su
-`deepseek-v4.1-flash:cloud` (70,9 s); nel turno di `e2e` l'apprendimento ha
-speso 5.602 token di ingresso e 424 di uscita.
 
 ## [0.7.1] - 2026-09-13
 
