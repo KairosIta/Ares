@@ -20,6 +20,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   la voce `[0.8.0]` mancava. La CI era verde lo stesso: quei file non li legge
   nessuno. Ora li legge `rilascio`, che li confronta con `pyproject.toml`.
 
+### Changed
+
+- `CONTRIBUTING.md` spiega come si rilascia — versione, voce del `CHANGELOG`,
+  riga di `SECURITY.md`, merge con `--merge`, tag annotato e nota della
+  release — perché i due punti che erano stati saltati sono proprio quelli
+  che nessuna verifica automatica copriva.
+
 ## [0.8.0] - 2026-09-22
 
 Il contratto del nucleo è completo: percorsi, impostazioni, identità e
