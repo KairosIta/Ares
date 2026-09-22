@@ -107,7 +107,7 @@ Il runner elenca le prove con `--help` e ne esegue una sola con
 Quelle con Ollama non girano in CI, e non è una dimenticanza: i runner di
 GitHub non hanno una GPU, e una suite che scarica un modello da 9 GB a ogni
 push non sarebbe una verifica ma un costo. La conseguenza però va accettata
-per intero: **tre prove su dodici esistono solo se qualcuno le lancia**, e
+per intero: **tre prove su tredici esistono solo se qualcuno le lancia**, e
 nessuno se ne accorge se smette di farlo. Perciò, quando le esegui prima di
 un bump di Agno o di un rilascio, **scrivilo nella voce del CHANGELOG**, con
 la data e la versione di Agno su cui sono passate:
@@ -182,6 +182,55 @@ mergiano quindi con `--merge`: i commit del branch arrivano su `main`
 identici, quindi ancora firmati, e GitHub aggiunge un merge commit firmato da
 lui. Se `main` si è mosso, si fa rebase in locale: `commit.gpgsign` ri-firma i
 commit che il rebase ricrea.
+
+## Come si rilascia
+
+La versione sta in `pyproject.toml`, e il repository la ripete in altri tre
+posti che devono restare d'accordo: la voce nuova del `CHANGELOG`, la riga
+supportata di `SECURITY.md` e i collegamenti di confronto in coda al
+`CHANGELOG` (il quarto, `uv.lock`, lo allinea `uv lock`).
+`tests/rilascio_test.py` li confronta tutti con `pyproject.toml` e fallisce
+nominando il file da correggere. Esiste perché questo passo si dimentica:
+la 0.7.1 dichiarava ancora la linea 0.6.x in `SECURITY.md` e la 0.8.0 è
+arrivata su `main` con il collegamento di `Unreleased` fermo alla 0.7.1 —
+entrambe le volte con la CI verde, che quei file non li legge.
+
+1. Alza la versione in `pyproject.toml` ed esegui `uv lock`. Per una
+   correzione l'ultimo numero, per una funzionalità il secondo, per un
+   cambiamento incompatibile il primo: `docs/` e la CLI sono l'interfaccia,
+   e quel che cambia sotto per chi importa i moduli è già stato pagato una
+   volta con la 0.8.0.
+2. Trasforma `## [Unreleased]` in `## [x.y.z] - aaaa-mm-gg` e lascia
+   `[Unreleased]` vuota sotto. In coda aggiungi
+   `[x.y.z]: https://github.com/KairosIta/Ares/compare/v<precedente>...v<x.y.z>`
+   e porta `[Unreleased]` a `.../compare/v<x.y.z>...HEAD`.
+3. Nella voce scrivi la riga della verifica con Ollama, con la data e la
+   versione di Agno su cui è passata, come in «Verifiche minime». È l'unico
+   pezzo della catena che non si può dimostrare da fuori.
+4. Se il rilascio cambia la linea supportata, aggiorna `SECURITY.md` a
+   `x.y.x` e la riga non supportata a `< x.y`. Una patch non sposta la riga.
+5. Esegui la catena completa — `ruff check`, `ruff format --check`, `mypy`,
+   `tests/run.py --copertura` — e le prove con Ollama se il rilascio tocca il
+   percorso conversazionale o di apprendimento.
+6. Apri il PR e mergialo con `--merge`, mai con `--rebase`: la firma dei
+   commit si perde, e la versione appena scritta sarebbe l'unica cosa
+   verificata di tutta la release.
+7. Sul commit mergiato, crea il tag **annotato** (`tag.gpgsign` è già attivo,
+   quindi firmato) e pubblica la release:
+
+   ```bash
+   git fetch origin --prune && git switch main && git pull --ff-only
+   git tag -a v0.8.0 -m "Ares 0.8.0"
+   git push origin v0.8.0
+   gh release create v0.8.0 --title "Ares v0.8.0" --notes-file tmp/nota.md
+   ```
+
+   Il tag viene **dopo** il merge: il ruleset non accetta push diretti su
+   `main`, e un tag creato prima punterebbe a un commit che la release non
+   contiene. La nota segue la forma della 0.8.0 — un riassunto, «Cosa
+   cambia», «Compatibilità», «Verifica», e in fondo il confronto
+   `Full Changelog` — e si scrive a mano: è il testo che si legge per primo,
+   non la copia della voce del `CHANGELOG`.
 
 ## Stile
 

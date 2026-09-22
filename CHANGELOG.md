@@ -6,6 +6,27 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- `tests/rilascio_test.py`, la decima prova offline: confronta la versione di
+  `pyproject.toml` con il lock, con la voce più recente di questo file, con la
+  riga supportata di `SECURITY.md` e con i collegamenti di confronto in coda.
+  È la stessa idea della prova sulla versione di Agno, applicata al repository.
+
+### Fixed
+
+- `SECURITY.md` dichiarava supportata la linea 0.7.x dopo il rilascio della
+  0.8.0; i collegamenti in coda a questo file erano ancora fermi alla 0.7.1, e
+  la voce `[0.8.0]` mancava. La CI era verde lo stesso: quei file non li legge
+  nessuno. Ora li legge `rilascio`, che li confronta con `pyproject.toml`.
+
+### Changed
+
+- `CONTRIBUTING.md` spiega come si rilascia — versione, voce del `CHANGELOG`,
+  riga di `SECURITY.md`, merge con `--merge`, tag annotato e nota della
+  release — perché i due punti che erano stati saltati sono proprio quelli
+  che nessuna verifica automatica copriva.
+
 ## [0.8.0] - 2026-09-22
 
 Il contratto del nucleo è completo: percorsi, impostazioni, identità e
@@ -1319,7 +1340,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/KairosIta/Ares/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/KairosIta/Ares/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/KairosIta/Ares/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/KairosIta/Ares/compare/v0.6.0...v0.6.1

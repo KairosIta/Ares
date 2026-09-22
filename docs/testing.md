@@ -169,7 +169,7 @@ Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
 .venv/bin/python tests/run.py
 ```
 
-Sono nove. `smoke` costruisce l'agente e semina gli store, e controlla
+Sono dieci. `smoke` costruisce l'agente e semina gli store, e controlla
 assemblaggio, isolamento, lock, propagazione simulata del run completo alla
 macchina di apprendimento e l'eco di ciò che entra in memoria. `repl` prova
 ciò che della chat gira senza l'agente: conferme lette e applicate, esito e
@@ -241,6 +241,16 @@ processo separato con stdin da una pipe, e l'avvio senza `--session`: la
 conversazione nuova nominata dalla cartella, `resume` a vuoto e sull'ultima
 di qui con sessioni seminate nel database vero, `--scegli`, e `-p` con stdin
 in pipe.
+`rilascio` è il più breve e non accende niente: confronta `pyproject.toml` con
+il lock, con la voce più recente del `CHANGELOG`, con la riga supportata di
+`SECURITY.md` e con i due collegamenti di confronto in coda al `CHANGELOG`,
+e fallisce nominando il file da correggere. La versione di Ares era l'unica
+cosa scritta a mano che nessuno controllava: la 0.7.1 dichiarava ancora la
+linea 0.6.x in `SECURITY.md` e la 0.8.0 è arrivata su `main` con `Unreleased`
+fermo alla 0.7.1, entrambe le volte con la CI verde perché quei file non li
+legge nessuno. È la stessa idea della prova sulla versione di Agno, applicata
+al repository invece che al framework. La procedura sta in
+[CONTRIBUTING](../CONTRIBUTING.md#come-si-rilascia).
 
 Nessuna genera risposte con il modello. `cli_test.py` lo rende esplicito
 puntando `config.OLLAMA_HOST` a un porto chiuso: su una macchina di sviluppo
@@ -263,7 +273,7 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse nove prove, con la misura, su Ubuntu con Python 3.12
+La CI esegue le stesse dieci prove, con la misura, su Ubuntu con Python 3.12
 e 3.13 e su Windows con la 3.12. Sul runner Windows l'ambiente nasce
 direttamente da `setup.ps1 -SkipPreflight`, così la CI verifica anche il
 percorso d'installazione senza richiedere Ollama; un secondo `uv sync --locked` sullo
