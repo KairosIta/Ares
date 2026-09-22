@@ -100,6 +100,16 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **Run normalizzati:** Ares usa le API v3 per persistere i run e continua a
   consumare `session.runs`, che Agno ricompone dalla tabella dedicata. Non ci
   sono query dirette verso la vecchia colonna JSON.
+- **Conferma dopo la scrittura tolta:** Agno richiama il modello dopo la tool
+  call di estrazione per sentirgli dire che ha finito, e quella risposta non
+  la legge nessuno: l'esito si legge da `response.tool_executions`. Era una
+  chiamata in più per profilo e per memorie — due delle cinque di un turno,
+  il 43% dei token di ingresso con il modello vero. Il contesto di sessione
+  la evitava già con `stop_after_tool_call`;
+  `AresUserProfileStore` e `AresUserMemoryStore` in `agent/learning.py` ora
+  la impostano sovrascrivendo `_build_functions_for_model` (superficie
+  privata, come il retry del contesto). `tests/learning_cost_test.py`
+  verifica le tre chiamate e che la scrittura arrivi negli store.
 - **HITL v3:** la ripresa passa la lista `requirements` del `RunOutput`; le
   operazioni workspace sensibili continuano quindi sullo stesso run dopo la
   conferma.

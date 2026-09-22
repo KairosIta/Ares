@@ -478,11 +478,13 @@ verificata.
 ## Costo delle estrazioni, 22 settembre 2026
 
 Il report di analisi contava "tre store `ALWAYS`, tre inferenze in più per
-turno". La prima metà è vera per costruzione; la seconda no, e il costo va
-misurato prima di decidere se il prezzo vale la qualità.
+turno". La prima metà è vera per costruzione; la seconda no: misurata il 22
+settembre 2026 prima della mitigazione raccontata in fondo alla sezione, era
+di cinque. Il costo andava misurato prima di decidere se il prezzo valeva la
+qualità.
 
-**Quante chiamate.** `tests/learning_cost_test.py` costruisce la macchina con
-un modello finto che conta e scrive: cinque chiamate al modello di
+**Quante chiamate, prima.** `tests/learning_cost_test.py` costruisce la
+macchina con un modello finto che conta e scrive: cinque chiamate al modello di
 apprendimento per ogni turno completato, non tre.
 
 | store | chiamate | perché |
@@ -495,32 +497,38 @@ La seconda chiamata di profilo e memorie non serve a niente: Agno la fa
 perché il risultato della tool call non viene consumato, e la risposta di
 conferma è scartata. È la stessa ragione per cui lo store del contesto la
 evita, con un commento nel sorgente di Agno. Recuperarla vale due chiamate su
-cinque, cioè il 40% delle estrazioni.
+cinque, cioè il 40% delle estrazioni — ed è quello che è stato fatto.
 
 **Quanto pesa.** Le stesse cinque chiamate, con un turno di quattro messaggi
 (650 caratteri circa), rimandano al modello 33.649 caratteri:
 
-| chiamata | istruzioni | conversazione | schemi | totale |
+| chiamata | istruzioni | turno rispedito | schemi | totale |
 | --- | --- | --- | --- | --- |
 | profilo, scrittura | 3.516 | 624 | 1.858 | 5.998 |
 | profilo, conferma | 3.516 | 624 | 1.858 | 6.066 |
 | memorie, scrittura | 5.123 | 613 | 1.828 | 7.564 |
 | memorie, conferma | 5.123 | 613 | 1.828 | 7.613 |
-| contesto | 4.543, con la conversazione dentro | — | 1.776 | 6.408 |
-| **totale** | **21.821** | **2.474** | **9.148** | **33.649** |
+| contesto | 4.543, con la conversazione dentro | — dentro le istruzioni | 1.776 | 6.408 |
+| **totale** | **21.821** | **7.017** | **9.148** | **33.649** |
 
 Il totale comprende anche i 206 caratteri dei messaggi di servizio: la
 richiesta rivolta al contesto (89) e i due risultati di tool delle conferme
 (117), che non sono né istruzioni né schemi.
 
+La colonna «turno rispedito» è quella che la prova stampa: conta ogni
+messaggio che contiene la domanda d'apertura, quindi 624 due volte per il
+profilo, 613 due volte per le memorie, e per intero il messaggio di sistema
+del contesto — 4.543 caratteri, che portano la conversazione dentro le
+proprie istruzioni. Le due colonne si sovrappongono lì, e il totale non è la
+loro somma: 21.821 + 7.017 + 9.148 fa più di 33.649.
+
 Due terzi sono le istruzioni dei tre store — le regole di estrazione condivise
 (`CRITERI_ESTRAZIONE`) più quelle di ciascuno — e il 27% gli schemi degli
-strumenti. La conversazione è 2.474 caratteri, e viaggia comunque cinque
-volte: due nel messaggio utente di profilo e memorie, e dentro il messaggio
-di sistema del contesto. Il costo non è il turno, è l'impianto fisso delle
-istruzioni, ripetuto a ogni chiamata. Spegnere uno store toglie le sue
-chiamate; un modello che non chiama affatto lo strumento costa i tentativi
-del contesto, perché profilo e memorie non ritentano ma il contesto sì.
+strumenti. La conversazione viaggia comunque cinque volte, e il costo non è
+il turno: è l'impianto fisso delle istruzioni, ripetuto a ogni chiamata.
+Spegnere uno store toglie le sue chiamate; un modello che non chiama affatto
+lo strumento costa i tentativi del contesto, perché profilo e memorie non
+ritentano ma il contesto sì.
 
 **Con i modelli veri.** `tests/e2e_test.py` stampa ora la riga che il client
 mostra sotto la risposta, e accanto i token dell'apprendimento divisi fra
@@ -532,7 +540,8 @@ costo del turno      - finestra 8.2k/256.0k (3%)  risposta 319 tok / 4.6 s  appr
 token apprendimento  - 5602 in / 424 out
 ```
 
-5.602 token di ingresso e 424 di uscita, per un turno di una riga: il costo
+5.602 token di ingresso e 424 di uscita, per un turno di una riga (misurati
+prima della mitigazione descritta in fondo alla sezione): il costo
 dell'apprendimento sta quasi tutto in ingresso, ed è circa due terzi di
 quello che il turno occupa nella finestra (8,2k). Il tempo si somma dopo la
 risposta — 5,7 s su 15,0 s — e su un turno lungo cresce con il contenuto,
@@ -540,13 +549,13 @@ perché la conversazione viaggia in ogni estrazione.
 
 **Cosa si può fare, in ordine di rapporto fra guadagno e rischio.**
 
-1. **Fermare profilo e memorie dopo la tool call**, come fa il contesto:
-   cinque chiamate diventano tre e spariscono due copie delle istruzioni.
-   Richiede che Ares sovrascriva `_build_functions_for_model` nei due store,
-   una superficie privata di Agno — lo stesso genere di appiglio che
-   `AresSessionContextStore` usa già per il retry, sorvegliato da
-   `tests/agno_contract_test.py`. Non cambia cosa si impara: la risposta di
-   conferma è scartata anche oggi.
+1. **Fermare profilo e memorie dopo la tool call** (fatto il 22 settembre
+   2026, vedi sotto), come fa il contesto: cinque chiamate diventano tre e
+   spariscono due copie delle istruzioni. Richiede che Ares sovrascriva
+   `_build_functions_for_model` nei due store, una superficie privata di
+   Agno — lo stesso genere di appiglio che `AresSessionContextStore` usa già
+   per il retry, sorvegliato da `tests/learning_cost_test.py`. Non cambia cosa
+   si impara: la risposta di conferma è scartata anche oggi.
 2. **Accorciare le istruzioni condivise.** `CRITERI_ESTRAZIONE` è ripetuto
    identico nei tre store e viaggia cinque volte per turno: una parte può
    stare in un blocco solo, o essere più breve. Tocca la qualità, quindi va
@@ -561,6 +570,56 @@ perché la conversazione viaggia in ogni estrazione.
 
 La prima è l'unica che non tocca la memoria; le altre vanno decise con il
 benchmark in mano.
+
+### La conferma tolta a profilo e memorie, 22 settembre 2026
+
+`ares/agent/learning.py` costruisce ora i due store con
+`AresUserProfileStore` e `AresUserMemoryStore`, che sovrascrivono
+`_build_functions_for_model` per impostare `stop_after_tool_call` sulla loro
+tool call: la funzione `senza_conferma` è l'unico punto nuovo, il nome dello
+strumento è l'unica differenza fra i due. Agno esegue comunque la tool call —
+il flag ferma il ciclo del modello *dopo* — quindi l'esito resta in
+`response.tool_executions`, che è da dove `was_updated` e la conferma di Ares
+leggono ciò che è stato scritto.
+
+La stessa prova offline, sullo stesso turno finto, misura il dopo:
+
+- **tre chiamate** invece di cinque: una per profilo, memorie e contesto;
+- **19.970 caratteri** invece di 33.649 (-41%), di cui 13.182 di istruzioni
+  (erano 21.821), 5.780 di turno rispedito (erano 7.017) e 5.462 di schemi
+  (erano 9.148);
+- spegnere uno store toglie esattamente una chiamata: 3 accese, 2 con uno
+  spento, 0 con tutti e tre spenti;
+- un modello che non chiama lo strumento costa ora **più** di uno che scrive —
+  quattro chiamate contro tre, perché paga i tentativi del contesto: prima era
+  il contrario, quattro contro cinque, e il testo sopra descriveva un caso che
+  non si verificava.
+
+Il numero di chiamate è asserito, non solo stampato: una patch di Agno che
+reintroducesse la conferma rende rossa la prova invece di alzare una cifra nel
+rapporto. Un'altra prova legge profilo e memorie dopo il turno e verifica che
+contengano ciò che il modello ha passato: se il flag un giorno saltasse anche
+la scrittura, il costo scenderebbe e la memoria resterebbe vuota.
+
+Il carattere è una misura offline, che non dipende dal modello. Per avere il
+numero vero, lo stesso turno — con una richiesta esplicita di ricordare, così
+che entrambi gli store scrivano — è stato eseguito con
+`deepseek-v4.1-flash:cloud` su un archivio nuovo, prima e dopo:
+
+| | chiamate | token in ingresso | token in uscita |
+| --- | --- | --- | --- |
+| prima | 5 | 9.533 | 841 |
+| dopo | 3 | 5.388 | 611 |
+
+Il 43% di ingresso in meno è la stessa cosa che misura la prova offline: le due
+chiamate tolte portavano 1.917 e 2.228 token, le più care delle cinque. Il
+profilo e le memorie risultano scritti in entrambe le esecuzioni.
+
+`tests/e2e_test.py`, che usa il turno corto della prova end-to-end invece di
+questo, stampa `5274 in / 529 out` e un apprendimento di 2,2 s su un turno di
+4,8 s. Quel turno non chiede di ricordare niente, quindi quanti store
+scrivevano non è sotto controllo e i suoi token non sono un confronto: il
+numero da guardare è la tabella qui sopra.
 
 ## Limiti del protocollo
 

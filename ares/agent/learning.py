@@ -1,5 +1,7 @@
 """Configurazione e adattamenti del ciclo di apprendimento di Ares."""
 
+from typing import Any
+
 from agno.db.sqlite import SqliteDb
 from agno.knowledge.knowledge import Knowledge
 from agno.learn import (
@@ -11,7 +13,13 @@ from agno.learn import (
     UserMemoryConfig,
     UserProfileConfig,
 )
-from agno.learn.stores import EntityMemoryStore, LearnedKnowledgeStore, SessionContextStore, UserMemoryStore
+from agno.learn.stores import (
+    EntityMemoryStore,
+    LearnedKnowledgeStore,
+    SessionContextStore,
+    UserMemoryStore,
+    UserProfileStore,
+)
 from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
 
@@ -128,6 +136,41 @@ class AresSessionContextStore(SessionContextStore):
         return risultato
 
 
+def senza_conferma(funzioni: list[Any], nome: str) -> list[Any]:
+    """Ferma il modello dopo la scrittura, senza la chiamata di conferma.
+
+    Agno esegue la tool call, rimette il risultato nei messaggi e richiama il
+    modello per sentirgli dire che ha finito; la risposta di quella seconda
+    chiamata non la legge nessuno, perche' l'esito si legge da
+    `response.tool_executions` attraverso `was_updated`. `SessionContextStore`
+    la evita gia' per `save_session_context`, con un commento nel sorgente di
+    Agno; profilo e memorie la pagavano ancora, ed erano due delle cinque
+    chiamate di ogni turno: il 41% dei caratteri spediti per turno, quasi
+    tutto istruzioni rispedite (docs/memory-quality.md).
+
+    Il flag non cambia cosa si impara - e' la stessa scrittura che avveniva
+    prima - e non tocca la conferma di Ares, che legge e riscrive gli store
+    dopo il turno. `nome` e' quello che Agno costruisce, non uno scelto qui, e
+    `tests/learning_cost_test.py` lo verifica leggendo gli store.
+    """
+    for funzione in funzioni:
+        if funzione.name == nome:
+            funzione.stop_after_tool_call = True
+    return funzioni
+
+
+class AresUserProfileStore(UserProfileStore):
+    """Il profilo, con una sola chiamata al modello per turno.
+
+    Le istruzioni arrivano dalla configurazione, in italiano come le altre,
+    quindi qui non c'e' niente da riscrivere: l'unica differenza da
+    `UserProfileStore` e' il flag sulla sua tool call.
+    """
+
+    def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return senza_conferma(super()._build_functions_for_model(*args, **kwargs), "update_profile")
+
+
 class AresUserMemoryStore(UserMemoryStore):
     """Le memorie, spiegate al modello in italiano e per una persona sola.
 
@@ -137,6 +180,9 @@ class AresUserMemoryStore(UserMemoryStore):
     memorie si aggiornano da sole dopo ogni risposta, che l'utente le vede
     e puo' annullarle, e quando invece tocca a lui usare lo strumento.
     """
+
+    def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return senza_conferma(super()._build_functions_for_model(*args, **kwargs), "add_memory")
 
     def instructions(self) -> str:
         if not self._should_expose_tools or not self.config.agent_can_update_memories:
@@ -281,23 +327,27 @@ def build_learning_machine(
     learning_model = build_learning_model(impostazioni)
     apprendimento = politica.apprendimento
 
-    user_profile: UserProfileConfig | bool = False
+    # Gli store con una guida per il modello - e quello che deve fermarsi dopo
+    # la scrittura - si costruiscono qui, con le classi di Ares: la macchina
+    # accetta istanze gia' fatte e non le completa, quindi db, modello e
+    # limiti vanno passati.
+    user_profile: AresUserProfileStore | bool = False
     if apprendimento.profilo:
-        user_profile = UserProfileConfig(
-            mode=LearningMode.ALWAYS,
-            schema=AresProfile,
-            model=learning_model,
-            max_updates_per_run=apprendimento.max_aggiornamenti,
-            instructions=(
-                CRITERI_ESTRAZIONE + "Cattura solo cio' che resta vero oltre questa conversazione. "
-                "Le preferenze durature e il contesto professionale vanno nel profilo; "
-                "cio' che l'utente vuole in questo momento no."
-            ),
+        user_profile = AresUserProfileStore(
+            config=UserProfileConfig(
+                db=db,
+                mode=LearningMode.ALWAYS,
+                schema=AresProfile,
+                model=learning_model,
+                max_updates_per_run=apprendimento.max_aggiornamenti,
+                instructions=(
+                    CRITERI_ESTRAZIONE + "Cattura solo cio' che resta vero oltre questa conversazione. "
+                    "Le preferenze durature e il contesto professionale vanno nel profilo; "
+                    "cio' che l'utente vuole in questo momento no."
+                ),
+            )
         )
 
-    # Gli store con una guida per il modello si costruiscono qui, con le
-    # classi che la scrivono in italiano: la macchina accetta istanze gia'
-    # fatte e non le completa, quindi db, modello e limiti vanno passati.
     user_memory: AresUserMemoryStore | bool = False
     if apprendimento.memorie:
         user_memory_config = UserMemoryConfig(
