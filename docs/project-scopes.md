@@ -11,6 +11,15 @@ come verificata, è una proposta. Non introduce un identificativo di progetto,
 non cambia le chiavi degli archivi, non migra dati esistenti. Le prove di
 accettazione sono descritte al §8 e non implementate.
 
+**Aggiornamento del 22 settembre 2026.** Le due verifiche preliminari chieste
+dal §8 sono state fatte e sono misurate al §3.4: una provenienza di progetto
+nelle memorie si scrive con le API pubbliche, sopravvive a una riscrittura e
+va riallineata quando il turno tocca la voce; il filtro per namespace delle
+intuizioni è applicato dopo il limite, e con due ambiti può restituire zero
+intuizioni del progetto. Le due decisioni che dipendevano dalle verifiche —
+la forma della provenienza e la strategia di ricerca — sono chiuse al §9. Il
+resto del documento resta una proposta non implementata.
+
 ## 1. Risultato atteso e perimetro
 
 Ares sa **chi** sta parlando (l'utente) e **quando** (la sessione), ma non
@@ -201,7 +210,13 @@ Sono i vincoli che una proposta deve rispettare o dichiarare come debito.
    vettoriale: i risultati sono filtrati *dopo* i primi `limit`, quindi una
    ricerca ristretta può restituire meno di `limit` elementi e perdere
    corrispondenze fuori dal gruppo iniziale. Due namespace non si interrogano
-   con una sola ricerca.
+   con una sola ricerca. L'entità del taglio è misurata al §3.4: non è un
+   caso di scuola, e con il namespace del progetto il blocco iniettato può
+   restare vuoto. Va detto che oggi non succede nulla di tutto questo, perché
+   l'ambito è uno solo per utente e il filtro non toglie niente: il limite si
+   manifesta quando gli ambiti diventano due, cioè quando il §5 si realizza.
+   La stessa condizione non vale per la colonna dell'owner, che Agno applica
+   come prefiltro del motore: il percorso delle intuizioni non la usa.
 5. **La colonna `metadata` delle righe di apprendimento esiste ma non è
    usata**: nessuno store la scrive e i lettori non la filtrano. Non è una
    via per il progetto senza modificare Agno.
@@ -225,6 +240,81 @@ l'informazione necessaria a filtrarlo. Da qui la proposta del §5: dare al
 progetto un namespace composto per entità e intuizioni, e per gli archivi senza
 namespace una **provenienza dichiarata dentro il dato**, resa visibile dal
 punto in cui Ares già costruisce il testo per il prompt.
+
+### 3.4 Esito delle due verifiche preliminari
+
+Il §8 chiedeva due verifiche prima di scegliere la forma della provenienza
+delle memorie e della ricerca delle intuizioni. Sono state fatte il 22
+settembre 2026 sui pacchetti installati, con i doppi delle prove: nessun
+modello reale, nessuna rete, un archivio temporaneo per ciascuna. Gli esiti
+seguenti sono misure, non previsioni. Come le tre del §2.3 sono state fatte
+con script usa-e-getta: ciò che le rende permanenti sono le due prove che ne
+derivano, elencate al §8.
+
+**Memorie: la provenienza si scrive, sopravvive, e va riallineata.**
+
+```text
+1. dopo l'estrazione      : 1 {added_by_agent, content, created_at, id, source, updated_at}
+   content                : Le migrazioni si scrivono a mano.
+2. dopo la scrittura Ares : {added_by_agent, content, created_at, id, progetto, source, updated_at} progetto = alfa
+3. dopo la riscrittura    : {added_by_agent, content, created_at, id, progetto, source, updated_at, updated_by_agent} progetto = alfa
+   content                : Le migrazioni si scrivono a mano e si provano.
+3b. dopo il riallineamento: beta
+4. resa per il prompt     : '(fra parentesi quadre, la data in cui hai saputo la cosa)\n- Le migrazioni si scrivono a mano e si provano. [2026-09-22]'
+   cosa vede il modello   : [{'id': 'e626ea51', 'content': 'Le migrazioni si scrivono a mano e si provano.'}]
+```
+
+Quattro fatti, con la loro conseguenza:
+
+- Agno scrive già chiavi proprie in ogni voce — `source`, `added_by_agent`,
+  e `updated_by_agent` dopo una riscrittura. Una chiave in più di Ares non è
+  una forma nuova: è la stessa, e convive con quelle.
+- Una scrittura di Ares **dopo il turno** persiste e sopravvive a un
+  `update_memory` che cambia il contenuto: la voce riscritta porta ancora
+  `progetto = alfa`. Le API sono quelle pubbliche — `get` e `save` — cioè le
+  stesse che `ares/agent/echo.py` usa già per `istantanea` e `ripristina`, e
+  il punto in cui Ares rilegge e riscrive gli store dopo il turno esiste.
+- La sopravvivenza è anche il difetto: il modello **non vede la
+  provenienza**, perché il prompt di estrazione riceve `{id, content}` e
+  nient'altro. Può quindi riscrivere da un altro progetto una memoria che
+  resta etichettata con il primo, e la misura lo mostra — contenuto nuovo,
+  `progetto` vecchio. Il rimedio è della stessa natura: riallineare la chiave
+  dopo il turno, sulle voci che il turno ha toccato. Misurato: `beta`.
+- La resa per il prompt riceve le voci come stanno in archivio, quindi il
+  filtro in `get_memories_text` — codice di Ares — è possibile, e le chiavi
+  non servono al modello per essere utili.
+
+**Intuizioni: il taglio è reale, e non è proporzionale al limite.**
+
+```text
+documenti: 30 in user/demo (uguali alla query), 5 in user/demo/progetti/alfa (vicini)
+  filtro namespace, limit= 5 -> in ambito: 0
+  filtro namespace, limit=20 -> in ambito: 0
+  filtro namespace, limit=30 -> in ambito: 0
+  filtro namespace, limit=35 -> in ambito: 5
+  filtro namespace, limit=40 -> in ambito: 5
+  senza filtro,     limit= 5 -> in ambito: 0
+  owner (prefiltro), limit= 5 -> righe dell'utente: 5
+  ambito unico di oggi, limit= 5 -> in ambito: 5
+```
+
+Finché il gruppo iniziale è tutto fuori ambito, la ricerca nel progetto
+restituisce **zero** anche alzando il limite fino a contare tutti i documenti
+fuori ambito (30); il progetto riappare solo quando il limite li supera (35).
+Il prefiltro dell'owner, nella stessa tabella, restituisce 5 su 5 con limite
+5: la differenza non è quanti dati ci sono, è il momento in cui il filtro
+agisce. E con il namespace unico di oggi il filtro restituisce 5 su 5: il
+problema nasce dalla separazione, non dall'esistente — il che spiega perché
+non sia mai stato visto.
+
+Conseguenza per la proposta: due ricerche, una per namespace, non bastano
+finché restano appese all'iniezione automatica, che usa `limit=5` e un
+namespace fissato alla costruzione. Il blocco delle intuizioni va composto da
+Ares — una ricerca per namespace con un limite esplicito e una fusione — cioè
+prendendo in mano quella parte del prompt, che il contratto del nucleo già
+contempla. L'alternativa è trasformare il filtro dei metadati in prefiltro,
+e vuol dire una sottoclasse del vector db o una patch: più efficace, più
+costoso da sostenere fra le versioni.
 
 ## 4. Identità di progetto: dal percorso a un id
 
@@ -297,10 +387,10 @@ utenti, quindi non serve alcun cambio di Agno.
 | Archivio | Ambito proposto | Come si esprime | Cosa cambia rispetto a oggi |
 | --- | --- | --- | --- |
 | Profilo | persona | `user_id` (invariato) | Nulla: le preferenze personali restano trasversali, come chiede la verifica attesa della roadmap |
-| Memorie | persona, con provenienza dichiarata | contenuto con il progetto quando esiste; filtro in resa | Le memorie di progetto si annotano e si presentano solo nel progetto; quelle personali ovunque |
+| Memorie | persona, con provenienza dichiarata | contenuto con il progetto quando esiste, riallineato a ogni turno che tocca la voce; filtro in resa | Le memorie di progetto si annotano e si presentano solo nel progetto; quelle personali ovunque |
 | Contesto di sessione | sessione | `session_id` (invariato) | Nulla |
 | Entità | progetto | `namespace_entita(utente, progetto)` | Oggi `user/<id>/personale`; le entità personali restano nel namespace personale |
-| Intuizioni | progetto, personale consultabile | namespace del progetto; il personale si interroga a parte | Oggi `user/<id>`; due ricerche invece di una quando serve il personale |
+| Intuizioni | progetto, personale consultabile | namespace del progetto e del personale, cercati a parte con un limite esplicito | Oggi `user/<id>`; il blocco va composto da Ares, non dall'iniezione automatica |
 | Quaderno | progetto | namespace del quaderno composto col progetto | Oggi per utente: due progetti si vedono i file |
 | Sessioni e cronologia | sessione, etichetta di progetto nei metadati | `CHIAVE_CARTELLA` più l'id di progetto | La cartella resta l'etichetta leggibile; l'id è il filtro |
 | Registro dei progetti | installazione (con l'utente come proprietario) | nuovo archivio in `percorsi.stato` | Non esiste |
@@ -312,14 +402,21 @@ Due precisazioni che riguardano il progetto e non l'utente:
   quei due archivi hanno già l'asse. Un profilo per progetto richiederebbe
   chiavi che Agno non prevede e produrrebbe un secondo profilo da tenere
   allineato.
-- **Le memorie hanno bisogno di una provenienza verificata.** Lo strumento con
+- **Le memorie hanno bisogno di una provenienza riallineata.** Lo strumento con
   cui il modello aggiunge una memoria porta solo il testo, quindi la
-  provenienza non può essere scritta dall'estrazione: va aggiunta da Ares dopo
-  l'estrazione, oppure resa nel punto in cui le memorie diventano testo — che
-  Ares già possiede, perché `AresMemories.get_memories_text` è suo
-  ([schemas.py](../ares/agent/schemas.py)). Quale delle due, e se la
-  provenienza sopravvive alle riscritture di Agno, è una verifica preliminare
-  del §8, non un'ipotesi da dare per buona.
+  provenienza non può venire dall'estrazione: la scrive Ares dopo il turno,
+  nel punto in cui già rilegge e riscrive gli store, e la riallinea sulle voci
+  che il turno ha toccato — perché il modello non vede la chiave e può
+  riscrivere da un altro progetto una memoria che la porta ancora. Misurato al
+  §3.4: si scrive, sopravvive alla riscrittura, e senza riallineamento resta
+  quella di prima. Il filtro in resa è l'altra metà, e vive in
+  `AresMemories.get_memories_text`, che è codice di Ares
+  ([schemas.py](../ares/agent/schemas.py)).
+- **Le intuizioni non si possono dividere e lasciare all'iniezione
+  automatica.** Il filtro per namespace agisce dopo il limite (§3.2, §3.4),
+  quindi una ricerca nel progetto può restituire zero: il blocco va composto
+  da Ares, una ricerca per namespace con un limite esplicito, e l'iniezione
+  automatica smette di essere il percorso di quelle righe.
 
 ## 6. Ambiti applicati dal codice
 
@@ -400,8 +497,10 @@ scelta di progetto.
 
 Le prove sono offline e deterministiche, nella forma delle prove esistenti
 ([testing.md](testing.md)): nessun modello reale, nessuna rete, un ambiente
-temporaneo per prova. La colonna *tipo* distingue le prove che si possono
-scrivere subito da quelle che richiedono prima una verifica sul framework.
+temporaneo per prova. Le due verifiche preliminari che il documento chiedeva
+sono già state fatte, e sono misurate al §3.4; le prove che ne derivano sono
+elencate qui come codice nuovo, perché il comportamento da fissare è quello
+della proposta, non quello del framework.
 
 | Prova | Che cosa dimostra | Tipo |
 | --- | --- | --- |
@@ -414,13 +513,14 @@ scrivere subito da quelle che richiedono prima una verifica sul framework.
 | Ambito ambiguo | Con due progetti annidati non registrati la richiesta è esplicita e nessuna scrittura avviene prima della risposta | codice nuovo |
 | Nessun allargamento silenzioso | `search_past_sessions`, `inspect` e il quaderno non restituiscono dati di un altro progetto come se fossero di questo | codice nuovo |
 | Il quaderno non si mescola | Un file scritto nel progetto A non è leggibile dal progetto B, e il personale resta leggibile da entrambi | codice nuovo |
-| Provenienza delle memorie | La provenienza scritta sopravvive a una riscrittura delle memorie e filtra la resa nel prompt | verifica preliminare |
-| Filtro delle intuizioni | Due namespace non si interrogano con una ricerca sola e il filtro post-limite non nasconde risultati attesi | verifica preliminare |
+| Provenienza sopravvive e si riallinea | Dopo una riscrittura da un altro progetto la provenienza della voce è quella nuova, e il filtro in resa presenta la voce solo lì | codice nuovo |
+| Intuizioni di progetto non troncate | Con l'ambito personale che occupa il gruppo iniziale, la ricerca del progetto restituisce le sue intuizioni e non zero | codice nuovo |
 | Backup e ripristino | Il registro dei progetti e gli ambiti tornano identici dopo un ciclo di snapshot e ripristino | codice nuovo |
 
-Le due verifiche preliminari vanno fatte **prima** di scegliere la forma della
-provenienza e della ricerca: se la provenienza non sopravvive, la proposta del
-§5 va cambiata, non la prova.
+Le due prove che dipendevano dalle verifiche sono le più vicine a un difetto
+silenzioso: entrambe passano quando i dati sono pochi, ed è la ragione per cui
+vanno scritte con un archivio popolato — l'ambito personale più grande del
+progetto, e una voce riscritta da un altro progetto.
 
 ## 9. Decisioni da chiudere prima del codice
 
@@ -429,8 +529,9 @@ provenienza e della ricerca: se la provenienza non sopravvive, la proposta del
 | Forma dell'id di progetto | Opaco generato (proposto) oppure leggibile e unico | Un id leggibile invita a derivarlo da qualcosa: è il rischio che il §4.1 esclude |
 | Dove vive il registro | In `percorsi.stato` (proposto), quindi nel backup | Fuori dallo stato non verrebbe salvato né ripristinato |
 | Dati esistenti | Nessuna migrazione per profilo e memorie se restano personali; le entità di `user/<id>/personale` restano personali finché non si riassegnano | Il debito va dichiarato, non risolto in silenzio |
-| Provenienza delle memorie | Campo dentro il dato oppure solo resa filtrata | Dipende dalla verifica preliminare del §8 |
-| Intuizioni personali e di progetto | Due ricerche con deduplica, oppure namespace unico e criterio nel testo | Il filtro letterale del §3.2 non permette una ricerca sola |
+| Provenienza delle memorie | **Campo dentro il dato, riallineato dopo ogni turno che tocca la voce** (misurato al §3.4), con il filtro in resa in `get_memories_text` | La sola resa filtrata non basta: senza la chiave non c'è niente da filtrare |
+| Intuizioni personali e di progetto | **Blocco composto da Ares: una ricerca per namespace con limite esplicito e fusione** (misurato al §3.4); il prefiltro del vector db resta l'alternativa più efficace e più costosa | L'iniezione automatica usa `limit=5` e un namespace solo: con due ambiti può restituire zero |
+| Chi compone il blocco delle intuizioni | Ares, nel prompt, come già fa per le altre sezioni; l'iniezione automatica resta per entità e contesto | Conseguenza della riga sopra, e va decisa insieme |
 | Clone e worktree | Associazione proposta oppure automatica per worktree | La persona sa se un clone è lo stesso progetto |
 | Allargamenti dichiarati | Quali restano e con quale testo | Elenco al §6.3 |
 | Versione del formato | Il manifesto degli snapshot dichiara `namespace_format: user/<id>`; con il progetto cambia, e il numero di formato va incrementato | `ares/backup/snapshots.py` |
@@ -440,9 +541,18 @@ provenienza e della ricerca: se la provenienza non sopravvive, la proposta del
 - Le entità esistenti vivono in `user/<id>/personale`: restano personali e
   disponibili ovunque finché non vengono riassegnate a un progetto. Nessuna
   migrazione automatica le sposta, perché l'appartenenza non è deducibile.
-- Profilo e memorie già scritti non hanno provenienza. Se la provenienza
-  diventa un campo, i ricordi esistenti restano senza progetto e valgono
-  ovunque: è il comportamento corretto, ed è anche l'unico compatibile.
+- Profilo e memorie già scritti non hanno provenienza. Con la chiave decisa al
+  §9, i ricordi esistenti restano senza progetto e valgono ovunque: è il
+  comportamento corretto, ed è anche l'unico compatibile senza dedurre
+  un'appartenenza che nessuno ha dichiarato.
+- Il blocco delle intuizioni passa dall'iniezione automatica a una
+  composizione di Ares (§3.4). È un cambiamento di comportamento, non solo di
+  forma: il testo del prompt per quelle righe cambia, e la prova del costo
+  dell'apprendimento ne terrà conto.
+- La ricerca delle intuizioni resta più debole di quella delle entità: il
+  prefiltro del motore non è disponibile senza una sottoclasse del vector db,
+  e con un limite esplicito il taglio si riduce senza sparire. È un debito
+  verso Agno, non verso Ares.
 - Il registro dei progetti non esiste: finché non c'è, il comportamento
   attuale è quello descritto al §2, e ogni prova del §8 che lo richiede
   fallisce per assenza, non per difetto.
