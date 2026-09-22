@@ -6,6 +6,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Fixed
+
+- `SECURITY.md` dichiarava supportata la linea 0.7.x dopo il rilascio della
+  0.8.0; i collegamenti in coda a questo file erano ancora fermi alla 0.7.1, e
+  la voce `[0.8.0]` mancava. La CI era verde lo stesso: quei file non li legge
+  nessuno.
+
 ## [0.8.0] - 2026-09-22
 
 Il contratto del nucleo è completo: percorsi, impostazioni, identità e
@@ -1319,7 +1326,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/KairosIta/Ares/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/KairosIta/Ares/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/KairosIta/Ares/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/KairosIta/Ares/compare/v0.6.0...v0.6.1
