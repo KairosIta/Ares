@@ -44,10 +44,12 @@ riproducibile e CI su Ubuntu e Windows completano la base esistente.
 Le sessioni registrano la cartella, ma profilo, memorie, entità, intuizioni
 e quaderno sono condivisi fra i progetti dello stesso utente. La conferma
 attuale ripristina profilo e memorie dopo la scrittura, per l'intero turno;
-non copre gli altri archivi. I lock coordinano i turni dello stesso utente
-e le operazioni di manutenzione. Dal 21 settembre 2026 l'identità dell'utente
-ha una sola forma canonica — namespace, profilo/memorie e lock concordano — e
-l'ID di sessione non collide fra cartelle omonime o avvii nello stesso secondo.
+non copre gli altri archivi, e fra la scrittura e la risposta resta una
+finestra in cui un processo che muore lascia la scrittura dov'è. I lock
+coordinano i turni dello stesso utente e le operazioni di manutenzione. Dal
+21 settembre 2026 l'identità dell'utente ha una sola forma canonica —
+namespace, profilo/memorie e lock concordano — e l'ID di sessione non
+collide fra cartelle omonime o avvii nello stesso secondo.
 
 Il prompt effettivo combina istruzioni nel codice, `ARES.md`, dati appresi
 e contesto di esecuzione. È ispezionabile con `ares inspect --prompt`, ma

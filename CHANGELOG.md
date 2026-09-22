@@ -142,6 +142,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   della prima. L'id conserva il prefisso leggibile e aggiunge una coda
   casuale; `tests/cli_test.py` lo prova su entrambi i casi.
 
+- **La conferma della memoria dichiara la sua finestra.** Il commento di
+  `agent/echo.py` presentava il ripristino come una conferma "con lo stesso
+  effetto di una a priori": non è vero per intero, perché la scrittura avviene
+  durante il turno e il ripristino alla risposta, e fra le due c'è una finestra
+  in cui un processo che muore — un `kill`, un crash, il terminale chiuso —
+  lascia la scrittura dov'è. Il lock dell'utente copre l'attesa fra due chat,
+  non fra due vite del processo. La frase ora dice cosa la conferma copre
+  davvero — *se il processo sopravvive al turno*, ciò che si rifiuta non
+  sopravvive — e la stessa formulazione sta in `config.py`, in
+  `docs/architecture.md` e nella `ROADMAP.md`. Chiudere la finestra
+  (scrittura provvisoria, riversata dopo il consenso) resta una scelta della
+  voce 3 della roadmap: qui non cambia nessun comportamento.
+
 Verifica locale del 2026-09-21: otto prove offline verdi con copertura al 90%
 su Linux/Python 3.12; `ruff check`, `ruff format --check` e `mypy ares` (51
 file) puliti. Le prove con Ollama non sono state eseguite in questo giro.

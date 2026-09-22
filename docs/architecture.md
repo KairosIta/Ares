@@ -221,6 +221,18 @@ strumenti di memoria, chiedendo ad Ares di correggere o cancellare. Entità
 e intuizioni restano fuori dal ripristino: si scrivono solo con strumenti
 agentici, che il flusso mostra già uno per uno.
 
+Che la conferma sia a valle ha un prezzo, e va detto: fra la scrittura e la
+risposta c'è una finestra, e un processo che muore lì dentro — un `kill`, un
+crash, il terminale chiuso — lascia in memoria ciò che l'utente non ha ancora
+accettato. Il lock dell'utente copre l'attesa fra due chat, non fra due vite
+del processo. La garanzia è perciò condizionata: *se il processo sopravvive al
+turno*, ciò che si rifiuta non sopravvive. Chiudere la finestra vuol dire
+scrivere in una copia provvisoria e riversarla dopo il consenso, cioè una
+scrittura differita che Agno non offre su questi store: è la voce 3 della
+`ROADMAP.md`, e si decide lì. La metà che invece è già garantita — un `n`
+riporta i due store all'istantanea di prima del turno, verificandolo con una
+rilettura — è quella che `tests/cli_test.py` prova contro store veri.
+
 Che la conferma stia a valle della scrittura e non a monte non è una scelta
 fra due possibilità disponibili. Le modalità di apprendimento di Agno 3.0.9 sono
 quattro, ma non valgono per tutti gli store: `PROPOSE` è supportata dal solo

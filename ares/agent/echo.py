@@ -17,9 +17,20 @@ tornare indietro. Agno non offre una conferma su profilo e memorie -
 `PROPOSE` vale per le sole intuizioni, `HITL` per nessuno store - quindi la
 scrittura avviene comunque; ma gli store espongono `save` e `delete`, e
 riscrivere cio' che si era letto prima del turno e' una conferma a
-posteriori con lo stesso effetto di una a priori: cio' che l'utente non
-vuole non sopravvive al turno. `istantanea` conserva gli oggetti come li
-restituiscono gli store, `ripristina` li riscrive.
+posteriori: cio' che l'utente rifiuta non sopravvive al turno. `istantanea`
+conserva gli oggetti come li restituiscono gli store, `ripristina` li
+riscrive.
+
+A posteriori vuol dire a posteriori, e il prezzo va detto per intero: fra
+la scrittura e la risposta c'e' una finestra, e un processo che muore li'
+dentro - un `kill`, un crash, il terminale chiuso - lascia la scrittura
+dov'e'. Il lock dell'utente copre l'attesa fra due chat, non fra due vite
+del processo, e nessun `finally` gira dopo un `SIGKILL`. La garanzia che
+questo modulo da' e' percio' condizionata: *se il processo sopravvive al
+turno, cio' che l'utente rifiuta non sopravvive*. Chiuderla del tutto
+significa scrivere in una copia provvisoria e riversarla solo dopo il
+consenso, cioe' una scrittura differita che Agno non offre su questi store:
+e' la voce 3 della `ROADMAP.md`, e va decisa li', non aggiunta qui.
 
 Solo profilo e memorie, cioe' cio' che e' durevole e attraversa le sessioni:
 un'osservazione sbagliata entra in ogni conversazione futura, ed e' per
