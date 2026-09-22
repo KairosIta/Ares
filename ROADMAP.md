@@ -120,6 +120,10 @@ Da approfondire:
 propri fatti; una preferenza personale pertinente resta disponibile in
 entrambi. Spostamenti e worktree hanno un comportamento definito e provato.
 
+Approfondimento disponibile: [identità di progetto e ambiti applicati dal
+codice](docs/project-scopes.md), con le evidenze nel codice e in Agno, le
+proposte e le prove di accettazione. Non è un'implementazione.
+
 ### 2. Ambiti applicati dal codice in scrittura e recupero
 
 **Obiettivo:** rendere l'isolamento una proprietà verificabile del sistema.
@@ -139,6 +143,10 @@ Da approfondire:
 **Verifica attesa:** prove di scrittura e lettura fra ambiti diversi,
 incluse richieste ambigue e strumenti, dimostrano che nessun percorso
 automatico allarga implicitamente il contesto consentito.
+
+Approfondimento disponibile: [identità di progetto e ambiti applicati dal
+codice](docs/project-scopes.md), §3 e §6 sul trasporto dell'ambito, i limiti
+di ogni store Agno e i percorsi che allargano il contesto.
 
 ### 3. Gestione unificata e revisione degli apprendimenti
 
