@@ -18,11 +18,16 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - `docs/testing.md` diceva che «`--tutte` alza il numero» e `tests/run.py`
   ripeteva che metà di ciò che resta scoperto sta nei percorsi che solo le
   prove con Ollama attraversano. Misurato il 22 settembre 2026: i due rapporti
-  sono identici, riga per riga e ramo per ramo — 4.324 istruzioni, 309
-  scoperte, 1.334 rami, 90%. Le prove con Ollama verificano il comportamento
+  sono identici, riga per riga e ramo per ramo — 4.335 istruzioni, 309
+  scoperte, 1.338 rami, 90%. Le prove con Ollama verificano il comportamento
   del modello, non aggiungono righe coperte.
 - I numeri di copertura in `docs/testing.md` erano quelli del 13 settembre.
   Ora sono quelli del 22, con la data accanto.
+- In `docs/memory-quality.md` il totale della colonna «conversazione» (2.474)
+  non comprendeva il messaggio di sistema del contesto, che porta la
+  conversazione dentro le proprie istruzioni: le chiamate che rimandano il
+  turno ne portano 7.017, e quella colonna si sovrappone a quella delle
+  istruzioni. La prova offline stampa il numero giusto, la pagina no.
 - `SECURITY.md` dichiarava supportata la linea 0.7.x dopo il rilascio della
   0.8.0; i collegamenti in coda a questo file erano ancora fermi alla 0.7.1, e
   la voce `[0.8.0]` mancava. La CI era verde lo stesso: quei file non li legge
@@ -34,6 +39,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   riga di `SECURITY.md`, merge con `--merge`, tag annotato e nota della
   release — perché i due punti che erano stati saltati sono proprio quelli
   che nessuna verifica automatica copriva.
+- L'apprendimento non paga più la chiamata di conferma su profilo e memorie:
+  `agent/learning.py` costruisce i due store da `AresUserProfileStore` e
+  `AresUserMemoryStore`, che impostano `stop_after_tool_call` sulla loro tool
+  call come Agno fa già per il contesto di sessione. Un turno passa da cinque
+  a tre chiamate e da 33.649 a 19.970 caratteri spediti (-41%); con
+  `deepseek-v4.1-flash:cloud`, sullo stesso turno che scrive in entrambi gli
+  store, da 9.533 a 5.388 token di ingresso. La scrittura non cambia:
+  `learning_cost_test.py` legge profilo e memorie dopo il turno e verifica che
+  contengano ciò che il modello ha passato.
 
 ## [0.8.0] - 2026-09-22
 

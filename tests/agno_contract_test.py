@@ -25,8 +25,8 @@ afferma e' l'effetto: il file viene cancellato dopo la conferma e non
 prima, resta al suo posto dopo un rifiuto, e in entrambi i casi il run
 riprende e finisce.
 
-La terza: il retry di `AresSessionContextStore`. E' la seconda superficie
-di Agno che Ares sovrascrive, e finora la provava soltanto
+La terza: il retry di `AresSessionContextStore`. E' la seconda delle tre
+superfici di Agno che Ares sovrascrive, e finora la provava soltanto
 `learning_reliability_test.py`, che vuole Ollama e quindi in CI non gira
 mai: il ramo piu' delicato dell'apprendimento era verificato solo a mano.
 Il retry si regge su tre fatti di Agno - `extract_and_save` esiste con
@@ -35,6 +35,9 @@ il modello ha eseguito uno strumento, `aextract_and_save` e' il gemello
 asincrono - e se uno cadesse Ares ripeterebbe all'infinito o non
 ripeterebbe mai, in silenzio. Qui il modello e' di nuovo un copione, cosi'
 il caso "fallisce e poi recupera" e' deterministico invece che sperato.
+La terza superficie, il flag `stop_after_tool_call` su profilo e memorie, non
+si controlla qui: `learning_cost_test.py` la esercita con un modello finto e
+conta le chiamate, che e' una prova piu' diretta di un controllo di firma.
 
 La quarta: profilo e memorie non sono confermabili. `SECURITY.md` e
 `docs/architecture.md` dichiarano che la memoria durevole si scrive senza

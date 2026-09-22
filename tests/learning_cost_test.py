@@ -10,16 +10,21 @@ misura che serve prima di decidere se il prezzo vale la qualita'.
 
 `LearningMachine.process` chiama `store.process` una volta per store, e ogni
 store ALWAYS estrae con una o due chiamate al modello a seconda di cosa
-risponde: profilo e memorie eseguono la tool call e poi richiamano il modello
-per la conferma, mentre il contesto di sessione imposta
-`stop_after_tool_call` e si ferma alla prima. Un modello che non chiama
-affatto lo strumento, invece, costa i tentativi del contesto.
+risponde. Agno richiama il modello dopo la tool call per sentirgli dire che ha
+finito, e la risposta di quella chiamata non la legge nessuno: era una
+chiamata in piu' per profilo e per memorie, due delle cinque di un turno. Il
+contesto di sessione la evitava gia' con `stop_after_tool_call`, e ora la
+evitano anche loro (`senza_conferma` in `agent/learning.py`). Un
+modello che non chiama affatto lo strumento, invece, costa i tentativi del
+contesto.
 
 Qui il modello di apprendimento e' finto e conta: nessuna rete e nessun
 modello scaricato, cosi' il numero di chiamate e' una proprieta' del
 framework e della politica invece che di un copione. Accanto al numero si
 misura il peso: ogni estrazione rimanda al modello la conversazione intera, e
-questa prova lo verifica invece di darlo per scontato.
+questa prova lo verifica invece di darlo per scontato. Il numero di chiamate
+e' asserito, non solo stampato: un Agno che reintroducesse la conferma deve
+rendere rossa la prova, non alzare una cifra nel rapporto.
 """
 
 from __future__ import annotations
@@ -58,6 +63,13 @@ SESSIONE = "costo"
 # conferma di profilo e memorie rimanda gli stessi strumenti, quindi il
 # secondo invio si riconosce allo stesso modo del primo.
 STRUMENTI_DI_SALVATAGGIO = ("save_session_context", "update_profile", "add_memory", "update_memory")
+
+# Gli store che la politica predefinita tiene accesi in `ALWAYS`, uno per
+# strumento, e quindi le chiamate che un turno completato deve costare: dal
+# 22 settembre 2026 la conferma dopo la tool call non si paga piu' nemmeno su
+# profilo e memorie.
+STORE_ALWAYS = ("update_profile", "add_memory", "save_session_context")
+CHIAMATE_PER_TURNO = len(STORE_ALWAYS)
 
 # Cosa risponde il modello finto quando decide di scrivere. Il profilo vuole
 # almeno un campo, o la scrittura non cambia niente; le memorie vogliono il
@@ -199,8 +211,14 @@ def senza(quale: str) -> Any:
     return replace(POLITICA, apprendimento=replace(POLITICA.apprendimento, **{quale: False}))
 
 
-def estrai(finto: ModelloConta, politica: Any = None) -> list[dict[str, Any]]:
-    """Un turno completato, e le chiamate che l'estrazione ha prodotto."""
+def estrai(finto: ModelloConta, politica: Any = None) -> Any:
+    """Un turno completato, e la macchina di apprendimento che l'ha estratto.
+
+    Le chiamate restano su `finto.chiamate`: il contatore e' del modello, non
+    della macchina. La macchina si restituisce per i controlli che leggono cio'
+    che e' finito negli store, non solo quante volte il modello e' stato
+    chiamato.
+    """
     with patch.object(learning, "build_learning_model", lambda impostazioni: finto):
         macchina = build_learning_machine(build_db(PERCORSI), None, UTENTE, IMPOSTAZIONI, politica or POLITICA)
     macchina.process_completed_run(
@@ -209,6 +227,12 @@ def estrai(finto: ModelloConta, politica: Any = None) -> list[dict[str, Any]]:
         session_id=SESSIONE,
         agent_id="costo-agente",
     )
+    return macchina
+
+
+def chiamate_di(finto: ModelloConta, politica: Any = None) -> list[dict[str, Any]]:
+    """Le sole chiamate di un turno, quando la macchina non serve."""
+    estrai(finto, politica)
     return finto.chiamate
 
 
@@ -241,17 +265,26 @@ def pesi(chiamate: list[dict[str, Any]]) -> tuple[int, int, int, int]:
 def costo_delle_tre_estrazioni() -> str:
     """Le chiamate per store con la politica predefinita, e il loro peso.
 
-    Il numero che conta e' il primo: il report parlava di tre inferenze, e qui
-    si vede quante sono davvero. Il peso dice l'altra meta': ogni estrazione
-    rimanda la conversazione intera, e paga soprattutto le istruzioni dello
-    store e lo schema del suo strumento.
+    Il numero che conta e' il primo: una per store ALWAYS, perche' la
+    conferma che Agno scarta e' stata tolta anche a profilo e memorie. Il
+    peso dice l'altra meta': ogni estrazione rimanda la conversazione intera,
+    e paga soprattutto le istruzioni dello store e lo schema del suo
+    strumento.
     """
-    chiamate = estrai(ModelloConta())
+    chiamate = chiamate_di(ModelloConta())
     conteggi = per_store(chiamate)
 
     esigi(chiamate, "l'estrazione non ha chiamato il modello")
     esigi(
-        set(conteggi) == {"update_profile", "add_memory", "save_session_context"},
+        len(chiamate) == CHIAMATE_PER_TURNO,
+        "un turno costa "
+        + str(len(chiamate))
+        + " chiamate invece di "
+        + str(CHIAMATE_PER_TURNO)
+        + ": la conferma dopo la tool call e' tornata, o uno store ALWAYS non estrae piu'",
+    )
+    esigi(
+        set(conteggi) == set(STORE_ALWAYS),
         "non tutti e tre gli store ALWAYS hanno estratto: " + str(conteggi),
     )
     for chiamata in chiamate:
@@ -279,26 +312,33 @@ def costo_delle_tre_estrazioni() -> str:
 
 
 def la_politica_spegne_il_costo() -> str:
-    """Ogni store spento toglie le sue chiamate, e nessun'altra.
+    """Ogni store spento toglie una chiamata, e nessun'altra.
 
     E' il rovescio della misura: se il numero restasse lo stesso, la politica
-    non starebbe decidendo niente e il costo non sarebbe governabile. Con
-    tutti e tre spenti restano entita' e intuizioni, che sono AGENTIC e non
-    estraggono da sole: zero chiamate.
+    non starebbe decidendo niente e il costo non sarebbe governabile. Dopo la
+    mitigazione ogni store costa esattamente una chiamata, quindi il conto e'
+    esatto e non un "meno di prima". Con tutti e tre spenti restano entita' e
+    intuizioni, che sono AGENTIC e non estraggono da sole: zero chiamate.
     """
-    acceso = estrai(ModelloConta())
-    senza_profilo = estrai(ModelloConta(), senza("profilo"))
-    senza_memorie = estrai(ModelloConta(), senza("memorie"))
-    senza_contesto = estrai(ModelloConta(), senza("contesto"))
-    spenti = estrai(
+    acceso = chiamate_di(ModelloConta())
+    senza_profilo = chiamate_di(ModelloConta(), senza("profilo"))
+    senza_memorie = chiamate_di(ModelloConta(), senza("memorie"))
+    senza_contesto = chiamate_di(ModelloConta(), senza("contesto"))
+    spenti = chiamate_di(
         ModelloConta(),
         replace(POLITICA, apprendimento=replace(POLITICA.apprendimento, profilo=False, memorie=False, contesto=False)),
     )
     esigi(not spenti, "con gli store ALWAYS spenti l'estrazione chiama comunque il modello: " + str(len(spenti)))
+    esigi(len(acceso) == CHIAMATE_PER_TURNO, "accesi " + str(len(acceso)) + " invece di " + str(CHIAMATE_PER_TURNO))
     for nome, chiamate in (("profilo", senza_profilo), ("memorie", senza_memorie), ("contesto", senza_contesto)):
         esigi(
-            len(chiamate) < len(acceso),
-            "spegnere " + nome + " non toglie nessuna chiamata: " + str(len(chiamate)) + " come " + str(len(acceso)),
+            len(chiamate) == CHIAMATE_PER_TURNO - 1,
+            "spegnere "
+            + nome
+            + " toglie "
+            + str(len(acceso) - len(chiamate))
+            + " chiamate invece di 1: "
+            + str(len(chiamate)),
         )
     return (
         "accesi "
@@ -316,18 +356,50 @@ def la_politica_spegne_il_costo() -> str:
 def il_modello_che_non_ubbidisce() -> str:
     """Un modello che non chiama lo strumento paga i tentativi del contesto.
 
-    Profilo e memorie non ritentano: una chiamata a vuoto e basta. Il contesto
-    di sessione si', fino al tetto della politica, ed e' il caso in cui un
-    modello piccolo costa piu' di uno che ubbidisce.
+    Profilo e memorie non ritentano: una chiamata a vuoto e basta, e senza
+    tool call non c'e' nemmeno una conferma da saltare. Il contesto di
+    sessione invece ritenta fino al tetto della politica, quindi un modello
+    piccolo che non scrive costa piu' di uno che ubbidisce: e' l'unico caso
+    in cui la mitigazione non cambia niente.
     """
-    chiamate = estrai(ModelloConta(ubbidiente=False))
+    chiamate = chiamate_di(ModelloConta(ubbidiente=False))
     tentativi = POLITICA.apprendimento.tentativi_contesto
-    attese = 3 + tentativi
+    attese = CHIAMATE_PER_TURNO + tentativi
     esigi(
         len(chiamate) == attese,
         "attese " + str(attese) + " chiamate da un modello che non scrive, trovate " + str(len(chiamate)),
     )
+    esigi(
+        len(chiamate) > CHIAMATE_PER_TURNO,
+        "un modello che non scrive costa " + str(len(chiamate)) + ", quanto o meno di uno che scrive",
+    )
     return str(len(chiamate)) + " chiamate, di cui " + str(1 + tentativi) + " del contesto"
+
+
+def la_scrittura_arriva_negli_store() -> str:
+    """Il flag toglie la conferma, non la scrittura.
+
+    `stop_after_tool_call` ferma il ciclo del modello *dopo* che la tool call
+    e' stata eseguita: se un giorno Agno lo interpretasse come "non eseguire
+    affatto", il costo scenderebbe e la memoria resterebbe vuota, e la prova
+    del costo qui sopra sarebbe verde lo stesso. Qui si legge cio' che il
+    modello finto ha scritto: il profilo con il campo che ha passato, le
+    memorie con il loro testo.
+    """
+    macchina = estrai(ModelloConta())
+    profilo = macchina.user_profile_store.get(user_id=UTENTE.id)
+    memorie = macchina.user_memory_store.get(user_id=UTENTE.id)
+    esigi(profilo is not None, "il profilo e' vuoto dopo una tool call accettata")
+    esigi(
+        ARGOMENTI_DI_SALVATAGGIO["update_profile"]["communication_style"] in str(profilo),
+        "il profilo non contiene cio' che il modello ha scritto: " + str(profilo),
+    )
+    esigi(memorie is not None, "le memorie sono vuote dopo una tool call accettata")
+    esigi(
+        ARGOMENTI_DI_SALVATAGGIO["add_memory"]["memory"] in str(memorie),
+        "le memorie non contengono cio' che il modello ha scritto: " + str(memorie),
+    )
+    return "profilo e memorie scritti nonostante il flag sulla tool call"
 
 
 def main() -> int:
@@ -336,6 +408,7 @@ def main() -> int:
         ok("costo estrazioni", costo_delle_tre_estrazioni())
         ok("politica spegne il costo", la_politica_spegne_il_costo())
         ok("modello che non ubbidisce", il_modello_che_non_ubbidisce())
+        ok("scrittura negli store", la_scrittura_arriva_negli_store())
         riuscita = True
         return 0
     except Exception as errore:

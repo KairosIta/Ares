@@ -128,7 +128,7 @@ disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare.
 Nessuna di quelle righe sta in un percorso che solo un modello vero
 attraversa: misurato il 22 settembre 2026, `--tutte --copertura` produce un
 rapporto **identico** a quello delle sole prove offline, riga per riga e ramo
-per ramo — 4.324 istruzioni, 309 scoperte, 1.334 rami, 90%. Le prove con
+per ramo — 4.335 istruzioni, 309 scoperte, 1.338 rami, 90%. Le prove con
 Ollama verificano ciò che un modello finto non può dire, non allargano la
 copertura: le stesse righe le attraversano le prove offline con il modello
 deterministico. `tests/run.py` diceva il contrario in un commento, e la
@@ -206,13 +206,15 @@ allineare le dichiarazioni rende rossa questa prova, e il messaggio nomina il
 file. Restano fuori `CHANGELOG.md` e `docs/memory-quality.md`, che citano le
 versioni di allora.
 `costo` misura le tre estrazioni `ALWAYS` con lo stesso genere di modello
-finto, che però conta le chiamate e risponde scrivendo: cinque chiamate al
-modello di apprendimento per turno invece delle tre che il numero degli store
-lascerebbe credere — profilo e memorie pagano una seconda chiamata di
-conferma che il contesto evita con `stop_after_tool_call` — e 33.649
-caratteri, due terzi dei quali istruzioni. Spegnere uno store toglie le sue
-chiamate, e un modello che non chiama lo strumento costa i tentativi del
-contesto. I numeri e le opzioni stanno in
+finto, che però conta le chiamate e risponde scrivendo: tre chiamate al
+modello di apprendimento per turno, una per store — profilo e memorie non
+pagano più la seconda chiamata di conferma, che Agno produce e scarta e che il
+contesto evitava già con `stop_after_tool_call` — e 19.970 caratteri, due
+terzi dei quali istruzioni. Spegnere uno store toglie esattamente una
+chiamata, e un modello che non chiama lo strumento costa i tentativi del
+contesto, quindi più di uno che scrive. Una quarta prova legge profilo e
+memorie dopo il turno: il flag toglie la conferma, non la scrittura. I numeri
+e le opzioni stanno in
 [qualità della memoria](memory-quality.md#costo-delle-estrazioni-22-settembre-2026);
 la stessa misura con i modelli veri la stampa `e2e`, che accanto alla riga
 del client riporta i token di ingresso dell'apprendimento.

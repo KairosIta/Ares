@@ -142,8 +142,9 @@ ARES_LEARNING_MODEL=glm-5.3-flash:cloud
 
 È una scelta separata perché risponde a un'altra domanda — a chi affidi ciò
 che Ares ricorda di te — e pesa di più: ogni estrazione manda al modello il
-testo del turno e le memorie già salvate. Quanto pesa è misurato: cinque
-chiamate e 5.602 token di ingresso per un turno di una riga, con i numeri in
+testo del turno e le memorie già salvate. Quanto pesa è misurato: tre
+chiamate al modello per turno, 5.388 token di ingresso su un turno che
+aggiorna profilo e memorie, con i numeri in
 [qualità della memoria](docs/memory-quality.md). Con entrambe le righe nessun peso
 gira in scheda, salvo l'embedder: quello resta locale per costruzione, non
 per configurazione — `agent/runtime.py` si rifiuta di costruirlo su un
