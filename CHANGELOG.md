@@ -8,6 +8,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- `docs/project-scopes.md`, lo studio sui primi due punti della roadmap:
+  identità stabile e memoria per progetto, ambiti applicati dal codice. Contiene
+  le evidenze nel codice e in Agno 3.0.9, tre misure offline riproducibili, le
+  proposte con i limiti accertati e le prove di accettazione da implementare.
+  Non introduce codice. `ROADMAP.md` lo collega ai due approfondimenti.
 - `tests/rilascio_test.py`, la decima prova offline: confronta la versione di
   `pyproject.toml` con il lock, con la voce più recente di questo file, con la
   riga supportata di `SECURITY.md` e con i collegamenti di confronto in coda.
