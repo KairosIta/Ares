@@ -54,12 +54,22 @@ Quel gesto, e le poche righe che ogni prova ripeteva uguali, stanno in
 `tests/_comune.py`: `prepara_ambiente` sceglie i percorsi usa-e-getta e
 rifiuta di farlo se `config` è già in memoria; `pulisci` li cancella alla
 fine uscendo prima dalla cartella di lavoro, perché su Windows la directory
-corrente non si cancella; `esigi` è l'asserzione che
-`python -O` non toglie; `esegui` e `fallimento` stampano una riga per
+corrente non si cancella; `esigi` è l'asserzione che `python -O` non toglie;
+`esegui` esegue le prove in ordine e `fallimento` stampa una riga per
 controllo e, quando un controllo fallisce, la riga da cui viene — con il
 traceback intero se non è un'asserzione ma un guasto che la prova non
-prevedeva. Il modulo non importa niente di `ares`, ed è l'unica garanzia
-che i percorsi vengano decisi prima che `config` fotografi l'ambiente.
+prevedeva; `chiudi` è l'ultima riga, quella che conserva l'archivio quando
+qualcosa è andato storto — senza, l'unica traccia di cosa è successo se ne
+andrebbe con lui — e lo cancella quando invece è andato tutto bene. Il
+modulo non importa niente di `ares`, ed è l'unica garanzia che i percorsi
+vengano decisi prima che `config` fotografi l'ambiente.
+
+I doppi che più prove costruivano uguali — il modello che risponde a
+copione, la tool call nella forma in cui Agno la mette nei messaggi — stanno
+invece in `tests/_doppi.py`: sono un pezzo di Agno, e `_comune.py` promette
+di non importarne. La regola però è la stessa, e per la stessa ragione:
+anche `_doppi.py` non tocca `ares` né `config`, quindi si può importare
+prima di `prepara_ambiente`.
 
 Le prove restano eseguibili una per una, come prima. L'elenco però vive in un
 posto solo, la tabella `PROVE` in `tests/run.py`: la CI chiama il runner,
@@ -159,13 +169,17 @@ il rilascio del lock e gli esiti della contesa nella REPL e in pipe.
 ```bash
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
-.venv/bin/python -m mypy .
+.venv/bin/python -m mypy . tests/run.py tests/_comune.py tests/_doppi.py
 ```
 
 Non eseguono il codice e non toccano nessun archivio. Mypy copre i moduli e
-non le prove: quelle girano a ogni CI, quindi un errore di tipo lì diventa
-subito un fallimento visibile, mentre nei moduli restano rami — i percorsi
-Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
+il cablaggio delle prove, non le singole prove: quelle girano a ogni CI,
+quindi un errore di tipo lì diventa subito un fallimento visibile, mentre nei
+moduli restano rami — i percorsi Windows, i gestori d'errore — che nessuna
+prova attraversa. Il cablaggio è il caso di mezzo: il runner e ciò che le
+prove importano non li esegue nessuna prova, perché sono loro a eseguirle, e
+un errore lì si vedrebbe solo quando una prova non parte più. Ruff copre
+tutto.
 
 ## Verifiche offline
 

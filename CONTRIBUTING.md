@@ -84,7 +84,7 @@ I comandi mostrano il percorso Linux. Su Windows usa
 ```bash
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
-.venv/bin/python -m mypy .
+.venv/bin/python -m mypy . tests/run.py tests/_comune.py tests/_doppi.py
 .venv/bin/python tests/run.py
 ```
 

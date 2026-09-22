@@ -102,8 +102,14 @@ jobs:
 
       # Senza `ignore_missing_imports`: l'albero delle dipendenze e' tipizzato,
       # quindi mypy risolve tutto davvero. Serve percio' l'ambiente completo.
+      #
+      # I tre file nominati a parte sono il cablaggio delle prove: `exclude` in
+      # pyproject.toml tiene fuori `tests/`, e quei percorsi espliciti lo
+      # scavalcano. Sono proprio i file che nessuna prova esegue - il runner e
+      # cio' che le prove importano - quindi un errore di tipo li' non lo
+      # vedrebbe nessuno.
       - name: Tipi
-        run: ./.venv/bin/python -m mypy .
+        run: ./.venv/bin/python -m mypy . tests/run.py tests/_comune.py tests/_doppi.py
 
   tests:
     # Il nome porta la versione perche' ora ce n'e' piu' d'una, e resta

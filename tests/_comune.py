@@ -2,11 +2,11 @@
 Cio' che ogni prova ripeteva uguale
 ===================================
 
-Non un framework: quattro funzioni e una regola. Ogni prova resta uno script
-che si lancia da solo, decide i propri percorsi e stampa una riga per
-controllo; qui c'e' soltanto cio' che era copiato identico in otto file, e
-che divergeva un poco per volta - il padding del nome, il formato del
-fallimento, se il traceback si vedeva o no.
+Non un framework: le funzioni che ogni prova ripeteva uguali, e una regola.
+Ogni prova resta uno script che si lancia da solo, decide i propri percorsi
+e stampa una riga per controllo; qui c'e' soltanto cio' che era copiato
+identico in otto file, e che divergeva un poco per volta - il padding del
+nome, il formato del fallimento, se il traceback si vedeva o no.
 
 La regola: questo modulo non importa `config` ne' niente di `ares`. E' la
 sola garanzia che `prepara_ambiente` funzioni, perche' `config` fotografa
@@ -134,3 +134,17 @@ def esegui(prove: Iterable[tuple[str, Callable[[], str]]]) -> tuple[list[str], l
         else:
             ok(nome, nota)
     return falliti, non_conclusivi
+
+
+def chiudi(falliti: list[str], radice: Path) -> int:
+    """Il codice di uscita di una prova, e che fine fa la sua directory.
+
+    Un fallimento conserva la radice usa-e-getta: senza, l'unica traccia di
+    cosa e' andato storto se ne andrebbe con lei. E' l'ultima riga di ogni
+    prova, e le prove fatte di controlli indipendenti la ripetevano identica.
+    """
+    if falliti:
+        print("Archivio della prova conservato:", radice)
+        return 1
+    pulisci(radice)
+    return 0

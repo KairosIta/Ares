@@ -188,6 +188,12 @@ no_implicit_optional = true
 # nessun test attraversa - i percorsi Windows, i gestori d'errore - ed e' li'
 # che un controllo statico guadagna il proprio posto. Ruff continua a
 # coprirli tutti.
+#
+# Il cablaggio delle prove fa eccezione, e la CI lo nomina a parte
+# (`tests/run.py`, `tests/_comune.py`, `tests/_doppi.py`): un percorso scritto
+# esplicitamente scavalca questo `exclude`. Non lo esegue nessuna prova - sono
+# quei file a eseguirle - quindi un errore di tipo li' resterebbe invisibile
+# fino al giorno in cui una prova non parte.
 exclude = ['^\.venv/', '^tests/']
 
 # ---------------------------------------------------------------------------
