@@ -247,9 +247,10 @@ Il §8 chiedeva due verifiche prima di scegliere la forma della provenienza
 delle memorie e della ricerca delle intuizioni. Sono state fatte il 22
 settembre 2026 sui pacchetti installati, con i doppi delle prove: nessun
 modello reale, nessuna rete, un archivio temporaneo per ciascuna. Gli esiti
-seguenti sono misure, non previsioni. Come le tre del §2.3 sono state fatte
-con script usa-e-getta: ciò che le rende permanenti sono le due prove che ne
-derivano, elencate al §8.
+seguenti sono misure, non previsioni. Le misure sono ora la prova `ambiti`
+(`tests/scoping_test.py`, nel runner offline), che le tiene ferme: se Agno
+cambia una delle due premesse il fallimento arriva lì, e questo paragrafo va
+aggiornato con lui.
 
 **Memorie: la provenienza si scrive, sopravvive, e va riallineata.**
 
@@ -520,7 +521,10 @@ della proposta, non quello del framework.
 Le due prove che dipendevano dalle verifiche sono le più vicine a un difetto
 silenzioso: entrambe passano quando i dati sono pochi, ed è la ragione per cui
 vanno scritte con un archivio popolato — l'ambito personale più grande del
-progetto, e una voce riscritta da un altro progetto.
+progetto, e una voce riscritta da un altro progetto. La loro **premessa nel
+framework** non è più una misura di laboratorio: la tiene ferma la prova
+`ambiti` di `tests/run.py` (§3.4). Qui resta il comportamento di Ares, che il
+codice non ha ancora.
 
 ## 9. Decisioni da chiudere prima del codice
 
