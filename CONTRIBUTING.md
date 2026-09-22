@@ -72,6 +72,9 @@ Il venv contiene anche Ares stesso, installato in editable: i comandi `ares`,
 3. Mantieni separati refactor, funzionalità e documentazione.
 4. Aggiungi una prova capace di fallire sul difetto corretto.
 5. Esegui i controlli pertinenti e descrivi cosa non è stato verificato.
+6. Firma i commit e chiedi il merge con `gh pr merge --merge`: il perché, e la
+   configurazione che vale solo per questo repository, stanno in
+   «Firma dei commit».
 
 ## Verifiche minime
 
@@ -104,7 +107,7 @@ Il runner elenca le prove con `--help` e ne esegue una sola con
 Quelle con Ollama non girano in CI, e non è una dimenticanza: i runner di
 GitHub non hanno una GPU, e una suite che scarica un modello da 9 GB a ogni
 push non sarebbe una verifica ma un costo. La conseguenza però va accettata
-per intero: **tre prove su undici esistono solo se qualcuno le lancia**, e
+per intero: **tre prove su dodici esistono solo se qualcuno le lancia**, e
 nessuno se ne accorge se smette di farlo. Perciò, quando le esegui prima di
 un bump di Agno o di un rilascio, **scrivilo nella voce del CHANGELOG**, con
 la data e la versione di Agno su cui sono passate:
@@ -127,6 +130,55 @@ numero da difendere.
 Tutte le prove devono usare archivi temporanei. Non leggere, copiare o
 committare lo stato reale in `~/.ares`, i workspace o gli snapshot locali.
 La CI deve restare verde sia su Ubuntu sia su Windows prima del merge.
+
+## Firma dei commit
+
+Commit e tag di Ares si firmano con una chiave SSH dedicata, e la
+configurazione sta **solo in questo repository**:
+
+```bash
+ssh-keygen -t ed25519 -N "" -C "<email dell'account>" -f ~/.ssh/ares_signing_ed25519
+git config --local gpg.format ssh
+git config --local user.signingkey ~/.ssh/ares_signing_ed25519.pub
+git config --local commit.gpgsign true
+git config --local tag.gpgsign true
+```
+
+La chiave è senza passphrase perché la firma deve avvenire senza prompt; con
+una passphrase serve `ssh-agent` sbloccato. La chiave pubblica va registrata
+su GitHub come **Signing key** (Settings → SSH and GPG keys → New SSH key →
+Key type: *Signing key*), non come chiave di autenticazione: sono permessi
+diversi, e una chiave può essere registrata due volte se serve anche per il
+push. Va registrata **prima del primo push firmato**: GitHub verifica la
+firma quando l'oggetto arriva e conserva il risultato, e un oggetto firmato
+con una chiave che non conosce resta `unknown_key`.
+
+La scelta di tenerla locale è deliberata: vale per Ares e non per gli altri
+repository della macchina, dove il `user.email` globale appartiene a
+un'altra identità e produrrebbe commit firmati con la chiave sbagliata.
+
+Per verificare senza rete serve un elenco di firmatari attendibili,
+`.git/allowed_signers`, non tracciato come la chiave privata:
+
+```bash
+printf '%s %s\n' "<email dell'account>" "$(cat ~/.ssh/ares_signing_ed25519.pub)" > .git/allowed_signers
+git config --local gpg.ssh.allowedSignersFile "$PWD/.git/allowed_signers"
+```
+
+Poi `git log --show-signature` e `git tag -v v0.8.0` rispondono
+*Good signature*, con l'impronta della chiave.
+
+**Il merge non deve riscrivere i commit.** Con «Rebase and merge» GitHub
+ricrea i commit dalla copia che ha e li aggiunge **senza verificare la
+firma** — non può firmarli lui, perché non ha la chiave privata di chi li ha
+scritti — e la firma che c'era va persa; è
+[documentato da GitHub](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification#signature-verification-for-rebase-and-merge).
+Non è un'ipotesi: il commit della release 0.8.0, firmato in locale con
+*Good signature*, è arrivato su `main` riscritto e `unsigned`. I PR di Ares si
+mergiano quindi con `--merge`: i commit del branch arrivano su `main`
+identici, quindi ancora firmati, e GitHub aggiunge un merge commit firmato da
+lui. Se `main` si è mosso, si fa rebase in locale: `commit.gpgsign` ri-firma i
+commit che il rebase ricrea.
 
 ## Stile
 
