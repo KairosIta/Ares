@@ -66,6 +66,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   sono 56 file invece di 53. Sono i file che nessuna prova esegue — il runner
   e ciò che le prove importano — quindi un errore lì non lo vedrebbe nessuno;
   le singole prove restano fuori per la ragione scritta in `pyproject.toml`.
+- `_apri_chat` non è più la funzione più complessa del progetto: era 198
+  righe con complessità 38, ora è 87 righe con 9. I quattro pezzi erano già
+  distinti dentro di lei — i rifiuti che precedono ogni effetto (`-p` con una
+  modalità che scrive, `-p` con `--scegli`, lo stato ancora nel posto di
+  prima), la riga interattiva, banner e avvisi di apertura, il ciclo dei
+  turni — e ora sono quattro funzioni con un nome. Nessun comportamento
+  cambia: le prove non sono state toccate e i percorsi che attraversavano
+  quelle righe sono gli stessi.
 
 ## [0.8.0] - 2026-09-22
 
