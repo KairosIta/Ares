@@ -85,7 +85,7 @@ scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
 Con le sole prove offline la misura del 22 settembre 2026 su Linux e
-Python 3.12.3 è al 90%. `cli/chat.py` arriva al 95%, `agent/echo.py` al 96%
+Python 3.12.3 è al 91%. `cli/chat.py` arriva al 95%, `agent/echo.py` al 96%
 e `state/lock.py` al 100%; `backup/restore.py` resta all'86%, `cli/ui.py`
 all'84% e `cli/commands.py` all'81%. Sono misure di questa esecuzione, non
 soglie: una percentuale alta non dimostra che siano coperti tutti gli
@@ -128,7 +128,7 @@ disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare.
 Nessuna di quelle righe sta in un percorso che solo un modello vero
 attraversa: misurato il 22 settembre 2026, `--tutte --copertura` produce un
 rapporto **identico** a quello delle sole prove offline, riga per riga e ramo
-per ramo — 4.335 istruzioni, 309 scoperte, 1.338 rami, 90%. Le prove con
+per ramo — 4.335 istruzioni, 304 scoperte, 1.338 rami, 91%. Le prove con
 Ollama verificano ciò che un modello finto non può dire, non allargano la
 copertura: le stesse righe le attraversano le prove offline con il modello
 deterministico. `tests/run.py` diceva il contrario in un commento, e la
@@ -175,7 +175,12 @@ Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
 
 Sono dieci. `smoke` costruisce l'agente e semina gli store, e controlla
 assemblaggio, isolamento, lock, propagazione simulata del run completo alla
-macchina di apprendimento e l'eco di ciò che entra in memoria. `repl` prova
+macchina di apprendimento e l'eco di ciò che entra in memoria. Del post-hook
+controlla anche le due guardie: un run senza messaggi e un post-hook senza
+agente non estraggono, e un'estrazione da un run vuoto non ha niente da
+imparare ma passerebbe comunque dal modello. Nello stesso giro verifica che
+fuori da `AGENTIC` le istruzioni italiane delle intuizioni non entrino nello
+store. `repl` prova
 ciò che della chat gira senza l'agente: conferme lette e applicate, esito e
 metriche degli strumenti, rendering Rich su pipe e su un terminale simulato
 con i controlli filtrati, core del turno con eventi fabbricati, log di Agno,
@@ -195,7 +200,10 @@ quella del post-hook sul run completo; che `run → pausa → continue_run`
 riprenda lo stesso run, eseguendo lo strumento dopo la conferma e non prima e
 conservando il file dopo un rifiuto; che il retry di
 `AresSessionContextStore` ripeta solo l'estrazione che non ha scritto e si
-fermi appena scrive, sul percorso sincrono e su quello asincrono; che
+fermi appena scrive, nei due percorsi sincrono e asincrono e in tutti e tre i
+casi — primo colpo, tetto raggiunto, recupero — e che l'`aprocess` anticipata
+di Ares non estragga nulla, perché Ares non usa `arun` e quella riga si
+attraversa solo così; che
 profilo e memorie continuino a rifiutare le modalità `PROPOSE` e `HITL`, che
 è il motivo per cui la memoria durevole non passa da una conferma; e che la
 versione di Agno dichiarata nei documenti sia quella installata, con

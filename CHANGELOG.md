@@ -12,14 +12,20 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `pyproject.toml` con il lock, con la voce più recente di questo file, con la
   riga supportata di `SECURITY.md` e con i collegamenti di confronto in coda.
   È la stessa idea della prova sulla versione di Agno, applicata al repository.
+- `agent/learning.py` arriva al 100%: `smoke` attraversa le due guardie del
+  post-hook (run senza messaggi, post-hook senza agente) e le istruzioni fuori
+  da `AGENTIC`, `contratto` i due percorsi asincroni — l'`aprocess` anticipata
+  di Ares, che Ares non usa ma che un Agno asincrono chiamerebbe, e il retry
+  del contesto nei tre casi, primo colpo e tetto compresi. Il corpo asincrono
+  del retry era provato a metà: solo il recupero al secondo tentativo.
 
 ### Fixed
 
 - `docs/testing.md` diceva che «`--tutte` alza il numero» e `tests/run.py`
   ripeteva che metà di ciò che resta scoperto sta nei percorsi che solo le
   prove con Ollama attraversano. Misurato il 22 settembre 2026: i due rapporti
-  sono identici, riga per riga e ramo per ramo — 4.335 istruzioni, 309
-  scoperte, 1.338 rami, 90%. Le prove con Ollama verificano il comportamento
+  sono identici, riga per riga e ramo per ramo — 4.335 istruzioni, 304
+  scoperte, 1.338 rami, 91%. Le prove con Ollama verificano il comportamento
   del modello, non aggiungono righe coperte.
 - I numeri di copertura in `docs/testing.md` erano quelli del 13 settembre.
   Ora sono quelli del 22, con la data accanto.
