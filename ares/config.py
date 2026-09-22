@@ -547,6 +547,12 @@ MOSTRA_APPRENDIMENTI = True
 # Agno non offre su questi store, costruita a valle invece che a monte: la
 # scrittura avviene, ma non sopravvive al turno se chi legge dice di no.
 #
+# "A valle" e' detto sul serio: fra la scrittura e la risposta c'e' una
+# finestra, e un processo che muore li' dentro - un `kill`, un crash - lascia
+# la scrittura dov'e'. Il lock copre l'attesa fra due chat, non fra due vite
+# del processo. La garanzia e' quindi condizionata a un processo che arriva
+# alla risposta; cosa chiuderebbe la finestra lo dice `agent/echo.py`.
+#
 # Tutto o niente, per turno: una memoria giusta e una sbagliata nello stesso
 # turno si tengono o si tolgono insieme, e la correzione fine passa dagli
 # strumenti di memoria. Non e' una domanda in piu' a ogni messaggio: compare
