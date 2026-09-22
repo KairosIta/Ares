@@ -142,7 +142,9 @@ ARES_LEARNING_MODEL=glm-5.3-flash:cloud
 
 È una scelta separata perché risponde a un'altra domanda — a chi affidi ciò
 che Ares ricorda di te — e pesa di più: ogni estrazione manda al modello il
-testo del turno e le memorie già salvate. Con entrambe le righe nessun peso
+testo del turno e le memorie già salvate. Quanto pesa è misurato: cinque
+chiamate e 5.602 token di ingresso per un turno di una riga, con i numeri in
+[qualità della memoria](docs/memory-quality.md). Con entrambe le righe nessun peso
 gira in scheda, salvo l'embedder: quello resta locale per costruzione, non
 per configurazione — `agent/runtime.py` si rifiuta di costruirlo su un
 nome cloud — perché cambiarlo invaliderebbe l'indice già scritto. Il
@@ -366,7 +368,8 @@ I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
 `.venv/bin/python` con `.\.venv\Scripts\python.exe`.
 
 ```bash
-# Le prove offline: cablaggio, retention, backup/restore, entità, CLI e valutazione
+# Le prove offline: cablaggio, retention, costo dell'apprendimento, backup/restore,
+# entità, CLI e valutazione
 .venv/bin/python tests/run.py
 
 # Anche quelle che accendono Ollama, incluso un turno completo

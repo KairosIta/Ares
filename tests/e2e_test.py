@@ -239,6 +239,24 @@ def main() -> int:
         esigi(bool(testo), "il modello ha risposto con un contenuto vuoto")
         ok("turno completato    ", str(len(testo)) + " caratteri in " + str(durata_turno) + " s")
 
+        # Il costo vero del turno, con i modelli veri: la riga che il client
+        # mostra sotto la risposta. Il segmento dell'apprendimento e' quello
+        # che non si vede, perche' arriva dopo che la risposta e' gia' a
+        # schermo, ed e' la misura che `learning_cost_test.py` spiega
+        # strutturalmente. Qui non si asserisce niente: dipende dal modello.
+        from ares.cli.render import righe_metriche
+
+        for riga in righe_metriche(risposta, IMPOSTAZIONI):
+            ok("costo del turno     ", riga.strip("[]"))
+        dettagli = getattr(getattr(risposta, "metrics", None), "details", None) or {}
+        appresi = dettagli.get("learning_model") or []
+        if appresi:
+            # La riga del client mostra l'uscita; per il costo conta l'entrata,
+            # che e' il testo delle estrazioni rimandato al modello.
+            entrata = sum(getattr(m, "input_tokens", 0) or 0 for m in appresi)
+            uscita = sum(getattr(m, "output_tokens", 0) or 0 for m in appresi)
+            ok("token apprendimento ", str(entrata) + " in / " + str(uscita) + " out")
+
         # La sessione la scrive il framework, non il modello: se manca questa
         # riga il difetto e' nel cablaggio, non nell'estrazione.
         esigi(conta_sessioni() >= 1, "il turno non ha lasciato nessuna sessione in archivio")
