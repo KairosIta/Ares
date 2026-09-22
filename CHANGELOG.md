@@ -24,8 +24,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - `docs/testing.md` diceva che «`--tutte` alza il numero» e `tests/run.py`
   ripeteva che metà di ciò che resta scoperto sta nei percorsi che solo le
   prove con Ollama attraversano. Misurato il 22 settembre 2026: i due rapporti
-  sono identici, riga per riga e ramo per ramo — 4.335 istruzioni, 304
-  scoperte, 1.338 rami, 91%. Le prove con Ollama verificano il comportamento
+  sono identici, riga per riga e ramo per ramo — 4.355 istruzioni, 304
+  scoperte, 1.340 rami, 91%. Le prove con Ollama verificano il comportamento
   del modello, non aggiungono righe coperte.
 - I numeri di copertura in `docs/testing.md` erano quelli del 13 settembre.
   Ora sono quelli del 22, con la data accanto.
@@ -74,6 +74,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   turni — e ora sono quattro funzioni con un nome. Nessun comportamento
   cambia: le prove non sono state toccate e i percorsi che attraversavano
   quelle righe sono gli stessi.
+- Anche `pianifica_fusione` scende sotto la soglia: era 174 righe con
+  complessità 37, ora è 70 righe con 9. Teneva in un blocco solo la fusione di
+  alias, descrizione e proprietà, quella di fatti ed eventi, la riscrittura
+  delle relazioni verso la sorgente, le reciproche mancanti, le righe da
+  aggiornare e i contatori; ora sono sette funzioni con un nome, e la fusione
+  resta quella di prima — `entita` la verifica sugli stessi casi, compreso il
+  rollback.
 
 ## [0.8.0] - 2026-09-22
 

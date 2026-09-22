@@ -138,7 +138,7 @@ disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare.
 Nessuna di quelle righe sta in un percorso che solo un modello vero
 attraversa: misurato il 22 settembre 2026, `--tutte --copertura` produce un
 rapporto **identico** a quello delle sole prove offline, riga per riga e ramo
-per ramo — 4.335 istruzioni, 304 scoperte, 1.338 rami, 91%. Le prove con
+per ramo — 4.355 istruzioni, 304 scoperte, 1.340 rami, 91%. Le prove con
 Ollama verificano ciò che un modello finto non può dire, non allargano la
 copertura: le stesse righe le attraversano le prove offline con il modello
 deterministico. `tests/run.py` diceva il contrario in un commento, e la
