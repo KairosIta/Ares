@@ -149,9 +149,12 @@ una passphrase serve `ssh-agent` sbloccato. La chiave pubblica va registrata
 su GitHub come **Signing key** (Settings → SSH and GPG keys → New SSH key →
 Key type: *Signing key*), non come chiave di autenticazione: sono permessi
 diversi, e una chiave può essere registrata due volte se serve anche per il
-push. Va registrata **prima del primo push firmato**: GitHub verifica la
-firma quando l'oggetto arriva e conserva il risultato, e un oggetto firmato
-con una chiave che non conosce resta `unknown_key`.
+push. Finché non è registrata, un oggetto firmato riporta `unknown_key` — la
+firma c'è, GitHub non conosce la chiave — e non c'è fretta: appena la chiave
+compare, GitHub **rivaluta anche gli oggetti già pushati** e li marca
+*Verified* con la data della verifica, senza riscrivere niente. Misurato il
+22 settembre 2026: il tag `v0.8.0` e il commit `6229fdf`, firmati e pushati
+prima della registrazione, sono passati a `valid` da soli.
 
 La scelta di tenerla locale è deliberata: vale per Ares e non per gli altri
 repository della macchina, dove il `user.email` globale appartiene a
