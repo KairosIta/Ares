@@ -185,15 +185,22 @@ Stava nello smoke, che era diventato il posto dove finiva
 ogni prova offline; la divisione segue ciò che serve per girare.
 `sessioni` attraversa un vero `Agent.run()` con modello deterministico e
 verifica offload, quota, retention, cascata e restore dei due SQLite.
-`contratto` chiede ad Agno le quattro cose che Ares dà per vere del
+`contratto` chiede ad Agno le cinque cose che Ares dà per vere del
 framework: che un turno con pausa per conferma produca una sola estrazione,
 quella del post-hook sul run completo; che `run → pausa → continue_run`
 riprenda lo stesso run, eseguendo lo strumento dopo la conferma e non prima e
 conservando il file dopo un rifiuto; che il retry di
 `AresSessionContextStore` ripeta solo l'estrazione che non ha scritto e si
-fermi appena scrive, sul percorso sincrono e su quello asincrono; e che
+fermi appena scrive, sul percorso sincrono e su quello asincrono; che
 profilo e memorie continuino a rifiutare le modalità `PROPOSE` e `HITL`, che
-è il motivo per cui la memoria durevole non passa da una conferma.
+è il motivo per cui la memoria durevole non passa da una conferma; e che la
+versione di Agno dichiarata nei documenti sia quella installata, con
+`FILE_CHE_DICHIARANO` come elenco esplicito delle pagine e dei commenti che
+la nominano. Il numero era scritto a mano in sette posti e uno era rimasto
+alla 3.0.5 mentre il lock era alla 3.0.9: adesso una patch che sale senza
+allineare le dichiarazioni rende rossa questa prova, e il messaggio nomina il
+file. Restano fuori `CHANGELOG.md` e `docs/memory-quality.md`, che citano le
+versioni di allora.
 Il modello è lo stesso copione deterministico. Nei primi due controlli gli
 store di apprendimento sono spenti e si conta il passaggio, non ciò che
 scriverebbe; il terzo lo store lo costruisce davvero, perché lì la domanda è

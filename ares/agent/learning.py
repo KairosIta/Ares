@@ -46,12 +46,15 @@ CRITERI_ESTRAZIONE = (
 class AresLearningMachine(LearningMachine):
     """Estrae apprendimenti soltanto quando il run e' davvero concluso.
 
-    Agno, verificato fino alla 3.0.5, avvia ``LearningMachine.process`` in background prima
-    della chiamata al modello, usando una fotografia dei messaggi. Un run in
-    pausa per conferma non genera una seconda estrazione dopo
-    ``continue_run``. Il collegamento ``learning=`` resta necessario per
-    contesto, istruzioni e strumenti; qui si disattiva solo il callback
-    anticipato, sostituito dal post-hook sul RunOutput completo.
+    Agno 3.0.9, la versione su cui Ares e' verificata, avvia
+    ``LearningMachine.process`` in background prima della chiamata al modello,
+    usando una fotografia dei messaggi. I documenti che citano la versione
+    sono sorvegliati da `tests/agno_contract_test.py`, che confronta la
+    dichiarazione con l'installato. Un run in pausa per conferma non genera
+    una seconda estrazione dopo ``continue_run``. Il collegamento
+    ``learning=`` resta necessario per contesto, istruzioni e strumenti; qui
+    si disattiva solo il callback anticipato, sostituito dal post-hook sul
+    RunOutput completo.
     """
 
     def process(self, *args, **kwargs) -> None:

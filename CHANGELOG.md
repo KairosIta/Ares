@@ -155,8 +155,20 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   (scrittura provvisoria, riversata dopo il consenso) resta una scelta della
   voce 3 della roadmap: qui non cambia nessun comportamento.
 
-Verifica locale del 2026-09-21: otto prove offline verdi con copertura al 90%
-su Linux/Python 3.12; `ruff check`, `ruff format --check` e `mypy ares` (51
+- **La versione di Agno dichiarata è quella installata.** Il commento di
+  `AresLearningMachine` citava ancora la 3.0.5 mentre `uv.lock` era alla
+  3.0.9: un numero vecchio non fa fallire niente, è una pagina che descrive un
+  altro programma. `tests/agno_contract_test.py` ora confronta con
+  l'installato le dichiarazioni esplicite — badge del `README.md`,
+  `ROADMAP.md`, `SECURITY.md`, il commento in `agent/learning.py`,
+  `docs/agno.md`, `docs/architecture.md`, `docs/core-contract.md` — e nessun
+  altro file può citarne una diversa. Una patch di Agno che sale senza
+  allineare le pagine rende la prova rossa, e il messaggio nomina il file da
+  correggere; `CHANGELOG.md` e `docs/memory-quality.md` restano fuori, perché
+  citano le versioni di allora.
+
+Verifica locale del 2026-09-22: otto prove offline verdi con copertura al 90%
+su Linux/Python 3.12; `ruff check`, `ruff format --check` e `mypy ares` (53
 file) puliti. Le prove con Ollama non sono state eseguite in questo giro.
 
 ## [0.7.1] - 2026-09-13

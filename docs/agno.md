@@ -58,6 +58,15 @@ patch viene provata sulle superfici che Ares usa - le firme di
 `LearningMachine.process` e di `SessionContextStore`, che Ares sovrascrive,
 e il ciclo REPL completo - prima di entrare nel lock.
 
+Il numero della versione, però, era scritto a mano in sette posti e uno era
+rimasto indietro: il commento di `AresLearningMachine` citava la 3.0.5 col
+lock alla 3.0.9. Da questa sessione `tests/agno_contract_test.py` confronta
+le dichiarazioni con l'installato — l'elenco esplicito è
+`FILE_CHE_DICHIARANO` — quindi una patch che sale senza che le pagine salgano
+con lei rende la prova rossa, e il messaggio dice quale file allineare.
+`CHANGELOG.md` e `docs/memory-quality.md` restano fuori: citano le versioni
+di allora, non quella corrente.
+
 La major estende anche l'isolamento per utente e rende stabili gli id dei
 toolkit. Ares mantiene i propri namespace espliciti `user/<id>`: per le
 intuizioni questo è un filtro di metadati custom, non il nuovo argomento
