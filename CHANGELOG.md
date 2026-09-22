@@ -54,6 +54,18 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   store, da 9.533 a 5.388 token di ingresso. La scrittura non cambia:
   `learning_cost_test.py` legge profilo e memorie dopo il turno e verifica che
   contengano ciò che il modello ha passato.
+- La suite di prove non ripete più ciò che può stare in un posto solo: i
+  `main()` fatti di controlli indipendenti chiudono con `esegui` e `chiudi`
+  invece di ricostruire a mano l'epilogo del runner, e i doppi condivisi — il
+  modello a copione e la tool call — stanno in `tests/_doppi.py`. Misurati con
+  la stessa regola che li aveva contati, i blocchi di sei righe ripetuti fra
+  file diversi scendono da 29 a 14; `session_retention_test.py` passa da una
+  sequenza dentro il `main()` a una prova sola, con un nome nel rapporto.
+- Il controllo dei tipi copre anche il cablaggio delle prove: `mypy` nomina
+  `tests/run.py`, `tests/_comune.py` e `tests/_doppi.py` accanto ai moduli, e
+  sono 56 file invece di 53. Sono i file che nessuna prova esegue — il runner
+  e ciò che le prove importano — quindi un errore lì non lo vedrebbe nessuno;
+  le singole prove restano fuori per la ragione scritta in `pyproject.toml`.
 
 ## [0.8.0] - 2026-09-22
 

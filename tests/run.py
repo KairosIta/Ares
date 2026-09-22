@@ -37,6 +37,7 @@ comprerebbe poco al prezzo di un output intrecciato.
 """
 
 import argparse
+import io
 import os
 import shutil
 import subprocess
@@ -217,7 +218,8 @@ def main(argomenti: list[str] | None = None) -> int:
     # l'output e' un file o un log di CI il buffer del padre trattiene le
     # proprie righe fino alla fine, e le intestazioni compaiono staccate dalla
     # prova che annunciano - o dopo il rapporto che dovrebbero precedere.
-    sys.stdout.reconfigure(line_buffering=True)
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(line_buffering=True)
 
     args = costruisci_parser().parse_args(argomenti)
     prove = selezione(args)

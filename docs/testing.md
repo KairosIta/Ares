@@ -169,13 +169,17 @@ il rilascio del lock e gli esiti della contesa nella REPL e in pipe.
 ```bash
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
-.venv/bin/python -m mypy .
+.venv/bin/python -m mypy . tests/run.py tests/_comune.py tests/_doppi.py
 ```
 
 Non eseguono il codice e non toccano nessun archivio. Mypy copre i moduli e
-non le prove: quelle girano a ogni CI, quindi un errore di tipo lì diventa
-subito un fallimento visibile, mentre nei moduli restano rami — i percorsi
-Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
+il cablaggio delle prove, non le singole prove: quelle girano a ogni CI,
+quindi un errore di tipo lì diventa subito un fallimento visibile, mentre nei
+moduli restano rami — i percorsi Windows, i gestori d'errore — che nessuna
+prova attraversa. Il cablaggio è il caso di mezzo: il runner e ciò che le
+prove importano non li esegue nessuna prova, perché sono loro a eseguirle, e
+un errore lì si vedrebbe solo quando una prova non parte più. Ruff copre
+tutto.
 
 ## Verifiche offline
 
