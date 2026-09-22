@@ -279,88 +279,73 @@ def _valida_grafo_fuso(
                 raise ErroreManutenzione("la fusione produrrebbe una relazione senza reciproca")
 
 
-def pianifica_fusione(
-    entita: Sequence[EntitaArchivio], riferimento_sorgente: str, riferimento_canonico: str
-) -> PianoFusione:
-    """Costruisce l'intero nuovo grafo in memoria, senza scrivere nel DB."""
-    indice = _valida_riferimenti(entita)
-    sorgente = _trova_riferimento(indice, riferimento_sorgente, "sorgente")
-    canonica = _trova_riferimento(indice, riferimento_canonico, "canonica")
-    if sorgente.learning_id == canonica.learning_id:
-        raise ErroreManutenzione("sorgente e canonica sono la stessa riga")
-    if canonica.archiviata:
-        raise ErroreManutenzione("l'entita' canonica e' archiviata; scegli una canonica attiva")
-    tipo_sorgente = normalizza_testo(str(sorgente.entita.entity_type))
-    tipo_canonico = normalizza_testo(str(canonica.entita.entity_type))
-    if tipo_sorgente != tipo_canonico and tipo_sorgente != "unknown":
-        raise ErroreManutenzione(
-            "tipi incompatibili: "
-            + tipo_sorgente
-            + " -> "
-            + tipo_canonico
-            + ". Agno non risolve alias fra due tipi reali diversi"
-        )
+def _unisci_anagrafica(
+    canonica: EntityMemory, sorgente: EntityMemory, contatori: dict[str, int], conflitti: list[str]
+) -> None:
+    """Alias, descrizione e proprieta': la canonica vince, la sorgente completa.
 
-    per_chiave = {_chiave_entita(voce.entita): voce for voce in entita}
-    chiave_sorgente = _chiave_entita(sorgente.entita)
-    chiave_canonica = _chiave_entita(canonica.entita)
-    oggetti = {chiave: copy.deepcopy(voce.entita) for chiave, voce in per_chiave.items()}
-    oggetto_sorgente = oggetti[chiave_sorgente]
-    oggetto_canonico = oggetti[chiave_canonica]
-    conflitti = []
-    contatori = {
-        "alias": 0,
-        "fatti_aggiunti": 0,
-        "fatti_unificati": 0,
-        "eventi_aggiunti": 0,
-        "eventi_unificati": 0,
-        "proprieta": 0,
-        "riscritte": 0,
-        "relazioni_unificate": 0,
-        "auto": 0,
-        "reciproche": 0,
-    }
-
-    oggetto_canonico.aliases, contatori["alias"] = _unisci_alias(oggetto_canonico, oggetto_sorgente)
-    if not oggetto_canonico.description and oggetto_sorgente.description:
-        oggetto_canonico.description = oggetto_sorgente.description
-    elif (
-        oggetto_canonico.description
-        and oggetto_sorgente.description
-        and oggetto_canonico.description != oggetto_sorgente.description
-    ):
+    Un campo che la canonica non ha si copia; un valore diverso non si
+    sovrascrive e finisce nei conflitti, perche' il piano li mostra prima di
+    applicare, e chi fonde deve poterli leggere.
+    """
+    canonica.aliases, contatori["alias"] = _unisci_alias(canonica, sorgente)
+    if not canonica.description and sorgente.description:
+        canonica.description = sorgente.description
+    elif canonica.description and sorgente.description and canonica.description != sorgente.description:
         conflitti.append("descrizione diversa; conservata quella canonica")
 
-    proprieta = copy.deepcopy(oggetto_canonico.properties or {})
-    for nome, valore in (oggetto_sorgente.properties or {}).items():
+    proprieta = copy.deepcopy(canonica.properties or {})
+    for nome, valore in (sorgente.properties or {}).items():
         if nome not in proprieta:
             proprieta[nome] = copy.deepcopy(valore)
             contatori["proprieta"] += 1
         elif proprieta[nome] != valore:
             conflitti.append("proprieta' " + str(nome) + " diversa; conservato il valore canonico")
-    oggetto_canonico.properties = proprieta
+    canonica.properties = proprieta
 
-    fatti_canonici = _valida_collezione(oggetto_canonico, "facts", canonica.riferimento)
-    fatti_sorgenti = _valida_collezione(oggetto_sorgente, "facts", sorgente.riferimento)
-    (
-        oggetto_canonico.facts,
-        contatori["fatti_aggiunti"],
-        contatori["fatti_unificati"],
-    ) = _unisci_ricordi(fatti_canonici, fatti_sorgenti, "fatto", conflitti)
 
-    eventi_canonici = _valida_collezione(oggetto_canonico, "events", canonica.riferimento)
-    eventi_sorgenti = _valida_collezione(oggetto_sorgente, "events", sorgente.riferimento)
-    (
-        oggetto_canonico.events,
-        contatori["eventi_aggiunti"],
-        contatori["eventi_unificati"],
-    ) = _unisci_ricordi(eventi_canonici, eventi_sorgenti, "evento", conflitti)
+def _unisci_memorie(
+    oggetto_canonico: EntityMemory,
+    oggetto_sorgente: EntityMemory,
+    canonica: EntitaArchivio,
+    sorgente: EntitaArchivio,
+    contatori: dict[str, int],
+    conflitti: list[str],
+) -> None:
+    """Fatti ed eventi: due chiamate identiche tranne il campo che leggono.
 
-    relazioni_canoniche = _valida_collezione(oggetto_canonico, "relationships", canonica.riferimento)
-    relazioni_sorgenti = _valida_collezione(oggetto_sorgente, "relationships", sorgente.riferimento)
-    oggetto_canonico.relationships = relazioni_canoniche + relazioni_sorgenti
-    del oggetti[chiave_sorgente]
+    I nomi cambiano - `facts` sono fatti, `events` eventi - e le caselle del
+    contatore no: tenerle qui vuol dire che la differenza sta in una riga
+    sola invece che in due blocchi da ripetere.
+    """
+    oggetto_canonico.facts, contatori["fatti_aggiunti"], contatori["fatti_unificati"] = _unisci_ricordi(
+        _valida_collezione(oggetto_canonico, "facts", canonica.riferimento),
+        _valida_collezione(oggetto_sorgente, "facts", sorgente.riferimento),
+        "fatto",
+        conflitti,
+    )
+    oggetto_canonico.events, contatori["eventi_aggiunti"], contatori["eventi_unificati"] = _unisci_ricordi(
+        _valida_collezione(oggetto_canonico, "events", canonica.riferimento),
+        _valida_collezione(oggetto_sorgente, "events", sorgente.riferimento),
+        "evento",
+        conflitti,
+    )
 
+
+def _riscrivi_verso_canonica(
+    oggetti: dict[tuple[str, str], EntityMemory],
+    chiave_sorgente: tuple[str, str],
+    chiave_canonica: tuple[str, str],
+    contatori: dict[str, int],
+    conflitti: list[str],
+) -> set[tuple[str, str]]:
+    """Sposta sulla canonica ogni relazione che puntava alla sorgente.
+
+    Torna le entita' toccate - la canonica piu' quelle che avevano un arco
+    verso la sorgente - che sono quelle da deduplicare e riscrivere. Un arco
+    che dopo la riscrittura punta a se stesso non si conserva: e' diventato
+    un'auto-relazione, e la fusione la toglie invece di lasciarla passare.
+    """
     toccate = {chiave_canonica}
     for proprietario, oggetto in oggetti.items():
         originali = list(oggetto.relationships or [])
@@ -389,10 +374,22 @@ def pianifica_fusione(
             )
             contatori["relazioni_unificate"] += unificate
             toccate.add(proprietario)
+    return toccate
 
-    ora = _ora_iso()
-    # Completa soltanto gli archi che ora coinvolgono il canonico. In questo
-    # modo la fusione non riscrive eventuali difetti preesistenti e scollegati.
+
+def _completa_reciproche(
+    oggetti: dict[tuple[str, str], EntityMemory],
+    toccate: set[tuple[str, str]],
+    chiave_canonica: tuple[str, str],
+    contatori: dict[str, int],
+    ora: str,
+) -> None:
+    """Aggiunge la relazione inversa dove manca, sul canonico e non altrove.
+
+    Solo gli archi che ora coinvolgono il canonico: cosi' la fusione non
+    riscrive eventuali difetti preesistenti e scollegati. L'istante e' quello
+    del piano, lo stesso che finisce in `updated_at`.
+    """
     for proprietario, oggetto in list(oggetti.items()):
         for relazione in list(oggetto.relationships or []):
             lontana = _chiave_lontana(relazione)
@@ -412,16 +409,13 @@ def pianifica_fusione(
             contatori["reciproche"] += 1
             toccate.add(lontana)
 
-    for chiave in sorted(toccate):
-        oggetto = oggetti[chiave]
-        oggetto.relationships, unificate = _deduplica_relazioni(
-            list(oggetto.relationships or []), _riferimento_chiave(chiave), conflitti
-        )
-        contatori["relazioni_unificate"] += unificate
-        oggetto.updated_at = ora
 
-    _valida_grafo_fuso(oggetti, sorgente=chiave_sorgente, canonica=chiave_canonica)
-
+def _aggiornamenti(
+    toccate: set[tuple[str, str]],
+    per_chiave: dict[tuple[str, str], EntitaArchivio],
+    oggetti: dict[tuple[str, str], EntityMemory],
+) -> list[AggiornamentoEntita]:
+    """Le righe da riscrivere, ciascuna con com'era e com'e' diventata."""
     aggiornamenti = []
     for chiave in sorted(toccate):
         voce = per_chiave[chiave]
@@ -433,7 +427,12 @@ def pianifica_fusione(
                 dopo=oggetti[chiave].to_dict(),
             )
         )
-    statistiche = StatisticheFusione(
+    return aggiornamenti
+
+
+def _statistiche(contatori: dict[str, int], conflitti: list[str], righe: int) -> StatisticheFusione:
+    """I contatori del piano, con i conflitti una volta sola e in ordine."""
+    return StatisticheFusione(
         alias_aggiunti=contatori["alias"],
         fatti_aggiunti=contatori["fatti_aggiunti"],
         fatti_unificati=contatori["fatti_unificati"],
@@ -444,14 +443,80 @@ def pianifica_fusione(
         relazioni_unificate=contatori["relazioni_unificate"],
         auto_relazioni_rimosse=contatori["auto"],
         reciproche_aggiunte=contatori["reciproche"],
-        righe_modificate=len(aggiornamenti),
+        righe_modificate=righe,
         conflitti=tuple(dict.fromkeys(conflitti)),
     )
+
+
+def pianifica_fusione(
+    entita: Sequence[EntitaArchivio], riferimento_sorgente: str, riferimento_canonico: str
+) -> PianoFusione:
+    """Costruisce l'intero nuovo grafo in memoria, senza scrivere nel DB."""
+    indice = _valida_riferimenti(entita)
+    sorgente = _trova_riferimento(indice, riferimento_sorgente, "sorgente")
+    canonica = _trova_riferimento(indice, riferimento_canonico, "canonica")
+    if sorgente.learning_id == canonica.learning_id:
+        raise ErroreManutenzione("sorgente e canonica sono la stessa riga")
+    if canonica.archiviata:
+        raise ErroreManutenzione("l'entita' canonica e' archiviata; scegli una canonica attiva")
+    tipo_sorgente = normalizza_testo(str(sorgente.entita.entity_type))
+    tipo_canonico = normalizza_testo(str(canonica.entita.entity_type))
+    if tipo_sorgente != tipo_canonico and tipo_sorgente != "unknown":
+        raise ErroreManutenzione(
+            "tipi incompatibili: "
+            + tipo_sorgente
+            + " -> "
+            + tipo_canonico
+            + ". Agno non risolve alias fra due tipi reali diversi"
+        )
+
+    per_chiave = {_chiave_entita(voce.entita): voce for voce in entita}
+    chiave_sorgente = _chiave_entita(sorgente.entita)
+    chiave_canonica = _chiave_entita(canonica.entita)
+    oggetti = {chiave: copy.deepcopy(voce.entita) for chiave, voce in per_chiave.items()}
+    oggetto_sorgente = oggetti[chiave_sorgente]
+    oggetto_canonico = oggetti[chiave_canonica]
+    conflitti: list[str] = []
+    contatori = {
+        "alias": 0,
+        "fatti_aggiunti": 0,
+        "fatti_unificati": 0,
+        "eventi_aggiunti": 0,
+        "eventi_unificati": 0,
+        "proprieta": 0,
+        "riscritte": 0,
+        "relazioni_unificate": 0,
+        "auto": 0,
+        "reciproche": 0,
+    }
+
+    _unisci_anagrafica(oggetto_canonico, oggetto_sorgente, contatori, conflitti)
+    _unisci_memorie(oggetto_canonico, oggetto_sorgente, canonica, sorgente, contatori, conflitti)
+    oggetto_canonico.relationships = _valida_collezione(
+        oggetto_canonico, "relationships", canonica.riferimento
+    ) + _valida_collezione(oggetto_sorgente, "relationships", sorgente.riferimento)
+    del oggetti[chiave_sorgente]
+
+    toccate = _riscrivi_verso_canonica(oggetti, chiave_sorgente, chiave_canonica, contatori, conflitti)
+
+    ora = _ora_iso()
+    _completa_reciproche(oggetti, toccate, chiave_canonica, contatori, ora=ora)
+    for chiave in sorted(toccate):
+        oggetto = oggetti[chiave]
+        oggetto.relationships, unificate = _deduplica_relazioni(
+            list(oggetto.relationships or []), _riferimento_chiave(chiave), conflitti
+        )
+        contatori["relazioni_unificate"] += unificate
+        oggetto.updated_at = ora
+
+    _valida_grafo_fuso(oggetti, sorgente=chiave_sorgente, canonica=chiave_canonica)
+
+    aggiornamenti = _aggiornamenti(toccate, per_chiave, oggetti)
     return PianoFusione(
         sorgente=sorgente,
         canonica=canonica,
         aggiornamenti=tuple(aggiornamenti),
-        statistiche=statistiche,
+        statistiche=_statistiche(contatori, conflitti, len(aggiornamenti)),
     )
 
 

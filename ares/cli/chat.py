@@ -320,6 +320,147 @@ def _esegui_chat(
         )
 
 
+def _guardie_di_avvio(*, prompt: str | None, scegli: bool, modo: str, percorsi: Percorsi) -> int | None:
+    """I rifiuti che vengono prima di ogni effetto.
+
+    Restituisce l'esito se la chat non puo' partire, `None` se puo'. L'ordine
+    non e' un dettaglio: da qui in poi si tocca lo stato e la cartella, e un
+    avvio rifiutato non deve aver lasciato niente dietro di se'.
+
+    Con `-p` nessuno guarda, quindi vale solo una modalita' in cui niente
+    lascia traccia senza conferma: `auto` eseguirebbe comandi da un testo
+    ostile arrivato da una pipe, e `modifiche` scriverebbe file - ARES.md, uno
+    script, un Makefile - che non distruggono oggi ma eseguono domani. La
+    regola sta nella tabella delle modalita', non in un nome: se una modalita'
+    nuova scrivesse in silenzio, sarebbe rifiutata anche lei.
+    """
+    if prompt is not None and config.modalita_scrive_in_silenzio(modo):
+        UI.line(
+            "La modalita' " + modo + " non si combina con -p: scriverebbe o eseguirebbe senza che nessuno guardi.",
+            style="ares.error",
+        )
+        return ESITO_RIFIUTO
+    if prompt is not None and scegli:
+        # `--scegli` chiede un numero, e con `-p` stdin e' la domanda.
+        UI.line("--scegli non si combina con -p: nessuno sceglierebbe. Usa --session <nome>.", style="ares.error")
+        return ESITO_RIFIUTO
+    # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio vuoto
+    # accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
+    # risponderebbe come al primo giorno senza che si capisca perche'.
+    ancora_di_la = migrazione.avviso(percorsi)
+    if ancora_di_la:
+        UI.line(ancora_di_la[0], style="ares.warning")
+        for riga in ancora_di_la[1:]:
+            UI.line(riga, style="ares.muted")
+        return ESITO_GUASTO
+    return None
+
+
+def _apri_input(stato: StatoChat) -> CliInput:
+    """La riga interattiva: comandi, cronologia, argomenti e riga di stato."""
+    input_cli = CliInput(
+        comandi=[(voce.nome, voce.descrizione) for voce in COMANDI],
+        cronologia_file=stato.percorsi.cronologia_file,
+        cronologia_righe=config.CRONOLOGIA_RIGHE,
+        argomenti=candidati_argomento(stato),
+        stato=lambda: riga_stato(stato),
+    )
+    if input_cli.history_warning:
+        UI.line(
+            "Cronologia non disponibile; resta solo per questa sessione: " + input_cli.history_warning,
+            style="ares.warning",
+        )
+    return input_cli
+
+
+def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path | None) -> None:
+    """Banner e avvisi di apertura, tutti prima del primo turno.
+
+    All'avvio e non all'uscita: qui l'utente c'e' e puo' decidere, mentre chi
+    scrive `/esci` ha gia' finito e legge un avviso che rimandera'. Un modello
+    cloud si vede dal nome, ma il nome non dice cosa comporta. Un restore
+    interrotto lascia lo stato di prima accanto a uno ricreato vuoto: senza
+    dirlo, l'utente lo scoprirebbe da una risposta che non ricorda niente.
+    """
+    politica = stato.politica
+    istruzioni = None
+    if radice is not None and cartella.file_istruzioni(radice, politica.workspace.istruzioni).is_file():
+        istruzioni = politica.workspace.istruzioni
+    UI.banner(
+        modello=stato.impostazioni.principale,
+        sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
+        utente=stato.utente.id,
+        cartella=str(radice) if radice is not None else None,
+        ramo=ramo_git(radice) if radice is not None else None,
+        istruzioni=istruzioni,
+        modo=stato.modo if radice is not None else None,
+    )
+    if stato.modo == "auto":
+        UI.line("Modalita' auto: nessuna conferma, ogni strumento gira subito.", style="ares.warning")
+
+    # Le righe sono le stesse del preflight: la conversazione e l'estrazione
+    # delle memorie possono andare in cloud separatamente.
+    avviso_cloud = stato.impostazioni.avviso_cloud()
+    if avviso_cloud:
+        UI.line(" ".join(avviso_cloud), style="ares.warning")
+        UI.line(
+            "Ollama dichiara nessuna conservazione e nessun addestramento.",
+            style="ares.muted",
+        )
+
+    # L'elenco e' vuoto quasi sempre - vedi `promemoria_backup`.
+    promemoria = promemoria_backup(stato.percorsi)
+    if promemoria:
+        UI.blank()
+        UI.line(promemoria[0], style="ares.warning")
+        for riga in promemoria[1:]:
+            UI.line(riga, style="ares.muted")
+    residui = avviso_residui_restore(stato.percorsi)
+    if residui:
+        UI.blank()
+        UI.line(residui[0], style="ares.error")
+        for riga in residui[1:]:
+            UI.line(riga, style="ares.muted")
+    UI.blank()
+
+
+def _ciclo(input_cli: CliInput, stato: StatoChat) -> None:
+    """I turni, dalla riga letta all'uscita.
+
+    Un turno occupato non e' un guasto: la chat e' aperta altrove e questa
+    aspetta, perche' e' la stessa persona a scrivere. `/esci` e la fine
+    dell'input escono di qui, e il saluto resta a chi ha aperto la chat.
+    """
+    while True:
+        try:
+            testo = input_cli.prompt().strip()
+        except (EOFError, KeyboardInterrupt):
+            UI.blank()
+            return
+
+        if not testo:
+            continue
+
+        if testo.startswith("/"):
+            if not gestisci_comando(testo, stato):
+                return
+            UI.blank()
+            continue
+
+        try:
+            risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli, stato.politica)
+        except StatoOccupato as errore:
+            UI.line(str(errore), style="ares.warning")
+            UI.blank()
+            continue
+        if risposta is not None:
+            stato.finestra = finestra_occupata(risposta) or stato.finestra
+            if stato.metriche:
+                for riga in righe_metriche(risposta, stato.impostazioni):
+                    UI.metrics(riga)
+        UI.blank()
+
+
 def _apri_chat(
     *,
     percorsi: Percorsi,
@@ -335,32 +476,9 @@ def _apri_chat(
     prompt: str | None,
     modo: str,
 ) -> int:
-    # Con `-p` nessuno guarda, quindi vale solo una modalita' in cui niente
-    # lascia traccia senza conferma: `auto` eseguirebbe comandi da un testo
-    # ostile arrivato da una pipe, e `modifiche` scriverebbe file - ARES.md,
-    # uno script, un Makefile - che non distruggono oggi ma eseguono domani.
-    # La regola sta nella tabella delle modalita', non in un nome: se una
-    # modalita' nuova scrivesse in silenzio, sarebbe rifiutata anche lei.
-    # Prima di tutto il resto, cosi' non tocca niente.
-    if prompt is not None and config.modalita_scrive_in_silenzio(modo):
-        UI.line(
-            "La modalita' " + modo + " non si combina con -p: scriverebbe o eseguirebbe senza che nessuno guardi.",
-            style="ares.error",
-        )
-        return ESITO_RIFIUTO
-    if prompt is not None and scegli:
-        # `--scegli` chiede un numero, e con `-p` stdin e' la domanda.
-        UI.line("--scegli non si combina con -p: nessuno sceglierebbe. Usa --session <nome>.", style="ares.error")
-        return ESITO_RIFIUTO
-    # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio
-    # vuoto accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
-    # risponderebbe come al primo giorno senza che si capisca perche'.
-    ancora_di_la = migrazione.avviso(percorsi)
-    if ancora_di_la:
-        UI.line(ancora_di_la[0], style="ares.warning")
-        for riga in ancora_di_la[1:]:
-            UI.line(riga, style="ares.muted")
-        return ESITO_GUASTO
+    rifiuto = _guardie_di_avvio(prompt=prompt, scegli=scegli, modo=modo, percorsi=percorsi)
+    if rifiuto is not None:
+        return rifiuto
 
     # Poi la cartella, perche' e' l'altro passo che puo' dire no: un avvio
     # rifiutato non deve aver toccato niente, nemmeno la directory dello
@@ -376,14 +494,14 @@ def _apri_chat(
         if not cartella.autorizza(radice, percorsi, esplicito=workspace is not None):
             return ESITO_RIFIUTO
         # La cartella scelta resta un campo dell'oggetto, ma il `replace` e'
-        # locale: `render`, `/cartella` e `build_workspace` la ricevono da
-        # chi li chiama. Prima era un'assegnazione a `config.WORKSPACE_DIR`
-        # che nessuna firma lasciava vedere.
+        # locale: `render`, `/cartella` e `build_workspace` la ricevono da chi
+        # li chiama. Prima era un'assegnazione a `config.WORKSPACE_DIR` che
+        # nessuna firma lasciava vedere.
         percorsi = replace(percorsi, lavoro=radice)
 
-    # Poi cio' che scrive: la cronologia della REPL nasce dentro lo stato,
-    # che quindi deve esistere gia' privato quando `CliInput` ci scrive.
-    # `--help` non arriva qui: esce dentro Cyclopts.
+    # Poi cio' che scrive: la cronologia della REPL nasce dentro lo stato, che
+    # quindi deve esistere gia' privato quando `CliInput` ci scrive. `--help`
+    # non arriva qui: esce dentro Cyclopts.
     config.prepara_archivio(percorsi)
 
     etichetta = ""
@@ -407,9 +525,9 @@ def _apri_chat(
     )
 
     # Il flag di config e' il default, l'opzione lo accende per una sessione
-    # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa
-    # per un pomeriggio, non una preferenza permanente. `/metriche`,
-    # `/debug` e `/sessione` cambiano questo stato a meta' conversazione.
+    # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa per
+    # un pomeriggio, non una preferenza permanente. `/metriche`, `/debug` e
+    # `/sessione` cambiano questo stato a meta' conversazione.
     stato = StatoChat(
         agent=agent,
         session_id=session,
@@ -425,97 +543,9 @@ def _apri_chat(
     if prompt is not None:
         return _colpo_singolo(stato, prompt)
 
-    input_cli = CliInput(
-        comandi=[(voce.nome, voce.descrizione) for voce in COMANDI],
-        cronologia_file=percorsi.cronologia_file,
-        cronologia_righe=config.CRONOLOGIA_RIGHE,
-        argomenti=candidati_argomento(stato),
-        stato=lambda: riga_stato(stato),
-    )
-    if input_cli.history_warning:
-        UI.line(
-            "Cronologia non disponibile; resta solo per questa sessione: " + input_cli.history_warning,
-            style="ares.warning",
-        )
-
-    istruzioni = None
-    if radice is not None and cartella.file_istruzioni(radice, politica.workspace.istruzioni).is_file():
-        istruzioni = politica.workspace.istruzioni
-    UI.banner(
-        modello=impostazioni.principale,
-        sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
-        utente=utente.id,
-        cartella=str(radice) if radice is not None else None,
-        ramo=ramo_git(radice) if radice is not None else None,
-        istruzioni=istruzioni,
-        modo=modo if radice is not None else None,
-    )
-    if modo == "auto":
-        UI.line("Modalita' auto: nessuna conferma, ogni strumento gira subito.", style="ares.warning")
-
-    # Un modello cloud si vede dal nome, ma il nome non dice cosa comporta.
-    # Ogni sessione, non solo la prima: e' la stessa logica del promemoria
-    # di backup, e un avviso che riguarda dove finiscono le parole non e'
-    # una preferenza da ricordare. Vale per la conversazione e per
-    # l'estrazione delle memorie, che il `.env` puo' mandare in cloud
-    # separatamente: le righe sono le stesse del preflight.
-    avviso_cloud = impostazioni.avviso_cloud()
-    if avviso_cloud:
-        UI.line(" ".join(avviso_cloud), style="ares.warning")
-        UI.line(
-            "Ollama dichiara nessuna conservazione e nessun addestramento.",
-            style="ares.muted",
-        )
-
-    # All'avvio e non all'uscita: qui l'utente c'e' e puo' decidere, mentre
-    # chi scrive `/esci` ha gia' finito e legge un avviso che rimandera'.
-    # L'elenco e' vuoto quasi sempre - vedi `promemoria_backup`.
-    promemoria = promemoria_backup(percorsi)
-    if promemoria:
-        UI.blank()
-        UI.line(promemoria[0], style="ares.warning")
-        for riga in promemoria[1:]:
-            UI.line(riga, style="ares.muted")
-    # Un restore interrotto lascia lo stato di prima accanto a uno stato
-    # ricreato vuoto: Ares risponderebbe come al primo giorno, e senza questo
-    # avviso l'utente lo scoprirebbe da una risposta che non ricorda niente.
-    residui = avviso_residui_restore(percorsi)
-    if residui:
-        UI.blank()
-        UI.line(residui[0], style="ares.error")
-        for riga in residui[1:]:
-            UI.line(riga, style="ares.muted")
-    UI.blank()
-
-    while True:
-        try:
-            testo = input_cli.prompt().strip()
-        except (EOFError, KeyboardInterrupt):
-            UI.blank()
-            break
-
-        if not testo:
-            continue
-
-        if testo.startswith("/"):
-            if not gestisci_comando(testo, stato):
-                break
-            UI.blank()
-            continue
-
-        try:
-            risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli, stato.politica)
-        except StatoOccupato as errore:
-            UI.line(str(errore), style="ares.warning")
-            UI.blank()
-            continue
-        if risposta is not None:
-            stato.finestra = finestra_occupata(risposta) or stato.finestra
-            if stato.metriche:
-                for riga in righe_metriche(risposta, stato.impostazioni):
-                    UI.metrics(riga)
-        UI.blank()
-
+    input_cli = _apri_input(stato)
+    _accoglienza(stato, session=session, etichetta=etichetta, radice=radice)
+    _ciclo(input_cli, stato)
     UI.line("A presto.", style="ares.title")
     return 0
 
