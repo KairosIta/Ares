@@ -275,11 +275,17 @@ def main(argomenti: list[str] | None = None) -> int:
             print("La misura di copertura e' fallita:", ", ".join(guasti))
             falliti.append("copertura")
         if not args.tutte and not args.solo:
-            # Una percentuale senza il suo perimetro e' un numero che invita
-            # a inseguirlo: meta' di cio' che resta scoperto sta nei percorsi
-            # che solo le prove con Ollama attraversano.
+            # Misurato il 22 settembre 2026: `--tutte --copertura` produce un
+            # rapporto identico a questo, riga per riga e ramo per ramo. Le
+            # prove con Ollama verificano cio' che un modello finto non puo'
+            # dire - la lingua delle intuizioni, quanto spesso il contesto
+            # manca il colpo - ma non aggiungono righe coperte: le stesse le
+            # attraversano le prove offline con il modello deterministico. Il
+            # perimetro di questa percentuale e' quindi gia' quello completo,
+            # e dirlo evita i due errori opposti: credere che manchi la meta'
+            # delle righe, o credere che `--tutte` alzi il numero.
             print()
-            print("Misura delle sole prove offline: --tutte copre anche i percorsi con il modello.")
+            print("Misura delle sole prove offline: aggiungere --tutte non cambia il rapporto.")
 
     if falliti:
         print()

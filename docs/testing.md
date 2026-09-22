@@ -84,10 +84,10 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura del 13 settembre 2026 su Linux e
-Python 3.12.3 è al 90%. `cli/chat.py` arriva al 94%, `agent/echo.py` al 95%
+Con le sole prove offline la misura del 22 settembre 2026 su Linux e
+Python 3.12.3 è al 90%. `cli/chat.py` arriva al 95%, `agent/echo.py` al 96%
 e `state/lock.py` al 100%; `backup/restore.py` resta all'86%, `cli/ui.py`
-all'84% e `cli/commands.py` all'80%. Sono misure di questa esecuzione, non
+all'84% e `cli/commands.py` all'81%. Sono misure di questa esecuzione, non
 soglie: una percentuale alta non dimostra che siano coperti tutti gli
 interleaving fra chat o tutti i punti in cui una copia può fallire.
 `cli/conferma.py` è al 77%: fra i percorsi non attraversati resta la domanda
@@ -124,17 +124,21 @@ e basta — la sonda LanceDB di `backup` risultava allo 0% pur girando a ogni
 
 Ciò che resta scoperto è quasi tutto composto da gestori d'errore e da rami
 di piattaforma: i percorsi Windows su una macchina Linux, i ripieghi per un
-disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare. Le
-righe che solo un modello vero attraversa — il salvataggio e il riuso delle
-intuizioni, un turno intero contro Ollama — le coprono le prove con Ollama,
-che qui non girano: `--tutte` alza il numero.
+disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare.
+Nessuna di quelle righe sta in un percorso che solo un modello vero
+attraversa: misurato il 22 settembre 2026, `--tutte --copertura` produce un
+rapporto **identico** a quello delle sole prove offline, riga per riga e ramo
+per ramo — 4.324 istruzioni, 309 scoperte, 1.334 rami, 90%. Le prove con
+Ollama verificano ciò che un modello finto non può dire, non allargano la
+copertura: le stesse righe le attraversano le prove offline con il modello
+deterministico. `tests/run.py` diceva il contrario in un commento, e la
+correzione sta là dove si legge il numero.
 
-Il retry del contesto stava in quell'elenco e ne è uscito: la sua logica la
-prova ora `contratto`, offline e in modo deterministico, mentre
+Il retry del contesto è l'esempio di come si divide il lavoro fra le due: la
+sua logica la prova `contratto`, offline e in modo deterministico, mentre
 `learning_reliability_test.py` resta a misurare ciò che solo un modello vero
-può dire, cioè *quanto spesso* l'estrazione manca il colpo. È la divisione
-giusta fra le due: una risponde "il retry funziona come scritto", l'altra
-"serve davvero, e quanto".
+può dire, cioè *quanto spesso* l'estrazione manca il colpo. Una risponde "il
+retry funziona come scritto", l'altra "serve davvero, e quanto".
 
 Le prove del terminale simulato impostano un ambiente Rich proprio, così
 `TERM=dumb`, `NO_COLOR` o le impostazioni della CI non cambiano le
