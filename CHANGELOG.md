@@ -6,6 +6,24 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **La misura del costo dell'apprendimento.** `tests/learning_cost_test.py`
+  costruisce la macchina di apprendimento con un modello finto che conta le
+  chiamate e risponde scrivendo, e misura cosa costa un turno: **cinque**
+  chiamate al modello di apprendimento, non le tre che il numero degli store
+  `ALWAYS` lascerebbe credere. Profilo e memorie scrivono e poi richiamano il
+  modello per una conferma che Agno scarta, mentre il contesto di sessione la
+  salta con `stop_after_tool_call`; con un turno di 650 caratteri le cinque
+  chiamate rimandano al modello 33.649 caratteri, due terzi dei quali sono le
+  istruzioni dei tre store. Spegnere uno store toglie le sue chiamate, e un
+  modello che non chiama lo strumento costa i tentativi del contesto.
+  `tests/e2e_test.py` stampa la stessa misura con i modelli veri — 5.602 token
+  di ingresso e 424 di uscita per un turno di una riga — accanto alla riga che
+  il client mostra sotto la risposta. I conti e le quattro opzioni di
+  mitigazione stanno in `docs/memory-quality.md`; la suite offline passa da
+  otto a nove prove.
+
 ### Changed
 
 - **Anche la politica viaggia come parametro: nasce `Politica`.**
@@ -167,9 +185,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   correggere; `CHANGELOG.md` e `docs/memory-quality.md` restano fuori, perché
   citano le versioni di allora.
 
-Verifica locale del 2026-09-22: otto prove offline verdi con copertura al 90%
+Verifica locale del 2026-09-22: nove prove offline verdi con copertura al 90%
 su Linux/Python 3.12; `ruff check`, `ruff format --check` e `mypy ares` (53
-file) puliti. Le prove con Ollama non sono state eseguite in questo giro.
+file) puliti. Con Ollama, `e2e`, `affidabilita` e `intuizioni` verdi su
+`deepseek-v4.1-flash:cloud` (70,9 s); nel turno di `e2e` l'apprendimento ha
+speso 5.602 token di ingresso e 424 di uscita.
 
 ## [0.7.1] - 2026-09-13
 

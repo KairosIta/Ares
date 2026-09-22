@@ -475,6 +475,93 @@ cloud non si estendono al modello locale di serie**, e la qualità della
 memoria con quel modello non è allo stato in cui la si possa dichiarare
 verificata.
 
+## Costo delle estrazioni, 22 settembre 2026
+
+Il report di analisi contava "tre store `ALWAYS`, tre inferenze in più per
+turno". La prima metà è vera per costruzione; la seconda no, e il costo va
+misurato prima di decidere se il prezzo vale la qualità.
+
+**Quante chiamate.** `tests/learning_cost_test.py` costruisce la macchina con
+un modello finto che conta e scrive: cinque chiamate al modello di
+apprendimento per ogni turno completato, non tre.
+
+| store | chiamate | perché |
+| --- | --- | --- |
+| profilo | 2 | scrive, poi richiama il modello per la conferma |
+| memorie | 2 | idem |
+| contesto di sessione | 1 | `stop_after_tool_call`, Agno salta la conferma |
+
+La seconda chiamata di profilo e memorie non serve a niente: Agno la fa
+perché il risultato della tool call non viene consumato, e la risposta di
+conferma è scartata. È la stessa ragione per cui lo store del contesto la
+evita, con un commento nel sorgente di Agno. Recuperarla vale due chiamate su
+cinque, cioè il 40% delle estrazioni.
+
+**Quanto pesa.** Le stesse cinque chiamate, con un turno di quattro messaggi
+(650 caratteri circa), rimandano al modello 33.649 caratteri:
+
+| chiamata | istruzioni | conversazione | schemi | totale |
+| --- | --- | --- | --- | --- |
+| profilo, scrittura | 3.516 | 624 | 1.858 | 5.998 |
+| profilo, conferma | 3.516 | 624 | 1.858 | 6.066 |
+| memorie, scrittura | 5.123 | 613 | 1.828 | 7.564 |
+| memorie, conferma | 5.123 | 613 | 1.828 | 7.613 |
+| contesto | 4.543, con la conversazione dentro | — | 1.776 | 6.408 |
+| **totale** | **21.821** | **2.474** | **9.148** | **33.649** |
+
+Il totale comprende anche i 206 caratteri dei messaggi di servizio: la
+richiesta rivolta al contesto (89) e i due risultati di tool delle conferme
+(117), che non sono né istruzioni né schemi.
+
+Due terzi sono le istruzioni dei tre store — le regole di estrazione condivise
+(`CRITERI_ESTRAZIONE`) più quelle di ciascuno — e il 27% gli schemi degli
+strumenti. La conversazione è 2.474 caratteri, e viaggia comunque cinque
+volte: due nel messaggio utente di profilo e memorie, e dentro il messaggio
+di sistema del contesto. Il costo non è il turno, è l'impianto fisso delle
+istruzioni, ripetuto a ogni chiamata. Spegnere uno store toglie le sue
+chiamate; un modello che non chiama affatto lo strumento costa i tentativi
+del contesto, perché profilo e memorie non ritentano ma il contesto sì.
+
+**Con i modelli veri.** `tests/e2e_test.py` stampa ora la riga che il client
+mostra sotto la risposta, e accanto i token dell'apprendimento divisi fra
+ingresso e uscita. Su un turno corto (288 caratteri) con
+`deepseek-v4.1-flash:cloud` per conversazione ed estrazione:
+
+```
+costo del turno      - finestra 8.2k/256.0k (3%)  risposta 319 tok / 4.6 s  apprendimento 424 tok / 5.7 s  turno 15.0 s
+token apprendimento  - 5602 in / 424 out
+```
+
+5.602 token di ingresso e 424 di uscita, per un turno di una riga: il costo
+dell'apprendimento sta quasi tutto in ingresso, ed è circa due terzi di
+quello che il turno occupa nella finestra (8,2k). Il tempo si somma dopo la
+risposta — 5,7 s su 15,0 s — e su un turno lungo cresce con il contenuto,
+perché la conversazione viaggia in ogni estrazione.
+
+**Cosa si può fare, in ordine di rapporto fra guadagno e rischio.**
+
+1. **Fermare profilo e memorie dopo la tool call**, come fa il contesto:
+   cinque chiamate diventano tre e spariscono due copie delle istruzioni.
+   Richiede che Ares sovrascriva `_build_functions_for_model` nei due store,
+   una superficie privata di Agno — lo stesso genere di appiglio che
+   `AresSessionContextStore` usa già per il retry, sorvegliato da
+   `tests/agno_contract_test.py`. Non cambia cosa si impara: la risposta di
+   conferma è scartata anche oggi.
+2. **Accorciare le istruzioni condivise.** `CRITERI_ESTRAZIONE` è ripetuto
+   identico nei tre store e viaggia cinque volte per turno: una parte può
+   stare in un blocco solo, o essere più breve. Tocca la qualità, quindi va
+   misurata con il benchmark invece che decisa a tavolino.
+3. **Estrarre meno spesso.** Profilo e memorie solo nei turni che sembrano
+   contenere qualcosa di durevole, o ogni N turni. È una politica, non
+   un'ottimizzazione: cambia cosa entra in memoria e quando.
+4. **Cambiare modello all'estrazione.** `ARES_LEARNING_MODEL` è già separato
+   dalla conversazione: un modello locale qui toglie il costo monetario e
+   sposta quello in latenza. La misura con il modello locale di serie dice
+   che la qualità scende, e il confronto è in questa pagina.
+
+La prima è l'unica che non tocca la memoria; le altre vanno decise con il
+benchmark in mano.
+
 ## Limiti del protocollo
 
 La misura attuale isola estrazione e recupero su dialoghi brevi. Non copre

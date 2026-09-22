@@ -169,7 +169,7 @@ Windows, i gestori d'errore — che nessuna prova attraversa. Ruff copre tutto.
 .venv/bin/python tests/run.py
 ```
 
-Sono otto. `smoke` costruisce l'agente e semina gli store, e controlla
+Sono nove. `smoke` costruisce l'agente e semina gli store, e controlla
 assemblaggio, isolamento, lock, propagazione simulata del run completo alla
 macchina di apprendimento e l'eco di ciò che entra in memoria. `repl` prova
 ciò che della chat gira senza l'agente: conferme lette e applicate, esito e
@@ -201,6 +201,17 @@ alla 3.0.5 mentre il lock era alla 3.0.9: adesso una patch che sale senza
 allineare le dichiarazioni rende rossa questa prova, e il messaggio nomina il
 file. Restano fuori `CHANGELOG.md` e `docs/memory-quality.md`, che citano le
 versioni di allora.
+`costo` misura le tre estrazioni `ALWAYS` con lo stesso genere di modello
+finto, che però conta le chiamate e risponde scrivendo: cinque chiamate al
+modello di apprendimento per turno invece delle tre che il numero degli store
+lascerebbe credere — profilo e memorie pagano una seconda chiamata di
+conferma che il contesto evita con `stop_after_tool_call` — e 33.649
+caratteri, due terzi dei quali istruzioni. Spegnere uno store toglie le sue
+chiamate, e un modello che non chiama lo strumento costa i tentativi del
+contesto. I numeri e le opzioni stanno in
+[qualità della memoria](memory-quality.md#costo-delle-estrazioni-22-settembre-2026);
+la stessa misura con i modelli veri la stampa `e2e`, che accanto alla riga
+del client riporta i token di ingresso dell'apprendimento.
 Il modello è lo stesso copione deterministico. Nei primi due controlli gli
 store di apprendimento sono spenti e si conta il passaggio, non ciò che
 scriverebbe; il terzo lo store lo costruisce davvero, perché lì la domanda è
@@ -252,7 +263,7 @@ spostata di due caratteri: `prepara_archivio()` chiamata dopo `parse_args()`
 invece che prima, che è tutta la differenza fra un `--help` che lascia un
 archivio e uno che non lascia niente.
 
-La CI esegue le stesse otto prove, con la misura, su Ubuntu con Python 3.12
+La CI esegue le stesse nove prove, con la misura, su Ubuntu con Python 3.12
 e 3.13 e su Windows con la 3.12. Sul runner Windows l'ambiente nasce
 direttamente da `setup.ps1 -SkipPreflight`, così la CI verifica anche il
 percorso d'installazione senza richiedere Ollama; un secondo `uv sync --locked` sullo
