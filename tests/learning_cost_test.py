@@ -35,7 +35,7 @@ from dataclasses import replace
 from typing import Any
 from unittest.mock import patch
 
-from _comune import esegui, esigi, prepara_ambiente, pulisci
+from _comune import chiudi, esegui, esigi, prepara_ambiente
 
 # I percorsi vanno scelti prima di importare config, che li legge una volta
 # sola all'import.
@@ -404,11 +404,7 @@ def main() -> int:
             ("scrittura negli store", la_scrittura_arriva_negli_store),
         )
     )
-    if falliti:
-        print("Archivio della prova conservato:", RADICE_PROVA)
-        return 1
-    pulisci(RADICE_PROVA)
-    return 0
+    return chiudi(falliti, RADICE_PROVA)
 
 
 if __name__ == "__main__":

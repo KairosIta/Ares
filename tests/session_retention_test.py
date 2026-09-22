@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from _comune import esegui, esigi, ok, prepara_ambiente, pulisci
+from _comune import chiudi, esegui, esigi, ok, prepara_ambiente
 
 RADICE_PROVA = prepara_ambiente("session-retention-test")
 
@@ -363,11 +363,7 @@ def retention() -> str:
 
 def main() -> int:
     falliti, _ = esegui((("retention sessioni", retention),))
-    if falliti:
-        print("Archivio della prova conservato:", RADICE_PROVA)
-        return 1
-    pulisci(RADICE_PROVA)
-    return 0
+    return chiudi(falliti, RADICE_PROVA)
 
 
 if __name__ == "__main__":
