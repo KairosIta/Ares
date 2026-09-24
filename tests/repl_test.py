@@ -262,7 +262,22 @@ def conferma_scrittura() -> str:
     )
     testo = "\n".join(righe_richiesta(fuori, radice=radice))
     esigi("differenza" not in testo, "un percorso fuori dalla radice viene letto per il diff")
-    return "differenza su un file esistente, contenuto intero su uno nuovo, niente lettura fuori radice"
+
+    # Un file che esiste ma non si legge come testo non ha una differenza da
+    # mostrare: la conferma deve dire che verra' sostituito da capo, invece di
+    # far credere che non ci fosse niente.
+    (radice / "binario").write_bytes(b"\xff\xfe\x00\x01")
+    illeggibile = ToolExecution(
+        tool_name=config.WORKSPACE_PREFIX + "write_file",
+        tool_args={"path": "binario", "content": "testo nuovo\n"},
+    )
+    testo = "\n".join(righe_richiesta(illeggibile, radice=radice))
+    esigi("non si legge come testo" in testo, "un file illeggibile non viene segnalato:\n" + testo)
+    esigi(
+        "differenza" not in testo and "testo nuovo" in testo,
+        "il file illeggibile non mostra il contenuto nuovo che lo sostituira'",
+    )
+    return "differenza su un file esistente, contenuto intero su nuovo o illeggibile, niente lettura fuori radice"
 
 
 def avvertenze_del_comando() -> str:

@@ -149,10 +149,26 @@ def ripristina_snapshot(
                 _rinomina_directory(destinazione, precedente)
                 spostato = True
             _rinomina_directory(staging, destinazione)
-        except Exception:
+        except Exception as errore:
+            residuo = None
             if spostato and precedente.exists() and not destinazione.exists():
-                _rinomina_directory(precedente, destinazione)
+                try:
+                    _rinomina_directory(precedente, destinazione)
+                except Exception as ripristino:
+                    # Il rollback e' fallito a sua volta: l'eccezione da far
+                    # risalire e' quella vera, ma va detto dove sta l'unica
+                    # copia dello stato precedente, invece di nominare solo il
+                    # guasto del rollback e perdere l'altro.
+                    residuo = (precedente, ripristino)
             shutil.rmtree(staging, ignore_errors=True)
+            if residuo is not None:
+                raise integrity.ErroreBackup(
+                    "restore fallito e ripristino fallito: lo stato precedente e' rimasto in "
+                    + str(residuo[0])
+                    + " ("
+                    + str(residuo[1])
+                    + ")"
+                ) from errore
             raise
         else:
             if precedente.exists():

@@ -42,6 +42,22 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **La conferma di `write_file` dice quando il file esiste ma non si legge.**
+  Un file binario o in un'altra codifica veniva trattato come assente, e la
+  conferma mostrava soltanto il contenuto nuovo: proprio la cosa che spariva
+  restava nascosta. Ora lo dice, e mostra comunque il testo che lo
+  sostituira'.
+- **Il rollback del restore non maschera piu' l'errore vero.** Se la rinomina
+  di ripristino falliva a sua volta, la sua eccezione sostituiva quella del
+  restore e non nominava `.stato-precedente-*`, cioe' l'unica copia dello
+  stato. Ora il residuo e' nominato e la causa originale resta incatenata.
+- **Uno snapshot senza manifest non resta invisibile per sempre.** La
+  pubblicazione di riserva lo lascia se un processo viene ucciso fra la copia
+  e la scrittura del manifest; `backup list` ora lo nomina (in `--json` sotto
+  `incompleti`), mentre resta fuori dal catalogo e da `prune`.
+- **`_copia_sqlite` chiude la sorgente anche se la destinazione non si apre.**
+  La prima connessione stava fuori dal `try`: un guasto sulla seconda la
+  lasciava aperta fino alla raccolta dei rifiuti.
 - **Un avvio rifiutato non lascia `~/.ares` leggibile a tutti.** Il lock
   dello stato si prende prima delle guardie e crea la casa se manca, ma il
   `chmod 0700` della politica sta in `config.prepara_archivio`, che su un
