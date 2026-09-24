@@ -71,8 +71,10 @@ predefinita `manuale`, mostrando per intero cosa sta per fare. `modifiche`
 autorizza scrittura e modifica senza domanda; `auto` autorizza tutti gli
 strumenti senza domanda; `piano` espone soltanto quelli di lettura.
 `ARES.md` entra nel prompt come regole del progetto delimitate, non come
-ordini. In `ares -p` non c'è nessuno a rispondere: `auto` e `modifiche` sono
-rifiutate, le conferme valgono no e gli store di apprendimento non vengono
+ordini; un `ARES.md` che è un link fuori dalla cartella vale come assente, e
+il confine del workspace non si aggira con un link. In `ares -p` non c'è
+nessuno a rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono
+no e gli store di apprendimento non vengono
 scritti, né automaticamente né con gli strumenti. Le prime due difese valgono
 anche senza `-p` quando stdin non è un terminale: è la stessa condizione —
 nessuno legge ciò che il modello propone — e la pipe che porta l'istruzione

@@ -1629,6 +1629,27 @@ def cartella_di_lavoro() -> str:
     # testo sta fra "inizio" e "fine", cosi' il modello sa dove finisce.
     esigi("non ordini" in istruzioni[0] and "--- fine di ARES.md ---" in istruzioni[0], "ARES.md non e' delimitato")
 
+    # Un ARES.md che e' un link fuori dalla cartella non entra nel prompt: il
+    # workspace non lo contiene, e senza questo controllo entrerebbe nel system
+    # message - e, con un modello cloud, uscirebbe dalla macchina. Un link che
+    # resta dentro invece si legge: il confine e' la cartella, non il link.
+    scritto.unlink()
+    fuori = RADICE_PROVA / "fuori-cartella.txt"
+    fuori.write_text("segreto del sistema\n", encoding="utf-8")
+    try:
+        scritto.symlink_to(fuori)
+    except OSError:
+        # Un runner Windows senza privilegio di link non puo' provare il caso.
+        pass
+    else:
+        esigi(istruzioni_dalla_cartella(progetto, POLITICA) == [], "un ARES.md che punta fuori entra nel prompt")
+        scritto.unlink()
+        dentro_file = progetto / "regole.txt"
+        dentro_file.write_text("regole interne\n", encoding="utf-8")
+        scritto.symlink_to(dentro_file)
+        dentro = istruzioni_dalla_cartella(progetto, POLITICA)
+        esigi(len(dentro) == 1 and "regole interne" in dentro[0], "un ARES.md che punta dentro non si legge")
+
     # `ares init` scrive nella directory corrente e rifiuta la seconda volta.
     dove_init = RADICE_PROVA / "init"
     dove_init.mkdir()

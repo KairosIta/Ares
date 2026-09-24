@@ -472,13 +472,26 @@ def istruzioni_dalla_cartella(radice_lavoro, politica: Politica) -> list[str]:
     vengono dalla politica, cosi' `ares init` e questa lettura non possono
     guardare due nomi diversi. Un file oltre il tetto viene troncato e lo si
     dice al modello, cosi' non crede di aver letto tutto. Un file illeggibile
-    vale come assente: un permesso negato non deve impedire la chat.
+    vale come assente: un permesso negato non deve impedire la chat, e un link
+    che esce dalla cartella non e' un file del progetto.
     """
     if radice_lavoro is None:
         return []
-    percorso = Path(radice_lavoro) / politica.workspace.istruzioni
+    radice = Path(radice_lavoro).resolve()
+    percorso = radice / politica.workspace.istruzioni
     try:
-        grezzo = percorso.read_bytes()
+        # Il link si risolve prima di leggere: un `ARES.md` che punta fuori
+        # dalla cartella non e' un file del progetto, e leggerlo farebbe
+        # entrare nel prompt - e, con un modello cloud, fuori dalla macchina -
+        # qualcosa che il workspace non contiene. Vale come assente, come per
+        # ogni strumento di Agno, che risolve i link e pretende il contenimento.
+        reale = percorso.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return []
+    if not reale.is_relative_to(radice):
+        return []
+    try:
+        grezzo = reale.read_bytes()
     except OSError:
         return []
     troncato = len(grezzo) > politica.workspace.istruzioni_max_byte

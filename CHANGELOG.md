@@ -42,6 +42,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Un `ARES.md` che e' un link fuori dalla cartella vale come assente.** Il
+  file delle regole si leggeva direttamente, quindi un `ARES.md` che puntava a
+  `~/.ssh/id_ed25519` - o a qualunque file fuori dal workspace - entrava nel
+  system message a ogni avvio, e con un modello cloud usciva dalla macchina.
+  Ora il percorso si risolve e si pretende il contenimento, come fanno gli
+  strumenti di Agno; un link che resta dentro la cartella si legge ancora.
+  `tests/repl_test.py` tiene fermo il caso.
 - **Una sessione dal nome fisso appartiene a chi l'ha creata.** `--session
   <nome>` e `/sessione <nome>` scavalcano gli elenchi per cartella, gia'
   filtrati per utente: un secondo utente poteva aprire la sessione del primo,
