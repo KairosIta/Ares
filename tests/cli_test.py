@@ -22,6 +22,7 @@ modello mancante, server spento - senza dipendere da cosa c'e' scaricato
 sulla macchina che esegue la prova.
 """
 
+import errno
 import io
 import json
 import os
@@ -1462,7 +1463,55 @@ def migrazione_stato() -> str:
         esigi((vecchio_tmp / "kairos.db").exists(), "un conflitto ha spostato o cancellato qualcosa")
         esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "un conflitto ha sovrascritto")
         esigi(migrazione.avviso(nuovo) == [], "un conflitto ferma la chat")
-    return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve"
+
+        # Fra filesystem diversi `os.rename` non unisce: `_sposta` passa da una
+        # sorella temporanea e solo la rinomina la rende visibile. Si simula
+        # l'EXDEV, perche' la prova gira su un filesystem solo.
+        ponte = radice / "ponte"
+        vecchio_ponte = ponte / "vecchio"
+        vecchio_ponte.mkdir(parents=True)
+        (vecchio_ponte / "kairos.db").write_text("ponte", encoding="utf-8")
+        casa_ponte = ponte / "casa" / ".ares"
+        nuovi = replace(PERCORSI, home=casa_ponte, stato=casa_ponte / "stato", backup=casa_ponte / "backup")
+        with (
+            patch.multiple(config, VECCHIO_TMP_DIR=vecchio_ponte, VECCHIO_BACKUP_DIR=ponte / "backup-vuoto"),
+            patch.object(config, "leggi_percorsi", lambda: nuovi),
+            # `os.rename` dirottato: la via veloce fallisce e tocca alla copia.
+            patch.object(migrazione.os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")),
+        ):
+            esito, testo = migra()
+        esigi(esito == 0, "la migrazione fra filesystem non riesce: " + testo)
+        esigi((casa_ponte / "stato" / "kairos.db").read_text(encoding="utf-8") == "ponte", "la copia non e' arrivata")
+        esigi(not vecchio_ponte.exists(), "il vecchio non e' stato rimosso dopo la copia")
+        esigi(not (casa_ponte / ".stato-migrazione").exists(), "la sorella temporanea e' rimasta")
+
+        # Un guasto a meta' copia non deve lasciare un `nuovo` a meta': il
+        # vecchio resta intatto, il nuovo non compare, e `avviso` ferma la
+        # chat. Con `shutil.move` la copia parziale resterebbe al posto del
+        # nuovo, e la chat aprirebbe uno stato dimezzato senza dirlo.
+        vecchio_rotto = ponte / "rotto"
+        vecchio_rotto.mkdir()
+        (vecchio_rotto / "kairos.db").write_text("rotto", encoding="utf-8")
+        casa_rotta = ponte / "casa-rottura" / ".ares"
+        rotti = replace(PERCORSI, home=casa_rotta, stato=casa_rotta / "stato", backup=casa_rotta / "backup")
+
+        def copia_a_meta(src: Path, dst: Path, **kwargs: object) -> None:
+            Path(dst).mkdir(parents=True, exist_ok=True)
+            (Path(dst) / "kairos.db").write_text("meta", encoding="utf-8")
+            raise OSError("disco pieno")
+
+        with (
+            patch.multiple(config, VECCHIO_TMP_DIR=vecchio_rotto, VECCHIO_BACKUP_DIR=ponte / "backup-vuoto2"),
+            patch.object(config, "leggi_percorsi", lambda: rotti),
+            patch.object(migrazione.os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")),
+            patch.object(migrazione.shutil, "copytree", copia_a_meta),
+        ):
+            esito, testo = migra()
+        esigi(esito == 1, "un guasto a meta' copia non viene detto: " + testo)
+        esigi(not (casa_rotta / "stato").exists(), "un guasto a meta' copia ha lasciato uno stato incompleto")
+        esigi((vecchio_rotto / "kairos.db").read_text(encoding="utf-8") == "rotto", "il vecchio e' stato perso")
+        esigi(migrazione.avviso(rotti) != [], "dopo il guasto la chat non si ferma")
+    return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve, copia fra filesystem"
 
 
 def chat_residui() -> str:

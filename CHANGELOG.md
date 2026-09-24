@@ -42,6 +42,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **`ares migrate` non lascia mai uno stato a meta'.** Fra filesystem diversi
+  `shutil.move` degrada a copia piu' cancellazione: un guasto a meta' lasciava
+  in `~/.ares` uno stato incompleto che la chat apriva senza dirlo, con la
+  copia buona ancora nel vecchio posto. Ora `_sposta` copia in una sorella
+  temporanea del nuovo e la rinomina: il nuovo c'e' tutto o non c'e' per
+  niente, e nel secondo caso `avviso` ferma la chat. `tests/cli_test.py`
+  simula l'`EXDEV` e un guasto a meta' copia.
 - **Un id utente oltre 128 caratteri viene rifiutato prima di Agno.** Agno
   taglia i segmenti del namespace - l'id in `user/<id>` e' uno di essi - a
   `MAX_SEGMENT_CHARS` e solleva `InvalidPathError` oltre. `Utente` non lo
