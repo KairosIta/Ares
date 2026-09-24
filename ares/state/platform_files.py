@@ -38,7 +38,16 @@ def lock_file(
 ) -> Iterator[BinaryIO]:
     """Apre e blocca un file, traducendo la sola contesa in ``FileOccupato``."""
     percorso = Path(percorso)
+    # Se il genitore non c'e' lo crea questo modulo - e' la `~/.ares` di un
+    # primo avvio - e lo crea privato: il `chmod` della politica
+    # (`config.prepara_archivio`) arriva solo se la chat prosegue, e un avvio
+    # rifiutato - `-p --modo auto`, una cartella rischiosa - lascerebbe
+    # altrimenti una casa a 0755. Un genitore che esiste gia' non si tocca:
+    # quello di un lock puo' essere una cartella di lavoro.
+    genitore_nuovo = not percorso.parent.exists()
     percorso.parent.mkdir(parents=True, exist_ok=True)
+    if genitore_nuovo:
+        rendi_privato(percorso.parent)
     file_lock = percorso.open("a+b")
     acquisito = False
     try:

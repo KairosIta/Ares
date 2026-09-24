@@ -42,6 +42,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Un avvio rifiutato non lascia `~/.ares` leggibile a tutti.** Il lock
+  dello stato si prende prima delle guardie e crea la casa se manca, ma il
+  `chmod 0700` della politica sta in `config.prepara_archivio`, che su un
+  rifiuto non arriva: `ares -p --modo auto` lasciava una `~/.ares` a 0755,
+  contro la promessa del commento in `_guardie_di_avvio`. Ora `lock_file`
+  rende privato il genitore quando lo crea, e non tocca un genitore che
+  esiste gia' - quello di un lock puo' essere una cartella di lavoro, come
+  nel lock vecchio di `migrate`.
 - **Il lock vecchio della migrazione si toglie mentre e' ancora tenuto.**
   Prima l'`unlink` arrivava dopo il rilascio: fra il `close` e l'`unlink` un
   processo della versione precedente poteva prendere il lock su quel file, e

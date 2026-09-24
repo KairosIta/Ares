@@ -1008,6 +1008,15 @@ def cronologia_persistente() -> str:
             oct(prima_chat.lock_file.stat().st_mode)[-3:] == "600",
             "lock della cronologia leggibile da altri",
         )
+        # Il lock crea il genitore se manca, e lo crea privato: su un avvio
+        # rifiutato `prepara_archivio` non arriva, e la casa resterebbe 0755.
+        casa_nuova = Path(RADICE_PROVA) / "casa-lock" / ".ares"
+        with platform_files.lock_file(casa_nuova / "stato.lock", esclusivo=False, bloccante=False):
+            pass
+        esigi(
+            oct(casa_nuova.stat().st_mode)[-3:] == "700",
+            "la casa creata dal lock non e' privata: " + oct(casa_nuova.stat().st_mode)[-3:],
+        )
 
     limitata = CronologiaSicura(percorso, 2)
     limitata.append_string("quarta domanda")
