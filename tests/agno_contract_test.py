@@ -4,7 +4,7 @@ Contratto con Agno: estrazione, conferma, retry e limiti dichiarati
 Uso:
     .venv/bin/python tests/agno_contract_test.py
 
-Cinque cose Ares le da' per vere di Agno, e nessuna prova le chiedeva ad
+Sei cose Ares le da' per vere di Agno, e nessuna prova le chiedeva ad
 Agno.
 
 La prima: l'apprendimento avviene una volta per turno, sul run completo.
@@ -59,6 +59,13 @@ era rimasta in uno di essi col lock gia' alla 3.0.9. Un numero vecchio non
 fa fallire niente: e' una pagina che descrive un altro programma. Qui
 l'installato e' il metro, e la prova dice quali file allineare.
 
+La sesta: il tetto di lunghezza di un id utente e' quello che Agno impone ai
+segmenti del namespace. `Utente` rifiuta ora un id oltre `MAX_SEGMENT_CHARS`,
+e prima non lo faceva: la costruzione del FileSystem sollevava un
+`InvalidPathError` che nessun confine leggeva, e `ares --user <id lungo>`
+finiva in un traceback invece che in un rifiuto. La prova confronta i due
+numeri, cosi' una modifica di Agno non li separa in silenzio.
+
 Niente modello e niente rete: il modello e' uno script che emette le tool
 call decise dalla prova, come in `session_retention_test.py`. Nei primi due
 controlli gli store di apprendimento sono spenti, e l'estrazione e' un
@@ -83,6 +90,7 @@ RADICE_PROVA = prepara_ambiente("agno-contract-test")
 RADICE = Path(__file__).resolve().parent.parent
 
 from _doppi import ModelloACopione, tool_call  # noqa: E402
+from agno.fs._paths import MAX_SEGMENT_CHARS, normalize_namespace  # noqa: E402
 from agno.learn import (  # noqa: E402
     LearningMachine,
     LearningMode,
@@ -106,7 +114,7 @@ from ares.agent.assistant import build_assistant  # noqa: E402
 from ares.agent.learning import build_session_context_store  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
 from ares.agent.turn_core import TurnEventKind, run_turn_cycle  # noqa: E402
-from ares.state.identita import Utente  # noqa: E402
+from ares.state.identita import LUNGHEZZA_MASSIMA, Utente, UtenteNonValido  # noqa: E402
 
 UTENTE = "prova-contratto"
 SESSIONE = "contratto"
@@ -592,6 +600,37 @@ def versione_dichiarata() -> str:
     return "Agno " + installata + " in " + str(len(FILE_CHE_DICHIARANO)) + " dichiarazioni"
 
 
+def limite_utente() -> str:
+    """Il tetto di `Utente` e' quello che Agno usa per i segmenti del namespace.
+
+    Agno taglia i segmenti del namespace - l'id in `user/<id>` e' uno di essi -
+    a `MAX_SEGMENT_CHARS` caratteri e solleva `InvalidPathError` oltre. `Utente`
+    e' la porta che deve rifiutare prima, con un `UtenteNonValido` leggibile:
+    senza il limite, `ares --user <id lungo>` moriva con un traceback che nessun
+    confine di Ares catturava. Qui si confronta il tetto di Ares con quello
+    installato, cosi' una modifica di Agno non lo lascia indietro.
+    """
+    esigi(
+        LUNGHEZZA_MASSIMA == MAX_SEGMENT_CHARS,
+        "il tetto di Utente (" + str(LUNGHEZZA_MASSIMA) + ") non e' quello di Agno (" + str(MAX_SEGMENT_CHARS) + ")",
+    )
+    al_limite = "a" * LUNGHEZZA_MASSIMA
+    esigi(Utente.da_grezzo(al_limite).id == al_limite, "un id lungo quanto il tetto viene rifiutato")
+    try:
+        Utente.da_grezzo("a" * (LUNGHEZZA_MASSIMA + 1))
+    except UtenteNonValido:
+        pass
+    else:
+        esigi(False, "un id oltre il tetto non viene rifiutato")
+    # La lunghezza al tetto deve restare un namespace valido per Agno: il
+    # rifiuto di Ares e il limite di Agno sono lo stesso confine, non due.
+    try:
+        normalize_namespace("user/" + al_limite)
+    except Exception as errore:
+        esigi(False, "Agno rifiuta un namespace che Ares accetta: " + str(errore))
+    return "il tetto di Utente coincide con MAX_SEGMENT_CHARS di Agno"
+
+
 def main() -> int:
     global POLITICA
     # Gli store di apprendimento e LanceDB non servono: spegnerli impedisce
@@ -613,6 +652,7 @@ def main() -> int:
             ("ciclo HITL", ciclo_hitl),
             ("retry contesto", contesto_riprova),
             ("memoria non confermabile", memoria_non_confermabile),
+            ("limite utente", limite_utente),
             ("versione dichiarata", versione_dichiarata),
         )
     )

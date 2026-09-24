@@ -42,6 +42,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Un id utente oltre 128 caratteri viene rifiutato prima di Agno.** Agno
+  taglia i segmenti del namespace - l'id in `user/<id>` e' uno di essi - a
+  `MAX_SEGMENT_CHARS` e solleva `InvalidPathError` oltre. `Utente` non lo
+  controllava: `ares --user <id lungo>` moriva con un traceback che nessun
+  confine catturava, invece del rifiuto leggibile che la porta promette. Ora
+  il tetto e' `LUNGHEZZA_MASSIMA` in `state/identita.py`, e
+  `agno_contract_test.py` lo confronta con quello installato.
 - **Un `ARES.md` che e' un link fuori dalla cartella vale come assente.** Il
   file delle regole si leggeva direttamente, quindi un `ARES.md` che puntava a
   `~/.ssh/id_ed25519` - o a qualunque file fuori dal workspace - entrava nel
