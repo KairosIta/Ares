@@ -11,6 +11,7 @@ from agno.db.base import SessionType
 
 from ares import config
 from ares.agent.assistant import build_assistant
+from ares.agent.prompts import percorso_istruzioni
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
@@ -337,7 +338,7 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
         UI.pair("git", ramo + ", " + stato_git)
     else:
         UI.pair("git", "non e' un repository", style="ares.muted")
-    if cartella.file_istruzioni(radice, stato.politica.workspace.istruzioni).is_file():
+    if percorso_istruzioni(radice, stato.politica.workspace.istruzioni) is not None:
         UI.pair("istruzioni", stato.politica.workspace.istruzioni + ", letto all'avvio")
     else:
         UI.pair(

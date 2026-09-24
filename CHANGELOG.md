@@ -42,6 +42,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Il banner e `/cartella` non nominano piu' un `ARES.md` che punta fuori.**
+  La regola di contenimento valeva solo per la lettura: banner e `/cartella`
+  usavano `is_file()`, che segue i link, e dicevano «ARES.md, letto all'avvio»
+  di un link che il prompt ignorava. Ora entrambi passano da
+  `percorso_istruzioni` (`agent/prompts.py`), la stessa funzione che decide
+  cosa legge `istruzioni_dalla_cartella`.
 - **La conferma di `write_file` dice quando il file esiste ma non si legge.**
   Un file binario o in un'altra codifica veniva trattato come assente, e la
   conferma mostrava soltanto il contenuto nuovo: proprio la cosa che spariva

@@ -464,6 +464,27 @@ def istruzioni_sulle_conversazioni(sessioni, *, cartella, politica: Politica) ->
     ]
 
 
+def percorso_istruzioni(radice_lavoro, nome: str) -> Path | None:
+    """Il file delle regole, se e' un file vero dentro la cartella.
+
+    Risolve i link e pretende il contenimento: un `ARES.md` che punta fuori
+    dalla cartella non e' un file del progetto, e nominarlo o leggerlo
+    farebbe entrare nel prompt - o nel banner - qualcosa che il workspace non
+    contiene. Una sola risposta per chi lo legge all'avvio
+    (`istruzioni_dalla_cartella`) e per chi mostra se c'e' (`/cartella` e il
+    banner): la domanda e' la stessa, e due copie della regola tornerebbero a
+    divergere.
+    """
+    if radice_lavoro is None:
+        return None
+    radice = Path(radice_lavoro).resolve()
+    try:
+        reale = (radice / nome).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    return reale if reale.is_relative_to(radice) else None
+
+
 def istruzioni_dalla_cartella(radice_lavoro, politica: Politica) -> list[str]:
     """Il contenuto di `ARES.md` nella cartella di lavoro, se c'e'.
 
@@ -472,23 +493,11 @@ def istruzioni_dalla_cartella(radice_lavoro, politica: Politica) -> list[str]:
     vengono dalla politica, cosi' `ares init` e questa lettura non possono
     guardare due nomi diversi. Un file oltre il tetto viene troncato e lo si
     dice al modello, cosi' non crede di aver letto tutto. Un file illeggibile
-    vale come assente: un permesso negato non deve impedire la chat, e un link
-    che esce dalla cartella non e' un file del progetto.
+    vale come assente, e un link che esce dalla cartella non e' un file del
+    progetto: il confine lo decide `percorso_istruzioni`.
     """
-    if radice_lavoro is None:
-        return []
-    radice = Path(radice_lavoro).resolve()
-    percorso = radice / politica.workspace.istruzioni
-    try:
-        # Il link si risolve prima di leggere: un `ARES.md` che punta fuori
-        # dalla cartella non e' un file del progetto, e leggerlo farebbe
-        # entrare nel prompt - e, con un modello cloud, fuori dalla macchina -
-        # qualcosa che il workspace non contiene. Vale come assente, come per
-        # ogni strumento di Agno, che risolve i link e pretende il contenimento.
-        reale = percorso.resolve(strict=True)
-    except (OSError, RuntimeError):
-        return []
-    if not reale.is_relative_to(radice):
+    reale = percorso_istruzioni(radice_lavoro, politica.workspace.istruzioni)
+    if reale is None:
         return []
     try:
         grezzo = reale.read_bytes()

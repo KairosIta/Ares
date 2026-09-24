@@ -47,6 +47,7 @@ from agno.run.agent import RunOutput
 from ares import config
 from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
+from ares.agent.prompts import percorso_istruzioni
 from ares.agent.turn_core import run_turn_cycle
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
@@ -398,7 +399,7 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
     """
     politica = stato.politica
     istruzioni = None
-    if radice is not None and cartella.file_istruzioni(radice, politica.workspace.istruzioni).is_file():
+    if percorso_istruzioni(radice, politica.workspace.istruzioni) is not None:
         istruzioni = politica.workspace.istruzioni
     UI.banner(
         modello=stato.impostazioni.principale,

@@ -1510,7 +1510,7 @@ def cartella_di_lavoro() -> str:
     `--workspace`. Git si legge da un `.git` fabbricato, senza lanciare git,
     salvo il conteggio dei file modificati, che git lo lancia davvero.
     """
-    from ares.agent.prompts import istruzioni_dalla_cartella
+    from ares.agent.prompts import istruzioni_dalla_cartella, percorso_istruzioni
     from ares.cli import cartella
     from ares.cli.app import app
 
@@ -1667,12 +1667,20 @@ def cartella_di_lavoro() -> str:
         pass
     else:
         esigi(istruzioni_dalla_cartella(progetto, POLITICA) == [], "un ARES.md che punta fuori entra nel prompt")
+        esigi(
+            percorso_istruzioni(progetto, POLITICA.workspace.istruzioni) is None,
+            "percorso_istruzioni accetta un link che esce dalla cartella",
+        )
         scritto.unlink()
         dentro_file = progetto / "regole.txt"
         dentro_file.write_text("regole interne\n", encoding="utf-8")
         scritto.symlink_to(dentro_file)
         dentro = istruzioni_dalla_cartella(progetto, POLITICA)
         esigi(len(dentro) == 1 and "regole interne" in dentro[0], "un ARES.md che punta dentro non si legge")
+        esigi(
+            percorso_istruzioni(progetto, POLITICA.workspace.istruzioni) == dentro_file.resolve(),
+            "percorso_istruzioni non trova un file che resta dentro la cartella",
+        )
 
     # `ares init` scrive nella directory corrente e rifiuta la seconda volta.
     dove_init = RADICE_PROVA / "init"

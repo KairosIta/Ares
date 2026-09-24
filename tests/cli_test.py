@@ -1228,7 +1228,34 @@ def chat_cartella() -> str:
     esigi(str(progetto.resolve()) in testo, "/cartella non nomina la cartella scelta: " + repr(testo))
     esigi(progetto.name in testo.split("Cartella di lavoro")[0], "il banner non nomina la cartella: " + repr(testo))
     esigi("ARES.md" in testo, "il banner non dice che c'e' un ARES.md: " + repr(testo))
-    return "cartella inesistente, rifiutata e scelta con --workspace"
+
+    # Un ARES.md che e' un link fuori dalla cartella non entra nel prompt,
+    # quindi non va nominato nemmeno dal banner o da `/cartella`: la regola e'
+    # una sola (`percorso_istruzioni`). Il link si prova dove si puo' creare.
+    fuori = RADICE_PROVA / "regole-fuori.txt"
+    fuori.write_text("roba d'altri\n", encoding="utf-8")
+    try:
+        (progetto / "ARES.md").unlink()
+        (progetto / "ARES.md").symlink_to(fuori)
+    except OSError:
+        pass
+    else:
+        input_cli = FintoInput(["/cartella", KeyboardInterrupt])
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: input_cli),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+            redirect_stdout(uscita),
+        ):
+            chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=progetto)
+        testo = _piatto(uscita.getvalue())
+        esigi(
+            "ARES.md" not in testo.split("Cartella di lavoro")[0],
+            "il banner nomina un ARES.md che punta fuori: " + repr(testo),
+        )
+        esigi("nessun ARES.md" in testo, "/cartella non dice che l'ARES.md e' fuori: " + repr(testo))
+    return "cartella inesistente, rifiutata e scelta con --workspace, ARES.md fuori dalla cartella"
 
 
 def chat_sessioni() -> str:
