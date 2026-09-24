@@ -42,6 +42,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Il lock vecchio della migrazione si toglie mentre e' ancora tenuto.**
+  Prima l'`unlink` arrivava dopo il rilascio: fra il `close` e l'`unlink` un
+  processo della versione precedente poteva prendere il lock su quel file, e
+  l'`unlink` lo staccava dall'inode - il processo dopo ne creava uno nuovo, e
+  i due si credevano soli. Ora si toglie dentro il lock; su Windows, dove un
+  file aperto non si cancella, resta il ripiego dopo la chiusura.
+  `tests/cli_test.py` osserva l'istante del rilascio (su POSIX).
 - **`ares migrate` non lascia mai uno stato a meta'.** Fra filesystem diversi
   `shutil.move` degrada a copia piu' cancellazione: un guasto a meta' lasciava
   in `~/.ares` uno stato incompleto che la chat apriva senza dirlo, con la

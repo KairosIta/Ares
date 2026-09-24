@@ -146,6 +146,16 @@ def migra() -> int:
                 _sposta(vecchio, nuovo)
                 rendi_privato(nuovo)
                 UI.pair("Spostato " + cosa, str(vecchio) + "  ->  " + str(nuovo), style="ares.title")
+
+            # Il vecchio lock si toglie mentre lo teniamo ancora. Dopo il
+            # rilascio, fra il `close` e l'`unlink`, un processo della versione
+            # precedente puo' prendere il lock su questo file: l'unlink lo
+            # staccherebbe dall'inode, il processo dopo ne creerebbe uno nuovo,
+            # e i due si crederebbero soli. Su Windows un file aperto non si
+            # cancella - `lock_file` lo tiene aperto finche' il contesto non
+            # esce - quindi li' il tentativo non riesce e si ripiega sotto.
+            with contextlib.suppress(PermissionError):
+                vecchio_lock.unlink()
     except StatoOccupato as errore:
         UI.err("ERRORE: " + str(errore))
         UI.err("Chiudi Ares e riprova.", style="ares.muted")
@@ -154,6 +164,8 @@ def migra() -> int:
         UI.err("ERRORE: spostamento fallito: " + str(errore))
         UI.err("Niente e' andato perso: cio' che non si e' mosso e' ancora dov'era.", style="ares.muted")
         return ESITO_GUASTO
+    # Ripiego per Windows, dove il lock aperto impedisce l'unlink: qui il file
+    # e' chiuso e si cancella. Su POSIX e' un no-op, il file e' gia' sparito.
     with contextlib.suppress(OSError):
         vecchio_lock.unlink()
     UI.line("Da ora `ares` legge da " + str(percorsi.home) + ", da qualunque cartella.", style="ares.muted")

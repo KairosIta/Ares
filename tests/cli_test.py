@@ -33,7 +33,7 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import replace
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -1438,8 +1438,29 @@ def migrazione_stato() -> str:
         esigi(esito == 1 and not costruiti, "la chat e' partita con lo stato ancora nel posto di prima")
         esigi("migrate" in uscita.getvalue(), "la chat non dice come spostare lo stato: " + repr(uscita.getvalue()))
 
-        esito, testo = migra()
+        # Il vecchio lock si toglie mentre e' ancora tenuto: se restasse al
+        # rilascio, fra il `close` e l'`unlink` un altro processo potrebbe
+        # prenderlo, e l'unlink staccherebbe i due inode. La sonda guarda se il
+        # file c'e' ancora nell'istante in cui il lock viene rilasciato. Su
+        # Windows il file aperto non si cancella, quindi li' non si prova.
+        vecchio_lock = vecchio_tmp.with_name(vecchio_tmp.name + ".lock")
+        esistenza_al_rilascio: dict[str, bool] = {}
+        lock_originale = migrazione.lock_stato
+
+        @contextmanager
+        def lock_spia(percorso: Path, *, esclusivo: bool, bloccante: bool = False):
+            with lock_originale(percorso, esclusivo=esclusivo, bloccante=bloccante):
+                yield
+                esistenza_al_rilascio[str(percorso)] = Path(percorso).exists()
+
+        with patch.object(migrazione, "lock_stato", lock_spia):
+            esito, testo = migra()
         esigi(esito == 0, "la migrazione non e' riuscita: " + testo)
+        if os.name == "posix":
+            esigi(
+                esistenza_al_rilascio.get(str(vecchio_lock)) is False,
+                "il vecchio lock era ancora li' quando il lock e' stato rilasciato",
+            )
         esigi("Spostato lo stato" in testo and "Spostato i backup" in testo, "non dice cosa ha spostato: " + testo)
         esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "il database non e' arrivato")
         esigi((casa / "stato" / "lancedb").is_dir(), "l'indice non e' arrivato")
