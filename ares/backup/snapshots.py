@@ -372,9 +372,9 @@ def residui_restore(percorsi: Percorsi) -> list[Path]:
     """Le directory che un restore interrotto puo' lasciare accanto allo stato.
 
     Su POSIX il restore e' due rinomine: lo stato corrente diventa
-    `.tmp-precedente-<hex>` e la preparazione `.tmp-restore-<hex>` prende il
-    suo posto. Un processo ucciso fra le due lascia il residuo e nessuna
-    `tmp/`: al riavvio Ares ricrea uno stato vuoto e, senza questa lettura,
+    `.stato-precedente-<hex>` e la preparazione `.stato-restore-<hex>` prende il
+    suo posto. Un processo ucciso fra le due lascia il residuo e nessuno
+    stato: al riavvio Ares ne ricrea uno vuoto e, senza questa lettura,
     riparte da zero senza dirlo. Un residuo resta anche dopo un restore
     riuscito, quando la copia precedente non si lascia rimuovere, e su
     Windows quando il rollback per copia fallisce a sua volta.

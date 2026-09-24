@@ -433,11 +433,11 @@ def istruzioni_senza_terminale(radice_lavoro=None, modo: str | None = None, *, p
 def istruzioni_sulle_conversazioni(sessioni, *, cartella, politica: Politica) -> list[str]:
     """Le conversazioni precedenti nate nella stessa cartella, per id.
 
-    `search_past_sessions` elenca le ultime venti sessioni dell'utente senza
-    sapere dove sono nate: in una cartella con dieci progetti accanto, "dove
-    eravamo rimasti" pesca a caso. Qui il modello riceve le poche di questo
-    posto, con l'id da passare a `read_past_session`. Vuoto se non ce ne
-    sono: un'istruzione che dice "nessuna" occuperebbe spazio per niente.
+    `search_past_sessions` elenca le sessioni passate dell'utente, entro il
+    tetto configurato, senza sapere dove sono nate: in una cartella con dieci
+    progetti accanto, "dove eravamo rimasti" pesca a caso. Qui il modello
+    riceve le poche di questo posto, con l'id da passare a `read_past_session`.
+    Vuoto se non ce ne sono: un'istruzione che dice "nessuna" occuperebbe spazio per niente.
 
     Vuoto anche con lo strumento spento: `precedenti` e' gia' vuoto se
     `sessioni_passate` e' falso, e l'istruzione non deve reintrodurre cio'

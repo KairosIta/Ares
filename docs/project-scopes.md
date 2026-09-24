@@ -106,8 +106,8 @@ decisi uno per uno quando l'ambito diventa parte del contratto (§6.3).
 | `ares sessions status`, `prune`, `delete` | solo `user_id`: tutte le cartelle | [retention.py](../ares/sessions/retention.py) |
 
 Il testo del prompt dichiara il primo limite: `search_past_sessions` "elenca le
-ultime venti sessioni dell'utente senza sapere dove sono nate"
-([prompts.py](../ares/agent/prompts.py)). Ares compensa con l'elenco delle
+sessioni passate dell'utente, entro il tetto configurato, senza sapere dove
+sono nate" ([prompts.py](../ares/agent/prompts.py)). Ares compensa con l'elenco delle
 conversazioni nate in questa cartella, ma lo strumento resta user-wide: la
 compensazione è un'istruzione, non un filtro.
 

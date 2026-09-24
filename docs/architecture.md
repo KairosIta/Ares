@@ -46,7 +46,7 @@ e la chat si ferma finché non è successo.
   importano solo quando servono; `comando.py` è la fabbrica che dà a tutte
   le App gli stessi titoli e la console di `ui.py`, e tiene la tabella dei
   codici di uscita - 0 fatto, 1 guasto, 2 rifiutato, 3 occupato - con
-  `esegui_protetto`, il contorno di lock ed errori che ogni manutenzione usa;
+  `esegui_protetto`, il contorno di lock ed errori che le manutenzioni condividono;
 - `chat.py` avvia e coordina la REPL; `commands.py` contiene la tabella dei
   comandi locali, il loro dispatch e lo `StatoChat` che `/sessione`,
   `/metriche` e `/debug` modificano a metà conversazione, mentre
@@ -263,7 +263,7 @@ il restore conserva stabile la directory radice con una copia di rollback.
 La copia iniziale deve essere completa prima di modificare la destinazione:
 se fallisce, l'originale resta intatto e la copia parziale viene scartata.
 Un restore ucciso fra le rinomine può lasciare accanto allo stato la copia
-`.tmp-precedente-*` e nessuna `tmp/`: la chat all'avvio e `ares backup list`
+`.stato-precedente-*` e uno stato ricreato vuoto: la chat all'avvio e `ares backup list`
 lo dicono, nominando il residuo e lo snapshot pre-restore da cui tornare,
 senza toccare niente.
 

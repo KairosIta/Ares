@@ -10,7 +10,7 @@ Uso:
 Legge gli archivi senza avviare il modello conversazionale e non scrive
 negli store. Due cose vanno dette per intero: come ogni comando che apre
 l'archivio, crea la directory dello stato se manca, cosi' su un clone nuovo
-lascia una `tmp/` vuota; e la ricerca fra le intuizioni vettorizza la query
+lascia uno stato vuoto; e la ricerca fra le intuizioni vettorizza la query
 con l'embedder locale, che e' l'unica inferenza di questo comando e l'unico
 momento in cui un modello entra in memoria. Serve a rispondere alla domanda
 che conta quando un agente dice di ricordare: dove sta questa informazione,

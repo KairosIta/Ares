@@ -42,6 +42,16 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- Le pagine dicevano numeri che il codice non confermava: `CONTRIBUTING.md`
+  contava tredici prove invece di quattordici, `docs/testing.md` due job di
+  CI invece di tre (`Cosa cambia` compreso), `SECURITY.md` un `Audit` a ogni
+  push quando ha un filtro sui percorsi, e `docs/project-scopes.md` con
+  `agent/prompts.py` «le ultime venti sessioni» dove il tetto e'
+  `PAST_SESSIONS_LIMIT`. Allineati anche il nome del residuo di un restore
+  (`.stato-precedente-*`, non `.tmp-precedente-*`, in `docs/architecture.md`
+  e in `backup/snapshots.py`), la firma di `build_assistant` in
+  `docs/core-contract.md` (mancava `politica`) e il docstring di
+  `ares/ops/inspect_learning.py` (lo stato non e' piu' in `tmp/`).
 - `docs/testing.md` diceva che «`--tutte` alza il numero» e `tests/run.py`
   ripeteva che metà di ciò che resta scoperto sta nei percorsi che solo le
   prove con Ollama attraversano. Misurato il 22 settembre 2026: i due rapporti
