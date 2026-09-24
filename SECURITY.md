@@ -73,8 +73,11 @@ strumenti senza domanda; `piano` espone soltanto quelli di lettura.
 `ARES.md` entra nel prompt come regole del progetto delimitate, non come
 ordini. In `ares -p` non c'è nessuno a rispondere: `auto` e `modifiche` sono
 rifiutate, le conferme valgono no e gli store di apprendimento non vengono
-scritti, né automaticamente né con gli strumenti. Cronologia e quaderno
-privato restano persistenti.
+scritti, né automaticamente né con gli strumenti. Le prime due difese valgono
+anche senza `-p` quando stdin non è un terminale: è la stessa condizione —
+nessuno legge ciò che il modello propone — e la pipe che porta l'istruzione
+non risponde ad `Autorizzi?`. Cronologia e quaderno privato restano
+persistenti.
 
 La memoria durevole si scrive prima della conferma, non dopo. Profilo e
 memorie vengono scritti sia dagli strumenti che il modello chiama sia

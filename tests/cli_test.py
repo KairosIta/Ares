@@ -1670,6 +1670,45 @@ def aiuto_senza_effetti() -> str:
     return str(len(comandi)) + " aiuti e un preflight intero senza creare l'archivio"
 
 
+def chat_non_presidiato() -> str:
+    """Senza terminale nessuno legge cio' che il modello propone.
+
+    `-p` non e' l'unico avvio senza nessuno che guardi: anche con stdin da una
+    pipe, e senza `-p`, la conferma sarebbe letta dallo stesso flusso che porta
+    l'istruzione. Le guardie di avvio trattano quel caso come `-p`, e
+    `_apri_input` manda le domande a vuoto mentre i turni restano leggibili.
+    """
+
+    def guardia(*, modo: str, scegli: bool, presidiato: bool) -> int | None:
+        return chat._guardie_di_avvio(prompt=None, scegli=scegli, modo=modo, percorsi=PERCORSI, presidiato=presidiato)
+
+    for modo in ("auto", "modifiche"):
+        esigi(
+            guardia(modo=modo, scegli=False, presidiato=False) == chat.ESITO_RIFIUTO,
+            "senza terminale la modalita' " + modo + " non viene rifiutata",
+        )
+        esigi(
+            guardia(modo=modo, scegli=False, presidiato=True) is None,
+            "presidiato: la modalita' " + modo + " viene rifiutata lo stesso",
+        )
+    esigi(
+        guardia(modo="manuale", scegli=False, presidiato=False) is None,
+        "senza terminale una modalita' che chiede conferma viene rifiutata",
+    )
+
+    # Un solo attributo basta a `_apri_input`: percorsi, candidati e riga di
+    # stato si leggono dopo, e il resto e' chiuso in una lambda.
+    finto = SimpleNamespace(percorsi=PERCORSI)
+    senza = chat._apri_input(finto, presidiato=False)
+    esigi(senza.ask("Autorizzi? ") == "", "senza terminale la conferma non vale no")
+    esigi(senza.fallback_ask is chat._nessuno, "senza terminale la conferma legge dal flusso")
+    esigi(
+        chat._apri_input(finto, presidiato=True).fallback_ask is not chat._nessuno,
+        "presidiato: la conferma non puo' leggere l'input",
+    )
+    return "modalita' silenziose rifiutate, conferme a vuoto senza terminale"
+
+
 def main() -> int:
     avvio = time.monotonic()
     print("Archivio della prova:", RADICE_PROVA)
@@ -1704,6 +1743,7 @@ def main() -> int:
         ok("chat sessioni", chat_sessioni())
         ok("migrazione", migrazione_stato())
         ok("chat avvio", chat_avvio())
+        ok("chat non presidiato", chat_non_presidiato())
         ok("chat residui", chat_residui())
         # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
         # apre i database in questo processo.

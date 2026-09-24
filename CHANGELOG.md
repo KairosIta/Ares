@@ -72,6 +72,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Senza terminale le conferme non si leggono dalla pipe.** Il rifiuto
+  delle modalità silenziose era legato a `-p`: con stdin da una pipe ma senza
+  `-p`, la stessa pipe che portava l'istruzione rispondeva anche ad
+  `Autorizzi?`. Ora «non presidiato» si decide da
+  `stdin` non-terminale, come `-p` ma senza il flag; i turni restano
+  leggibili dal flusso, le domande no. L'apprendimento resta attivo fuori da
+  `-p`, come prima. `tests/cli_test.py` (`chat non presidiato`) tiene ferme le
+  guardie e il cablaggio di `_apri_input`.
 - `CONTRIBUTING.md` spiega come si rilascia — versione, voce del `CHANGELOG`,
   riga di `SECURITY.md`, merge con `--merge`, tag annotato e nota della
   release — perché i due punti che erano stati saltati sono proprio quelli

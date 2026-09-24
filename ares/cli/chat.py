@@ -320,28 +320,34 @@ def _esegui_chat(
         )
 
 
-def _guardie_di_avvio(*, prompt: str | None, scegli: bool, modo: str, percorsi: Percorsi) -> int | None:
+def _guardie_di_avvio(
+    *, prompt: str | None, scegli: bool, modo: str, percorsi: Percorsi, presidiato: bool
+) -> int | None:
     """I rifiuti che vengono prima di ogni effetto.
 
     Restituisce l'esito se la chat non puo' partire, `None` se puo'. L'ordine
     non e' un dettaglio: da qui in poi si tocca lo stato e la cartella, e un
     avvio rifiutato non deve aver lasciato niente dietro di se'.
 
-    Con `-p` nessuno guarda, quindi vale solo una modalita' in cui niente
-    lascia traccia senza conferma: `auto` eseguirebbe comandi da un testo
-    ostile arrivato da una pipe, e `modifiche` scriverebbe file - ARES.md, uno
+    `-p` non e' l'unico avvio senza nessuno che guardi: anche senza un
+    terminale, cioe' con stdin da una pipe, nessuno legge cio' che il modello
+    propone. In entrambi i casi vale solo una modalita' in cui niente lascia
+    traccia senza conferma: `auto` eseguirebbe comandi da un testo ostile
+    arrivato dalla stessa pipe, e `modifiche` scriverebbe file - ARES.md, uno
     script, un Makefile - che non distruggono oggi ma eseguono domani. La
     regola sta nella tabella delle modalita', non in un nome: se una modalita'
     nuova scrivesse in silenzio, sarebbe rifiutata anche lei.
     """
-    if prompt is not None and config.modalita_scrive_in_silenzio(modo):
+    if (prompt is not None or not presidiato) and config.modalita_scrive_in_silenzio(modo):
         UI.line(
-            "La modalita' " + modo + " non si combina con -p: scriverebbe o eseguirebbe senza che nessuno guardi.",
+            "La modalita' " + modo + " richiede un terminale: scriverebbe o eseguirebbe senza che nessuno guardi.",
             style="ares.error",
         )
         return ESITO_RIFIUTO
     if prompt is not None and scegli:
-        # `--scegli` chiede un numero, e con `-p` stdin e' la domanda.
+        # `--scegli` resta fuori dalla regola sopra: scegliere una
+        # conversazione non autorizza niente, e da una pipe un numero si legge
+        # ancora. Con `-p` stdin e' la domanda, quindi li' non si puo'.
         UI.line("--scegli non si combina con -p: nessuno sceglierebbe. Usa --session <nome>.", style="ares.error")
         return ESITO_RIFIUTO
     # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio vuoto
@@ -356,7 +362,12 @@ def _guardie_di_avvio(*, prompt: str | None, scegli: bool, modo: str, percorsi: 
     return None
 
 
-def _apri_input(stato: StatoChat) -> CliInput:
+def _nessuno(_etichetta: str) -> str:
+    """Nessuno a rispondere: una domanda senza terminale vale no."""
+    return ""
+
+
+def _apri_input(stato: StatoChat, *, presidiato: bool) -> CliInput:
     """La riga interattiva: comandi, cronologia, argomenti e riga di stato."""
     input_cli = CliInput(
         comandi=[(voce.nome, voce.descrizione) for voce in COMANDI],
@@ -364,6 +375,9 @@ def _apri_input(stato: StatoChat) -> CliInput:
         cronologia_righe=config.CRONOLOGIA_RIGHE,
         argomenti=candidati_argomento(stato),
         stato=lambda: riga_stato(stato),
+        # Senza terminale i turni restano leggibili dal fallback, ma le domande
+        # valgono no: la stessa pipe non autorizza cio' che chiede.
+        fallback_ask=None if presidiato else _nessuno,
     )
     if input_cli.history_warning:
         UI.line(
@@ -476,7 +490,11 @@ def _apri_chat(
     prompt: str | None,
     modo: str,
 ) -> int:
-    rifiuto = _guardie_di_avvio(prompt=prompt, scegli=scegli, modo=modo, percorsi=percorsi)
+    # La presenza del terminale decide se qualcuno puo' rispondere alle
+    # domande. Si guarda stdin e non stdout: e' da li' che si risponde, quindi
+    # `ares > file` con la tastiera davanti resta presidiato.
+    presidiato = sys.stdin is not None and sys.stdin.isatty()
+    rifiuto = _guardie_di_avvio(prompt=prompt, scegli=scegli, modo=modo, percorsi=percorsi, presidiato=presidiato)
     if rifiuto is not None:
         return rifiuto
 
@@ -543,7 +561,7 @@ def _apri_chat(
     if prompt is not None:
         return _colpo_singolo(stato, prompt)
 
-    input_cli = _apri_input(stato)
+    input_cli = _apri_input(stato, presidiato=presidiato)
     _accoglienza(stato, session=session, etichetta=etichetta, radice=radice)
     _ciclo(input_cli, stato)
     UI.line("A presto.", style="ares.title")
