@@ -42,6 +42,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Una sessione dal nome fisso appartiene a chi l'ha creata.** `--session
+  <nome>` e `/sessione <nome>` scavalcano gli elenchi per cartella, gia'
+  filtrati per utente: un secondo utente poteva aprire la sessione del primo,
+  e i suoi run - che Agno carica per solo `session_id` - entravano nella
+  cronologia del primo. Ora l'apertura di una sessione di un altro utente
+  viene rifiutata prima di costruire l'agente, in chat e in `/sessione`; un
+  nome mai visto resta una conversazione nuova. Il controllo sta in
+  `sessione_di_altri` (`state/stores.py`) e legge solo l'intestazione della
+  riga, non la conversazione.
 - Le pagine dicevano numeri che il codice non confermava: `CONTRIBUTING.md`
   contava tredici prove invece di quattordici, `docs/testing.md` due job di
   CI invece di tre (`Cosa cambia` compreso), `SECURITY.md` un `Audit` a ogni

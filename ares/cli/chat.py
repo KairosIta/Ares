@@ -62,7 +62,7 @@ from ares.state.archivi import build_db
 from ares.state.git import ramo_git
 from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato, lock_stato, lock_turno
-from ares.state.stores import con_run, prima_domanda, quando_sessione, sessioni_della_cartella
+from ares.state.stores import con_run, prima_domanda, quando_sessione, sessione_di_altri, sessioni_della_cartella
 
 
 def riga_stato(stato: StatoChat) -> str:
@@ -529,6 +529,15 @@ def _apri_chat(
         )
         if session is None:
             return ESITO_RIFIUTO
+
+    # Il nome esplicito scavalca gli elenchi per cartella, gia' filtrati per
+    # utente: una sessione di un altro non si apre, e l'agente non nasce.
+    if sessione_di_altri(build_db(percorsi), session, utente):
+        UI.line(
+            "La sessione '" + session + "' appartiene a un altro utente: non si apre.",
+            style="ares.error",
+        )
+        return ESITO_RIFIUTO
 
     configura_log_agno(debug)
     agent = build_assistant(

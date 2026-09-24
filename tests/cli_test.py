@@ -1709,6 +1709,63 @@ def chat_non_presidiato() -> str:
     return "modalita' silenziose rifiutate, conferme a vuoto senza terminale"
 
 
+def chat_sessione_altrui() -> str:
+    """Una sessione di un altro utente non si apre, e l'agente non nasce.
+
+    `--session <nome>` e `/sessione <nome>` scavalcano gli elenchi per
+    cartella, che sono gia' filtrati per utente. Senza il controllo, i run del
+    secondo utente finirebbero nella sessione del primo: Agno li carica per
+    solo `session_id`, quindi il primo li ritroverebbe nella cronologia.
+    """
+    from agno.session.agent import AgentSession
+
+    from ares.agent.runtime import build_db
+
+    db = build_db(PERCORSI)
+    altrui = "sessione-di-altrui"
+    mia = "sessione-mia"
+    db.upsert_session(AgentSession(session_id=altrui, user_id="bob", created_at=1000))
+    db.upsert_session(AgentSession(session_id=mia, user_id=UTENTE, created_at=2000))
+
+    costruiti: list[dict] = []
+
+    def costruisci(percorsi, impostazioni, politica, utente, **argomenti):
+        argomenti["percorsi"] = percorsi
+        argomenti["impostazioni"] = impostazioni
+        argomenti["politica"] = politica
+        costruiti.append(argomenti)
+        return object()
+
+    def avvio(**argomenti) -> tuple[int, str]:
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+            patch.object(sys, "stdin", io.StringIO()),
+            redirect_stdout(uscita),
+            redirect_stderr(uscita),
+        ):
+            esito = chat._esegui_chat(user=UTENTE, **argomenti)
+        return esito, _piatto(uscita.getvalue())
+
+    try:
+        esito, testo = avvio(session=altrui)
+        esigi(esito == chat.ESITO_RIFIUTO, "la sessione di un altro utente non viene rifiutata")
+        esigi(not costruiti, "l'agente nasce su una sessione di un altro utente")
+        esigi(altrui in testo, "il rifiuto non nomina la sessione: " + repr(testo))
+
+        esito, _ = avvio(session=mia)
+        esigi(esito == 0 and costruiti[-1]["session_id"] == mia, "la propria sessione non si apre")
+
+        esito, _ = avvio(session="nome-mai-visto")
+        esigi(esito == 0 and costruiti[-1]["session_id"] == "nome-mai-visto", "un nome nuovo viene rifiutato")
+    finally:
+        db.delete_sessions([altrui], user_id="bob")
+        db.delete_sessions([mia], user_id=UTENTE)
+    return "sessione di un altro utente rifiutata senza costruire l'agente; la propria e una nuova si aprono"
+
+
 def main() -> int:
     avvio = time.monotonic()
     print("Archivio della prova:", RADICE_PROVA)
@@ -1744,6 +1801,7 @@ def main() -> int:
         ok("migrazione", migrazione_stato())
         ok("chat avvio", chat_avvio())
         ok("chat non presidiato", chat_non_presidiato())
+        ok("chat sessione altrui", chat_sessione_altrui())
         ok("chat residui", chat_residui())
         # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
         # apre i database in questo processo.

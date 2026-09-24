@@ -15,7 +15,7 @@ from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.config import Impostazioni, Percorsi, Politica
-from ares.state.archivi import build_filesystem
+from ares.state.archivi import build_db, build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
 from ares.state.stores import (
@@ -25,6 +25,7 @@ from ares.state.stores import (
     quando_sessione,
     righe_entita,
     righe_sessione,
+    sessione_di_altri,
     testo_conversazione,
 )
 
@@ -187,6 +188,9 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         nome = cartella.nuovo_id_sessione(stato.percorsi.lavoro)
     elif nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
+        return
+    if sessione_di_altri(build_db(stato.percorsi), nome, stato.utente):
+        UI.line("La sessione '" + nome + "' appartiene a un altro utente: non si apre.", style="ares.error")
         return
     stato.agent = build_assistant(
         stato.percorsi,

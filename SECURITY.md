@@ -99,7 +99,9 @@ Le chat dello stesso utente serializzano i turni con un lock esclusivo per
 utente, dall'istantanea iniziale fino alla conferma e all'eventuale
 ripristino. Una seconda chat può restare aperta, ma deve riprovare se un
 turno è già in corso; in pipe il comando termina con codice 3. Utenti diversi
-possono eseguire turni contemporanei. Anche un'interruzione o un errore fuori
+possono eseguire turni contemporanei. Una sessione dal nome fisso appartiene
+all'utente che l'ha creata: un altro utente non può aprirla, nemmeno
+nominandola con `--session` o `/sessione`. Anche un'interruzione o un errore fuori
 dal generatore passa dall'eco e dalla conferma delle scritture già avvenute.
 Il lock resta cooperativo: non protegge da programmi che scrivono direttamente
 negli archivi. Un arresto forzato del processo può comunque lasciare scritture
