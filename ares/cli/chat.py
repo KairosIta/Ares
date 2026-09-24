@@ -541,6 +541,11 @@ def _apri_chat(
         return ESITO_RIFIUTO
 
     configura_log_agno(debug)
+    # Nessuno legge l'eco quando non c'e' un terminale: senza un posto dove
+    # mostrarla, l'apprendimento automatico e' spento come in `-p`. Il flag
+    # `interattivo` e' uno solo, e vale per la costruzione e per ogni
+    # ricostruzione (`/sessione`, `/modo`), che lo ripassano da `StatoChat`.
+    interattivo = prompt is None and presidiato
     agent = build_assistant(
         percorsi,
         impostazioni,
@@ -548,7 +553,7 @@ def _apri_chat(
         utente,
         session_id=session,
         debug=debug,
-        interattivo=prompt is None,
+        interattivo=interattivo,
         modo=modo,
     )
 
@@ -566,6 +571,7 @@ def _apri_chat(
         debug=debug,
         metriche=politica.mostra.metriche or metriche,
         modo=modo,
+        interattivo=interattivo,
     )
 
     if prompt is not None:

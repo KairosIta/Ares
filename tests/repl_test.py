@@ -1304,6 +1304,7 @@ def stato_della_chat() -> str:
     costruiti: list[tuple[str, bool]] = []
 
     modi: list[str] = []
+    interattivi: list[bool] = []
 
     def costruisci(
         percorsi: Percorsi,
@@ -1313,10 +1314,12 @@ def stato_della_chat() -> str:
         *,
         session_id: str,
         debug: bool,
+        interattivo: bool,
         modo: str,
     ) -> AgenteFinto:
         costruiti.append((session_id, debug))
         modi.append(modo)
+        interattivi.append(interattivo)
         return AgenteFinto(session_id, debug)
 
     stato = StatoChat(
@@ -1326,6 +1329,7 @@ def stato_della_chat() -> str:
         percorsi=PERCORSI,
         impostazioni=IMPOSTAZIONI,
         politica=POLITICA,
+        interattivo=False,
     )
 
     def comando(riga: str) -> str:
@@ -1381,6 +1385,13 @@ def stato_della_chat() -> str:
     )
     comando("/sessione progetto-z")
     esigi(modi[-1] == "piano", "il cambio di sessione perde la modalita'")
+    # `/sessione` e `/modo` ricostruiscono l'agente: l'interattivo dello stato
+    # (qui False, come senza terminale) deve sopravvivere, o la ricostruzione
+    # riaccenderebbe l'apprendimento.
+    esigi(
+        interattivi and all(not v for v in interattivi),
+        "le ricostruzioni riaccendono l'apprendimento: " + repr(interattivi),
+    )
 
     # `/sessione nuova`: un id dalla cartella e dal momento, come un altro
     # `ares` qui, e lo dice.

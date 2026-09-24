@@ -139,6 +139,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Senza terminale, e senza `-p`, l'apprendimento e' spento come in `-p`.**
+  `interattivo` era `prompt is None`: con stdin da una pipe ma senza `-p`
+  l'agente nasceva come se qualcuno leggesse, e scriveva memorie mentre le
+  conferme, per la correzione precedente, valevano no. Ora `interattivo` e'
+  `prompt is None and presidiato`, ed e' uno solo: `StatoChat` lo porta con
+  se', cosi' anche `/sessione` e `/modo`, che ricostruiscono l'agente, non lo
+  riaccendono.
 - **Senza terminale le conferme non si leggono dalla pipe.** Il rifiuto
   delle modalità silenziose era legato a `-p`: con stdin da una pipe ma senza
   `-p`, la stessa pipe che portava l'istruzione rispondeva anche ad

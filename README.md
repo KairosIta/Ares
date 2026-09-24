@@ -257,8 +257,10 @@ per una sessione, `/modo piano` cambia a metà conversazione sulla stessa
 sessione, e il modello sa in quale modalità si trova. `auto` si sceglie solo
 con `ares --modo auto` e il banner lo dice in rosso. Con `-p`, e in generale
 quando stdin non è un terminale, valgono solo `manuale` e `piano`: `auto`
-eseguirebbe e `modifiche` scriverebbe senza che nessuno guardi, e una conferma
-letta dalla stessa pipe che porta l'istruzione non è una conferma.
+eseguirebbe e `modifiche` scriverebbe senza che nessuno guardi, una conferma
+letta dalla stessa pipe che porta l'istruzione non è una conferma, e — come
+con `-p` — gli store di apprendimento non vengono aggiornati, perché nessuno
+leggerebbe l'eco.
 
 Se la cartella è rischiosa — la home intera, la radice del disco, una
 directory di sistema, una che contiene lo stato o il codice di Ares — te lo

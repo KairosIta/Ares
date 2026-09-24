@@ -1379,10 +1379,11 @@ def chat_sessioni() -> str:
         "-p non manda chi parla, strumenti e metriche su stderr: " + repr(contorno),
     )
     esigi(UI.console is not UI.stderr, "-p lascia la console dirottata su stderr dopo il turno")
-    # Senza nessuno che legga, l'agente nasce senza memoria da scrivere; la
-    # chat normale invece con.
+    # In questa prova stdin e' sempre una pipe, quindi ogni costruzione nasce
+    # senza memoria da scrivere, `-p` compreso: il caso con terminale e' in
+    # `chat non presidiato`.
     esigi(costruiti[-1]["interattivo"] is False, "-p costruisce un agente che scrive in memoria")
-    esigi(costruiti[0]["interattivo"] is True, "la chat costruisce un agente senza memoria")
+    esigi(costruiti[0]["interattivo"] is False, "una chat senza terminale costruisce un agente che scrive memorie")
     esigi(costruiti[-1]["modo"] == config.MODO_PREDEFINITO, "-p non passa la modalita' predefinita")
     # `piano` non lascia tracce: con `-p` passa, ed e' l'altra meta' della
     # regola che rifiuta `auto` e `modifiche`.
@@ -1803,7 +1804,37 @@ def chat_non_presidiato() -> str:
         chat._apri_input(finto, presidiato=True).fallback_ask is not chat._nessuno,
         "presidiato: la conferma non puo' leggere l'input",
     )
-    return "modalita' silenziose rifiutate, conferme a vuoto senza terminale"
+
+    # Senza terminale, e senza `-p`, l'agente nasce come quello di `-p`:
+    # nessun post-hook e nessuno strumento degli store. Con un terminale torna
+    # a scrivere memorie.
+    costruiti: list[dict] = []
+
+    def costruisci(percorsi, impostazioni, politica, utente, **argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    def avvio(*, presidiato: bool) -> int:
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+            patch.object(sys, "stdin", SimpleNamespace(isatty=lambda: presidiato)),
+            redirect_stdout(uscita),
+            redirect_stderr(uscita),
+        ):
+            return chat._esegui_chat(user=UTENTE)
+
+    esigi(
+        avvio(presidiato=False) == 0 and costruiti[-1]["interattivo"] is False,
+        "senza terminale l'agente scrive memorie",
+    )
+    esigi(
+        avvio(presidiato=True) == 0 and costruiti[-1]["interattivo"] is True,
+        "con terminale l'agente non scrive memorie",
+    )
+    return "modalita' silenziose rifiutate, conferme a vuoto e niente memorie senza terminale"
 
 
 def chat_sessione_altrui() -> str:

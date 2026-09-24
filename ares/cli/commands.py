@@ -66,6 +66,10 @@ class StatoChat:
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
+    # Falso in un avvio senza nessuno che legga (`-p`, o una pipe senza `-p`):
+    # `/sessione` e `/modo` ricostruiscono l'agente e devono ripassarlo,
+    # altrimenti la ricostruzione riaccenderebbe l'apprendimento.
+    interattivo: bool = True
     # Token del prompt dell'ultimo turno, per la barra sotto il prompt: la
     # scrive il ciclo della chat, la legge la barra a ogni ridisegno.
     finestra: int | None = None
@@ -200,6 +204,7 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         stato.utente,
         session_id=nome,
         debug=stato.debug,
+        interattivo=stato.interattivo,
         modo=stato.modo,
     )
     stato.session_id = nome
@@ -255,6 +260,7 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
         stato.utente,
         session_id=stato.session_id,
         debug=stato.debug,
+        interattivo=stato.interattivo,
         modo=nome,
     )
     stato.modo = nome
