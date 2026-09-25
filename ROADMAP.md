@@ -32,7 +32,7 @@ dell'utente su ciò che cambia nel tempo.
 
 ## Base disponibile
 
-Ares usa Agno 3.0.9, SQLite e LanceDB, un quaderno persistente,
+Ares usa Agno 3.0.11, SQLite e LanceDB, un quaderno persistente,
 apprendimento sul turno completato anche dopo `continue_run`, backup e
 manutenzione di entità e sessioni. La CLI comprende REPL Rich/Prompt
 Toolkit, ripresa delle conversazioni, esportazione Markdown, uso in pipe e

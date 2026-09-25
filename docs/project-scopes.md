@@ -113,7 +113,7 @@ compensazione è un'istruzione, non un filtro.
 
 ### 2.3 Riproduzioni offline
 
-Tre misure fatte sui pacchetti installati (Agno 3.0.9, Python 3.12), senza
+Tre misure fatte sui pacchetti installati (Agno 3.0.11, Python 3.12), senza
 modelli né rete, su un archivio temporaneo. Servono a separare ciò che Agno
 permette da ciò che vieta.
 
@@ -170,7 +170,7 @@ entità invece restano separate, e il filtro per namespace funziona.
   uno spostamento cambia il percorso senza cambiare il progetto. Serve
   un'identità che il percorso non è.
 
-## 3. Che cosa Agno 3.0.9 permette davvero
+## 3. Che cosa Agno 3.0.11 permette davvero
 
 ### 3.1 Per store
 

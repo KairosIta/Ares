@@ -6,6 +6,62 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-25
+
+Le due patch di Agno successive alla 3.0.9 entrano dal lock, come la politica
+del progetto prevede. Non portano nulla che Ares usi e nulla che lo rompa, e
+le superfici che Ares attraversa — `agno.learn`, il filesystem privato, il
+`ResultStore`, gli strumenti del workspace, le sessioni — sono ferme fra le
+due versioni. Release di sola dipendenza: nessuna riga del codice di Ares
+cambia, nessun formato su disco, nessuna migrazione. Serve comunque una
+release, e non un commit su `main`, perché la versione installata si legge
+dalla pagina pubblica: chi installa da un tag la riceve solo con un tag nuovo.
+
+Verifica locale del 2026-09-25: undici prove offline verdi con copertura al
+91% (4.436 istruzioni, 306 non eseguite, 1.364 rami, 179 parziali) su
+Linux/Python 3.12.3; `ruff check`, `ruff format --check` (84 file) e `mypy`
+(56 file) puliti. Con Ollama, `affidabilita`, `intuizioni` e `e2e` verdi con
+`deepseek-v4.1-flash:cloud` per conversazione ed estrazione ed embedder
+locale; nel turno di `e2e` l'apprendimento ha speso 5.256 token di ingresso e
+406 di uscita, e l'archivio vero è rimasto invariato (20 file).
+`tests/run.py --tutte`: 14 prove in 103,0 s.
+
+### Changed
+
+- **Agno 3.0.11.** Due patch dopo la 3.0.9. La 3.0.10 aggiunge un vector db
+  Elasticsearch, `AzureOpenAIResponses`, un transform Markdown per le pagine
+  e il routing per hostname di MCP; la 3.0.11 sposta il reranker dal vectordb
+  a `Knowledge` (con MMR e recency), aggiunge lo spostamento delle sorgenti
+  pagina, il provider Y-API e il campo `cancellation_stage` sui run. Nulla di
+  tutto questo è adottato. Le due modifiche incompatibili non ci toccano:
+  `CodingTools.run_shell` diventa opt-in e la sua modalità ristretta non passa
+  più da una shell — Ares usa `agno.tools.workspace.Workspace`, un toolkit
+  diverso, i cui strumenti non cambiano affatto — e `PublicSurface(mcp=True)`
+  accetta solo localhost, mentre Ares non espone AgentOS né MCP. Fra le
+  correzioni una arriva nel percorso di Ares: `clean_text` non appiattisce più
+  righe e tabulazioni prima del chunking, quindi le intuizioni salvate da ora
+  conservano la loro forma, mentre quelle già indicizzate restano com'erano.
+  Restano fuori percorso la conservazione dei risultati falsy degli strumenti,
+  l'estrazione JSON dalle risposte e il fix degli hook sincroni in catena
+  asincrona; `cancellation_stage` è additivo. `agno.learn` non cambia in
+  nessuno dei suoi quindici file, e con lui `agno.fs`, `agno.offload`,
+  `agno.session`, `agno.metrics` e gli strumenti del workspace; in `SqliteDb`,
+  nel provider Ollama e in LanceDB cambiano solo docstring. La riscrittura di
+  `Knowledge.search`, l'unico punto sostanziale nel percorso di Ares, è
+  coperta dalla prova `intuizioni`. Cambia solo `agno` nel lock: nessuna
+  dipendenza transitiva, perché i due extra aggiunti a monte
+  (`elasticsearch`, e `fonttools` per il PDF) non si installano.
+
+- **Le dichiarazioni della versione di Agno sono allineate.** Il badge del
+  `README.md`, la `ROADMAP.md`, `SECURITY.md`, il commento di
+  `agent/learning.py`, `docs/agno.md`, `docs/architecture.md`,
+  `docs/core-contract.md` e `docs/project-scopes.md` dichiaravano la 3.0.9. La
+  prova di contratto confronta le dichiarazioni con l'installato, quindi
+  ognuna nomina ora la 3.0.11; `docs/agno.md` porta anche la data della nuova
+  verifica. Le tre misure offline di `docs/project-scopes.md` §2.3 sono state
+  rieseguite sulla 3.0.11 e danno gli stessi esiti, compresa la sovrascrittura
+  silenziosa del profilo fra due progetti.
+
 ## [0.8.1] - 2026-09-25
 
 Un giro di ricognizione ha corretto ciò che la suite non copriva: numeri
@@ -1524,7 +1580,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/KairosIta/Ares/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/KairosIta/Ares/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/KairosIta/Ares/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/KairosIta/Ares/compare/v0.7.0...v0.7.1

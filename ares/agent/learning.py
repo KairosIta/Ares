@@ -54,7 +54,7 @@ CRITERI_ESTRAZIONE = (
 class AresLearningMachine(LearningMachine):
     """Estrae apprendimenti soltanto quando il run e' davvero concluso.
 
-    Agno 3.0.9, la versione su cui Ares e' verificata, avvia
+    Agno 3.0.11, la versione su cui Ares e' verificata, avvia
     ``LearningMachine.process`` in background prima della chiamata al modello,
     usando una fotografia dei messaggi. I documenti che citano la versione
     sono sorvegliati da `tests/agno_contract_test.py`, che confronta la
