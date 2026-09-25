@@ -6,6 +6,23 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-25
+
+Un giro di ricognizione ha corretto ciò che la suite non copriva: numeri
+rimasti indietro nei documenti pubblici, confini che una pipe poteva
+scavalcare, una migrazione non atomica fra filesystem e quattro difetti minori
+di conferma, backup e restore. Release di correzione: nessun formato su disco
+cambia e nessuna funzione nasce. Cambiano però due comportamenti della CLI, ed
+è bene dirlo: senza un terminale le modalità silenziose sono rifiutate e gli
+store di apprendimento non vengono più scritti, come già valeva con `-p`.
+
+Verifica locale del 2026-09-25: undici prove offline verdi con copertura al
+91% su Linux/Python 3.12.3; `ruff check`, `ruff format --check` e `mypy` (56
+file) puliti. Con Ollama, `e2e`, `affidabilita` e `intuizioni` verdi su
+`deepseek-v4.1-flash:cloud` (47,6 s), embedder locale; nel turno di `e2e`
+l'apprendimento ha speso 5.280 token di ingresso e 482 di uscita.
+`tests/run.py --tutte`: 14 prove in 103,3 s.
+
 ### Added
 
 - `tests/scoping_test.py` (`ambiti`), l'undicesima prova offline: tiene ferme
@@ -42,7 +59,7 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
-- **Il banner e `/cartella` non nominano piu' un `ARES.md` che punta fuori.**
+- **Il banner e `/cartella` non nominano più un `ARES.md` che punta fuori.**
   La regola di contenimento valeva solo per la lettura: banner e `/cartella`
   usavano `is_file()`, che segue i link, e dicevano «ARES.md, letto all'avvio»
   di un link che il prompt ignorava. Ora entrambi passano da
@@ -52,11 +69,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   Un file binario o in un'altra codifica veniva trattato come assente, e la
   conferma mostrava soltanto il contenuto nuovo: proprio la cosa che spariva
   restava nascosta. Ora lo dice, e mostra comunque il testo che lo
-  sostituira'.
-- **Il rollback del restore non maschera piu' l'errore vero.** Se la rinomina
+  sostituirà.
+- **Il rollback del restore non maschera più l'errore vero.** Se la rinomina
   di ripristino falliva a sua volta, la sua eccezione sostituiva quella del
-  restore e non nominava `.stato-precedente-*`, cioe' l'unica copia dello
-  stato. Ora il residuo e' nominato e la causa originale resta incatenata.
+  restore e non nominava `.stato-precedente-*`, cioè l'unica copia dello
+  stato. Ora il residuo è nominato e la causa originale resta incatenata.
 - **Uno snapshot senza manifest non resta invisibile per sempre.** La
   pubblicazione di riserva lo lascia se un processo viene ucciso fra la copia
   e la scrittura del manifest; `backup list` ora lo nomina (in `--json` sotto
@@ -70,30 +87,30 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   rifiuto non arriva: `ares -p --modo auto` lasciava una `~/.ares` a 0755,
   contro la promessa del commento in `_guardie_di_avvio`. Ora `lock_file`
   rende privato il genitore quando lo crea, e non tocca un genitore che
-  esiste gia' - quello di un lock puo' essere una cartella di lavoro, come
+  esiste già - quello di un lock può essere una cartella di lavoro, come
   nel lock vecchio di `migrate`.
-- **Il lock vecchio della migrazione si toglie mentre e' ancora tenuto.**
+- **Il lock vecchio della migrazione si toglie mentre è ancora tenuto.**
   Prima l'`unlink` arrivava dopo il rilascio: fra il `close` e l'`unlink` un
   processo della versione precedente poteva prendere il lock su quel file, e
   l'`unlink` lo staccava dall'inode - il processo dopo ne creava uno nuovo, e
   i due si credevano soli. Ora si toglie dentro il lock; su Windows, dove un
   file aperto non si cancella, resta il ripiego dopo la chiusura.
   `tests/cli_test.py` osserva l'istante del rilascio (su POSIX).
-- **`ares migrate` non lascia mai uno stato a meta'.** Fra filesystem diversi
-  `shutil.move` degrada a copia piu' cancellazione: un guasto a meta' lasciava
+- **`ares migrate` non lascia mai uno stato a metà.** Fra filesystem diversi
+  `shutil.move` degrada a copia più cancellazione: un guasto a metà lasciava
   in `~/.ares` uno stato incompleto che la chat apriva senza dirlo, con la
   copia buona ancora nel vecchio posto. Ora `_sposta` copia in una sorella
-  temporanea del nuovo e la rinomina: il nuovo c'e' tutto o non c'e' per
+  temporanea del nuovo e la rinomina: il nuovo c'è tutto o non c'è per
   niente, e nel secondo caso `avviso` ferma la chat. `tests/cli_test.py`
-  simula l'`EXDEV` e un guasto a meta' copia.
+  simula l'`EXDEV` e un guasto a metà copia.
 - **Un id utente oltre 128 caratteri viene rifiutato prima di Agno.** Agno
-  taglia i segmenti del namespace - l'id in `user/<id>` e' uno di essi - a
+  taglia i segmenti del namespace - l'id in `user/<id>` è uno di essi - a
   `MAX_SEGMENT_CHARS` e solleva `InvalidPathError` oltre. `Utente` non lo
   controllava: `ares --user <id lungo>` moriva con un traceback che nessun
   confine catturava, invece del rifiuto leggibile che la porta promette. Ora
-  il tetto e' `LUNGHEZZA_MASSIMA` in `state/identita.py`, e
+  il tetto è `LUNGHEZZA_MASSIMA` in `state/identita.py`, e
   `agno_contract_test.py` lo confronta con quello installato.
-- **Un `ARES.md` che e' un link fuori dalla cartella vale come assente.** Il
+- **Un `ARES.md` che è un link fuori dalla cartella vale come assente.** Il
   file delle regole si leggeva direttamente, quindi un `ARES.md` che puntava a
   `~/.ssh/id_ed25519` - o a qualunque file fuori dal workspace - entrava nel
   system message a ogni avvio, e con un modello cloud usciva dalla macchina.
@@ -101,7 +118,7 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   strumenti di Agno; un link che resta dentro la cartella si legge ancora.
   `tests/repl_test.py` tiene fermo il caso.
 - **Una sessione dal nome fisso appartiene a chi l'ha creata.** `--session
-  <nome>` e `/sessione <nome>` scavalcano gli elenchi per cartella, gia'
+  <nome>` e `/sessione <nome>` scavalcano gli elenchi per cartella, già
   filtrati per utente: un secondo utente poteva aprire la sessione del primo,
   e i suoi run - che Agno carica per solo `session_id` - entravano nella
   cronologia del primo. Ora l'apertura di una sessione di un altro utente
@@ -113,12 +130,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   contava tredici prove invece di quattordici, `docs/testing.md` due job di
   CI invece di tre (`Cosa cambia` compreso), `SECURITY.md` un `Audit` a ogni
   push quando ha un filtro sui percorsi, e `docs/project-scopes.md` con
-  `agent/prompts.py` «le ultime venti sessioni» dove il tetto e'
+  `agent/prompts.py` «le ultime venti sessioni» dove il tetto è
   `PAST_SESSIONS_LIMIT`. Allineati anche il nome del residuo di un restore
   (`.stato-precedente-*`, non `.tmp-precedente-*`, in `docs/architecture.md`
   e in `backup/snapshots.py`), la firma di `build_assistant` in
   `docs/core-contract.md` (mancava `politica`) e il docstring di
-  `ares/ops/inspect_learning.py` (lo stato non e' piu' in `tmp/`).
+  `ares/ops/inspect_learning.py` (lo stato non è più in `tmp/`).
 - `docs/testing.md` diceva che «`--tutte` alza il numero» e `tests/run.py`
   ripeteva che metà di ciò che resta scoperto sta nei percorsi che solo le
   prove con Ollama attraversano. Misurato il 22 settembre 2026: i due rapporti
@@ -139,20 +156,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
-- **Senza terminale, e senza `-p`, l'apprendimento e' spento come in `-p`.**
+- **Senza terminale, e senza `-p`, l'apprendimento è spento come in `-p`.**
   `interattivo` era `prompt is None`: con stdin da una pipe ma senza `-p`
   l'agente nasceva come se qualcuno leggesse, e scriveva memorie mentre le
-  conferme, per la correzione precedente, valevano no. Ora `interattivo` e'
-  `prompt is None and presidiato`, ed e' uno solo: `StatoChat` lo porta con
-  se', cosi' anche `/sessione` e `/modo`, che ricostruiscono l'agente, non lo
+  conferme, per la correzione precedente, valevano no. Ora `interattivo` è
+  `prompt is None and presidiato`, ed è uno solo: `StatoChat` lo porta con
+  sé, così anche `/sessione` e `/modo`, che ricostruiscono l'agente, non lo
   riaccendono.
 - **Senza terminale le conferme non si leggono dalla pipe.** Il rifiuto
   delle modalità silenziose era legato a `-p`: con stdin da una pipe ma senza
   `-p`, la stessa pipe che portava l'istruzione rispondeva anche ad
   `Autorizzi?`. Ora «non presidiato» si decide da
   `stdin` non-terminale, come `-p` ma senza il flag; i turni restano
-  leggibili dal flusso, le domande no. L'apprendimento resta attivo fuori da
-  `-p`, come prima. `tests/cli_test.py` (`chat non presidiato`) tiene ferme le
+  leggibili dal flusso, le domande no. `tests/cli_test.py` (`chat non presidiato`) tiene ferme le
   guardie e il cablaggio di `_apri_input`.
 - `CONTRIBUTING.md` spiega come si rilascia — versione, voce del `CHANGELOG`,
   riga di `SECURITY.md`, merge con `--merge`, tag annotato e nota della
@@ -1508,7 +1524,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/KairosIta/Ares/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/KairosIta/Ares/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/KairosIta/Ares/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/KairosIta/Ares/compare/v0.6.1...v0.7.0
