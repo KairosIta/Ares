@@ -3,90 +3,96 @@
 ![Ares — Local-first AI agent](docs/assets/ares-social-preview.png)
 
 [![Python 3.12 | 3.13](https://img.shields.io/badge/Python-3.12%20%7C%203.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![local-first](https://img.shields.io/badge/local--first-nessuna%20chiave%20API-2EA043.svg)](#locale-cloud-o-entrambi)
 [![Ollama](https://img.shields.io/badge/runtime-Ollama-white.svg)](https://ollama.com/)
 [![Agno 3.0.11](https://img.shields.io/badge/framework-Agno%203.0.11-6C5CE7.svg)](https://www.agno.com/)
 [![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4C8BF5.svg)](#requisiti)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/KairosIta/Ares/actions/workflows/ci.yml/badge.svg)](https://github.com/KairosIta/Ares/actions/workflows/ci.yml)
 
-Assistente AI personale local-first costruito con Python, Ollama e Agno.
-Ares conversa, usa strumenti, mantiene memoria fra sessioni e lavora in uno
-spazio controllato sul disco senza richiedere API cloud.
+Assistente AI personale costruito con Python, Ollama e Agno. Ares conversa,
+usa strumenti, mantiene memoria fra sessioni e lavora in uno spazio
+controllato sul disco. Di serie gira **interamente in scheda**; due righe nel
+`.env` spostano conversazione ed estrazione sulle **versioni cloud dei
+modelli Ollama**, senza chiavi API e senza cambiare una riga di codice.
 
-> **English summary:** Ares is a local-first personal AI agent built with
-> Ollama and Agno. It combines persistent memory, tool use in four
-> permission modes, a private workspace, a system prompt that tells the model
-> which models it runs on and what it may do, verified local backups and
-> explicit maintenance workflows in a reproducible Python project.
+> **English summary**
+>
+> - **Local-first by default.** Conversation, memory extraction and embeddings
+>   all run on Ollama at `localhost`. Nothing leaves the machine and no API
+>   keys are involved.
+> - **Cloud when you choose.** Two lines in `.env` (`ARES_MAIN_MODEL`,
+>   `ARES_LEARNING_MODEL`) move conversation and extraction — together or
+>   separately — to an Ollama cloud model, relayed by the same local daemon.
+>   Embeddings always stay local, by construction.
+> - **An agent that remembers.** Persistent profile, memories, session
+>   context, entities and reusable knowledge in SQLite and LanceDB, with a
+>   system prompt that tells the model which models it runs on and what it may
+>   do.
+> - **Tools you control.** Four permission modes over a private workspace,
+>   step-by-step confirmation of anything that leaves a trace on disk,
+>   verified local snapshots and explicit maintenance workflows.
 
-## Perché Ares
+## Indice
 
-- **Inferenza locale, cloud su scelta esplicita:** di serie niente lascia
-  la macchina — conversazione, estrazione delle memorie ed embedding girano
-  tutti su Ollama in `localhost`. Due righe nel `.env` (`ARES_MAIN_MODEL`,
-  `ARES_LEARNING_MODEL`) spostano conversazione ed estrazione, insieme o
-  separatamente, su un modello cloud di Ollama, inoltrato dallo stesso
-  daemon senza chiavi API nell'ambiente. Solo l'embedding resta locale
-  sempre.
-- **Memoria persistente:** profilo, memorie, contesto di sessione, entità e
-  conoscenza riutilizzabile attraverso SQLite e LanceDB.
-- **Apprendimento affidabile:** l’estrazione avviene sul run completo, anche
-  dopo una conferma e `continue_run`, con retry mirato sul contesto.
-- **Strumenti controllati, in quattro modalità:** cronologia, ricerca,
-  quaderno privato e la cartella da cui lanci `ares` come spazio di lavoro.
-  In `manuale` leggere, elencare e cercare non chiedono niente e tutto ciò
-  che lascia una traccia sul disco chiede conferma, con il contenuto per
-  intero; `modifiche` scrive da sola, `piano` legge soltanto, `auto` non
-  chiede mai. `ares --modo` la sceglie, `/modo` la cambia a metà
-  conversazione, e Ares sa in quale si trova. C'è un avviso prima di aprire
-  una cartella rischiosa.
-- **Consapevole di sé:** il prompt si apre con una scheda letta dalla
-  configurazione di quell'avvio — quale modello parla e se è locale o cloud,
-  quale estrae le memorie, quanto contesto ha in vista, sistema e shell,
-  cartella, ramo e modalità — e spiega al modello come funziona la propria
-  memoria e cosa può fare da solo. Tutto in italiano, guide di Agno
-  comprese; `ares inspect --prompt` lo stampa per intero.
-- **Memoria visibile e revocabile:** sotto ogni risposta compare cosa è
-  entrato in profilo e memorie, sia dagli strumenti del modello sia
-  dall'estrazione automatica, con il testo intero, e la CLI chiede se
-  tenerlo: un `n` riporta i due store a prima del turno. Tace quando non è
-  cambiato niente.
-- **Contesto protetto:** entro la quota Agno i risultati molto grandi restano
-  lossless negli archivi locali e vengono riletti a pagine, mentre le tool
-  call storiche nel prompt hanno un limite esplicito.
-- **Manutenzione esplicita:** audit e fusione delle entità duplicate e
-  retention delle sessioni, con anteprima, lock, backup e rollback.
-- **Backup locale verificato:** snapshot atomici dello stato persistente,
-  restore protetto e retention configurabile.
-- **Evidenza riproducibile:** prove isolate su archivi temporanei e test E2E
-  reali contro Ollama.
+- [Locale, cloud, o entrambi](#locale-cloud-o-entrambi)
+- [Requisiti](#requisiti)
+- [Avvio rapido](#avvio-rapido)
+- [Perché Ares](#perché-ares)
+- [Architettura](#architettura)
+- [Come si usa](#come-si-usa)
+- [Verifica](#verifica)
+- [Operazioni](#operazioni)
+- [Località e sicurezza](#località-e-sicurezza)
+- [A chi non serve](#a-chi-non-serve)
+- [Documentazione](#documentazione)
+- [Stato del progetto](#stato-del-progetto)
+- [Licenza](#licenza)
 
-## Architettura
+## Locale, cloud, o entrambi
 
-```mermaid
-flowchart LR
-    U["Utente / CLI"] --> C["Core del turno"]
-    C --> A["Ares · Agno Agent"]
-    A --> O["Ollama · LLM locale o cloud"]
-    A --> T["Strumenti e workspace"]
-    A --> R["ResultStore · offloading"]
-    A --> L["LearningMachine"]
-    L --> S["kairos.db · sessioni, memorie e indice"]
-    L --> V["LanceDB · conoscenza vettoriale"]
-    R --> S
-    R --> F["filesystem.db · quaderno e payload"]
-    V --> E["Ollama · embedding locale"]
-    S --> B["Snapshot locali verificati"]
-    F --> B
-    V --> B
-```
+Il valore distribuito è locale: appena clonato, Ares risponde con
+`MODELLO_LOCALE`, che gira in scheda, e nessuna conversazione esce dalla
+macchina. Il cloud è una scelta esplicita, in **due righe che vivono nel
+`.env`** e non in `config.py`, che tornerebbe a divergere a ogni `git pull`.
+Sono due perché rispondono a due domande diverse — a chi affidi la
+conversazione, e a chi affidi ciò che Ares ricorda di te — e la seconda pesa
+di più.
 
-Il modello principale risponde e usa gli strumenti. I risultati grandi
-vengono indicizzati nel database principale e conservati in
-`filesystem.db`, entrambi inclusi negli snapshot. Dopo il turno, la macchina
-di apprendimento aggiorna gli store configurati; entità e intuizioni restano
-invece agentiche e vengono consultate o modificate solo quando Ares decide di
-chiamarne gli strumenti.
+| Profilo | Nel `.env` | Cosa esce dalla macchina |
+| --- | --- | --- |
+| **Tutto in locale** *(distribuito)* | — | niente: conversazione, estrazione delle memorie ed embedding girano in scheda |
+| **Conversazione in cloud** | `ARES_MAIN_MODEL=glm-5.3-flash:cloud` | domande e risposte, il prompt con profilo e memorie, i file che legge, l'output dei comandi, le conversazioni passate che rilegge |
+| **Anche l'estrazione in cloud** | `ARES_LEARNING_MODEL=glm-5.3-flash:cloud` | quanto sopra, più il testo dei turni e le memorie già salvate, a ogni estrazione |
+
+Un [modello cloud di Ollama](https://ollama.com/search?c=cloud) si riconosce
+dal tag `:cloud`. Il daemon locale lo inoltra a `ollama.com` dopo un
+`ollama signin` una tantum: **Ares continua a parlare con `localhost`**, e
+nessuna chiave API entra nell'ambiente o nel `.env`. Vale per tre ruoli su
+quattro:
+
+- **l'embedder resta locale sempre**, e non per configurazione ma per
+  costruzione: [`agent/runtime.py`](ares/agent/runtime.py) si rifiuta di
+  costruirlo su un nome cloud, perché cambiarlo invaliderebbe l'indice già
+  scritto in LanceDB;
+- il preflight e il banner della chat dicono **a ogni avvio** quali ruoli
+  escono dalla macchina, e il prompt lo dice al modello, perché non prometta
+  una privacy che non può mantenere;
+- con la conversazione in cloud il modello locale serve solo l'estrazione, e
+  gira con un contesto ridotto (`NUM_CTX_ESTRAZIONE`, 32k): **serve meno
+  VRAM** — i numeri sono in [Requisiti](#quanta-memoria-serve);
+- con lo stesso modello locale in entrambi i ruoli, cioè con il default, i
+  due contesti restano uguali e Ollama non riavvia il runner fra la risposta
+  e l'estrazione.
+
+Quanto pesa l'estrazione è misurato: tre chiamate al modello per turno,
+5.388 token di ingresso su un turno che aggiorna profilo e memorie, con i
+numeri in [qualità della memoria](docs/memory-quality.md). Ollama dichiara di
+elaborare quei contenuti in modo transitorio, di non conservarli oltre la
+richiesta e di non usarli per addestrare
+([privacy policy](https://ollama.com/privacy), marzo 2026). È un impegno
+contrattuale, non una garanzia tecnica: per un uso interamente locale basta
+non impostare né `ARES_MAIN_MODEL` né `ARES_LEARNING_MODEL`.
 
 ## Requisiti
 
@@ -102,65 +108,22 @@ successivo](https://docs.ollama.com/windows). Il percorso verificato dal
 progetto è Windows x86_64 con PowerShell; macOS e altre distribuzioni Linux
 possono funzionare, ma non sono ancora nella matrice CI.
 
-La configurazione di riferimento è pensata per circa 16 GiB di VRAM. Il
+### Quanta memoria serve
+
+La configurazione di riferimento è pensata per circa **16 GiB di VRAM**. Il
 modello locale Qwen3.8-9B Q8_0 richiede circa 14 GB con 262k token di
-contesto quando è lui a conversare, e circa 9 GB quando fa solo l'estrazione
-delle memorie accanto a un modello cloud: in quel caso il contesto
-dell'estrazione scende a `NUM_CTX_ESTRAZIONE` (32k), perché un'estrazione
-riceve solo il testo del turno. Su hardware diverso è possibile scegliere un modello più piccolo e
-ridurre `NUM_CTX` in [`ares/config.py`](ares/config.py).
+contesto quando è lui a conversare, e circa **9 GB quando fa solo
+l'estrazione delle memorie accanto a un modello cloud**: in quel caso il
+contesto dell'estrazione scende a `NUM_CTX_ESTRAZIONE` (32k), perché
+un'estrazione riceve solo il testo del turno. Su hardware diverso è possibile
+scegliere un modello più piccolo e ridurre `NUM_CTX` in
+[`ares/config.py`](ares/config.py).
 
 I modelli sono artefatti esterni, non inclusi nel repository: consulta la
 [model card di Qwen3.8-9B-Distill](https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF)
 e la [scheda di glm-5.3-flash](https://ollama.com/library/glm-5.3-flash) per
 licenza, provenienza e limiti. Le risposte tecniche o sensibili richiedono
 verifica umana.
-
-### Modello conversazionale locale o cloud
-
-**Il valore distribuito è locale:** appena clonato, Ares risponde con
-`MODELLO_LOCALE`, che gira in scheda, e nessuna conversazione esce dalla
-macchina. Per usare un [modello cloud di Ollama](https://ollama.com/search?c=cloud)
-— riconoscibile dal tag `:cloud` — basta una riga nel `.env`, senza toccare
-`config.py`, che tornerebbe a divergere a ogni `git pull`:
-
-```bash
-ARES_MAIN_MODEL=glm-5.3-flash:cloud
-```
-
-Il daemon locale lo inoltra a `ollama.com` dopo un `ollama signin` una
-tantum: Ares continua a parlare con `localhost`, e nessuna chiave API entra
-nell'ambiente o in `.env`. Con un modello cloud esce dalla macchina tutto
-ciò che quel modello riceve: le domande e le risposte, il prompt con profilo
-e memorie, i file che legge, l'output dei comandi, le conversazioni passate
-che rilegge. L'estrazione delle memorie resta locale finché non lo decidi
-tu, con una seconda riga:
-
-```bash
-ARES_LEARNING_MODEL=glm-5.3-flash:cloud
-```
-
-È una scelta separata perché risponde a un'altra domanda — a chi affidi ciò
-che Ares ricorda di te — e pesa di più: ogni estrazione manda al modello il
-testo del turno e le memorie già salvate. Quanto pesa è misurato: tre
-chiamate al modello per turno, 5.388 token di ingresso su un turno che
-aggiorna profilo e memorie, con i numeri in
-[qualità della memoria](docs/memory-quality.md). Con entrambe le righe nessun peso
-gira in scheda, salvo l'embedder: quello resta locale per costruzione, non
-per configurazione — `agent/runtime.py` si rifiuta di costruirlo su un
-nome cloud — perché cambiarlo invaliderebbe l'indice già scritto. Il
-preflight e il banner della chat dicono a ogni avvio quali ruoli escono
-dalla macchina. Con la sola conversazione in cloud il modello locale serve
-solo l'estrazione e gira con un contesto ridotto, liberando VRAM; con lo
-stesso modello locale in entrambi i ruoli, cioè con il default, i due
-contesti restano uguali, così Ollama non riavvia il runner fra risposta ed
-estrazione.
-
-Ollama dichiara di elaborare quei contenuti in modo transitorio, di non
-conservarli oltre la richiesta e di non usarli per addestrare
-([privacy policy](https://ollama.com/privacy), marzo 2026). È un impegno
-contrattuale, non una garanzia tecnica: per un uso interamente locale basta
-non impostare né `ARES_MAIN_MODEL` né `ARES_LEARNING_MODEL`.
 
 ## Avvio rapido
 
@@ -212,10 +175,10 @@ script di setup creano il virtualenv, installano esattamente le versioni di
 preflight. Da quel momento `ares` si scrive da qualunque cartella: su Linux è
 un link in `~/.local/bin` al comando del venv, su Windows uno shim `ares.cmd`
 in `%USERPROFILE%\.local\bin`; `ARES_BIN_DIR` nell'ambiente della shell
-sceglie un'altra directory, e se quella non è nel PATH il setup dice la riga
+sceglie un’altra directory, e se quella non è nel PATH il setup dice la riga
 da aggiungere. Non è un `uv tool install`, che risolverebbe le
 dipendenze da capo senza guardare il lock: il comando globale è esattamente
-l'ambiente bloccato e segue il codice del clone a ogni pull.
+l’ambiente bloccato e segue il codice del clone a ogni pull.
 
 `ares` da solo apre la chat, `ares --help` elenca i sottocomandi di
 manutenzione (`ares backup`, `ares sessions`, `ares entities`, `ares
@@ -231,6 +194,66 @@ clone che teneva lo stato in `tmp/` non deve fare niente: il setup chiama
 `ares migrate`, che sposta stato e snapshot in `~/.ares` una volta sola, e la
 chat si rifiuta di partire finché lo stato è ancora nel posto di prima,
 perché un archivio vuoto accanto a uno pieno li sdoppierebbe.
+
+## Perché Ares
+
+- **Memoria che dura fra le sessioni.** Profilo, memorie, contesto di
+  sessione, entità e conoscenza riutilizzabile, in SQLite e LanceDB, senza
+  servizi da avviare.
+- **Apprendimento sul turno completo, non su una fotografia a metà.**
+  L'estrazione avviene quando il run è davvero concluso, anche dopo una
+  conferma e un `continue_run`, con retry mirato sul contesto e criteri che
+  distinguono fatti, ipotesi e proposte non accettate.
+- **Strumenti controllati, in quattro modalità.** Cronologia, ricerca,
+  quaderno privato e la cartella da cui lanci `ares` come spazio di lavoro.
+  Quanto Ares fa da solo lo decide la modalità, e ogni cosa che lascia una
+  traccia sul disco chiede conferma mostrando per intero cosa sta per fare.
+  C'è un avviso prima di aprire una cartella rischiosa. La
+  [tabella delle modalità](#la-cartella-e-le-modalità) è più sotto.
+- **Memoria visibile e revocabile.** Sotto ogni risposta compare cosa è
+  entrato in profilo e memorie, sia dagli strumenti del modello sia
+  dall'estrazione automatica, con il testo intero, e la CLI chiede se
+  tenerlo: un `n` riporta i due store a prima del turno. Tace quando non è
+  cambiato niente.
+- **Il contesto non si satura, e lo stato si può riprendere.** Entro la quota
+  Agno i risultati molto grandi restano lossless negli archivi locali e
+  vengono riletti a pagine; snapshot verificati, restore protetto, fusione
+  delle entità duplicate e retention delle sessioni sono comandi espliciti,
+  con anteprima, lock e rollback.
+- **Consapevole di sé, e messo alla prova.** Il prompt si apre con una scheda
+  letta dalla configurazione di quell'avvio — quale modello parla e se è
+  locale o cloud, quale estrae le memorie, quanto contesto ha in vista,
+  sistema e shell, cartella, ramo e modalità — tutto in italiano, guide di
+  Agno comprese. `ares inspect --prompt` lo stampa per intero. Le prove sono
+  isolate su archivi temporanei, con test E2E reali contro Ollama e una
+  copertura misurata: [la strategia](docs/testing.md).
+
+## Architettura
+
+```mermaid
+flowchart LR
+    U["Utente / CLI"] --> C["Core del turno"]
+    C --> A["Ares · Agno Agent"]
+    A --> O["Ollama · LLM locale o cloud"]
+    A --> T["Strumenti e workspace"]
+    A --> R["ResultStore · offloading"]
+    A --> L["LearningMachine"]
+    L --> S["kairos.db · sessioni, memorie e indice"]
+    L --> V["LanceDB · conoscenza vettoriale"]
+    R --> S
+    R --> F["filesystem.db · quaderno e payload"]
+    V --> E["Ollama · embedding locale"]
+    S --> B["Snapshot locali verificati"]
+    F --> B
+    V --> B
+```
+
+Il modello principale risponde e usa gli strumenti. I risultati grandi
+vengono indicizzati nel database principale e conservati in
+`filesystem.db`, entrambi inclusi negli snapshot. Dopo il turno, la macchina
+di apprendimento aggiorna gli store configurati; entità e intuizioni restano
+invece agentiche e vengono consultate o modificate solo quando Ares decide di
+chiamarne gli strumenti.
 
 ## Come si usa
 
@@ -474,16 +497,13 @@ viene conservato.
 
 ## Località e sicurezza
 
-Stato ed embedding restano locali; non sono richieste chiavi API cloud e la
-telemetria Agno è disabilitata. Può uscire dalla macchina tutto ciò che il
-modello conversazionale riceve — domande e risposte, il prompt con profilo e
-memorie, i file letti, l'output dei comandi, le conversazioni rilette — se
-`ARES_MAIN_MODEL` indica un modello cloud di Ollama, e il testo dei turni con
-le memorie già salvate se lo indica `ARES_LEARNING_MODEL`; nessuno dei due è
-il valore distribuito. La scelta è esplicita nel `.env`, detta a ogni avvio
-dal preflight e dal banner, scritta nel prompt perché il modello non prometta
-una privacy che non può mantenere, e verificata dallo smoke test, che
-rifiuta un modello cloud per l'embedder.
+Stato ed embedding restano locali e la telemetria Agno è disabilitata: non
+sono richieste chiavi API cloud, e nessuno dei tre profili di
+[Locale, cloud, o entrambi](#locale-cloud-o-entrambi) è distribuito con un
+modello che esce dalla macchina. La scelta è esplicita nel `.env`, detta a
+ogni avvio dal preflight e dal banner, scritta nel prompt perché il modello
+non prometta una privacy che non può mantenere, e verificata dallo smoke
+test, che rifiuta un modello cloud per l'embedder.
 
 Ciò che il modello legge può contenere un'istruzione: per questo ogni
 strumento che lascia una traccia sul disco chiede conferma nella modalità
@@ -495,11 +515,32 @@ usarla: Ares è un agente locale controllato, non una sandbox di sicurezza.
 Non committare lo stato appreso, snapshot, `.env` o altri dati personali. Per segnalare
 un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).
 
+## A chi non serve
+
+Meglio dirlo prima, per non deludere nessuno:
+
+- **non è multi-utente né distribuito.** È pensato per un host e una persona:
+  gli archivi sono locali, i turni dello stesso utente si serializzano, e non
+  c'è un server da esporre;
+- **non è una sandbox.** Gli strumenti del workspace restano nella cartella
+  scelta, ma i comandi che autorizzi possono usare la rete e leggere ciò che
+  il processo può leggere: non è il modo di dare un modello a dati che non
+  vuoi far leggere;
+- **non è una libreria né un prodotto.** Non c'è packaging per l'import, non
+  c'è una UI oltre al terminale, e le API interne cambiano senza preavviso;
+- **non è il più adatto se** cerchi un agente integrato nell'editor, un
+  servizio gestito con modelli altrui, o qualcosa che funzioni senza
+  installare Ollama.
+
 ## Documentazione
 
 - [Architettura](docs/architecture.md)
 - [Agno in Ares](docs/agno.md)
+- [Il prompt e l'apprendimento](docs/prompt.md)
+- [Qualità della memoria](docs/memory-quality.md)
 - [Strategia di test](docs/testing.md)
+- [Ambiti di progetto](docs/project-scopes.md)
+- [Contratto del core](docs/core-contract.md)
 - [Roadmap](ROADMAP.md)
 - [Istruzioni per contribuire](CONTRIBUTING.md)
 
@@ -508,7 +549,8 @@ un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).
 Ares è un progetto personale in sviluppo attivo, pensato per un singolo host
 Linux o Windows con Ollama locale. La suite principale è verificata su
 entrambi i sistemi; macOS, packaging come libreria e deployment distribuito
-non sono ancora obiettivi garantiti.
+non sono ancora obiettivi garantiti. La versione della release corrente e le
+sue verifiche sono in [CHANGELOG.md](CHANGELOG.md).
 
 ## Licenza
 

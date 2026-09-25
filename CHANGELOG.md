@@ -6,6 +6,23 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Changed
+
+- **Il `README.md` è riorganizzato intorno a come Ares gira.** La scelta fra
+  locale e cloud era raccontata in tre punti diversi — il primo bullet di
+  «Perché Ares», una sottosezione annidata dentro i requisiti e un paragrafo
+  di «Località e sicurezza» — con tre elenchi leggermente diversi di ciò che
+  esce dalla macchina. Ora è una sezione di primo livello, con la tabella dei
+  tre profili (tutto in locale, conversazione in cloud, anche l'estrazione) e
+  le regole che valgono per tutti: nessuna chiave API, `ollama signin` una
+  tantum, l'embedder locale per costruzione, il preflight e il banner che
+  dicono quali ruoli escono. `Avvio rapido` sale prima delle sezioni di
+  dettaglio, `Perché Ares` si accorcia a sei voci senza ripetere ciò che le
+  sezioni spiegano, un indice compare in testa, una sezione nuova dice a chi
+  Ares non serve, e l'elenco della documentazione collega anche `prompt.md`,
+  `memory-quality.md`, `project-scopes.md` e `core-contract.md`. Il riassunto
+  in inglese nomina il cloud e diventa un elenco leggibile.
+
 ## [0.8.2] - 2026-09-25
 
 Le due patch di Agno successive alla 3.0.9 entrano dal lock, come la politica
