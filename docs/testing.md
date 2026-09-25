@@ -94,11 +94,11 @@ Non esiste una soglia minima, e non è una dimenticanza. Una soglia si difende
 scrivendo prove dove costa meno, non dove serve di più. Il rapporto serve a
 rispondere a una domanda diversa: quale ramo non è mai stato eseguito.
 
-Con le sole prove offline la misura del 22 settembre 2026 su Linux e
+Con le sole prove offline la misura del 25 settembre 2026 su Linux e
 Python 3.12.3 è al 91%. `cli/chat.py` arriva al 95%, `agent/echo.py` al 96%
-e `state/lock.py` al 100%; `backup/restore.py` resta all'86%, `cli/ui.py`
-all'84% e `cli/commands.py` all'81%. Sono misure di questa esecuzione, non
-soglie: una percentuale alta non dimostra che siano coperti tutti gli
+e `state/lock.py` al 100%; `backup/restore.py` sale all'87%, `cli/ui.py`
+all'84% e `cli/commands.py` scende all'80%. Sono misure di questa esecuzione,
+non soglie: una percentuale alta non dimostra che siano coperti tutti gli
 interleaving fra chat o tutti i punti in cui una copia può fallire.
 `cli/conferma.py` è al 77%: fra i percorsi non attraversati resta la domanda
 con l'editor di Prompt Toolkit, disponibile solo quando stdin e stdout sono
@@ -136,9 +136,9 @@ Ciò che resta scoperto è quasi tutto composto da gestori d'errore e da rami
 di piattaforma: i percorsi Windows su una macchina Linux, i ripieghi per un
 disco in sola lettura, le eccezioni che nessuno ha mai visto sollevare.
 Nessuna di quelle righe sta in un percorso che solo un modello vero
-attraversa: misurato il 22 settembre 2026, `--tutte --copertura` produce un
+attraversa: misurato il 25 settembre 2026, `--tutte --copertura` produce un
 rapporto **identico** a quello delle sole prove offline, riga per riga e ramo
-per ramo — 4.355 istruzioni, 304 scoperte, 1.340 rami, 91%. Le prove con
+per ramo — 4.436 istruzioni, 306 scoperte, 1.364 rami, 91%. Le prove con
 Ollama verificano ciò che un modello finto non può dire, non allargano la
 copertura: le stesse righe le attraversano le prove offline con il modello
 deterministico. `tests/run.py` diceva il contrario in un commento, e la
