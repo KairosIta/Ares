@@ -262,7 +262,22 @@ def conferma_scrittura() -> str:
     )
     testo = "\n".join(righe_richiesta(fuori, radice=radice))
     esigi("differenza" not in testo, "un percorso fuori dalla radice viene letto per il diff")
-    return "differenza su un file esistente, contenuto intero su uno nuovo, niente lettura fuori radice"
+
+    # Un file che esiste ma non si legge come testo non ha una differenza da
+    # mostrare: la conferma deve dire che verra' sostituito da capo, invece di
+    # far credere che non ci fosse niente.
+    (radice / "binario").write_bytes(b"\xff\xfe\x00\x01")
+    illeggibile = ToolExecution(
+        tool_name=config.WORKSPACE_PREFIX + "write_file",
+        tool_args={"path": "binario", "content": "testo nuovo\n"},
+    )
+    testo = "\n".join(righe_richiesta(illeggibile, radice=radice))
+    esigi("non si legge come testo" in testo, "un file illeggibile non viene segnalato:\n" + testo)
+    esigi(
+        "differenza" not in testo and "testo nuovo" in testo,
+        "il file illeggibile non mostra il contenuto nuovo che lo sostituira'",
+    )
+    return "differenza su un file esistente, contenuto intero su nuovo o illeggibile, niente lettura fuori radice"
 
 
 def avvertenze_del_comando() -> str:
@@ -1008,6 +1023,15 @@ def cronologia_persistente() -> str:
             oct(prima_chat.lock_file.stat().st_mode)[-3:] == "600",
             "lock della cronologia leggibile da altri",
         )
+        # Il lock crea il genitore se manca, e lo crea privato: su un avvio
+        # rifiutato `prepara_archivio` non arriva, e la casa resterebbe 0755.
+        casa_nuova = Path(RADICE_PROVA) / "casa-lock" / ".ares"
+        with platform_files.lock_file(casa_nuova / "stato.lock", esclusivo=False, bloccante=False):
+            pass
+        esigi(
+            oct(casa_nuova.stat().st_mode)[-3:] == "700",
+            "la casa creata dal lock non e' privata: " + oct(casa_nuova.stat().st_mode)[-3:],
+        )
 
     limitata = CronologiaSicura(percorso, 2)
     limitata.append_string("quarta domanda")
@@ -1280,6 +1304,7 @@ def stato_della_chat() -> str:
     costruiti: list[tuple[str, bool]] = []
 
     modi: list[str] = []
+    interattivi: list[bool] = []
 
     def costruisci(
         percorsi: Percorsi,
@@ -1289,10 +1314,12 @@ def stato_della_chat() -> str:
         *,
         session_id: str,
         debug: bool,
+        interattivo: bool,
         modo: str,
     ) -> AgenteFinto:
         costruiti.append((session_id, debug))
         modi.append(modo)
+        interattivi.append(interattivo)
         return AgenteFinto(session_id, debug)
 
     stato = StatoChat(
@@ -1302,6 +1329,7 @@ def stato_della_chat() -> str:
         percorsi=PERCORSI,
         impostazioni=IMPOSTAZIONI,
         politica=POLITICA,
+        interattivo=False,
     )
 
     def comando(riga: str) -> str:
@@ -1357,6 +1385,13 @@ def stato_della_chat() -> str:
     )
     comando("/sessione progetto-z")
     esigi(modi[-1] == "piano", "il cambio di sessione perde la modalita'")
+    # `/sessione` e `/modo` ricostruiscono l'agente: l'interattivo dello stato
+    # (qui False, come senza terminale) deve sopravvivere, o la ricostruzione
+    # riaccenderebbe l'apprendimento.
+    esigi(
+        interattivi and all(not v for v in interattivi),
+        "le ricostruzioni riaccendono l'apprendimento: " + repr(interattivi),
+    )
 
     # `/sessione nuova`: un id dalla cartella e dal momento, come un altro
     # `ares` qui, e lo dice.
@@ -1486,7 +1521,7 @@ def cartella_di_lavoro() -> str:
     `--workspace`. Git si legge da un `.git` fabbricato, senza lanciare git,
     salvo il conteggio dei file modificati, che git lo lancia davvero.
     """
-    from ares.agent.prompts import istruzioni_dalla_cartella
+    from ares.agent.prompts import istruzioni_dalla_cartella, percorso_istruzioni
     from ares.cli import cartella
     from ares.cli.app import app
 
@@ -1628,6 +1663,35 @@ def cartella_di_lavoro() -> str:
     # Dati fra due righe, non ordini: l'intestazione dice come leggerlo e il
     # testo sta fra "inizio" e "fine", cosi' il modello sa dove finisce.
     esigi("non ordini" in istruzioni[0] and "--- fine di ARES.md ---" in istruzioni[0], "ARES.md non e' delimitato")
+
+    # Un ARES.md che e' un link fuori dalla cartella non entra nel prompt: il
+    # workspace non lo contiene, e senza questo controllo entrerebbe nel system
+    # message - e, con un modello cloud, uscirebbe dalla macchina. Un link che
+    # resta dentro invece si legge: il confine e' la cartella, non il link.
+    scritto.unlink()
+    fuori = RADICE_PROVA / "fuori-cartella.txt"
+    fuori.write_text("segreto del sistema\n", encoding="utf-8")
+    try:
+        scritto.symlink_to(fuori)
+    except OSError:
+        # Un runner Windows senza privilegio di link non puo' provare il caso.
+        pass
+    else:
+        esigi(istruzioni_dalla_cartella(progetto, POLITICA) == [], "un ARES.md che punta fuori entra nel prompt")
+        esigi(
+            percorso_istruzioni(progetto, POLITICA.workspace.istruzioni) is None,
+            "percorso_istruzioni accetta un link che esce dalla cartella",
+        )
+        scritto.unlink()
+        dentro_file = progetto / "regole.txt"
+        dentro_file.write_text("regole interne\n", encoding="utf-8")
+        scritto.symlink_to(dentro_file)
+        dentro = istruzioni_dalla_cartella(progetto, POLITICA)
+        esigi(len(dentro) == 1 and "regole interne" in dentro[0], "un ARES.md che punta dentro non si legge")
+        esigi(
+            percorso_istruzioni(progetto, POLITICA.workspace.istruzioni) == dentro_file.resolve(),
+            "percorso_istruzioni non trova un file che resta dentro la cartella",
+        )
 
     # `ares init` scrive nella directory corrente e rifiuta la seconda volta.
     dove_init = RADICE_PROVA / "init"

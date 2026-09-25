@@ -37,16 +37,19 @@ IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.backup import files, integrity, probe, restore, snapshots  # noqa: E402
 from ares.backup.snapshots import (  # noqa: E402
     ErroreBackup,
+    _copia_sqlite,
     _installa_restore_per_copia,
     _pubblica_snapshot,
     _ultimo_snapshot_di_tipo,
     avviso_residui_restore,
+    avviso_snapshot_incompleti,
     crea_snapshot,
     elenco_snapshot,
     pota_snapshot,
     promemoria_backup,
     residui_restore,
     ripristina_snapshot,
+    snapshot_incompleti,
     valida_percorsi,
     verifica_snapshot,
 )
@@ -452,6 +455,116 @@ def prova_rollback_rinomina() -> None:
     )
 
 
+def prova_rollback_doppio_guasto() -> None:
+    """Se anche il rollback fallisce, l'errore nomina il residuo e non perde la causa vera."""
+    radice = RADICE_PROVA / "rollback-doppio"
+    destinazione = radice / "stato-doppio"
+    staging = radice / "staging"
+    destinazione.mkdir(parents=True)
+    staging.mkdir()
+    (destinazione / "stato.txt").write_text("vecchio\n", encoding="utf-8")
+    (staging / "stato.txt").write_text("nuovo\n", encoding="utf-8")
+    percorsi = replace(PERCORSI, stato=destinazione)
+
+    operazioni = restore.OperazioniRestore(
+        crea_snapshot_senza_lock=lambda _percorsi, _tipo: radice / "non-creato",
+        risolvi_snapshot=lambda _percorsi, _nome: radice / "snapshot",
+        stato_presente=lambda _percorsi: False,
+        verifica_snapshot=lambda _percorsi, _snapshot, _diretto: {},
+    )
+
+    def rinomina_doppio_guasto(sorgente: Path, destinazione_rinomina: Path) -> None:
+        if sorgente == staging:
+            raise OSError("seconda rinomina interrotta")
+        if "precedente" in str(sorgente):
+            raise OSError("rollback interrotto")
+        os.rename(sorgente, destinazione_rinomina)
+
+    with (
+        patch("ares.backup.restore.lock_stato", return_value=nullcontext()),
+        patch("ares.backup.restore._prepara_restore", return_value=staging),
+        patch("ares.backup.restore._rinomina_directory", side_effect=rinomina_doppio_guasto),
+        patch("ares.backup.restore.os.name", "posix"),
+    ):
+        try:
+            restore.ripristina_snapshot(percorsi, "snapshot", False, operazioni)
+        except ErroreBackup as errore:
+            esigi(".stato-doppio-precedente-" in str(errore), "il residuo non e' nominato: " + str(errore))
+            causa = errore.__cause__
+            esigi(
+                isinstance(causa, OSError) and "seconda rinomina" in str(causa),
+                "la causa vera e' andata persa: " + repr(causa),
+            )
+        else:
+            esigi(False, "il doppio guasto non e' stato propagato")
+
+    esigi(
+        list(radice.glob(".stato-doppio-precedente-*")),
+        "il residuo dello stato precedente non e' rimasto",
+    )
+
+
+def prova_copia_sqlite() -> None:
+    """Se la destinazione non si apre, la sorgente non resta aperta.
+
+    `_copia_sqlite` apre due connessioni; la seconda puo' fallire - disco
+    pieno, permessi - e la prima non deve restare in mano fino al GC.
+    """
+    radice = RADICE_PROVA / "copia-sqlite"
+    radice.mkdir()
+    sorgente = radice / "orig.db"
+    crea_sqlite(sorgente, "riga-originale")
+    destinazione = radice / "copia.db"
+
+    vero_connect = sqlite3.connect
+    connessioni = []
+
+    def connect_spia(nome, *argomenti, **opzioni):
+        if Path(nome) == destinazione:
+            raise sqlite3.OperationalError("destinazione non scrivibile")
+        conn = vero_connect(nome, *argomenti, **opzioni)
+        connessioni.append(conn)
+        return conn
+
+    with (
+        patch.object(snapshots, "_integrita_sqlite", lambda *_a, **_k: None),
+        patch.object(snapshots.sqlite3, "connect", connect_spia),
+    ):
+        try:
+            _copia_sqlite(sorgente, destinazione)
+        except sqlite3.OperationalError:
+            pass
+        else:
+            esigi(False, "il guasto della destinazione non e' arrivato")
+
+    esigi(len(connessioni) == 1, "attese una sola connessione alla sorgente: " + str(len(connessioni)))
+    try:
+        connessioni[0].execute("select 1")
+    except sqlite3.ProgrammingError:
+        return
+    esigi(False, "la sorgente e' rimasta aperta dopo il guasto della destinazione")
+
+
+def prova_snapshot_incompleti() -> None:
+    """Una pubblicazione interrotta resta fuori dal catalogo, ma viene nominata."""
+    orfano = PERCORSI.backup / "zzzz-incompleto"
+    orfano.mkdir()
+    (orfano / "checksums.sha256").write_text("checksum\n", encoding="utf-8")
+    (orfano / "kairos.db").write_bytes(b"parziale")
+    estranea = PERCORSI.backup / "zzzz-cartella-mia"
+    estranea.mkdir()
+    (estranea / "appunti.txt").write_text("roba mia\n", encoding="utf-8")
+    try:
+        esigi(orfano not in elenco_snapshot(PERCORSI), "un residuo senza manifest entra nel catalogo")
+        esigi(orfano in snapshot_incompleti(PERCORSI), "il residuo senza manifest non viene riconosciuto")
+        esigi(estranea not in snapshot_incompleti(PERCORSI), "una cartella estranea viene scambiata per un residuo")
+        righe = avviso_snapshot_incompleti(PERCORSI)
+        esigi(len(righe) == 3 and orfano.name in righe[1], "l'avviso non nomina il residuo: " + repr(righe))
+    finally:
+        shutil.rmtree(orfano, ignore_errors=True)
+        shutil.rmtree(estranea, ignore_errors=True)
+
+
 def prova_guardie_restore() -> None:
     """Una preparazione incompleta non lascia staging e una rinomina non sovrascrive."""
     esigi(snapshots._privato is files.rendi_albero_privato, "la façade non espone la primitiva dei permessi")
@@ -710,6 +823,12 @@ def main() -> int:
         prova_sonda_reale()
         ok("sonda reale", "il figlio eseguito davvero: uso sbagliato, elenco vuoto e guasto tradotto")
 
+        prova_snapshot_incompleti()
+        ok("snapshot incompleti", "il residuo senza manifest e' nominato e resta fuori dal catalogo")
+
+        prova_copia_sqlite()
+        ok("copia sqlite", "la sorgente si chiude se la destinazione non si apre")
+
         pubblicazione_staging = RADICE_PROVA / "pubblicazione-staging"
         pubblicazione_finale = RADICE_PROVA / "pubblicazione-finale"
         pubblicazione_staging.mkdir()
@@ -747,6 +866,9 @@ def main() -> int:
 
         prova_rollback_rinomina()
         ok("rollback POSIX", "prima rinomina annullata dopo il guasto della seconda")
+
+        prova_rollback_doppio_guasto()
+        ok("rollback doppio guasto", "il residuo e' nominato e la causa vera conservata")
 
         prova_guardie_restore()
         ok("guardie restore", "staging fallito ripulito e destinazione esistente preservata")

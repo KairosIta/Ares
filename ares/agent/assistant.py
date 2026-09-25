@@ -77,9 +77,10 @@ def build_assistant(
     conversazioni della stessa cartella entrano nelle istruzioni per id,
     poche e dalla piu' recente.
 
-    `interattivo=False` e' `ares -p`: niente post-hook ne' strumenti degli
-    store di apprendimento. Il contesto gia' appreso entra come sempre;
-    cronologia e quaderno restano persistenti, e il prompt lo distingue.
+    `interattivo=False` e' un avvio senza nessuno che legga - `ares -p`, o una
+    pipe senza `-p`: niente post-hook ne' strumenti degli store di
+    apprendimento. Il contesto gia' appreso entra come sempre; cronologia e
+    quaderno restano persistenti, e il prompt lo distingue.
 
     `modo` e' una delle chiavi di `config.MODALITA`: decide quali strumenti
     dello spazio di lavoro girano da soli, quali chiedono e quali non ci

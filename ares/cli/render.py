@@ -336,17 +336,22 @@ def _dentro(percorso: str, radice) -> bool:
         return False
 
 
-def _contenuto_esistente(radice, percorso) -> str | None:
-    """Il testo del file che `write_file` sta per sostituire, se c'e' ed e' leggibile."""
+def _contenuto_esistente(radice, percorso) -> tuple[bool, str | None]:
+    """Se il file esiste e, se leggibile come testo, il suo contenuto.
+
+    Distingue "non c'e'" da "c'e' ma non si legge": nel secondo caso un
+    `write_file` lo sostituira' comunque, e la conferma deve dirlo invece di
+    mostrare soltanto il contenuto nuovo.
+    """
     if radice is None or not isinstance(percorso, str) or not percorso or not _dentro(percorso, radice):
-        return None
+        return False, None
     candidato = Path(radice, percorso)
     if not candidato.is_file():
-        return None
+        return False, None
     try:
-        return candidato.read_text(encoding="utf-8")
+        return True, candidato.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return None
+        return True, None
 
 
 def righe_differenza(esistente: str, nuovo: str, percorso: str) -> list:
@@ -389,10 +394,16 @@ def righe_richiesta(esecuzione, radice=None) -> list:
         righe.append("   (senza argomenti)")
     for nome, valore in argomenti.items():
         if nome == "content" and strumento.endswith("write_file"):
-            esistente = _contenuto_esistente(radice, argomenti.get("path"))
+            esiste, esistente = _contenuto_esistente(radice, argomenti.get("path"))
             if esistente is not None:
                 righe.extend(righe_differenza(esistente, str(valore), str(argomenti.get("path"))))
                 continue
+            if esiste:
+                # Il file c'e' ma non si legge come testo - binario, altra
+                # codifica, permessi. `write_file` lo sostituira' per intero, e
+                # mostrare solo il contenuto nuovo nasconderebbe proprio la cosa
+                # da guardare: cosa sparisce.
+                righe.append("   content: il file esiste e non si legge come testo: verra' sostituito per intero")
         righe.extend(righe_argomento(str(nome), valore))
     if strumento.endswith("run_command"):
         righe.extend(avvertenze_comando(argomenti.get("args"), radice))

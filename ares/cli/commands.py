@@ -11,11 +11,12 @@ from agno.db.base import SessionType
 
 from ares import config
 from ares.agent.assistant import build_assistant
+from ares.agent.prompts import percorso_istruzioni
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.config import Impostazioni, Percorsi, Politica
-from ares.state.archivi import build_filesystem
+from ares.state.archivi import build_db, build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
 from ares.state.stores import (
@@ -25,6 +26,7 @@ from ares.state.stores import (
     quando_sessione,
     righe_entita,
     righe_sessione,
+    sessione_di_altri,
     testo_conversazione,
 )
 
@@ -64,6 +66,10 @@ class StatoChat:
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
+    # Falso in un avvio senza nessuno che legga (`-p`, o una pipe senza `-p`):
+    # `/sessione` e `/modo` ricostruiscono l'agente e devono ripassarlo,
+    # altrimenti la ricostruzione riaccenderebbe l'apprendimento.
+    interattivo: bool = True
     # Token del prompt dell'ultimo turno, per la barra sotto il prompt: la
     # scrive il ciclo della chat, la legge la barra a ogni ridisegno.
     finestra: int | None = None
@@ -188,6 +194,9 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
     elif nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
+    if sessione_di_altri(build_db(stato.percorsi), nome, stato.utente):
+        UI.line("La sessione '" + nome + "' appartiene a un altro utente: non si apre.", style="ares.error")
+        return
     stato.agent = build_assistant(
         stato.percorsi,
         stato.impostazioni,
@@ -195,6 +204,7 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         stato.utente,
         session_id=nome,
         debug=stato.debug,
+        interattivo=stato.interattivo,
         modo=stato.modo,
     )
     stato.session_id = nome
@@ -250,6 +260,7 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
         stato.utente,
         session_id=stato.session_id,
         debug=stato.debug,
+        interattivo=stato.interattivo,
         modo=nome,
     )
     stato.modo = nome
@@ -333,7 +344,7 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
         UI.pair("git", ramo + ", " + stato_git)
     else:
         UI.pair("git", "non e' un repository", style="ares.muted")
-    if cartella.file_istruzioni(radice, stato.politica.workspace.istruzioni).is_file():
+    if percorso_istruzioni(radice, stato.politica.workspace.istruzioni) is not None:
         UI.pair("istruzioni", stato.politica.workspace.istruzioni + ", letto all'avvio")
     else:
         UI.pair(

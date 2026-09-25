@@ -22,6 +22,7 @@ modello mancante, server spento - senza dipendere da cosa c'e' scaricato
 sulla macchina che esegue la prova.
 """
 
+import errno
 import io
 import json
 import os
@@ -32,7 +33,7 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import replace
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -1227,7 +1228,34 @@ def chat_cartella() -> str:
     esigi(str(progetto.resolve()) in testo, "/cartella non nomina la cartella scelta: " + repr(testo))
     esigi(progetto.name in testo.split("Cartella di lavoro")[0], "il banner non nomina la cartella: " + repr(testo))
     esigi("ARES.md" in testo, "il banner non dice che c'e' un ARES.md: " + repr(testo))
-    return "cartella inesistente, rifiutata e scelta con --workspace"
+
+    # Un ARES.md che e' un link fuori dalla cartella non entra nel prompt,
+    # quindi non va nominato nemmeno dal banner o da `/cartella`: la regola e'
+    # una sola (`percorso_istruzioni`). Il link si prova dove si puo' creare.
+    fuori = RADICE_PROVA / "regole-fuori.txt"
+    fuori.write_text("roba d'altri\n", encoding="utf-8")
+    try:
+        (progetto / "ARES.md").unlink()
+        (progetto / "ARES.md").symlink_to(fuori)
+    except OSError:
+        pass
+    else:
+        input_cli = FintoInput(["/cartella", KeyboardInterrupt])
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: input_cli),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+            redirect_stdout(uscita),
+        ):
+            chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=progetto)
+        testo = _piatto(uscita.getvalue())
+        esigi(
+            "ARES.md" not in testo.split("Cartella di lavoro")[0],
+            "il banner nomina un ARES.md che punta fuori: " + repr(testo),
+        )
+        esigi("nessun ARES.md" in testo, "/cartella non dice che l'ARES.md e' fuori: " + repr(testo))
+    return "cartella inesistente, rifiutata e scelta con --workspace, ARES.md fuori dalla cartella"
 
 
 def chat_sessioni() -> str:
@@ -1351,10 +1379,11 @@ def chat_sessioni() -> str:
         "-p non manda chi parla, strumenti e metriche su stderr: " + repr(contorno),
     )
     esigi(UI.console is not UI.stderr, "-p lascia la console dirottata su stderr dopo il turno")
-    # Senza nessuno che legga, l'agente nasce senza memoria da scrivere; la
-    # chat normale invece con.
+    # In questa prova stdin e' sempre una pipe, quindi ogni costruzione nasce
+    # senza memoria da scrivere, `-p` compreso: il caso con terminale e' in
+    # `chat non presidiato`.
     esigi(costruiti[-1]["interattivo"] is False, "-p costruisce un agente che scrive in memoria")
-    esigi(costruiti[0]["interattivo"] is True, "la chat costruisce un agente senza memoria")
+    esigi(costruiti[0]["interattivo"] is False, "una chat senza terminale costruisce un agente che scrive memorie")
     esigi(costruiti[-1]["modo"] == config.MODO_PREDEFINITO, "-p non passa la modalita' predefinita")
     # `piano` non lascia tracce: con `-p` passa, ed e' l'altra meta' della
     # regola che rifiuta `auto` e `modifiche`.
@@ -1437,8 +1466,29 @@ def migrazione_stato() -> str:
         esigi(esito == 1 and not costruiti, "la chat e' partita con lo stato ancora nel posto di prima")
         esigi("migrate" in uscita.getvalue(), "la chat non dice come spostare lo stato: " + repr(uscita.getvalue()))
 
-        esito, testo = migra()
+        # Il vecchio lock si toglie mentre e' ancora tenuto: se restasse al
+        # rilascio, fra il `close` e l'`unlink` un altro processo potrebbe
+        # prenderlo, e l'unlink staccherebbe i due inode. La sonda guarda se il
+        # file c'e' ancora nell'istante in cui il lock viene rilasciato. Su
+        # Windows il file aperto non si cancella, quindi li' non si prova.
+        vecchio_lock = vecchio_tmp.with_name(vecchio_tmp.name + ".lock")
+        esistenza_al_rilascio: dict[str, bool] = {}
+        lock_originale = migrazione.lock_stato
+
+        @contextmanager
+        def lock_spia(percorso: Path, *, esclusivo: bool, bloccante: bool = False):
+            with lock_originale(percorso, esclusivo=esclusivo, bloccante=bloccante):
+                yield
+                esistenza_al_rilascio[str(percorso)] = Path(percorso).exists()
+
+        with patch.object(migrazione, "lock_stato", lock_spia):
+            esito, testo = migra()
         esigi(esito == 0, "la migrazione non e' riuscita: " + testo)
+        if os.name == "posix":
+            esigi(
+                esistenza_al_rilascio.get(str(vecchio_lock)) is False,
+                "il vecchio lock era ancora li' quando il lock e' stato rilasciato",
+            )
         esigi("Spostato lo stato" in testo and "Spostato i backup" in testo, "non dice cosa ha spostato: " + testo)
         esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "il database non e' arrivato")
         esigi((casa / "stato" / "lancedb").is_dir(), "l'indice non e' arrivato")
@@ -1462,7 +1512,55 @@ def migrazione_stato() -> str:
         esigi((vecchio_tmp / "kairos.db").exists(), "un conflitto ha spostato o cancellato qualcosa")
         esigi((casa / "stato" / "kairos.db").read_text(encoding="utf-8") == "db", "un conflitto ha sovrascritto")
         esigi(migrazione.avviso(nuovo) == [], "un conflitto ferma la chat")
-    return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve"
+
+        # Fra filesystem diversi `os.rename` non unisce: `_sposta` passa da una
+        # sorella temporanea e solo la rinomina la rende visibile. Si simula
+        # l'EXDEV, perche' la prova gira su un filesystem solo.
+        ponte = radice / "ponte"
+        vecchio_ponte = ponte / "vecchio"
+        vecchio_ponte.mkdir(parents=True)
+        (vecchio_ponte / "kairos.db").write_text("ponte", encoding="utf-8")
+        casa_ponte = ponte / "casa" / ".ares"
+        nuovi = replace(PERCORSI, home=casa_ponte, stato=casa_ponte / "stato", backup=casa_ponte / "backup")
+        with (
+            patch.multiple(config, VECCHIO_TMP_DIR=vecchio_ponte, VECCHIO_BACKUP_DIR=ponte / "backup-vuoto"),
+            patch.object(config, "leggi_percorsi", lambda: nuovi),
+            # `os.rename` dirottato: la via veloce fallisce e tocca alla copia.
+            patch.object(migrazione.os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")),
+        ):
+            esito, testo = migra()
+        esigi(esito == 0, "la migrazione fra filesystem non riesce: " + testo)
+        esigi((casa_ponte / "stato" / "kairos.db").read_text(encoding="utf-8") == "ponte", "la copia non e' arrivata")
+        esigi(not vecchio_ponte.exists(), "il vecchio non e' stato rimosso dopo la copia")
+        esigi(not (casa_ponte / ".stato-migrazione").exists(), "la sorella temporanea e' rimasta")
+
+        # Un guasto a meta' copia non deve lasciare un `nuovo` a meta': il
+        # vecchio resta intatto, il nuovo non compare, e `avviso` ferma la
+        # chat. Con `shutil.move` la copia parziale resterebbe al posto del
+        # nuovo, e la chat aprirebbe uno stato dimezzato senza dirlo.
+        vecchio_rotto = ponte / "rotto"
+        vecchio_rotto.mkdir()
+        (vecchio_rotto / "kairos.db").write_text("rotto", encoding="utf-8")
+        casa_rotta = ponte / "casa-rottura" / ".ares"
+        rotti = replace(PERCORSI, home=casa_rotta, stato=casa_rotta / "stato", backup=casa_rotta / "backup")
+
+        def copia_a_meta(src: Path, dst: Path, **kwargs: object) -> None:
+            Path(dst).mkdir(parents=True, exist_ok=True)
+            (Path(dst) / "kairos.db").write_text("meta", encoding="utf-8")
+            raise OSError("disco pieno")
+
+        with (
+            patch.multiple(config, VECCHIO_TMP_DIR=vecchio_rotto, VECCHIO_BACKUP_DIR=ponte / "backup-vuoto2"),
+            patch.object(config, "leggi_percorsi", lambda: rotti),
+            patch.object(migrazione.os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")),
+            patch.object(migrazione.shutil, "copytree", copia_a_meta),
+        ):
+            esito, testo = migra()
+        esigi(esito == 1, "un guasto a meta' copia non viene detto: " + testo)
+        esigi(not (casa_rotta / "stato").exists(), "un guasto a meta' copia ha lasciato uno stato incompleto")
+        esigi((vecchio_rotto / "kairos.db").read_text(encoding="utf-8") == "rotto", "il vecchio e' stato perso")
+        esigi(migrazione.avviso(rotti) != [], "dopo il guasto la chat non si ferma")
+    return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve, copia fra filesystem"
 
 
 def chat_residui() -> str:
@@ -1670,6 +1768,132 @@ def aiuto_senza_effetti() -> str:
     return str(len(comandi)) + " aiuti e un preflight intero senza creare l'archivio"
 
 
+def chat_non_presidiato() -> str:
+    """Senza terminale nessuno legge cio' che il modello propone.
+
+    `-p` non e' l'unico avvio senza nessuno che guardi: anche con stdin da una
+    pipe, e senza `-p`, la conferma sarebbe letta dallo stesso flusso che porta
+    l'istruzione. Le guardie di avvio trattano quel caso come `-p`, e
+    `_apri_input` manda le domande a vuoto mentre i turni restano leggibili.
+    """
+
+    def guardia(*, modo: str, scegli: bool, presidiato: bool) -> int | None:
+        return chat._guardie_di_avvio(prompt=None, scegli=scegli, modo=modo, percorsi=PERCORSI, presidiato=presidiato)
+
+    for modo in ("auto", "modifiche"):
+        esigi(
+            guardia(modo=modo, scegli=False, presidiato=False) == chat.ESITO_RIFIUTO,
+            "senza terminale la modalita' " + modo + " non viene rifiutata",
+        )
+        esigi(
+            guardia(modo=modo, scegli=False, presidiato=True) is None,
+            "presidiato: la modalita' " + modo + " viene rifiutata lo stesso",
+        )
+    esigi(
+        guardia(modo="manuale", scegli=False, presidiato=False) is None,
+        "senza terminale una modalita' che chiede conferma viene rifiutata",
+    )
+
+    # Un solo attributo basta a `_apri_input`: percorsi, candidati e riga di
+    # stato si leggono dopo, e il resto e' chiuso in una lambda.
+    finto = SimpleNamespace(percorsi=PERCORSI)
+    senza = chat._apri_input(finto, presidiato=False)
+    esigi(senza.ask("Autorizzi? ") == "", "senza terminale la conferma non vale no")
+    esigi(senza.fallback_ask is chat._nessuno, "senza terminale la conferma legge dal flusso")
+    esigi(
+        chat._apri_input(finto, presidiato=True).fallback_ask is not chat._nessuno,
+        "presidiato: la conferma non puo' leggere l'input",
+    )
+
+    # Senza terminale, e senza `-p`, l'agente nasce come quello di `-p`:
+    # nessun post-hook e nessuno strumento degli store. Con un terminale torna
+    # a scrivere memorie.
+    costruiti: list[dict] = []
+
+    def costruisci(percorsi, impostazioni, politica, utente, **argomenti):
+        costruiti.append(argomenti)
+        return object()
+
+    def avvio(*, presidiato: bool) -> int:
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+            patch.object(sys, "stdin", SimpleNamespace(isatty=lambda: presidiato)),
+            redirect_stdout(uscita),
+            redirect_stderr(uscita),
+        ):
+            return chat._esegui_chat(user=UTENTE)
+
+    esigi(
+        avvio(presidiato=False) == 0 and costruiti[-1]["interattivo"] is False,
+        "senza terminale l'agente scrive memorie",
+    )
+    esigi(
+        avvio(presidiato=True) == 0 and costruiti[-1]["interattivo"] is True,
+        "con terminale l'agente non scrive memorie",
+    )
+    return "modalita' silenziose rifiutate, conferme a vuoto e niente memorie senza terminale"
+
+
+def chat_sessione_altrui() -> str:
+    """Una sessione di un altro utente non si apre, e l'agente non nasce.
+
+    `--session <nome>` e `/sessione <nome>` scavalcano gli elenchi per
+    cartella, che sono gia' filtrati per utente. Senza il controllo, i run del
+    secondo utente finirebbero nella sessione del primo: Agno li carica per
+    solo `session_id`, quindi il primo li ritroverebbe nella cronologia.
+    """
+    from agno.session.agent import AgentSession
+
+    from ares.agent.runtime import build_db
+
+    db = build_db(PERCORSI)
+    altrui = "sessione-di-altrui"
+    mia = "sessione-mia"
+    db.upsert_session(AgentSession(session_id=altrui, user_id="bob", created_at=1000))
+    db.upsert_session(AgentSession(session_id=mia, user_id=UTENTE, created_at=2000))
+
+    costruiti: list[dict] = []
+
+    def costruisci(percorsi, impostazioni, politica, utente, **argomenti):
+        argomenti["percorsi"] = percorsi
+        argomenti["impostazioni"] = impostazioni
+        argomenti["politica"] = politica
+        costruiti.append(argomenti)
+        return object()
+
+    def avvio(**argomenti) -> tuple[int, str]:
+        uscita = io.StringIO()
+        with (
+            patch.object(chat, "build_assistant", costruisci),
+            patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
+            patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+            patch.object(sys, "stdin", io.StringIO()),
+            redirect_stdout(uscita),
+            redirect_stderr(uscita),
+        ):
+            esito = chat._esegui_chat(user=UTENTE, **argomenti)
+        return esito, _piatto(uscita.getvalue())
+
+    try:
+        esito, testo = avvio(session=altrui)
+        esigi(esito == chat.ESITO_RIFIUTO, "la sessione di un altro utente non viene rifiutata")
+        esigi(not costruiti, "l'agente nasce su una sessione di un altro utente")
+        esigi(altrui in testo, "il rifiuto non nomina la sessione: " + repr(testo))
+
+        esito, _ = avvio(session=mia)
+        esigi(esito == 0 and costruiti[-1]["session_id"] == mia, "la propria sessione non si apre")
+
+        esito, _ = avvio(session="nome-mai-visto")
+        esigi(esito == 0 and costruiti[-1]["session_id"] == "nome-mai-visto", "un nome nuovo viene rifiutato")
+    finally:
+        db.delete_sessions([altrui], user_id="bob")
+        db.delete_sessions([mia], user_id=UTENTE)
+    return "sessione di un altro utente rifiutata senza costruire l'agente; la propria e una nuova si aprono"
+
+
 def main() -> int:
     avvio = time.monotonic()
     print("Archivio della prova:", RADICE_PROVA)
@@ -1704,6 +1928,8 @@ def main() -> int:
         ok("chat sessioni", chat_sessioni())
         ok("migrazione", migrazione_stato())
         ok("chat avvio", chat_avvio())
+        ok("chat non presidiato", chat_non_presidiato())
+        ok("chat sessione altrui", chat_sessione_altrui())
         ok("chat residui", chat_residui())
         # Per ultima fra quelle sull'archivio: lascia due sessioni in meno e
         # apre i database in questo processo.

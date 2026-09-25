@@ -252,6 +252,27 @@ def con_run(db: Any, sessione: Any) -> Any:
     return intera if intera is not None else sessione
 
 
+def sessione_di_altri(db: Any, session_id: str | None, utente: Utente) -> bool:
+    """Vero se la sessione esiste ma appartiene a un altro utente.
+
+    `--session <nome>` e `/sessione <nome>` scavalcano gli elenchi per
+    cartella, che sono gia' filtrati per utente: senza questo controllo i run
+    di un secondo utente finirebbero nella sessione del primo, perche' Agno
+    filtra i run per solo `session_id` e il proprietario della riga non li
+    protegge. Riguarda le sole sessioni che esistono: un nome mai visto e' una
+    conversazione nuova, e si apre.
+
+    `runs_limit=1` perche' qui serve l'intestazione della riga - il
+    proprietario - e non la conversazione: senza, `get_session` caricherebbe
+    tutti i run per leggere un campo.
+    """
+    if not session_id:
+        return False
+    riga = db.get_session(session_id=session_id, session_type=SessionType.AGENT, deserialize=False, runs_limit=1)
+    proprietario = riga.get("user_id") if isinstance(riga, dict) else None
+    return bool(proprietario) and str(proprietario) != utente.id
+
+
 def prima_domanda(sessione: Any, larghezza: int = 90) -> str:
     """La prima cosa chiesta in una sessione, troncata.
 

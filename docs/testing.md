@@ -347,9 +347,10 @@ I comandi mostrano il percorso Linux. Su Windows sostituisci
 
 ## CI
 
-GitHub Actions esegue due job, il secondo in tre varianti. `Analisi statica`
-gira una volta su Ubuntu con ruff e mypy; `tests` installa le dipendenze
-bloccate, verifica lo script di setup, compila il codice e lancia
+GitHub Actions esegue tre job, l'ultimo in tre varianti. `Cosa cambia` guarda
+quali file tocca il commit e salta i passi pesanti quando sono solo documenti;
+`Analisi statica` gira una volta su Ubuntu con ruff e mypy; `tests` installa le
+dipendenze bloccate, verifica lo script di setup, compila il codice e lancia
 `tests/run.py --copertura` su Ubuntu con Python 3.12 e 3.13 e su Windows con
 la 3.12: la copertura di un progetto non dipende dal sistema, ma i rami
 Windows di `backup` e `platform_files` esistono per quel sistema e misurati

@@ -7,11 +7,15 @@ poterli portare dietro senza rifare niente a mano: `ares migrate` li sposta,
 i setup lo chiamano, e la chat si ferma finche' non e' successo, perche'
 partire con uno stato vuoto accanto a uno pieno li sdoppierebbe.
 
-E' uno spostamento di directory, non una copia: sullo stesso disco e' una
-rinomina, e sotto lock esclusivo, cosi' nessuna chat lo vede a meta'.
+E' uno spostamento di directory sotto lock esclusivo: sullo stesso filesystem
+e' una rinomina, e su un filesystem diverso una copia in una sorella
+temporanea che solo la rinomina rende visibile, cosi' nessuna chat lo vede a
+meta'.
 """
 
 import contextlib
+import errno
+import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -69,13 +73,47 @@ def avviso(percorsi: Percorsi) -> list[str]:
     return righe
 
 
+def _sposta(vecchio: Path, nuovo: Path) -> None:
+    """Sposta `vecchio` in `nuovo` senza lasciare mai un `nuovo` a meta'.
+
+    Sullo stesso filesystem `os.rename` e' atomico e basta. Fra filesystem
+    diversi non lo e', e `shutil.move` degrada a copia piu' cancellazione: un
+    guasto a meta' lascerebbe in `nuovo` uno stato incompleto che la chat
+    aprirebbe senza accorgersene, con la copia buona ancora in `vecchio`. Qui
+    la copia va in una sorella temporanea di `nuovo` e solo la rinomina la
+    rende visibile, cosi' `nuovo` c'e' tutto o non c'e' per niente: nel primo
+    caso la chat procede, nel secondo `avviso` la ferma.
+
+    Il nome della sorella e' fisso e viene ripulito prima: i lock esclusivi
+    tengono fuori un'altra migrazione, quindi un residuo e' di un tentativo
+    precedente finito male, e ricominciare da capo e' la cosa giusta.
+    """
+    try:
+        os.rename(vecchio, nuovo)
+        return
+    except OSError as errore:
+        if errore.errno != errno.EXDEV:
+            raise
+    staging = nuovo.with_name("." + nuovo.name + "-migrazione")
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        shutil.copytree(vecchio, staging, symlinks=True)
+        os.replace(staging, nuovo)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    shutil.rmtree(vecchio)
+
+
 @app.default
 def migra() -> int:
     """Sposta stato e backup da dentro il clone a ~/.ares, se sono ancora li'.
 
     Idempotente: dopo la prima volta dice che non c'e' niente da spostare.
     Non tocca una parte quando la destinazione contiene gia' dei dati: lo
-    dice, e la decisione resta a chi guarda le due directory.
+    dice, e la decisione resta a chi guarda le due directory. Lo spostamento
+    non lascia mai una destinazione a meta', nemmeno fra filesystem diversi:
+    ci pensa `_sposta`.
     """
     percorsi = config.leggi_percorsi()
     for cosa, vecchio, nuovo in conflitti(percorsi):
@@ -103,11 +141,21 @@ def migra() -> int:
                     rendi_privato(nuovo.parent)
                 if nuovo.is_dir():
                     # Vuota, per costruzione di `parti()`: si toglie perche'
-                    # `move` dentro una directory esistente la annidera'.
+                    # la rinomina dentro una directory esistente la anniderebbe.
                     nuovo.rmdir()
-                shutil.move(str(vecchio), str(nuovo))
+                _sposta(vecchio, nuovo)
                 rendi_privato(nuovo)
                 UI.pair("Spostato " + cosa, str(vecchio) + "  ->  " + str(nuovo), style="ares.title")
+
+            # Il vecchio lock si toglie mentre lo teniamo ancora. Dopo il
+            # rilascio, fra il `close` e l'`unlink`, un processo della versione
+            # precedente puo' prendere il lock su questo file: l'unlink lo
+            # staccherebbe dall'inode, il processo dopo ne creerebbe uno nuovo,
+            # e i due si crederebbero soli. Su Windows un file aperto non si
+            # cancella - `lock_file` lo tiene aperto finche' il contesto non
+            # esce - quindi li' il tentativo non riesce e si ripiega sotto.
+            with contextlib.suppress(PermissionError):
+                vecchio_lock.unlink()
     except StatoOccupato as errore:
         UI.err("ERRORE: " + str(errore))
         UI.err("Chiudi Ares e riprova.", style="ares.muted")
@@ -116,6 +164,8 @@ def migra() -> int:
         UI.err("ERRORE: spostamento fallito: " + str(errore))
         UI.err("Niente e' andato perso: cio' che non si e' mosso e' ancora dov'era.", style="ares.muted")
         return ESITO_GUASTO
+    # Ripiego per Windows, dove il lock aperto impedisce l'unlink: qui il file
+    # e' chiuso e si cancella. Su POSIX e' un no-op, il file e' gia' sparito.
     with contextlib.suppress(OSError):
         vecchio_lock.unlink()
     UI.line("Da ora `ares` legge da " + str(percorsi.home) + ", da qualunque cartella.", style="ares.muted")

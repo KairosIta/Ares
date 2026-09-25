@@ -314,6 +314,7 @@ class CliInput:
         input: Input | None = None,
         output: Output | None = None,
         fallback_input: Callable[[str], str] = builtins.input,
+        fallback_ask: Callable[[str], str] | None = None,
         argomenti: Mapping[str, Candidati] | None = None,
         stato: Callable[[], str] | None = None,
     ) -> None:
@@ -321,6 +322,11 @@ class CliInput:
             interactive = bool(sys.stdin.isatty() and sys.stdout.isatty())
         self.interactive = interactive
         self.fallback_input = fallback_input
+        # Le domande possono avere una risposta diversa dai turni: senza un
+        # terminale, chi scrive la conversazione non e' per forza chi autorizza
+        # un comando. Senza `fallback_ask` i due restano lo stesso callable,
+        # cosi' i client che leggono tutto da un flusso non cambiano.
+        self.fallback_ask = fallback_ask or fallback_input
         # Cosa scrivere a sinistra nella barra sotto il prompt: modalita',
         # sessione, finestra. Si chiama a ogni ridisegno, cosi' dopo `/modo`
         # o un turno la barra e' gia' aggiornata.
@@ -412,6 +418,6 @@ class CliInput:
 
     def ask(self, etichetta: str, *, muted: bool = False) -> str:
         if self._domande is None:
-            return self.fallback_input(etichetta)
+            return self.fallback_ask(etichetta)
         stile = "class:prompt.ask-muted" if muted else "class:prompt.ask"
         return self._domande.prompt([(stile, etichetta)])

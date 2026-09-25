@@ -24,7 +24,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from contextlib import nullcontext
+from contextlib import closing, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -129,9 +129,14 @@ def _root_backup(percorsi: Percorsi) -> Path:
 
 def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     _integrita_sqlite(sorgente)
-    origine = sqlite3.connect(str(sorgente))
-    copia = sqlite3.connect(str(destinazione))
-    try:
+    # `closing` e non un `finally` scritto a mano: il `connect` della
+    # destinazione sta dentro lo stesso `with`, quindi se fallisce la
+    # connessione alla sorgente si chiude comunque, per garanzia del
+    # linguaggio e non di una riga che si puo' dimenticare.
+    with (
+        closing(sqlite3.connect(str(sorgente))) as origine,
+        closing(sqlite3.connect(str(destinazione))) as copia,
+    ):
         journal_mode = str(origine.execute("pragma journal_mode").fetchone()[0]).casefold()
         origine.backup(copia)
         # L'API backup copia pagine e dati ma il database di destinazione
@@ -141,9 +146,6 @@ def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
         # proprieta' persistente, non soltanto tabelle e righe.
         if journal_mode == "wal":
             copia.execute("pragma journal_mode=wal").fetchone()
-    finally:
-        copia.close()
-        origine.close()
     rendi_privato(destinazione)
     _integrita_sqlite(destinazione)
 
@@ -318,6 +320,47 @@ def _snapshot_dentro(root: Path) -> list[Path]:
     )
 
 
+def snapshot_incompleti(percorsi: Percorsi) -> list[Path]:
+    """Le directory nel catalogo che hanno la firma di uno snapshot ma non il manifest.
+
+    Il fallback di `_pubblica_snapshot` - la rinomina di directory non riesce,
+    tipicamente su Windows - copia i dati e pubblica il manifest per ultimo,
+    come commit marker. Un processo ucciso fra le due lascia i dati al loro
+    posto e il manifest mai scritto: senza quest'ultimo la directory non e'
+    uno snapshot per nessun lettore, quindi `elenco_snapshot` la ignora e
+    nessun comando la nomina. Si riconosce dalla firma di un salvataggio - il
+    file dei checksum o uno dei database - cosi' una cartella qualunque messa
+    li' dall'utente non viene scambiata per un residuo.
+    """
+    root = percorsi.backup
+    try:
+        if not root.is_dir():
+            return []
+        return sorted(
+            voce
+            for voce in root.iterdir()
+            if voce.is_dir()
+            and not voce.is_symlink()
+            and not voce.name.startswith(".")
+            and not (voce / MANIFEST).is_file()
+            and any((voce / firma).exists() for firma in (CHECKSUM, *DATABASE))
+        )
+    except OSError:
+        return []
+
+
+def avviso_snapshot_incompleti(percorsi: Percorsi) -> list[str]:
+    """Le righe con cui dire che una pubblicazione e' rimasta a meta', o nessuna."""
+    incompleti = snapshot_incompleti(percorsi)
+    if not incompleti:
+        return []
+    righe = ["Una pubblicazione di snapshot non e' stata completata: nel catalogo sono rimasti dei residui."]
+    for percorso in incompleti:
+        righe.append("    " + str(percorso) + "  (senza manifest: non si puo' ripristinare)")
+    righe.append("Ares non li tocca: controlla cosa contengono, poi eliminali a mano.")
+    return righe
+
+
 def elenco_snapshot(percorsi: Percorsi) -> list[Path]:
     return _snapshot_dentro(_root_backup(percorsi))
 
@@ -372,9 +415,9 @@ def residui_restore(percorsi: Percorsi) -> list[Path]:
     """Le directory che un restore interrotto puo' lasciare accanto allo stato.
 
     Su POSIX il restore e' due rinomine: lo stato corrente diventa
-    `.tmp-precedente-<hex>` e la preparazione `.tmp-restore-<hex>` prende il
-    suo posto. Un processo ucciso fra le due lascia il residuo e nessuna
-    `tmp/`: al riavvio Ares ricrea uno stato vuoto e, senza questa lettura,
+    `.stato-precedente-<hex>` e la preparazione `.stato-restore-<hex>` prende il
+    suo posto. Un processo ucciso fra le due lascia il residuo e nessuno
+    stato: al riavvio Ares ne ricrea uno vuoto e, senza questa lettura,
     riparte da zero senza dirlo. Un residuo resta anche dopo un restore
     riuscito, quando la copia precedente non si lascia rimuovere, e su
     Windows quando il rollback per copia fallisce a sua volta.
@@ -510,6 +553,7 @@ def pota_snapshot(percorsi: Percorsi, da_tenere: int, acquisisci_lock: bool = Tr
 
 OPERAZIONI = cli.OperazioniBackup(
     avviso_residui=avviso_residui_restore,
+    avviso_incompleti=avviso_snapshot_incompleti,
     crea_snapshot=crea_snapshot,
     elenco_snapshot=elenco_snapshot,
     pota_snapshot=pota_snapshot,

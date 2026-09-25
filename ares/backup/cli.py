@@ -31,6 +31,7 @@ class OperazioniBackup:
     """Operazioni della façade usate dalla CLI, iniettate per evitare cicli."""
 
     avviso_residui: Callable[[Percorsi], list[str]]
+    avviso_incompleti: Callable[[Percorsi], list[str]]
     crea_snapshot: Callable[[Percorsi], Path]
     elenco_snapshot: Callable[[Percorsi], list[Path]]
     pota_snapshot: Callable[[Percorsi, int, bool], list[Path]]
@@ -123,16 +124,22 @@ def elenca(*, come_json: ComeJson = False) -> int:
     percorsi = config.leggi_percorsi()
     operazioni = _op()
     residui = operazioni.avviso_residui(percorsi)
+    incompleti = operazioni.avviso_incompleti(percorsi)
     voci = [_descrivi(percorso) for percorso in reversed(operazioni.elenco_snapshot(percorsi))]
     if come_json:
-        UI.json({"backup_dir": str(percorsi.backup), "residui": residui, "snapshot": voci})
+        UI.json({"backup_dir": str(percorsi.backup), "residui": residui, "incompleti": incompleti, "snapshot": voci})
         return 0
+
+    def mostra(righe: list[str], stile: str) -> None:
+        for indice, riga in enumerate(righe):
+            UI.line(riga, style=stile if indice == 0 else "ares.muted")
+        if righe:
+            UI.blank()
+
     # Prima del catalogo: chi elenca gli snapshot sta decidendo se e da cosa
     # ripristinare, e un restore rimasto a meta' e' la prima cosa da sapere.
-    for indice, riga in enumerate(residui):
-        UI.line(riga, style="ares.error" if indice == 0 else "ares.muted")
-    if residui:
-        UI.blank()
+    mostra(residui, "ares.error")
+    mostra(incompleti, "ares.warning")
     if not voci:
         UI.line("Nessuno snapshot in " + str(percorsi.backup), style="ares.muted")
         return 0

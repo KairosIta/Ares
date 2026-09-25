@@ -42,6 +42,15 @@ class UtenteNonValido(ValueError):
 # nome, e' un namespace annidato sotto quello di `demo`.
 _ALFABETO = re.compile(r"[a-z0-9._-]+")
 
+# Il tetto che il FileSystem di Agno impone a ogni segmento del namespace:
+# l'id in `user/<id>` e in `user/<id>/personale` e' un segmento, e oltre questa
+# misura `normalize_namespace` solleva `InvalidPathError` invece di accettare
+# il nome. Il numero sta scritto qui e non importato da `agno.fs._paths`,
+# perche' la porta non deve dipendere da cio' che normalizza; un test di
+# contratto confronta i due valori, cosi' una modifica di Agno non lo lascia
+# indietro in silenzio.
+LUNGHEZZA_MASSIMA = 128
+
 
 def utente_canonico(user_id: str) -> str:
     """La forma canonica dell'identificativo, o `UtenteNonValido` se non e' valido.
@@ -55,12 +64,15 @@ def utente_canonico(user_id: str) -> str:
     senza un errore.
 
     Un identificativo che si riduce a niente, che contiene un carattere fuori
-    dall'alfabeto, o che vale `.` o `..`, e' rifiutato e non ricondotto a un
-    default: un id vuoto e' un contenitore condiviso da tutti, un id che Agno
-    riscrive e' un archivio che si separa in due, e `.`/`..` non sono
-    namespace ma path che Agno rifiuta. Chi ha un valore che puo' essere
-    vuoto decide cosa farne prima di arrivare qui, al confine del programma;
-    a valle si passa un `Utente`, che di valori vuoti non ne ammette.
+    dall'alfabeto, che vale `.` o `..`, o che supera `LUNGHEZZA_MASSIMA`
+    caratteri, e' rifiutato e non ricondotto a un default: un id vuoto e' un
+    contenitore condiviso da tutti, un id che Agno riscrive e' un archivio che
+    si separa in due, `.`/`..` non sono namespace ma path che Agno rifiuta, e
+    un id oltre il tetto farebbe fallire la costruzione del FileSystem con un
+    `InvalidPathError` che nessun confine legge. Chi ha un valore che puo'
+    essere vuoto decide cosa farne prima di arrivare qui, al confine del
+    programma; a valle si passa un `Utente`, che di valori vuoti non ne
+    ammette.
     """
     canonico = user_id.strip().lower()
     if not canonico:
@@ -75,6 +87,15 @@ def utente_canonico(user_id: str) -> str:
         # segmenti di percorso, e `user/..` non e' un namespace, e' un errore
         # che arriva al primo uso e non qui.
         raise UtenteNonValido("l'identificativo utente non puo' essere '.' o '..': non e' un segmento di percorso")
+    if len(canonico) > LUNGHEZZA_MASSIMA:
+        # Il namespace di Agno e' `user/<id>`: l'id e' un segmento, e oltre
+        # questo tetto `normalize_namespace` solleva `InvalidPathError`, che
+        # nessun confine di Ares cattura.
+        raise UtenteNonValido(
+            "l'identificativo utente non puo' superare "
+            + str(LUNGHEZZA_MASSIMA)
+            + " caratteri: e' il tetto che Agno impone ai segmenti del namespace"
+        )
     return canonico
 
 
@@ -109,8 +130,8 @@ class Utente:
         """L'unica porta: normalizza e valida il valore come e' scritto fuori.
 
         Solleva `UtenteNonValido` con la ragione - vuoto, alfabeto, segmento di
-        percorso - perche' chi sta al confine la deve poter mostrare: un
-        `--user café` e' un errore da leggere, non un traceback.
+        percorso, lunghezza - perche' chi sta al confine la deve poter mostrare:
+        un `--user café` e' un errore da leggere, non un traceback.
         """
         return cls(utente_canonico(grezzo))
 
