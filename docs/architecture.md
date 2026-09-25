@@ -234,7 +234,7 @@ riporta i due store all'istantanea di prima del turno, verificandolo con una
 rilettura — è quella che `tests/cli_test.py` prova contro store veri.
 
 Che la conferma stia a valle della scrittura e non a monte non è una scelta
-fra due possibilità disponibili. Le modalità di apprendimento di Agno 3.0.9 sono
+fra due possibilità disponibili. Le modalità di apprendimento di Agno 3.0.11 sono
 quattro, ma non valgono per tutti gli store: `PROPOSE` è supportata dal solo
 store delle intuizioni, `UserProfileStore` e `UserMemoryStore` la rifiutano
 con un warning, e `HITL` non è implementata da nessuno. Profilo e memorie
