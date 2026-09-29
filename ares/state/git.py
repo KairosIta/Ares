@@ -1,8 +1,7 @@
 """Git letto dai file, senza eseguire git.
 
-Il ramo compare nel banner a ogni avvio e nella scheda che il modello riceve
-prima del primo turno: nessuno dei due deve aspettare un processo, ne'
-fallire dove git non e' installato. `HEAD` basta, e un worktree o un
+Il ramo compare nel banner e nel prompt: niente attese di un processo, e
+niente errori dove git non e' installato. Basta `HEAD`; worktree e
 submodule dicono in `.git` dove sta la directory vera.
 """
 

@@ -1,5 +1,4 @@
-"""
-Runner unico delle prove
+"""Runner unico delle prove
 ========================
 Uso:
     .venv/bin/python tests/run.py                 le prove offline
@@ -7,33 +6,19 @@ Uso:
     .venv/bin/python tests/run.py --copertura     offline, con la misura
     .venv/bin/python tests/run.py --solo backup entita
 
-Ogni prova resta uno script eseguibile da solo: questo file non le importa,
-le lancia. Non e' una preferenza di stile. Ognuna prepara il proprio ambiente
-scrivendo `ARES_TMP` e `ARES_BACKUP_DIR` ed entrando nella propria cartella
-di lavoro *prima* di importare `config`, che all'import fotografa l'ambiente
-in cui e' nato - `AMBIENTE` e' quel dizionario, e non cambia piu'.
+Ogni prova e' uno script eseguibile da solo, e il runner la lancia in un
+processo separato invece di importarla. Ognuna prepara `ARES_TMP`,
+`ARES_BACKUP_DIR` e la propria cartella di lavoro *prima* di importare
+`config`, che fotografa l'ambiente all'import: due prove nello stesso
+interprete condividerebbero la prima fotografia, e la seconda potrebbe
+scrivere nell'archivio vero. Per questo `prepara_ambiente` rifiuta di
+partire se `ares.config` e' gia' in memoria.
 
-I percorsi si derivano da quella fotografia a ogni `config.leggi_percorsi()`,
-e nessun nome di modulo li tiene: chi legge lo stato se li vede passare come
-primo parametro. Il processo separato resta comunque, perche' cio' che conta
-non e' solo dove si legge ma cosa e' gia' aperto: un lock, uno store, un
-percorso copiato in una variabile non si rileggono. Due prove nello stesso
-interprete condividerebbero la prima fotografia dell'ambiente, cioe' i
-percorsi della prima: la seconda scriverebbe dove ha preparato la prima, e il
-giorno in cui una delle due sbagliasse variabile scriverebbe nell'archivio
-vero senza che nessuno se ne accorga. Un processo per prova rende quell'errore
-impossibile invece che improbabile, ed e' anche il motivo per cui
-`prepara_ambiente` si rifiuta di scegliere i percorsi se `ares.config` e' gia'
-in memoria.
+La copertura gira in modalita' parallela (un file per processo, uniti da
+`coverage combine`), configurata in `pyproject.toml`.
 
-Per lo stesso motivo la misura di copertura gira in modalita' parallela: un
-file per processo, uniti da `coverage combine` alla fine. La configurazione
-sta in `pyproject.toml`, cosi' il numero non dipende da come si e' invocato il
-comando.
-
-Le prove girano una alla volta. Quelle con Ollama si contendono la stessa
-GPU, e le offline durano in tutto meno di un minuto: parallelizzarle
-comprerebbe poco al prezzo di un output intrecciato.
+Le prove girano una alla volta: quelle con Ollama si contendono la GPU, e
+le offline durano meno di un minuto.
 """
 
 import argparse
@@ -67,13 +52,9 @@ PROVE = (
     ("e2e", "e2e_test.py", True, "un turno completo e la rilettura da un altro processo"),
 )
 
-# Un test bloccato e' diverso da un test lento: senza un limite il runner non
-# arriva mai al riepilogo e in CI consuma l'intero timeout del job. Le prove
-# offline finiscono in secondi qui, ma `cli` lancia una REPL per sottoprocesso
-# e ognuno importa Agno: sul runner Windows di GitHub sta fra 150 e 165 s, e
-# con il tetto a 180 un runner appena piu' lento la dichiarava bloccata. Il
-# tetto e' il doppio di quella misura; quelle con Ollama hanno piu' margine
-# per caricamento del modello, inferenza e GPU meno veloci.
+# Un tetto per distinguere una prova bloccata da una lenta. `cli` su Windows in
+# CI sta fra 150 e 165 s: il tetto offline e' circa il doppio. Quelle con
+# Ollama hanno margine per caricamento e inferenza.
 TIMEOUT_OFFLINE_SECONDI = 360
 TIMEOUT_OLLAMA_SECONDI = 900
 
@@ -112,9 +93,8 @@ def costruisci_parser() -> argparse.ArgumentParser:
 def selezione(args: argparse.Namespace) -> list[tuple[str, str, bool, str]]:
     """Le prove da eseguire, o un errore che nomina quelle sbagliate.
 
-    Un nome inesistente non viene ignorato: `--solo backupp` che esegue zero
-    prove e stampa "nessun fallimento" e' peggio di un errore, perche' e'
-    verde.
+    Un nome inesistente non viene ignorato: zero prove eseguite con esito verde
+    sarebbe peggio di un errore.
     """
     if args.solo:
         per_nome = {nome: prova for prova in PROVE for nome in [prova[0]]}
@@ -130,13 +110,8 @@ def pulisci_dati_copertura() -> None:
     """Toglie di mezzo le misure precedenti.
 
     `coverage combine` unisce tutto cio' che trova: un file rimasto da un giro
-    con `--solo` gonfierebbe in silenzio il rapporto di questo.
-
-    I nomi sono elencati - `.coverage` e i file `.coverage.*` dei processi -
-    e non presi con un glob piu' largo: quando la configurazione stava in
-    `.coveragerc` un `.coverage*` la cancellava, e la misura proseguiva con le
-    impostazioni predefinite, senza modalita' parallela, con i processi che
-    si sovrascrivevano a vicenda. Oggi sta nel pyproject, ma la lezione resta.
+    con `--solo` gonfierebbe il rapporto. I nomi sono elencati invece di un
+    glob largo, per non cancellare file di configurazione.
     """
     dati = RADICE / ".coverage"
     if dati.exists():
@@ -151,21 +126,14 @@ def pulisci_dati_copertura() -> None:
 def ambiente_figli() -> dict[str, str]:
     """Variabili che estendono la misura ai processi avviati dalle prove.
 
-    Le prove non sono foglie: la CLI di `ares.entities` viene lanciata
-    sei volte come sottoprocesso, `backup/probe.py` sonda LanceDB in un interprete
-    isolato, `e2e_test.py` rilegge l'archivio da un processo nuovo. Quel codice
-    e' provato, e senza queste due variabili risulta scoperto: un rapporto che
-    sbaglia in difetto manda a scrivere prove dove ce ne sono gia'.
+    Le prove lanciano sottoprocessi (la CLI di `ares.entities`, il sondaggio
+    LanceDB, la rilettura di `e2e_test.py`): senza queste variabili quel codice
+    risulterebbe scoperto.
 
-    `COVERAGE_PROCESS_START` dice a `coverage.process_startup()` quale
-    configurazione usare; `PYTHONPATH` mette a portata il `sitecustomize.py`
-    che quella funzione la chiama. Le prove copiano `os.environ` quando
-    lanciano un figlio, quindi la terna si propaga anche ai nipoti.
-
-    `COVERAGE_FILE` e' il terzo: coverage scrive `.coverage.<pid>` nella
-    directory corrente del processo, e un figlio lanciato dalla cartella di
-    lavoro usa-e-getta di una prova lo lascerebbe li', dove `combine` non
-    guarda. Un percorso assoluto mette ogni file accanto al pyproject.
+    - `COVERAGE_PROCESS_START`: la configurazione per `coverage.process_startup()`.
+    - `PYTHONPATH`: rende visibile `sitecustomize.py`, che chiama quella funzione.
+    - `COVERAGE_FILE`: percorso assoluto, perche' un figlio lanciato da una
+      cartella usa-e-getta non lasci i dati dove `combine` non guarda.
     """
     aggiunta = str(RADICE / "tests" / "_copertura")
     esistente = os.environ.get("PYTHONPATH", "")
@@ -190,17 +158,15 @@ def coverage_disponibile() -> bool:
 def esegui(prova: tuple[str, str, bool, str], copertura: bool) -> tuple[int, float]:
     """Lancia una prova e restituisce esito e durata.
 
-    L'output non viene catturato: passa a schermo mentre arriva. Le prove con
-    Ollama durano minuti e stampano avanzamento; raccoglierlo per mostrarlo
-    alla fine trasformerebbe un'attesa informata in un silenzio.
+    L'output passa a schermo mentre arriva: le prove con Ollama durano minuti
+    e stampano l'avanzamento.
     """
     percorso = Path("tests") / prova[1]
     comando = [sys.executable]
     ambiente = dict(os.environ)
     if copertura:
-        # `-m coverage run` invece di un wrapper: la prova resta lo stesso
-        # script con lo stesso argv, e cio' che si misura e' quello che gira
-        # anche senza misura.
+        # `-m coverage run` invece di un wrapper: si misura lo stesso script
+        # con lo stesso argv.
         comando += ["-m", "coverage", "run"]
         ambiente.update(ambiente_figli())
     comando.append(str(percorso))
@@ -215,10 +181,8 @@ def esegui(prova: tuple[str, str, bool, str], copertura: bool) -> tuple[int, flo
 
 
 def main(argomenti: list[str] | None = None) -> int:
-    # I processi figli scrivono sul terminale senza passare di qui. Quando
-    # l'output e' un file o un log di CI il buffer del padre trattiene le
-    # proprie righe fino alla fine, e le intestazioni compaiono staccate dalla
-    # prova che annunciano - o dopo il rapporto che dovrebbero precedere.
+    # I figli scrivono sul terminale direttamente: senza flush le intestazioni
+    # del padre, in un file o in CI, comparirebbero staccate dalla prova.
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(line_buffering=True)
 
@@ -259,11 +223,9 @@ def main(argomenti: list[str] | None = None) -> int:
 
     if copertura:
         print()
-        # Gli esiti si guardano. Senza `fail_under` nel pyproject un codice
-        # diverso da zero qui significa che la misura non c'e' - nessun dato
-        # raccolto, configurazione illeggibile - e una misura mancante che
-        # stampa "Nessun fallimento" e' il modo esatto in cui questo runner ha
-        # gia' mentito una volta.
+        # Senza `fail_under` un codice diverso da zero qui significa che la
+        # misura manca (nessun dato, configurazione illeggibile): non deve
+        # finire in "Nessun fallimento".
         guasti = []
         for passo in ("combine", "report"):
             if subprocess.run([sys.executable, "-m", "coverage", passo], cwd=RADICE).returncode != 0:
@@ -278,15 +240,10 @@ def main(argomenti: list[str] | None = None) -> int:
             print("La misura di copertura e' fallita:", ", ".join(guasti))
             falliti.append("copertura")
         if not args.tutte and not args.solo:
-            # Misurato il 22 settembre 2026: `--tutte --copertura` produce un
-            # rapporto identico a questo, riga per riga e ramo per ramo. Le
-            # prove con Ollama verificano cio' che un modello finto non puo'
-            # dire - la lingua delle intuizioni, quanto spesso il contesto
-            # manca il colpo - ma non aggiungono righe coperte: le stesse le
-            # attraversano le prove offline con il modello deterministico. Il
-            # perimetro di questa percentuale e' quindi gia' quello completo,
-            # e dirlo evita i due errori opposti: credere che manchi la meta'
-            # delle righe, o credere che `--tutte` alzi il numero.
+            # Misurato il 22 settembre 2026: `--tutte --copertura` da' lo
+            # stesso rapporto. Le prove con Ollama verificano cio' che un
+            # modello finto non puo' dire, ma non coprono righe in piu': questa
+            # percentuale e' gia' il perimetro completo.
             print()
             print("Misura delle sole prove offline: aggiungere --tutte non cambia il rapporto.")
 

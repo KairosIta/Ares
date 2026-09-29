@@ -8,6 +8,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Commenti e documentazione essenziali.** Docstring e commenti dicono il
+  contratto e il perché non ovvio; la storia del codice resta qui e nei
+  commit. Circa il 40% in meno di commenti nel pacchetto, senza cambiare una
+  riga di codice (AST verificato identico). La motivazione delle dipendenze
+  esplicite, ripetuta in molte docstring, sta ora una volta sola in
+  `docs/architecture.md`. `docs/testing.md`, `docs/core-contract.md`,
+  `CONTRIBUTING.md` e le altre pagine sono sfoltite, con tabelle al posto dei
+  paragrafi lunghi. La roadmap si sposta in `docs/ROADMAP.md`, accanto ai
+  documenti del refactor del nucleo.
 - **Il `README.md` è riorganizzato intorno a come Ares gira.** La scelta fra
   locale e cloud era raccontata in tre punti diversi — il primo bullet di
   «Perché Ares», una sottosezione annidata dentro i requisiti e un paragrafo

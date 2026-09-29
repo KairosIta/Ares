@@ -1,4 +1,4 @@
-"""Ciclo di un turno Ares, indipendente da terminale e futura web UI.
+"""Ciclo di un turno Ares, indipendente dall'interfaccia.
 
 Il modulo traduce gli eventi specifici di Agno in un vocabolario piccolo e
 stabile. Non importa Rich, Prompt Toolkit o la configurazione visuale: un
@@ -105,9 +105,8 @@ class TurnEngine:
         self.agent = agent
 
     def start(self, text: str) -> Iterator[TurnEvent]:
-        # Questo yield precede perfino la chiamata ad ``agent.run``: anche
-        # un provider che facesse lavoro prima di restituire l'iteratore non
-        # lascerebbe il client senza stato di attivita'.
+        # Emesso prima di ``agent.run``, perche' il client mostri attivita'
+        # anche se il provider lavora prima di restituire l'iteratore.
         yield TurnEvent(TurnEventKind.PROCESSING_STARTED)
         yield from normalize_events(
             self.agent.run(

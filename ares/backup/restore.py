@@ -14,8 +14,7 @@ from ares.config import Percorsi
 from ares.state.lock import lock_stato
 from ares.state.platform_files import rendi_privato
 
-# Alias storici del modulo estratto: conservano import e monkeypatch mirati,
-# mentre l'implementazione condivisa vive in un solo posto.
+# Alias usati da import e monkeypatch delle prove; l'implementazione sta in `files`.
 _privato = files.rendi_albero_privato
 _rinomina_directory = files.rinomina_directory_nuova
 
@@ -43,12 +42,10 @@ def _prepara_restore(percorsi: Percorsi, snapshot: Path, manifest: dict[str, Any
             if componenti.get(nome):
                 shutil.copy2(snapshot / nome, staging / nome)
                 integrity.verifica_sqlite(staging / nome)
-        # Il restore sostituisce l'intera directory dello stato, quindi cio'
-        # che non entra in staging viene cancellato. La cronologia viva ha la
-        # precedenza su quella dello snapshot: riportare indietro i database e'
-        # il senso dell'operazione, riavvolgere cio' che l'utente ha digitato
-        # no. Quella dello snapshot serve al caso per cui esiste un backup:
-        # tmp/ persa, e allora non c'e' niente da conservare.
+        # Cio' che non entra in staging viene cancellato. La cronologia viva
+        # ha la precedenza: il restore riporta indietro i database, non cio'
+        # che l'utente ha digitato. Quella dello snapshot serve se lo stato
+        # e' andato perso.
         viva = percorsi.stato / cronologia
         if viva.is_file():
             shutil.copy2(viva, staging / cronologia)
@@ -136,10 +133,9 @@ def ripristina_snapshot(
         destinazione = percorsi.stato.resolve()
         precedente = destinazione.with_name("." + destinazione.name + "-precedente-" + uuid4().hex)
         if os.name == "nt":
-            # Windows puo' rifiutare il rename di directory LanceDB non vuote
-            # anche senza processi Ares attivi. La copia precedente permette
-            # il rollback e lo snapshot pre-restore resta la rete di sicurezza
-            # persistente in caso di interruzione del processo.
+            # Windows puo' rifiutare il rename di directory LanceDB non vuote.
+            # La copia precedente permette il rollback; lo snapshot
+            # pre-restore copre l'interruzione del processo.
             _installa_restore_per_copia(staging, destinazione, precedente)
             return sicurezza
 
@@ -155,10 +151,8 @@ def ripristina_snapshot(
                 try:
                     _rinomina_directory(precedente, destinazione)
                 except Exception as ripristino:
-                    # Il rollback e' fallito a sua volta: l'eccezione da far
-                    # risalire e' quella vera, ma va detto dove sta l'unica
-                    # copia dello stato precedente, invece di nominare solo il
-                    # guasto del rollback e perdere l'altro.
+                    # Rollback fallito: risale l'eccezione originale, con
+                    # l'indicazione di dove sta l'unica copia dello stato.
                     residuo = (precedente, ripristino)
             shutil.rmtree(staging, ignore_errors=True)
             if residuo is not None:
@@ -172,8 +166,7 @@ def ripristina_snapshot(
             raise
         else:
             if precedente.exists():
-                # Il nuovo stato e' gia' installato: un residuo che non si
-                # lascia rimuovere non deve trasformare un restore riuscito
-                # in un falso fallimento.
+                # Il nuovo stato e' installato: un residuo non rimovibile non
+                # rende fallito il restore.
                 shutil.rmtree(precedente, ignore_errors=True)
         return sicurezza

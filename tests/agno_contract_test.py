@@ -1,77 +1,37 @@
-"""
-Contratto con Agno: estrazione, conferma, retry e limiti dichiarati
+"""Contratto con Agno: estrazione, conferma, retry e limiti dichiarati
 ===================================================================
 Uso:
     .venv/bin/python tests/agno_contract_test.py
 
-Sei cose Ares le da' per vere di Agno, e nessuna prova le chiedeva ad
-Agno.
+Sei cose che Ares da' per vere di Agno, verificate contro Agno installato.
 
-La prima: l'apprendimento avviene una volta per turno, sul run completo.
-Agno avvia `LearningMachine.process` in un thread prima ancora di chiamare
-il modello, su una fotografia dei messaggi; Ares lo azzera in
-`AresLearningMachine.process` e rifa' l'estrazione nel post-hook, che Agno
-esegue solo quando il run non e' in pausa. Se una minor di Agno spostasse
-la chiamata anticipata su un altro nome, o eseguisse i post-hook anche su
-un run in pausa, si avrebbero due estrazioni per turno o una sul run
-troncato, e nessuna prova se ne accorgerebbe: `smoke` verifica il post-hook
-con un run costruito a mano, non con Agno che lo chiama.
+1. **L'apprendimento avviene una volta per turno, sul run completo.** Agno
+   avvia `LearningMachine.process` prima di chiamare il modello; Ares lo
+   spegne e rifa' l'estrazione nel post-hook, che Agno esegue solo su un
+   run non in pausa. Se Agno spostasse la chiamata anticipata o eseguisse i
+   post-hook su un run in pausa, si avrebbero due estrazioni o una su un run
+   troncato.
+2. **Il ciclo `run -> pausa -> continue_run` di `turn_core` combacia con
+   Agno.** Con un `Agent.run` reale e uno strumento a conferma: il file e'
+   cancellato dopo la conferma e non prima, resta dopo un rifiuto, e il run
+   finisce in entrambi i casi.
+3. **Il retry di `AresSessionContextStore`.** Si regge su tre fatti di Agno:
+   `extract_and_save` esiste con quel nome, `context_updated` si accende solo
+   se il modello ha eseguito uno strumento, `aextract_and_save` e' il gemello
+   asincrono (codice diverso, da attraversare a parte). Se uno cadesse, Ares
+   ripeterebbe all'infinito o mai. Primo colpo, tetto e recupero si
+   provano su entrambi i percorsi, insieme all'`aprocess` spento.
+   (`stop_after_tool_call` lo verifica `learning_cost_test.py`.)
+4. **Profilo e memorie non sono confermabili.** Agno rifiuta PROPOSE su quegli
+   store e HITL e' "reserved for future use": se il limite cadesse, la prova
+   diventa rossa e `SECURITY.md` e `docs/architecture.md` vanno riscritti.
+5. **La versione di Agno dichiarata nei documenti e' quella installata.**
+6. **Il tetto di un id utente e' quello di Agno** per i segmenti del
+   namespace (`MAX_SEGMENT_CHARS`).
 
-La seconda: il ciclo `run -> pausa -> continue_run` di `turn_core` combacia
-con la firma e il comportamento di Agno. `chat turno` lo prova con un
-`run_turn_cycle` finto; qui il ciclo e' quello vero, con un `Agent.run`
-reale e uno strumento del workspace che chiede conferma. Cio' che si
-afferma e' l'effetto: il file viene cancellato dopo la conferma e non
-prima, resta al suo posto dopo un rifiuto, e in entrambi i casi il run
-riprende e finisce.
-
-La terza: il retry di `AresSessionContextStore`. E' la seconda delle tre
-superfici di Agno che Ares sovrascrive, e finora la provava soltanto
-`learning_reliability_test.py`, che vuole Ollama e quindi in CI non gira
-mai: il ramo piu' delicato dell'apprendimento era verificato solo a mano.
-Il retry si regge su tre fatti di Agno - `extract_and_save` esiste con
-quel nome, `context_updated` viene azzerato all'inizio e acceso solo se
-il modello ha eseguito uno strumento, `aextract_and_save` e' il gemello
-asincrono, che e' codice diverso e non lo stesso corpo con un `await` davanti -
-e se uno cadesse Ares ripeterebbe all'infinito o non ripeterebbe mai, in
-silenzio. Qui il modello e' di nuovo un copione, cosi' il caso "fallisce e poi
-recupera" e' deterministico invece che sperato, e i tre casi - primo colpo,
-tetto, recupero - si attraversano su entrambi i percorsi. Nello stesso punto si
-attraversa l'`aprocess` che Ares azzera per il percorso asincrono: Ares non usa
-`arun`, quindi quella riga nessun'altra prova la esegue.
-La terza superficie, il flag `stop_after_tool_call` su profilo e memorie, non
-si controlla qui: `learning_cost_test.py` la esercita con un modello finto e
-conta le chiamate, che e' una prova piu' diretta di un controllo di firma.
-
-La quarta: profilo e memorie non sono confermabili. `SECURITY.md` e
-`docs/architecture.md` dichiarano che la memoria durevole si scrive senza
-passare da una conferma, e la ragione non e' una scelta di Ares: in Agno
-`UserProfileStore` e `UserMemoryStore` rifiutano PROPOSE, e HITL e'
-"reserved for future use" su ogni store. E' un limite del framework, e un
-limite dichiarato va sorvegliato come un'invariante: il giorno in cui Agno
-lo togliesse, questa prova diventa rossa e la documentazione va riscritta
-invece di restare vera per abitudine.
-
-La quinta: la versione di Agno che i documenti dichiarano e' quella
-installata. Il numero sta a mano in piu' posti - il badge del README, la
-roadmap, `docs/agno.md`, il commento di `AresLearningMachine` - e la 3.0.5
-era rimasta in uno di essi col lock gia' alla 3.0.9. Un numero vecchio non
-fa fallire niente: e' una pagina che descrive un altro programma. Qui
-l'installato e' il metro, e la prova dice quali file allineare.
-
-La sesta: il tetto di lunghezza di un id utente e' quello che Agno impone ai
-segmenti del namespace. `Utente` rifiuta ora un id oltre `MAX_SEGMENT_CHARS`,
-e prima non lo faceva: la costruzione del FileSystem sollevava un
-`InvalidPathError` che nessun confine leggeva, e `ares --user <id lungo>`
-finiva in un traceback invece che in un rifiuto. La prova confronta i due
-numeri, cosi' una modifica di Agno non li separa in silenzio.
-
-Niente modello e niente rete: il modello e' uno script che emette le tool
-call decise dalla prova, come in `session_retention_test.py`. Nei primi due
-controlli gli store di apprendimento sono spenti, e l'estrazione e' un
-passaggio a vuoto: e' il passaggio che si conta, non cio' che scriverebbe.
-Il terzo store lo costruisce invece davvero, perche' li' cio' che si guarda
-e' proprio se ha scritto.
+Niente modello e niente rete: il modello e' un copione di tool call. Nei
+primi due controlli gli store di apprendimento sono spenti (si conta il
+passaggio, non cio' che scriverebbe); il terzo li costruisce davvero.
 """
 
 import asyncio
@@ -103,11 +63,8 @@ from agno.models.response import ModelResponse  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi e le impostazioni della prova, letti una volta dopo
-# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei due,
-# quindi la prova se li porta dietro e li passa a chi ne ha bisogno. La
-# politica si legge invece in `main()`, dopo aver spento gli store: quella di
-# questo import avrebbe ancora tutti gli apprendimenti accesi.
+# Percorsi e impostazioni letti una volta dopo `prepara_ambiente`. La politica
+# si legge in `main()`, dopo aver spento gli store.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.agent.assistant import build_assistant  # noqa: E402
@@ -124,9 +81,7 @@ NOME_FILE = "da-cancellare.txt"
 def copione_cancellazione() -> list[list[dict[str, Any]]]:
     """Legge il file e poi chiede di cancellarlo: la lettura e' obbligatoria.
 
-    `WORKSPACE_READ_BEFORE_WRITE` vale anche per la cancellazione, e passare
-    da una lettura libera a una scrittura a conferma nello stesso turno e'
-    la sequenza che un turno vero attraversa.
+    `WORKSPACE_READ_BEFORE_WRITE` vale anche per la cancellazione.
     """
     prefisso = config.WORKSPACE_PREFIX
     return [
@@ -138,10 +93,9 @@ def copione_cancellazione() -> list[list[dict[str, Any]]]:
 class ClienteFinto:
     """Il client di `run_turn_cycle`: raccoglie gli eventi e decide alla pausa.
 
-    `decisione` e' cio' che fa alla pausa: conferma o rifiuta ogni requisito.
-    Alla pausa registra anche se il file esiste ancora, perche' e' l'unico
-    momento in cui si puo' affermare che lo strumento non e' stato eseguito
-    prima della decisione.
+    `decisione` conferma o rifiuta ogni requisito. Alla pausa registra se il
+    file esiste ancora: e' l'unico momento per affermare che lo strumento non e'
+    stato eseguito prima della decisione.
     """
 
     def __init__(self, decisione: str, file: Path) -> None:
@@ -179,16 +133,10 @@ class ClienteFinto:
 class ContatoreEstrazioni:
     """Conta le estrazioni vere e quelle anticipate, e conserva i messaggi.
 
-    L'estrazione vera e' `LearningMachine.process` di Agno, che Ares chiama
-    solo da `process_completed_run`: si intercetta sulla classe base, cosi'
-    la chiamata anticipata - che arriva all'override di Ares - non ci passa.
-    Quella anticipata si conta sull'istanza, perche' e' li' che Agno la
-    cerca: se sparisse dal framework, l'override di Ares sarebbe codice
-    morto e la prova lo direbbe.
-
-    Il gemello asincrono si conta allo stesso modo, su `vere_async` e sulla
-    classe base: Ares non usa `arun`, quindi l'unico modo di sapere che la
-    sua `aprocess` non e' codice morto - e che non estrae - e' attraversarla.
+    Quella vera si intercetta sulla classe base (`LearningMachine.process`), che
+    Ares chiama solo da `process_completed_run`; quella anticipata si conta
+    sull'istanza, dove Agno la cerca. Il gemello asincrono si conta allo stesso
+    modo, su `vere_async`.
     """
 
     def __init__(self, macchina) -> None:
@@ -282,11 +230,8 @@ def estrazione_singola() -> str:
         "l'estrazione riceve un run diverso da quello restituito",
     )
 
-    # Il gemello asincrono, fuori dal contatore di sopra: qui si attraversa la
-    # riga di Ares, non quella di Agno. Ares non usa `arun`, quindi senza
-    # questa chiamata l'override asincrono resterebbe l'unica riga mai
-    # eseguita di learning.py, e un Agno che estraesse dal percorso asincrono
-    # imparerebbe da un run a meta' senza che la prova sincrona se ne accorga.
+    # Il gemello asincrono: Ares non usa `arun`, quindi solo qui si attraversa
+    # il suo `aprocess` e si verifica che non estragga.
     with ContatoreEstrazioni(agent.learning_machine) as contatore_asincrono:
         asyncio.run(agent.learning_machine.aprocess(messages=[], user_id=UTENTE, session_id=SESSIONE))
     esigi(
@@ -343,17 +288,11 @@ def ciclo_hitl() -> str:
 class ModelloContesto(ModelloACopione):
     """Salva il contesto soltanto ai tentativi elencati; agli altri tace.
 
-    `SessionContextStore.extract_and_save` fa `model_copy = deepcopy(self.model)`
-    a ogni tentativo. Un contatore sull'istanza vivrebbe percio' una vita sola
-    per tentativo e ogni giro ripeterebbe il primo: il caso "fallisce e poi
-    recupera" non sarebbe esprimibile. `__deepcopy__` restituisce quindi se
-    stesso, e la copia condivide il contatore con l'originale.
+    `extract_and_save` fa `deepcopy(self.model)` a ogni tentativo: `__deepcopy__`
+    restituisce se stesso, cosi' il contatore sopravvive fra i tentativi.
 
-    Tacere significa rispondere senza tool call: lo store accende
-    `context_updated` solo se il modello ha *eseguito* uno strumento, quindi
-    una risposta di solo testo e' esattamente l'estrazione che non ha scritto
-    niente - il difetto intermittente che `SESSION_CONTEXT_RETRIES` esiste per
-    assorbire.
+    Tacere significa rispondere senza tool call: e' l'estrazione che non ha
+    scritto niente, il difetto che `SESSION_CONTEXT_RETRIES` assorbe.
     """
 
     def __init__(self, riesce_ai: set[int]) -> None:
@@ -368,11 +307,9 @@ class ModelloContesto(ModelloACopione):
     def _prossima(self) -> ModelResponse:
         self.chiamate += 1
 
-        # Un tentativo puo' chiamare il modello due volte - la tool call e la
-        # riga che segue il suo esito - e il confine fra i tentativi non si
-        # conta sulle chiamate: solo il tentativo che *ha* emesso lo strumento
-        # ne ha due. Contarle a coppie faceva scivolare il conto di uno, e il
-        # tentativo che doveva riuscire non arrivava mai.
+        # Il confine fra tentativi non si conta sulle chiamate al modello: solo
+        # il tentativo che emette lo strumento ne fa due (la tool call e la
+        # riga dopo).
         if self.deve_chiudere:
             self.deve_chiudere = False
             return ModelResponse(role="assistant", content="salvato", response_usage=MessageMetrics())
@@ -397,9 +334,8 @@ MESSAGGI_CONTESTO = [
 def store_contesto(riesce_ai: set[int], tentativi: int | None = None):
     """Lo store di contesto della prova.
 
-    `tentativi` esiste per provare che il numero viaggia come parametro e non
-    viene riletto da `config` dentro il ciclo: la prova ne chiede uno diverso
-    da quello configurato e pretende che sia quello a valere.
+    `tentativi` e' diverso da quello configurato: la prova pretende che valga il
+    parametro, non `config`.
     """
     politica = POLITICA
     if tentativi is not None:
@@ -450,10 +386,8 @@ def contesto_riprova() -> str:
     )
     esigi(store.get(session_id="recuperato") is not None, "il contesto recuperato non e' in archivio")
 
-    # Il gemello asincrono: stessa logica, e va attraversata perche' e' codice
-    # diverso, non lo stesso corpo con un await davanti. I tre casi sono gli
-    # stessi del sincrono: senza il primo e il tetto, il ramo che esce dal
-    # ciclo resterebbe scoperto proprio nel corpo asincrono.
+    # Il gemello asincrono, codice diverso dal sincrono: stessi tre casi,
+    # perche' il ramo che esce dal ciclo resti coperto.
     store = store_contesto({1})
     asyncio.run(store.aextract_and_save(messages=MESSAGGI_CONTESTO, session_id="async-subito", user_id=UTENTE))
     esigi(
@@ -532,26 +466,21 @@ def memoria_non_confermabile() -> str:
     return "PROPOSE e HITL rifiutati da profilo e memorie, ALWAYS accettata"
 
 
-# Dove la versione di Agno e' dichiarata: le pagine e il commento che la
-# nominano per dire cosa Ares usa adesso. `CHANGELOG.md` e
-# `docs/memory-quality.md` sono fuori di proposito - il primo racconta cosa e'
-# cambiato, il secondo misure datate con la versione di allora - e le prove
-# non si controllano da sole. La lista e' esplicita perche' una pagina che
-# smettesse di nominare la versione non deve sparire dal controllo in
-# silenzio: se una di queste non la cita piu', la prova e' rossa e si decide
-# se toglierla dall'elenco.
+# Le pagine che devono dichiarare la versione di Agno. `CHANGELOG.md` e
+# `docs/memory-quality.md` sono esclusi di proposito: raccontano versioni
+# passate. L'elenco e' esplicito perche' una pagina che smette di citare la
+# versione non esca dal controllo in silenzio.
 FILE_CHE_DICHIARANO = (
     "README.md",
-    "ROADMAP.md",
     "SECURITY.md",
-    "ares/agent/learning.py",
+    "docs/ROADMAP.md",
     "docs/agno.md",
     "docs/architecture.md",
     "docs/core-contract.md",
 )
 VERSIONE_AGNO = re.compile(r"Agno (\d+\.\d+\.\d+)")
 CARTELLE_DICHIARANTI = ("ares", "docs", "evals")
-FILE_DI_RADICE = ("README.md", "ROADMAP.md", "SECURITY.md")
+FILE_DI_RADICE = ("README.md", "SECURITY.md")
 VERSIONI_STORICHE = ("docs/memory-quality.md",)
 
 
@@ -575,17 +504,9 @@ def _testi_dichiaranti() -> list[tuple[str, str]]:
 def versione_dichiarata() -> str:
     """La versione di Agno nei documenti e' quella installata.
 
-    Il numero e' scritto a mano in piu' posti e nessuno di essi si accorge di
-    invecchiare: il commento di `AresLearningMachine` citava la 3.0.5 mentre
-    il lock era gia' alla 3.0.9, e una pagina che descrive la versione
-    sbagliata resta verde finche' qualcuno non la rilegge.
-
-    Il metro e' l'installato, non una copia: `uv.lock` decide la patch, la CI
-    installa quella, e le prove di contratto qui sopra girano su quella. Due
-    controlli: le pagine di `FILE_CHE_DICHIARANO` devono nominare la versione
-    installata, e nessun altro file deve nominarne una diversa. Salire di
-    patch senza allineare le dichiarazioni rende questa prova rossa, e il
-    messaggio nomina il file da correggere.
+    Il metro e' l'installato (`uv.lock` decide la patch). Le pagine di
+    `FILE_CHE_DICHIARANO` devono nominarla, e nessun altro file puo' nominarne
+    una diversa. Il messaggio nomina il file da correggere.
     """
     installata = version("agno")
     testi = dict(_testi_dichiaranti())
@@ -603,12 +524,8 @@ def versione_dichiarata() -> str:
 def limite_utente() -> str:
     """Il tetto di `Utente` e' quello che Agno usa per i segmenti del namespace.
 
-    Agno taglia i segmenti del namespace - l'id in `user/<id>` e' uno di essi -
-    a `MAX_SEGMENT_CHARS` caratteri e solleva `InvalidPathError` oltre. `Utente`
-    e' la porta che deve rifiutare prima, con un `UtenteNonValido` leggibile:
-    senza il limite, `ares --user <id lungo>` moriva con un traceback che nessun
-    confine di Ares catturava. Qui si confronta il tetto di Ares con quello
-    installato, cosi' una modifica di Agno non lo lascia indietro.
+    Oltre `MAX_SEGMENT_CHARS` Agno solleva `InvalidPathError`: `Utente` deve
+    rifiutare prima, con un `UtenteNonValido` leggibile.
     """
     esigi(
         LUNGHEZZA_MASSIMA == MAX_SEGMENT_CHARS,

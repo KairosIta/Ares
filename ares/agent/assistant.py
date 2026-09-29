@@ -1,8 +1,7 @@
-"""Facciata di composizione dell'assistente personale Ares.
+"""Composizione dell'assistente: il cablaggio finale dell'Agent Agno in un punto solo.
 
-I componenti runtime, il ciclo di apprendimento e le istruzioni vivono in
-moduli separati. Questo file conserva gli import pubblici storici e rende
-visibile in un solo punto il cablaggio finale dell'Agent Agno.
+Riesporta anche i costruttori di `runtime` e `learning`, che prove e comandi
+importano da qui.
 """
 
 from agno.agent import Agent
@@ -69,48 +68,20 @@ def build_assistant(
     interattivo: bool = True,
     modo: str | None = None,
 ) -> Agent:
-    """Assembla l'assistente completo senza nascondere dipendenze globali.
+    """Assembla l'assistente completo per un utente e una sessione.
 
-    Con lo spazio di lavoro acceso la sessione porta con se' la cartella in
-    cui nasce: `metadata` finisce nella sessione nuova e resta com'e' in una
-    ripresa, ed e' cio' che `ares resume` e `/sessioni` leggono. Le altre
-    conversazioni della stessa cartella entrano nelle istruzioni per id,
-    poche e dalla piu' recente.
+    - `percorsi`: dove stanno stato, backup e cartella di lavoro.
+    - `impostazioni`: con quali modelli parla la conversazione, e come.
+    - `politica`: cosa impara, quanta cronologia vede, cosa mostra.
+    - `utente`: identita' canonica; `utente.id` e' la chiave di profilo e memorie.
+    - `modo`: chiave di `config.MODALITA`; vuoto vale `config.MODO_PREDEFINITO`.
+    - `interattivo=False` (`ares -p`, pipe): niente post-hook ne' strumenti di
+      apprendimento; il contesto gia' appreso entra comunque.
 
-    `interattivo=False` e' un avvio senza nessuno che legga - `ares -p`, o una
-    pipe senza `-p`: niente post-hook ne' strumenti degli store di
-    apprendimento. Il contesto gia' appreso entra come sempre; cronologia e
-    quaderno restano persistenti, e il prompt lo distingue.
-
-    `modo` e' una delle chiavi di `config.MODALITA`: decide quali strumenti
-    dello spazio di lavoro girano da soli, quali chiedono e quali non ci
-    sono, e il prompt lo dice. Vuoto vale `config.MODO_PREDEFINITO`, letto
-    adesso: un default nella firma lo fotograferebbe all'import, e chi lo
-    cambia dopo non verrebbe ascoltato.
-
-    `percorsi` e' dove stanno stato, backup e cartella di lavoro, e non ha
-    un valore predefinito: chi costruisce l'agente lo ha gia' in mano dal
-    confine del processo, e un `config.PERCORSI` qui dentro sarebbe di nuovo
-    una risposta ambientale alla domanda "quale archivio".
-
-    `impostazioni` e' con quali modelli parla questa conversazione, e come
-    li raggiunge. Sta accanto a `percorsi` perche' e' l'altra meta' della
-    stessa risposta: la prima dice dove, la seconda a chi. Nessuno dei due
-    e' un nome di modulo, quindi due conversazioni con modelli diversi sono
-    due oggetti e non due mutazioni a distanza.
-
-    `politica` e' cosa questa conversazione impara, quanto contesto storico
-    vede, come si muove nella cartella e cosa mostra di cio' che ha
-    imparato. Da qui vengono gli store che esistono davvero, i limiti della
-    cronologia e i paragrafi del prompt che li descrivono: leggerli da
-    `config` a meta' costruzione permetterebbe a un'altra sessione di
-    cambiare sotto i piedi cio' che questa sta per dichiarare al modello.
-
-    `utente` e' l'identita' gia' canonica, e non ha un valore predefinito:
-    un default nella firma sarebbe una seconda risposta alla domanda "per
-    conto di chi", decisa all'import invece che da chi costruisce. Il valore
-    che Agno usa come chiave di profilo e User Memory e' `utente.id`, ed e'
-    quello per cui namespace, lock e sessioni parlano.
+    Nessuno di questi ha un default letto da `config`: vedi "Dipendenze
+    esplicite" in docs/architecture.md. Con lo spazio di lavoro acceso la
+    sessione registra la sua cartella in `metadata`, letta da `ares resume` e
+    `/sessioni`.
     """
     modo = modo or config.MODO_PREDEFINITO
     db = build_db(percorsi)

@@ -111,11 +111,8 @@ class QualitaMemoriaTest(unittest.TestCase):
     def test_avvio_citato_in_forma_equivalente_e_una_prova(self):
         """La citazione che dice l'avvio senza dire "iniziato" sostiene il valore.
 
-        E' il testo che il modello ha prodotto davvero: la memoria unisce la
-        decisione e l'avvio in una frase, e la sonda cita la seconda meta'.
-        Prima della dichiarazione sulla fase questo usciva non conclusivo,
-        cioe' una risposta corretta con la sua citazione verbatim non contava
-        ne' come successo ne' come difetto.
+        E' un testo reale del modello: la memoria unisce decisione e avvio, e la
+        sonda cita la seconda meta'.
         """
         durevole = (
             "Ha deciso di realizzare ORIONE-42, il suo unico progetto personale attuale; "
@@ -178,11 +175,9 @@ class QualitaMemoriaTest(unittest.TestCase):
     def test_ogni_fase_di_ogni_caso_finisce_nel_rapporto(self):
         """Il rapporto deve poter contenere qualunque fase dichiarata.
 
-        Il campo `evidenza_equivalente` e' un'espressione compilata, che
-        `json.dumps` non sa scrivere: senza conversione il worker moriva con
-        codice 1 mentre salvava, e non a fine caso ma alla prima fase che la
-        dichiarava - perdendo anche le fasi gia' misurate. Le prove sul
-        verdetto non lo vedevano, perche' non passano dal rapporto.
+        `evidenza_equivalente` e' un'espressione compilata, che `json.dumps` non sa
+        scrivere: senza conversione il worker morirebbe al salvataggio, perdendo
+        anche le fasi gia' misurate.
         """
         for nome, fasi in mq.CASI.items():
             for fase in fasi:

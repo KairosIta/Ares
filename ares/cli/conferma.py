@@ -1,15 +1,10 @@
 """Le conferme scritte dei comandi di manutenzione, in un posto solo.
 
-Restore, prune, retention e fusione chiedono all'utente di riscrivere una
-frase esatta prima di toccare lo stato: il nome dello snapshot, `ELIMINA`,
-`FONDI a IN b`. Prima ognuno lo faceva con un `input()` nudo, con quattro
-inviti scritti in quattro modi. Qui la domanda ha una forma sola - cosa
-sta per succedere, cosa scrivere, il prompt - e lo stesso editor della
-chat quando c'e' un terminale.
-
-Senza terminale - una pipe, un test, uno script - si ripiega su `input()`,
-come fa `CliInput`: e' cio' che permette di passare la conferma da stdin, e
-cio' che i test sostituiscono con `patch("builtins.input")`.
+Restore, prune, retention e fusione chiedono di riscrivere una frase esatta
+(il nome dello snapshot, `ELIMINA`, `FONDI a IN b`) prima di toccare lo
+stato. Con un terminale si usa l'editor della chat; senza (pipe, test,
+script) si ripiega su `input()`, che i test sostituiscono con
+`patch("builtins.input")`.
 """
 
 import sys
@@ -20,9 +15,8 @@ from ares.cli.ui import UI
 def domanda(etichetta: str) -> str:
     """Una riga dall'utente, o la stringa vuota se non c'e' piu' nessuno.
 
-    Ctrl-C e fine dell'input non sono errori: davanti a una richiesta di
-    conferma sono un no, e chi chiama confronta la risposta con la frase
-    attesa, che vuota non e' mai.
+    Ctrl-C e fine dell'input valgono come no: la stringa vuota non coincide
+    mai con la frase attesa.
     """
     try:
         if sys.stdin.isatty() and sys.stdout.isatty():
@@ -47,9 +41,8 @@ def _domanda_interattiva(etichetta: str) -> str:
 def conferma_scritta(attesa: str, *, cosa: str | None = None) -> bool:
     """Vero solo se l'utente riscrive `attesa` tale e quale.
 
-    `cosa` e' la frase che dice che cosa si sta autorizzando; puo' mancare
-    quando l'anteprima appena stampata lo ha gia' detto. La frase attesa
-    compare da sola su una riga, cosi' si copia senza cercarla nel testo.
+    `cosa` dice cosa si sta autorizzando, e puo' mancare se l'anteprima lo ha
+    gia' detto. La frase attesa sta da sola su una riga, per copiarla.
     """
     UI.blank()
     if cosa:

@@ -28,14 +28,13 @@ Gli strumenti sui file rispettano la radice; l'esecuzione di comandi non è
 una sandbox. Le conferme operative sono raccolte dall'interfaccia quando
 lo strumento sospende il turno, senza una domanda preliminare duplicata.
 
-Con `ares -p` non vengono eseguiti gli aggiornamenti automatici e non vengono
-consegnati gli strumenti degli store di apprendimento. Il prompt omette le
-relative guide, compresa quella delle intuizioni che Agno altrimenti
-reintroduce in inglese. Le memorie già caricate restano consultabili nel
-contesto. Cronologia e quaderno sono persistenti: al modello viene chiesto
-di scrivere nel quaderno solo su richiesta esplicita, senza usarlo come
-alternativa all'apprendimento disattivato. Questa indicazione è una regola
-del prompt; non rimuove gli strumenti del quaderno.
+Con `ares -p` non ci sono aggiornamenti automatici né strumenti degli store
+di apprendimento, e il prompt omette le relative guide (compresa quella
+delle intuizioni, che Agno altrimenti reintroduce in inglese). Le memorie
+già caricate restano nel contesto. Cronologia e quaderno restano
+persistenti: il prompt chiede di scrivere nel quaderno solo su richiesta
+esplicita, non come ripiego per l'apprendimento spento. È una regola del
+prompt: gli strumenti del quaderno restano disponibili.
 
 Con `SEARCH_PAST_SESSIONS=False` non vengono caricate né suggerite le
 conversazioni precedenti della cartella: il prompt non prescrive
@@ -70,19 +69,19 @@ Ogni store aggiunge il proprio scopo. Il contesto di sessione distingue
 anche azioni tentate, fallite e completate. Entità e intuizioni sono scritte
 su scelta del modello conversazionale: le sue guide chiedono di conservare
 fonti e condizioni pertinenti, senza spacciare una proposta per una
-decisione o un'idea per una procedura verificata.
-La guida delle intuizioni richiede titolo, contenuto e contesto in italiano
-anche quando la risposta richiesta è in un'altra lingua, conservando nomi
-tecnici e identificativi.
+decisione o un'idea per una procedura verificata. La guida delle intuizioni
+richiede titolo, contenuto e contesto in italiano anche quando la risposta
+è in un'altra lingua, conservando nomi tecnici e identificativi.
 
 ## Verifica e limiti
 
 Lo smoke verifica il prompt completo in 19 combinazioni di modalità,
 interattività e flag, confrontando i nomi prescritti con gli strumenti
 consegnati. Ogni caso ha una conversazione precedente nella cartella e
-controlla se il relativo blocco entra o meno nel prompt. Controlla inoltre che `-p` non prometta estrazione automatica e
-non reintroduca la guida inglese di Agno. Il caso `auto` non interattivo è
-verificato sulla fabbrica dell'agente; la CLI continua a rifiutarlo.
+controlla se il relativo blocco entra o meno nel prompt. Controlla inoltre
+che `-p` non prometta estrazione automatica e non reintroduca la guida
+inglese di Agno. Il caso `auto` non interattivo è verificato sulla fabbrica
+dell'agente; la CLI lo rifiuta.
 
 Queste prove controllano la composizione. La qualità semantica richiede
 modelli reali e casi ripetuti; le prove con Ollama verificano il ciclo di
@@ -90,8 +89,10 @@ apprendimento e il riuso delle intuizioni, senza dimostrare che ogni memoria
 sia corretta. Il test delle intuizioni chiede il salvataggio in una
 conversazione inglese senza suggerire la lingua dell'archivio e verifica
 indicatori italiani nel contenuto salvato; è un controllo mirato, non un
-classificatore linguistico generale. Per confrontare revisioni del prompt usare dati sintetici e
-lo stesso modello, includendo almeno questi casi:
+classificatore linguistico generale.
+
+Per confrontare revisioni del prompt usa dati sintetici e lo stesso
+modello, includendo almeno questi casi:
 
 | Caso | Esito da controllare |
 | --- | --- |
@@ -104,9 +105,8 @@ lo stesso modello, includendo almeno questi casi:
 | «Comincerò domani» | Programma futuro, senza avvio dato per avvenuto |
 | «Ho iniziato», seguito da una decisione ribadita | Avvio confermato ancora recuperabile |
 
-La formulazione del prompt orienta il modello. Autorizzazioni, persistenza
-e disponibilità degli strumenti restano responsabilità del codice.
-Le nuove regole non riscrivono automaticamente i ricordi esistenti:
-correggere un fatto già salvato richiede una fonte o una rettifica che lo
-giustifichi. Il [benchmark della memoria](memory-quality.md) conserva il
-confronto su archivi sintetici nuovi prima e dopo la modifica.
+La formulazione del prompt orienta il modello; autorizzazioni, persistenza
+e disponibilità degli strumenti restano responsabilità del codice. Cambiare
+le regole non riscrive i ricordi già salvati: correggerne uno richiede una
+fonte o una rettifica. Il [benchmark della memoria](memory-quality.md)
+confronta le revisioni del prompt su archivi sintetici nuovi.

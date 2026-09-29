@@ -1,15 +1,11 @@
 """La cartella in cui Ares lavora: sceglierla, guardarla, autorizzarla.
 
-`ares` lanciato in una cartella la rende la directory di lavoro, come Claude
-Code o Codex. E' comodo ed e' anche il modo piu' facile di aprire Ares in un
-posto sbagliato: la home intera, la radice del disco, la cartella che
-contiene il suo stesso database. Qui si guarda il percorso prima di aprirlo
-e, se e' rischioso, lo si dice e si chiede di riscriverlo. Non e' un filtro:
-tutto si puo' aprire, ma consapevolmente.
+`ares` rende di lavoro la cartella da cui e' lanciato. Se e' rischiosa (la
+home, la radice del disco, una che contiene lo stato di Ares) lo dice e
+chiede di riscrivere il percorso: tutto si puo' aprire, ma consapevolmente.
 
-Ci stanno anche le due letture che il banner e `/cartella` fanno della
-cartella - il ramo git e il file di istruzioni `ARES.md` - e lo scheletro
-che `ares init` scrive.
+Contiene anche le letture per il banner e `/cartella` e lo scheletro
+scritto da `ares init`.
 """
 
 import os
@@ -28,22 +24,16 @@ from ares.cli.ui import UI
 from ares.config import Percorsi
 from ares.state.stores import prima_domanda, quando_sessione
 
-# Le directory di sistema dove un `workspace_delete` o un `bash -lc` hanno
-# un raggio che nessun progetto ha. Su Windows si leggono dall'ambiente, che
-# e' l'unico posto in cui stanno scritte.
+# Directory di sistema: su Windows si leggono dall'ambiente.
 _SISTEMA_POSIX = ("/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/var", "/opt", "/boot", "/root")
 _SISTEMA_WINDOWS = ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")
 
 
 def scegli(percorso: Path | None, percorsi: Percorsi) -> Path:
-    """La cartella di lavoro risolta: quella data, o quella da cui si e' partiti.
+    """La cartella di lavoro risolta: quella data, o `percorsi.lavoro`.
 
-    Una cartella che non esiste e' un errore e non una da creare: qui si
-    lavora sui file di un progetto, e un refuso in `--workspace` che crea
-    una directory vuota si scoprirebbe al primo file che manca.
-
-    Senza argomento vale `percorsi.lavoro`, cioe' la directory corrente letta
-    da `leggi_percorsi` all'avvio.
+    Una cartella inesistente e' un errore, non una da creare: un refuso in
+    `--workspace` non deve produrre una directory vuota.
     """
     scelta = (percorso if percorso is not None else percorsi.lavoro).expanduser()
     try:
@@ -98,10 +88,9 @@ def rischi(percorso: Path, percorsi: Percorsi) -> list[str]:
 def autorizza(percorso: Path, percorsi: Percorsi, *, esplicito: bool) -> bool:
     """Vero se si puo' lavorare qui: subito, o dopo una conferma scritta.
 
-    `esplicito` dice che il percorso viene da `--workspace` e non dalla
-    directory corrente. Cambia una cosa sola: senza terminale, dove nessuno
-    puo' rispondere, un percorso rischioso nominato apposta passa con
-    l'avviso, uno ereditato dalla shell si rifiuta.
+    `esplicito` dice che il percorso viene da `--workspace`. Conta solo senza
+    terminale: un percorso rischioso nominato apposta passa con l'avviso, uno
+    ereditato dalla shell si rifiuta.
     """
     motivi = rischi(percorso, percorsi)
     if not motivi:
@@ -130,8 +119,7 @@ def autorizza(percorso: Path, percorsi: Percorsi, *, esplicito: bool) -> bool:
 def file_modificati(percorso: Path) -> int | None:
     """Quante voci `git status` elenca, o `None` se git non risponde.
 
-    Qui git si lancia davvero, ma solo su richiesta: e' `/cartella` che lo
-    chiede, non l'avvio.
+    Git si lancia solo su richiesta di `/cartella`, mai all'avvio.
     """
     try:
         esito = subprocess.run(
@@ -157,21 +145,10 @@ def file_modificati(percorso: Path) -> int | None:
 def nuovo_id_sessione(radice: Path, adesso: datetime | None = None, *, suffisso: str | None = None) -> str:
     """L'identificativo di una conversazione nuova: la cartella, il momento, un caso.
 
-    Leggibile in `/sessioni` e in `ares sessions status` senza decodificare
-    niente: `ares-20260907-091530-4f2a91` dice dove e quando. Il nome e' il
-    titolo, non l'identita' del dato.
-
-    La coda casuale non e' un ornamento. Cartella piu' secondo non
-    distingue due cose che succedono davvero: due progetti omonimi - due
-    `api/` in due posti - e due avvii nello stesso secondo producevano lo
-    stesso id, cioe' la stessa riga nella tabella delle sessioni. La prima
-    conversazione avrebbe assorbito la seconda, o l'avrebbe sovrascritta,
-    senza un errore. La coda rende l'id unico lasciando il prefisso che si
-    legge a colpo d'occhio.
-
-    `suffisso` esiste per le prove: senza, la coda e' casuale. `adesso` fa
-    lo stesso per il momento, ed e' la ragione per cui entrambi sono
-    parametri invece di due chiamate a `datetime` e `secrets` nel corpo.
+    Leggibile a colpo d'occhio (`ares-20260907-091530-4f2a91`). La coda
+    casuale distingue cartelle omonime e avvii nello stesso secondo, che
+    altrimenti scriverebbero sulla stessa sessione. `adesso` e `suffisso`
+    servono alle prove.
     """
     nome = re.sub(r"[^a-z0-9]+", "-", radice.name.casefold()).strip("-") or "cartella"
     momento = (adesso or datetime.now()).strftime("%Y%m%d-%H%M%S")
@@ -182,9 +159,7 @@ def nuovo_id_sessione(radice: Path, adesso: datetime | None = None, *, suffisso:
 def scegli_sessione(sessioni: Sequence[Any]) -> str | None:
     """Un elenco numerato delle conversazioni, e il numero scelto. None se si rinuncia.
 
-    Riga vuota, Ctrl-C e un numero che non c'e' valgono rinuncia: e' `ares
-    resume --scegli`, e chi non trova quello che cerca deve poter uscire
-    senza aprire una conversazione a caso.
+    Riga vuota, Ctrl-C e un numero inesistente valgono rinuncia.
     """
     righe = []
     for indice, sessione in enumerate(sessioni, start=1):
@@ -236,20 +211,14 @@ delle regole del progetto, non delle cose da fare oggi.
 def file_istruzioni(percorso: Path, nome: str) -> Path:
     """Il file delle regole dentro la cartella.
 
-    Il nome arriva da fuori e non da un default nella firma: un default
-    fotograferebbe `config.WORKSPACE_ISTRUZIONI` all'import, e chi lo cambia
-    dopo - o una conversazione con una politica sua - scriverebbe e
-    leggerebbe due file diversi senza accorgersene.
+    `nome` viene dalla politica: vedi "Dipendenze esplicite" in
+    docs/architecture.md.
     """
     return percorso / nome
 
 
 def scrivi_scheletro(percorso: Path, nome: str) -> Path:
-    """Scrive `ARES.md` nella cartella, se non c'e' gia'.
-
-    Un file che esiste non si tocca: contiene le regole di qualcuno, e
-    uno scheletro al suo posto sarebbe una perdita silenziosa.
-    """
+    """Scrive `ARES.md` nella cartella, se non c'e' gia'; un file esistente non si tocca."""
     destinazione = file_istruzioni(percorso, nome)
     if destinazione.exists():
         raise FileExistsError(str(destinazione) + " esiste gia'.")

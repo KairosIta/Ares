@@ -14,8 +14,7 @@ from ares.cli.ui import UI
 from ares.config import Impostazioni, Mostra, Percorsi, Politica
 
 # Gli eventi che aprono un'attesa, con cio' che l'indicatore dice, e quelli
-# che la chiudono. Erano una catena di venti `elif` con lo stesso corpo:
-# una tabella dice la stessa cosa e si legge in un colpo.
+# che la chiudono.
 ATTESE: dict[TurnEventKind, str] = {
     TurnEventKind.PROCESSING_STARTED: "Ares sta preparando il turno...",
     TurnEventKind.PRE_HOOK_STARTED: "Ares sta preparando il turno...",
@@ -85,10 +84,8 @@ def _chiuso(flusso, evento: TurnEvent, mostra: Mostra) -> None:
     flusso.flush()
 
 
-# Ogni azione riceve anche le scelte di visualizzazione, che solo alcune
-# usano: e' il prezzo di una tabella invece di una catena di if, come per i
-# comandi della REPL. Cosi' l'evento e la politica che lo governa restano
-# due parametri distinti, e nessuna azione rilegge un nome di modulo.
+# Ogni azione riceve anche le scelte di visualizzazione, anche se solo
+# alcune le usano: e' la firma comune della tabella.
 AZIONI: dict[TurnEventKind, Callable[[Any, TurnEvent, Mostra], None]] = {
     TurnEventKind.TOOL_STARTED: _strumento_avviato,
     TurnEventKind.TOOL_COMPLETED: _strumento_concluso,
@@ -118,9 +115,8 @@ def mostra_evento(flusso, evento: TurnEvent, mostra: Mostra) -> None:
 def mostra_flusso(eventi, *, mostra: Mostra, ui=None) -> RunOutput | None:
     """Mostra uno stream di eventi del core e restituisce il suo output.
 
-    E' il piccolo adapter riusabile nei test. Il ciclo completo usa la stessa
-    funzione ``mostra_evento`` mantenendo un solo stream attraverso tutte le
-    eventuali continuazioni.
+    Adapter per i test; il ciclo completo usa `mostra_evento` su un solo stream
+    attraverso tutte le continuazioni.
     """
     renderer = UI if ui is None else ui
     with renderer.stream() as flusso:
@@ -130,16 +126,9 @@ def mostra_flusso(eventi, *, mostra: Mostra, ui=None) -> RunOutput | None:
 def anteprima_risultato(testo: str, mostra: Mostra) -> list:
     """Le prime righe di un risultato, tagliate in altezza e in larghezza.
 
-    Qui si tronca, e altrove no: `righe_argomento` non taglia mai perche'
-    rende cio' che si sta autorizzando, dove la coda di un comando e' la
-    parte che decide. Un esito e' l'opposto - e' output gia' avvenuto, e
-    `get_chat_history` sa restituire una sessione intera. Non troncare qui
-    vorrebbe dire far scorrere via la risposta dell'agente.
-
-    Il taglio si dichiara sempre, in righe e in caratteri: un'anteprima che
-    non dice di essere un'anteprima e' peggio di nessuna anteprima. Quanto
-    tagliare lo dice la politica: e' una scelta di visualizzazione, e due
-    client possono volerne due diverse.
+    Un esito e' output gia' avvenuto e puo' essere enorme, quindi qui si tronca
+    (al contrario di `righe_argomento`). Il taglio si dichiara sempre; quanto
+    tagliare lo dice la politica.
     """
     righe_testo = testo.splitlines()
     rese = []
@@ -159,15 +148,10 @@ def anteprima_risultato(testo: str, mostra: Mostra) -> list:
 def righe_esito(strumento, mostra: Mostra, errore=None) -> list:
     """Come e' finita una chiamata a uno strumento.
 
-    Il conteggio dei caratteri sta prima dell'anteprima perche' e' l'unica
-    parte esatta: dice quanto e' entrato nella finestra del modello, che e'
-    la domanda a cui l'anteprima non risponde.
-
-    La durata puo' mancare. Nel percorso normale Agno riempie
-    `tool.metrics` prima di emettere l'evento; nel percorso di ripresa dopo
-    una conferma copia solo `result` e `tool_call_error` sull'oggetto
-    (`agno/agent/_tools.py`, righe 739-740). Come per le metriche del turno,
-    un segmento assente sparisce invece di stampare zero.
+    Il conteggio dei caratteri precede l'anteprima: e' la parte esatta, quanto
+    e' entrato nella finestra del modello. La durata manca nel percorso di
+    ripresa dopo una conferma, dove Agno non copia le metriche: un segmento
+    assente sparisce invece di stampare zero.
     """
     if errore is not None:
         testo = str(errore).strip()
@@ -190,9 +174,7 @@ def righe_esito(strumento, mostra: Mostra, errore=None) -> list:
 
 
 # Gli strumenti con cui il modello scrive da solo nella memoria durevole.
-# Sono i nomi che Agno da' alle funzioni degli store; `write_file` del
-# quaderno non c'e' perche' il quaderno non viene reiniettato nel prompt, e
-# `/file` lo mostra per intero.
+# Il quaderno non c'e': non torna nel prompt, e `/file` lo mostra.
 STRUMENTI_DI_MEMORIA = frozenset(
     {"save_learning", "remember_about", "link_entities", "forget", "update_user_memory", "update_profile"}
 )
@@ -201,11 +183,8 @@ STRUMENTI_DI_MEMORIA = frozenset(
 def righe_scrittura(strumento) -> list:
     """Cosa uno strumento di memoria ha ricevuto da scrivere, per intero.
 
-    L'esito di `save_learning` dice il titolo e quello di `remember_about`
-    quanti fatti ha registrato: il testo che e' entrato lo dicono solo gli
-    argomenti. Niente troncamento, per la ragione di `righe_argomento`: qui
-    il contenuto non e' il rumore intorno alla decisione, e' la cosa da
-    leggere. Vuoto per ogni altro strumento.
+    L'esito non dice il testo salvato, gli argomenti si': per questo non si
+    tronca. Vuoto per ogni altro strumento.
     """
     nome = str(getattr(strumento, "tool_name", None) or "")
     if nome not in STRUMENTI_DI_MEMORIA:
@@ -225,18 +204,10 @@ def righe_scrittura(strumento) -> list:
 def righe_argomento(nome: str, valore) -> list:
     """Rende un singolo argomento in righe leggibili, senza mai troncarlo.
 
-    Una lista di stringhe e' un comando. `workspace_run_command` non passa da
-    una shell - la lista arriva a `subprocess` elemento per elemento - ma per
-    leggerla la forma naturale resta la riga ricomposta. Le virgolette che
-    `shlex.join` aggiunge non sono decorazione: mostrano dove finisce un
-    argomento e ne comincia un altro, che e' precisamente cio' che va
-    guardato prima di autorizzare `['bash', '-lc', 'rm -rf .']`.
-
-    Niente troncamento, in nessun ramo. Gli strumenti che passano di qui sono
-    quelli di `WORKSPACE_CONFIRM`: percorsi e comandi, e da quando scrivere e
-    modificare chiedono conferma anche il contenuto di un file. E' proprio
-    cio' che l'utente sta autorizzando: tagliare la coda di un comando, o di
-    un file, in una richiesta di autorizzazione toglie la parte che decide.
+    Una lista di stringhe e' un comando, ricomposto con `shlex.join`: le
+    virgolette mostrano dove finisce un argomento, che e' cio' che va guardato
+    prima di autorizzare `['bash', '-lc', 'rm -rf .']`. Non si tronca perche'
+    e' esattamente cio' che l'utente sta autorizzando.
     """
     if isinstance(valore, list) and all(isinstance(v, str) for v in valore):
         return [
@@ -256,11 +227,8 @@ def righe_argomento(nome: str, valore) -> list:
     return righe
 
 
-# Cio' che in un comando merita una riga di attenzione. Non e' un filtro e
-# non blocca niente: `run_command` esce dal recinto per costruzione e una
-# lista nera si aggira con un alias. Serve a chi legge la conferma, che e'
-# il confine vero, per non dover riconoscere da solo un `bash -lc` in coda a
-# venti argomenti o un `/etc` dentro una riga citata.
+# Cio' che in un comando merita una riga di attenzione. Non blocca niente:
+# aiuta chi legge la conferma, che e' il confine vero.
 INTERPRETI = frozenset(
     {"bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "powershell.exe", "cmd", "cmd.exe"}
 )
@@ -271,11 +239,8 @@ RETE = frozenset({"curl", "wget", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "
 def _parole(args: list) -> list:
     """Le parole di un comando, aprendo anche la riga passata a una shell.
 
-    `['bash', '-lc', 'cat /etc/hostname | nc host 80']` ha tre elementi ma
-    dentro il terzo ci sono il percorso e la rete: senza aprirlo le
-    avvertenze vedrebbero solo la shell. `shlex.split` puo' fallire su una
-    citazione lasciata aperta; allora si divide sugli spazi, che e' meno
-    preciso ma non lascia la riga chiusa.
+    Senza aprire il terzo elemento di `['bash', '-lc', '...']` le avvertenze
+    vedrebbero solo la shell. Se `shlex.split` fallisce si divide sugli spazi.
     """
     parole = []
     for indice, pezzo in enumerate(args):
@@ -291,11 +256,8 @@ def _parole(args: list) -> list:
 def avvertenze_comando(args, radice=None) -> list:
     """Le righe di attenzione per un comando da autorizzare, o nessuna.
 
-    Ogni riga nomina un fatto, non un giudizio: passa da una shell, tocca un
-    percorso fuori dalla directory, chiede privilegi, usa la rete, cancella
-    ricorsivamente. Sono i casi in cui il comando puo' fare piu' di quello che
-    la directory di lavoro lascia intendere, e quelli in cui un'istruzione
-    arrivata da un file o da un output tende a finire.
+    Ogni riga nomina un fatto, non un giudizio: shell, percorsi fuori dalla
+    directory, privilegi, rete, cancellazione ricorsiva.
     """
     if not isinstance(args, list) or not all(isinstance(v, str) for v in args) or not args:
         return []
@@ -339,9 +301,8 @@ def _dentro(percorso: str, radice) -> bool:
 def _contenuto_esistente(radice, percorso) -> tuple[bool, str | None]:
     """Se il file esiste e, se leggibile come testo, il suo contenuto.
 
-    Distingue "non c'e'" da "c'e' ma non si legge": nel secondo caso un
-    `write_file` lo sostituira' comunque, e la conferma deve dirlo invece di
-    mostrare soltanto il contenuto nuovo.
+    Distingue "non c'e'" da "c'e' ma non si legge": nel secondo caso la
+    conferma deve dire che verra' sostituito.
     """
     if radice is None or not isinstance(percorso, str) or not percorso or not _dentro(percorso, radice):
         return False, None
@@ -355,12 +316,9 @@ def _contenuto_esistente(radice, percorso) -> tuple[bool, str | None]:
 
 
 def righe_differenza(esistente: str, nuovo: str, percorso: str) -> list:
-    """Cosa cambia in un file che esiste gia', invece del file intero.
+    """Cosa cambia in un file che esiste gia', come diff unificato non troncato.
 
-    Un `write_file` su un file esistente lo sostituisce da capo, e mostrare
-    il contenuto nuovo per intero direbbe tutto tranne la cosa da guardare:
-    cosa sparisce. Il diff unificato la dice riga per riga, senza troncare -
-    e' cio' che l'utente sta autorizzando.
+    Mostrare solo il contenuto nuovo nasconderebbe cio' che sparisce.
     """
     righe = ["   content: differenza con il file esistente"]
     for riga in difflib.unified_diff(
@@ -379,13 +337,9 @@ def righe_differenza(esistente: str, nuovo: str, percorso: str) -> list:
 def righe_richiesta(esecuzione, radice=None) -> list:
     """Descrive per intero cio' che si sta per autorizzare.
 
-    Prima qui finiva `tool_args` cosi' com'e', cioe' il dict di Python. Il
-    docstring di `Workspace` dice che il suo confine vale per i file e non per
-    la shell, e `run_command` risponde su `/etc/hostname`: la conferma umana e'
-    quindi l'unico controllo che resta davvero. Se e' l'unico, quello che
-    l'utente legge in quel momento e' un pezzo del confine, non presentazione.
-    Le righe di attenzione seguono gli argomenti e precedono la directory:
-    dicono cosa, in quegli argomenti, va oltre la directory.
+    Il confine di `Workspace` vale per i file, non per la shell: la conferma
+    umana e' l'unico controllo sui comandi, quindi questo testo fa parte del
+    confine. Le avvertenze seguono gli argomenti e precedono la directory.
     """
     strumento = str(esecuzione.tool_name or "")
     righe = ["Ares chiede di eseguire: " + strumento]
@@ -399,10 +353,7 @@ def righe_richiesta(esecuzione, radice=None) -> list:
                 righe.extend(righe_differenza(esistente, str(valore), str(argomenti.get("path"))))
                 continue
             if esiste:
-                # Il file c'e' ma non si legge come testo - binario, altra
-                # codifica, permessi. `write_file` lo sostituira' per intero, e
-                # mostrare solo il contenuto nuovo nasconderebbe proprio la cosa
-                # da guardare: cosa sparisce.
+                # Il file c'e' ma non si legge come testo: va detto che sara' sostituito.
                 righe.append("   content: il file esiste e non si legge come testo: verra' sostituito per intero")
         righe.extend(righe_argomento(str(nome), valore))
     if strumento.endswith("run_command"):
@@ -417,14 +368,9 @@ def righe_richiesta(esecuzione, radice=None) -> list:
 def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi, politica: Politica) -> int:
     """Chiede il permesso per gli strumenti in pausa. Ritorna quanti ne ha risolti.
 
-    Il conto serve a non restare appesi: se il turno e' in pausa per un
-    motivo che qui non si sa gestire, nessun requisito viene risolto e
-    `continue_run` si rifermerebbe allo stesso punto, all'infinito.
-
-    Il prefisso degli strumenti dello spazio di lavoro viene dalla politica:
-    e' quello che distingue un percorso della cartella da un file del
-    quaderno, e senza si mostrerebbe il contenuto sbagliato nella richiesta
-    di autorizzazione.
+    Zero ferma il ciclo: una pausa che qui non si sa gestire farebbe fermare
+    `continue_run` allo stesso punto all'infinito. Il prefisso dalla politica
+    distingue un file della cartella da uno del quaderno.
     """
     risolti = 0
     for requisito in risposta.active_requirements or []:
@@ -448,14 +394,9 @@ def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi, politica:
             except (EOFError, KeyboardInterrupt):
                 UI.blank()
                 motivo = ""
-            # Il motivo arriva al modello: senza, un rifiuto e' muto e lui
-            # ritenta con una variante dello stesso comando.
-            #
-            # Cio' che l'utente vede di un rifiuto lo dice questa riga e
-            # nient'altro: `reject_tool_call` (`agno/agent/_tools.py`, riga
-            # 791) accoda il risultato negativo senza passare da
-            # `handle_event`, quindi nel flusso non arriva ne' Completed ne'
-            # Error. Non e' un ramo dimenticato in `mostra_flusso`.
+            # Il motivo arriva al modello: senza, ritenterebbe una variante dello
+            # stesso comando. Questa riga e' l'unica traccia a schermo del rifiuto:
+            # Agno non emette eventi per `reject_tool_call`.
             requisito.reject(motivo or None)
         risolti += 1
     return risolti
@@ -464,12 +405,8 @@ def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi, politica:
 def _conta_chiamate(elenco) -> tuple:
     """Somma token e secondi di tutte le chiamate fatte con lo stesso ruolo.
 
-    Un turno con strumenti chiama il modello piu' volte, e Agno tiene una riga
-    per modello, non per chiamata: `accumulate_model_metrics` somma dentro
-    quella riga. Qui si somma allo stesso modo fra righe diverse, che possono
-    esserci se un giorno l'apprendimento usasse un modello a parte.
-
-    `total_duration` di Ollama e' in nanosecondi.
+    Agno tiene una riga per modello, non per chiamata; qui si somma anche fra
+    righe diverse. `total_duration` di Ollama e' in nanosecondi.
     """
     entrata = uscita = 0
     nanosecondi = 0.0
@@ -484,13 +421,9 @@ def _conta_chiamate(elenco) -> tuple:
 
 
 def _token(quanti: int) -> str:
-    """Migliaia con una cifra, perche' a cinque cifre il numero non si legge.
+    """Migliaia con una cifra, in base 1024.
 
-    La `k` vale 1024, non 1000: `NUM_CTX` e' una potenza di due (262144,
-    cioe' la finestra che tutti chiamano 256k). Dividendo per 1000
-    uscirebbe `262.1k`, un numero esatto che nessuno riconosce come il
-    proprio tetto. La stessa base vale per il numeratore, perche' due unita'
-    diverse ai lati di una barra sono peggio di entrambe le convenzioni.
+    `NUM_CTX` e' una potenza di due: 262144 deve leggersi `256k`, non `262.1k`.
     """
     if quanti >= 1024:
         return str(round(quanti / 1024.0, 1)) + "k"
@@ -500,18 +433,10 @@ def _token(quanti: int) -> str:
 def finestra_occupata(risposta) -> int | None:
     """Token del prompt dell'ultima chiamata al modello principale.
 
-    Non si usa `risposta.metrics.input_tokens`: quello e' la somma di **ogni**
-    chiamata del turno, le tre estrazioni delle memorie comprese
-    (`accumulate_model_metrics` in `agno/metrics.py` somma dentro la riga del
-    modello). Mostrarlo come occupazione della finestra produrrebbe quindi un
-    valore sovrastimato.
-
-    L'occupazione vera e' il prompt dell'ultima chiamata, che sta nei metrics
-    del messaggio. Regge perche' Ollama conta il prompt intero e non il solo
-    delta lasciato scoperto dalla KV cache: fra due turni consecutivi il
-    conteggio puo' salire mentre la durata di valutazione scende grazie alla
-    cache. Se contasse i soli token
-    valutati, il secondo turno avrebbe detto qualche centinaio.
+    `risposta.metrics.input_tokens` somma ogni chiamata del turno, estrazioni
+    comprese, e sovrastimerebbe. Il prompt dell'ultima chiamata e' affidabile
+    perche' Ollama conta il prompt intero, non il solo delta fuori dalla KV
+    cache.
     """
     ultimo = None
     for messaggio in getattr(risposta, "messages", None) or []:
@@ -527,12 +452,8 @@ def finestra_occupata(risposta) -> int | None:
 def quota_finestra(prompt: int, impostazioni: Impostazioni) -> str:
     """La finestra occupata in percentuale, o vuoto se il tetto non e' noto.
 
-    `<1` sotto l'uno per cento, perche' `0%` con qualche centinaio di token
-    dentro sembra un contatore rotto.
-
-    Il tetto e' quello chiesto a Ollama per questa conversazione, non un
-    numero di modulo: la percentuale deve dire quanto della finestra che il
-    modello ha davvero e' occupata.
+    `<1` sotto l'uno per cento, perche' `0%` sembra un contatore rotto. Il
+    tetto e' il contesto chiesto a Ollama per questa conversazione.
     """
     if not prompt or not impostazioni.num_ctx:
         return ""
@@ -543,10 +464,8 @@ def quota_finestra(prompt: int, impostazioni: Impostazioni) -> str:
 def righe_metriche(risposta, impostazioni: Impostazioni) -> list:
     """Il costo del turno in una riga, o niente se non c'e' niente da dire.
 
-    Un turno interrotto o fallito arriva senza metriche: la riga non si
-    inventa. Vale anche per i singoli pezzi, perche' spegnere gli store
-    ALWAYS in `config.py` fa sparire davvero il segmento dell'apprendimento
-    invece di stamparlo a zero.
+    Un turno interrotto arriva senza metriche, e un segmento assente (per
+    esempio l'apprendimento spento) sparisce invece di stampare zero.
     """
     metriche = getattr(risposta, "metrics", None)
     if metriche is None:
@@ -570,8 +489,7 @@ def righe_metriche(risposta, impostazioni: Impostazioni) -> list:
     if uscita:
         pezzi.append("risposta " + _token(uscita) + " tok / " + str(round(secondi_risposta, 1)) + " s")
     if appresi:
-        # Il segmento che giustifica la riga: e' il costo che non si vede,
-        # perche' arriva dopo che la risposta e' gia' a schermo.
+        # Il costo che non si vede: arriva dopo che la risposta e' a schermo.
         pezzi.append("apprendimento " + _token(appresi) + " tok / " + str(round(secondi_appresi, 1)) + " s")
     durata = getattr(metriche, "duration", None)
     if durata:

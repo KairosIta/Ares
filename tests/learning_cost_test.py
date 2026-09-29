@@ -1,30 +1,19 @@
-"""
-Quanto costa un turno in estrazioni
+"""Quanto costa un turno in estrazioni
 ===================================
 Uso:
     .venv/bin/python tests/learning_cost_test.py
 
-Il report di analisi dice "tre store ALWAYS, tre inferenze in piu' per
-turno". La prima meta' e' vera per costruzione; la seconda no, ed e' la
-misura che serve prima di decidere se il prezzo vale la qualita'.
+`LearningMachine.process` chiama ogni store una volta, e ogni store ALWAYS
+estrae con una o due chiamate al modello. Dopo una tool call Agno richiama
+il modello solo per sentirlo chiudere: Ares la evita su profilo e memorie
+(`senza_conferma` in `agent/learning.py`), il contesto di sessione la evita
+gia' con `stop_after_tool_call`. Un modello che non chiama lo strumento
+costa invece i tentativi del contesto.
 
-`LearningMachine.process` chiama `store.process` una volta per store, e ogni
-store ALWAYS estrae con una o due chiamate al modello a seconda di cosa
-risponde. Agno richiama il modello dopo la tool call per sentirgli dire che ha
-finito, e la risposta di quella chiamata non la legge nessuno: era una
-chiamata in piu' per profilo e per memorie, due delle cinque di un turno. Il
-contesto di sessione la evitava gia' con `stop_after_tool_call`, e ora la
-evitano anche loro (`senza_conferma` in `agent/learning.py`). Un
-modello che non chiama affatto lo strumento, invece, costa i tentativi del
-contesto.
-
-Qui il modello di apprendimento e' finto e conta: nessuna rete e nessun
-modello scaricato, cosi' il numero di chiamate e' una proprieta' del
-framework e della politica invece che di un copione. Accanto al numero si
-misura il peso: ogni estrazione rimanda al modello la conversazione intera, e
-questa prova lo verifica invece di darlo per scontato. Il numero di chiamate
-e' asserito, non solo stampato: un Agno che reintroducesse la conferma deve
-rendere rossa la prova, non alzare una cifra nel rapporto.
+Il modello di apprendimento e' finto e conta: il numero di chiamate e'
+proprieta' del framework e della politica, e viene asserito, cosi' un Agno
+che reintroducesse la chiamata di chiusura rende rossa la prova. Accanto al
+numero si misura il peso: ogni estrazione rimanda la conversazione intera.
 """
 
 from __future__ import annotations
@@ -58,17 +47,13 @@ POLITICA = config.leggi_politica()
 UTENTE = Utente.da_grezzo("costo")
 SESSIONE = "costo"
 
-# Gli strumenti con cui uno store ALWAYS scrive, e l'ordine in cui il modello
-# finto li cerca. Sono i nomi che Agno da' alle funzioni di estrazione: uno
-# per store, quindi il nome dice anche da quale store arriva la chiamata. La
-# conferma di profilo e memorie rimanda gli stessi strumenti, quindi il
-# secondo invio si riconosce allo stesso modo del primo.
+# Gli strumenti con cui scrivono gli store ALWAYS, nell'ordine in cui il
+# modello finto li cerca. Uno per store: il nome dice da quale store arriva la
+# chiamata.
 STRUMENTI_DI_SALVATAGGIO = ("save_session_context", "update_profile", "add_memory", "update_memory")
 
-# Gli store che la politica predefinita tiene accesi in `ALWAYS`, uno per
-# strumento, e quindi le chiamate che un turno completato deve costare: dal
-# 22 settembre 2026 la conferma dopo la tool call non si paga piu' nemmeno su
-# profilo e memorie.
+# Gli store ALWAYS accesi dalla politica predefinita: una chiamata ciascuno per
+# turno completato.
 STORE_ALWAYS = ("update_profile", "add_memory", "save_session_context")
 CHIAMATE_PER_TURNO = len(STORE_ALWAYS)
 
@@ -89,9 +74,8 @@ APERTURA = "Come organizzo i moduli di Ares?"
 def nome_strumento(funzione: Any) -> str:
     """Il nome di uno strumento, come lo vede il modello.
 
-    Agno formatta le funzioni in dizioni prima di passarle al provider, ma
-    accetta anche gli oggetti `Function`: la prova legge entrambi perche' non
-    dipende da quale delle due forme arrivi.
+    Agno puo' passare le funzioni come dizionari o come `Function`: si leggono
+    entrambe le forme.
     """
     if isinstance(funzione, dict):
         return str(funzione.get("name") or (funzione.get("function") or {}).get("name") or "")
@@ -106,9 +90,8 @@ def schema_strumento(funzione: Any) -> str:
 def conversazione() -> list[Message]:
     """Un turno di lunghezza credibile: due domande, due risposte.
 
-    Non e' una conversazione vera: e' il testo su cui si misura quanto pesa
-    rimandarlo al modello piu' volte. La lunghezza sta nell'ordine di un turno
-    normale, cosi' i caratteri contati sono rappresentativi invece che comodi.
+    Serve a misurare quanto pesa rimandarlo al modello: la lunghezza e' quella
+    di un turno normale, perche' i caratteri contati siano rappresentativi.
     """
     return [
         Message(role="user", content=APERTURA + " Ho aggiunto tre comandi e non so dove metterli."),
@@ -132,15 +115,12 @@ def conversazione() -> list[Message]:
 class ModelloConta(Model):
     """Il modello di apprendimento finto: conta le chiamate e scrive una volta.
 
-    Con `ubbidiente=True` la prima chiamata che porta uno strumento di
-    salvataggio risponde con la tool call, come farebbe un modello che segue
-    le istruzioni; la seconda, se arriva, e' la conferma e non ha tool call.
-    Con `ubbidiente=False` non chiama mai lo strumento: e' il caso del modello
-    piccolo che non ubbidisce, e il contesto lo paga con i suoi tentativi.
+    Con `ubbidiente=True` risponde alla prima chiamata con la tool call di
+    salvataggio, poi senza. Con `ubbidiente=False` non chiama mai lo strumento,
+    come un modello piccolo che non ubbidisce.
 
-    `__deepcopy__` restituisce se stesso: gli store estraggono su una copia
-    del modello, e un contatore copiato conterebbe su un oggetto che nessuno
-    legge.
+    `__deepcopy__` restituisce se stesso: gli store estraggono su una copia del
+    modello, e il contatore deve restare leggibile.
     """
 
     def __init__(self, *, ubbidiente: bool = True) -> None:
@@ -207,10 +187,8 @@ def senza(quale: str) -> Any:
 def estrai(finto: ModelloConta, politica: Any = None) -> Any:
     """Un turno completato, e la macchina di apprendimento che l'ha estratto.
 
-    Le chiamate restano su `finto.chiamate`: il contatore e' del modello, non
-    della macchina. La macchina si restituisce per i controlli che leggono cio'
-    che e' finito negli store, non solo quante volte il modello e' stato
-    chiamato.
+    Le chiamate si leggono da `finto.chiamate`; la macchina serve ai controlli
+    su cio' che e' finito negli store.
     """
     with patch.object(learning, "build_learning_model", lambda impostazioni: finto):
         macchina = build_learning_machine(build_db(PERCORSI), None, UTENTE, IMPOSTAZIONI, politica or POLITICA)
@@ -243,10 +221,9 @@ def per_store(chiamate: list[dict[str, Any]]) -> dict[str, int]:
 def pesi(chiamate: list[dict[str, Any]]) -> tuple[int, int, int, int]:
     """Il peso delle chiamate: istruzioni, conversazione, schemi, totale.
 
-    Le istruzioni sono il primo messaggio di ogni invio - le regole di
-    estrazione e la descrizione dei campi -, la conversazione e' il messaggio
-    che porta il turno, e gli schemi sono gli strumenti che il modello puo'
-    chiamare. Il totale conta anche i messaggi di servizio della conferma.
+    Istruzioni = primo messaggio (regole di estrazione e campi); conversazione
+    = il messaggio con il turno; schemi = gli strumenti chiamabili. Il totale
+    include i messaggi di servizio.
     """
     istruzioni = sum(len(chiamata["messaggi"][0]) for chiamata in chiamate if chiamata["messaggi"])
     turno = sum(len(testo) for chiamata in chiamate for testo in chiamata["messaggi"] if APERTURA in testo)
@@ -258,11 +235,8 @@ def pesi(chiamate: list[dict[str, Any]]) -> tuple[int, int, int, int]:
 def costo_delle_tre_estrazioni() -> str:
     """Le chiamate per store con la politica predefinita, e il loro peso.
 
-    Il numero che conta e' il primo: una per store ALWAYS, perche' la
-    conferma che Agno scarta e' stata tolta anche a profilo e memorie. Il
-    peso dice l'altra meta': ogni estrazione rimanda la conversazione intera,
-    e paga soprattutto le istruzioni dello store e lo schema del suo
-    strumento.
+    Il numero atteso e' una chiamata per store ALWAYS. Il peso mostra dove va il
+    costo: soprattutto istruzioni dello store e schema del suo strumento.
     """
     chiamate = chiamate_di(ModelloConta())
     conteggi = per_store(chiamate)
@@ -307,11 +281,8 @@ def costo_delle_tre_estrazioni() -> str:
 def la_politica_spegne_il_costo() -> str:
     """Ogni store spento toglie una chiamata, e nessun'altra.
 
-    E' il rovescio della misura: se il numero restasse lo stesso, la politica
-    non starebbe decidendo niente e il costo non sarebbe governabile. Dopo la
-    mitigazione ogni store costa esattamente una chiamata, quindi il conto e'
-    esatto e non un "meno di prima". Con tutti e tre spenti restano entita' e
-    intuizioni, che sono AGENTIC e non estraggono da sole: zero chiamate.
+    Se il numero non cambiasse, la politica non governerebbe il costo. Con
+    tutti e tre spenti restano entita' e intuizioni, AGENTIC: zero chiamate.
     """
     acceso = chiamate_di(ModelloConta())
     senza_profilo = chiamate_di(ModelloConta(), senza("profilo"))
@@ -349,11 +320,8 @@ def la_politica_spegne_il_costo() -> str:
 def il_modello_che_non_ubbidisce() -> str:
     """Un modello che non chiama lo strumento paga i tentativi del contesto.
 
-    Profilo e memorie non ritentano: una chiamata a vuoto e basta, e senza
-    tool call non c'e' nemmeno una conferma da saltare. Il contesto di
-    sessione invece ritenta fino al tetto della politica, quindi un modello
-    piccolo che non scrive costa piu' di uno che ubbidisce: e' l'unico caso
-    in cui la mitigazione non cambia niente.
+    Profilo e memorie non ritentano; il contesto ritenta fino al tetto della
+    politica, quindi un modello che non scrive costa piu' di uno che ubbidisce.
     """
     chiamate = chiamate_di(ModelloConta(ubbidiente=False))
     tentativi = POLITICA.apprendimento.tentativi_contesto
@@ -370,14 +338,11 @@ def il_modello_che_non_ubbidisce() -> str:
 
 
 def la_scrittura_arriva_negli_store() -> str:
-    """Il flag toglie la conferma, non la scrittura.
+    """Il flag toglie la chiamata di chiusura, non la scrittura.
 
-    `stop_after_tool_call` ferma il ciclo del modello *dopo* che la tool call
-    e' stata eseguita: se un giorno Agno lo interpretasse come "non eseguire
-    affatto", il costo scenderebbe e la memoria resterebbe vuota, e la prova
-    del costo qui sopra sarebbe verde lo stesso. Qui si legge cio' che il
-    modello finto ha scritto: il profilo con il campo che ha passato, le
-    memorie con il loro testo.
+    Se Agno interpretasse `stop_after_tool_call` come "non eseguire", il costo
+    scenderebbe ma la memoria resterebbe vuota: qui si verifica che profilo e
+    memorie contengano cio' che il modello finto ha scritto.
     """
     macchina = estrai(ModelloConta())
     profilo = macchina.user_profile_store.get(user_id=UTENTE.id)

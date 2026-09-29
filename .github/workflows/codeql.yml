@@ -1,17 +1,10 @@
-# Analisi di sicurezza del codice
-# ===============================
-# Ruff e mypy leggono ogni riga del progetto, ma cercano cose diverse: uno
-# stile e difetti locali, l'altro i tipi. CodeQL segue invece il dato da dove
-# entra a dove viene usato - un percorso costruito con cio' che arriva da
-# fuori, un comando composto con una stringa altrui - e quella e' la classe
-# che qui interessa: Ares apre archivi, compone percorsi e lancia
+# Analisi di sicurezza del codice. CodeQL segue il dato da dove entra a dove
+# viene usato (percorsi e comandi composti con input esterno), cio' che ruff
+# e mypy non vedono e che conta per un programma che apre archivi e lancia
 # sottoprocessi.
 #
-# Volutamente fuori dai controlli obbligatori del ruleset su `main`. Un
-# risultato di CodeQL e' un'ipotesi da leggere, non un verdetto: pretenderlo
-# verde prima di ogni merge trasformerebbe un falso positivo in un blocco, e
-# un blocco che si impara ad aggirare. Cio' che trova compare nella scheda
-# Security e si guarda quando compare.
+# Fuori dai controlli obbligatori: un risultato e' un'ipotesi da leggere
+# nella scheda Security, e un falso positivo non deve bloccare il merge.
 
 name: CodeQL
 
@@ -19,11 +12,8 @@ on:
   push:
     branches:
       - main
-    # CodeQL segue il dato nel codice: se il commit tocca solo la
-    # documentazione, il codice e' identico e l'ultima analisi vale ancora.
-    # Filtrare qui e' sicuro perche' CodeQL non e' un check obbligatorio - in
-    # `ci.yml`, dove i tre nomi sono richiesti, lo stesso filtro lascerebbe i
-    # check in "Pending" e bloccherebbe il merge.
+    # Filtro per percorso possibile solo perche' CodeQL non e' obbligatorio
+    # (vedi il job `modifiche` in ci.yml).
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -31,13 +21,8 @@ on:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
-  # Il codice sta fermo, le regole no: una query aggiunta a monte trova cose
-  # in un file che nessuno tocca da mesi. Senza questo passaggio periodico
-  # l'analisi direbbe soltanto cio' che si sapeva l'ultima volta che si e'
-  # scritto qualcosa.
-  # Il cron di GitHub e' in UTC. Le 05:00 UTC sono le 07:00 in Italia, un'ora
-  # dopo l'audit (04:00 UTC) e un'ora prima di Dependabot (06:00 UTC): i tre
-  # non partono piu' nello stesso minuto.
+  # Settimanale, perche' le query cambiano anche se il codice sta fermo.
+  # Cron in UTC: 05:00, fra l'audit (04:00) e Dependabot (06:00).
   schedule:
     - cron: "0 5 * * 1"
   workflow_dispatch:
@@ -53,8 +38,7 @@ jobs:
     timeout-minutes: 15
 
     permissions:
-      # Il solo permesso in piu' rispetto alla CI, ed e' cio' che serve per
-      # scrivere gli avvisi nella scheda Security.
+      # Per scrivere gli avvisi nella scheda Security.
       security-events: write
       contents: read
 
@@ -64,22 +48,15 @@ jobs:
         with:
           persist-credentials: false
 
-      # Le action sono pinnate al commit come nella CI: un tag si sposta, un
-      # SHA no.
+      # Action pinnate al commit: un tag si sposta, uno SHA no.
       - name: Inizializza CodeQL
         uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:
           languages: python
-          # `security-and-quality` aggiunge alle query di sicurezza quelle di
-          # manutenibilita'. Qui non servono: ruff e mypy coprono gia' quel
-          # terreno e girano su ogni push in pochi secondi, mentre le loro
-          # regole sono discusse nel `pyproject.toml`. Restano le query di
-          # sicurezza, che sono il motivo per cui questo file esiste.
+          # Solo sicurezza: la manutenibilita' la coprono gia' ruff e mypy.
           queries: security-extended
 
-      # Niente passo `autobuild`: Python non si compila, e installare le
-      # dipendenze non cambierebbe cio' che l'analisi vede nel codice di Ares.
-      # Il tempo risparmiato e' l'intero `uv sync`.
+      # Niente `autobuild`: per Python non serve, e si risparmia un `uv sync`.
       - name: Analizza
         uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:

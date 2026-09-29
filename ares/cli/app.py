@@ -13,14 +13,12 @@
     ares preflight            l'ambiente e' pronto?
     ares inspect              cosa Ares ha imparato
 
-I sottocomandi si registrano per nome di modulo e non per import: Cyclopts
-carica `ares.backup.snapshots` solo quando qualcuno scrive `ares backup`, e
-`ares preflight` non paga l'import di Agno che serve alla chat. E' anche il
-motivo per cui il default della chat sta qui con la firma e non con il corpo:
-il corpo vive in `chat.py`, che importa l'agente, e si carica al primo turno.
+I sottocomandi si registrano per nome di modulo, non per import: ciascuno
+si carica solo quando viene invocato, e `ares preflight` non paga l'import
+di Agno. Per lo stesso motivo il corpo della chat sta in `chat.py`.
 
-I sei script di `pyproject.toml` restano: `ares-backup list` e' `ares backup
-list`, e passa dalla stessa App perche' l'aiuto dica la forma nuova.
+Gli script di `pyproject.toml` (`ares-backup`...) passano dalla stessa App
+tramite `esegui`.
 """
 
 import sys
@@ -35,12 +33,10 @@ from ares import config
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, nuova_app
 from ares.cli.ui import UI
 
-# Senza `help`: l'aiuto di `ares` e' il docstring della chat qui sotto, con
-# la descrizione e gli esempi, e non una riga che nasconde entrambi.
+# Senza `help`: l'aiuto di `ares` e' il docstring della chat qui sotto.
 app = nuova_app("ares", None, radice=True)
 
-# La descrizione e' ripetuta qui perche' il modulo non e' ancora importato
-# quando `ares --help` la stampa: e' il prezzo del caricamento pigro.
+# La descrizione sta qui perche' `ares --help` la stampa senza importare il modulo.
 SOTTOCOMANDI = (
     ("backup", "ares.backup.snapshots:app", "Snapshot locali dello stato di Ares"),
     ("sessions", "ares.sessions.maintenance:app", "Retention delle sessioni e dei risultati tool"),
@@ -49,15 +45,12 @@ SOTTOCOMANDI = (
     ("inspect", "ares.ops.inspect_learning:app", "Ispeziona gli archivi di apprendimento senza toccarli"),
     ("migrate", "ares.ops.migrazione:app", "Sposta stato e backup di prima in ~/.ares"),
 )
-# L'ordine dell'aiuto e' questo, non l'alfabetico: prima cio' che si usa
-# ogni giorno, poi la manutenzione nell'ordine in cui la si incontra.
+# Ordine dell'aiuto: prima l'uso quotidiano, poi la manutenzione.
 for _posizione, (_nome, _modulo, _aiuto) in enumerate(SOTTOCOMANDI, start=2):
     app.command(_modulo, name=_nome, help=_aiuto, sort_key=_posizione)
 
 
-# Le opzioni che `ares` e `ares resume` condividono, scritte una volta.
-# `name="*"` le appiattisce nell'aiuto accanto alle altre: chi legge non sa
-# che sono un oggetto, e non deve saperlo.
+# Opzioni comuni a `ares` e `ares resume`; `name="*"` le appiattisce nell'aiuto.
 @Parameter(name="*")
 @dataclass
 class OpzioniChat:
@@ -164,9 +157,7 @@ def init() -> int:
     """
     from ares.cli import cartella
 
-    # Il nome del file viene dalla politica letta qui, al confine del
-    # comando: `init` e la chat devono guardare lo stesso nome, e un nome
-    # riletto da `config` dentro `cartella.py` poteva divergere da questo.
+    # Il nome del file viene dalla politica, come per la chat.
     politica = config.leggi_politica()
     try:
         destinazione = cartella.scrivi_scheletro(Path.cwd(), politica.workspace.istruzioni)
@@ -184,9 +175,8 @@ def init() -> int:
 def esegui(sottocomando: str, argomenti: Sequence[str] | None = None) -> int:
     """Lancia un sottocomando come farebbe `ares <sottocomando> ...`.
 
-    E' cio' che gli alias `ares-backup`, `ares-sessions`... chiamano: la
-    stessa App, cosi' aiuto ed errori hanno una forma sola. Restituisce il
-    codice di uscita; `None` vale zero.
+    Lo usano gli alias `ares-backup`, `ares-sessions`...; restituisce il codice
+    di uscita, con `None` che vale zero.
     """
     resto = list(argomenti) if argomenti is not None else sys.argv[1:]
     esito = app([sottocomando, *resto])

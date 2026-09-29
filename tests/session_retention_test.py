@@ -92,9 +92,8 @@ def imposta_ultimo_uso(db, session_id: str, timestamp: int) -> None:
 def esegui_cli(*argomenti: str, ambiente: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     """La CLI delle sessioni in un processo suo, con l'ambiente della prova.
 
-    `ambiente` sovrascrive qualche variabile per una chiamata sola: serve a
-    provare un guasto del disco - la directory dei backup che non si puo'
-    creare - senza rompere l'archivio per le chiamate successive.
+    `ambiente` sovrascrive variabili per una sola chiamata, per simulare un
+    guasto del disco senza rompere l'archivio per le successive.
     """
     variabili = os.environ.copy()
     variabili.update(ambiente or {})
@@ -121,10 +120,7 @@ def chiudi_engine(*oggetti: object) -> None:
 def retention() -> str:
     """La sequenza della prova, dal primo status al restore.
 
-    E' una sequenza sola e non controlli indipendenti: ogni passo dipende
-    da quello prima, e un guasto al primo renderebbe falso il secondo.
-    Per questo e' una prova sola per `esegui`, che il fallimento lo
-    riporta comunque con il nome del controllo.
+    Una prova sola, perche' ogni passo dipende dal precedente.
     """
     # L'apprendimento e LanceDB non fanno parte di questa prova. Spegnerli
     # impedisce che un test dichiarato offline accenda Ollama di nascosto.
@@ -242,22 +238,18 @@ def retention() -> str:
         "prune bloccato ha creato uno snapshot",
     )
 
-    # Un rifiuto che arriva come eccezione, non come `return`: `--yes` da
+    # Due strade diverse per lo stesso rifiuto (2), come eccezione: `--yes` da
     # solo lo decide la firma del comando, un id inesistente lo scopre
-    # `trova_sessione` sotto il lock. Sono due strade diverse per lo
-    # stesso 2, e finora era provata solo la prima.
+    # `trova_sessione` sotto il lock.
     inesistente = esegui_cli("delete", "sessione-che-non-esiste", "--user", UTENTE)
     esigi(
         inesistente.returncode == 2 and "Rifiutato:" in inesistente.stderr,
         "un id inesistente non esce con 2: " + str(inesistente.returncode) + " " + inesistente.stderr,
     )
 
-    # Un guasto, che e' un'altra cosa ancora: la directory dei backup e'
-    # in realta' un file, quindi lo snapshot che precede ogni
-    # cancellazione non si puo' creare. Vale 1 e non 3, perche' riprovare
-    # non serve finche' quel file sta li'. Cio' che conta oltre al codice
-    # e' la riga dopo: il prune si ferma prima di cancellare. Lo snapshot
-    # e' la rete, e senza rete non si salta.
+    # Un guasto: la directory dei backup e' un file, quindi lo snapshot che
+    # precede la cancellazione non si crea. Vale 1 (riprovare non serve), e il
+    # prune si ferma prima di cancellare.
     non_directory = RADICE_PROVA / "backup-non-e-una-directory"
     non_directory.write_text("un file dove ci si aspetta una cartella\n", encoding="utf-8")
     guasta = esegui_cli(

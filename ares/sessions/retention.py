@@ -32,13 +32,10 @@ class ErroreRetention(RuntimeError):
 class StatoParziale(ErroreRetention):
     """Una cancellazione fallita a meta': cosa e' andato via e cosa no.
 
-    Agno elimina sessioni e run in una transazione sola, ma cio' che segue
-    - la cascata dei payload offloaded, il contesto appreso di ogni sessione
-    e le verifiche - avviene un passo alla volta. Un guasto li' lascia un
-    archivio in cui alcune sessioni non ci sono piu' e altre si', e in cui
-    quelle sparite possono aver lasciato un contesto o un payload orfano.
-    Chi legge il messaggio deve sapere entrambe le cose, perche' la scelta
-    fra ripristinare lo snapshot e andare avanti dipende da quelle.
+    Agno elimina sessioni e run in una transazione, ma payload, contesto
+    appreso e verifiche seguono un passo alla volta. Chi legge deve sapere
+    cosa e' sparito e cosa puo' essere rimasto orfano, per scegliere fra
+    ripristinare lo snapshot e andare avanti.
     """
 
     def __init__(self, causa: BaseException, eliminate: list[str], rimaste: list[str]) -> None:
@@ -70,10 +67,8 @@ class _Manutenzione:
 def apri_archivio(percorsi: Percorsi, utente: Utente) -> tuple[SqliteDb, ResultStore]:
     """Apre i due SQLite e registra il backend payload nella cascata Agno.
 
-    `filesystem.db` e' intenzionalmente distinto dal database delle sessioni.
-    La registrazione fatta normalmente da `Agent.initialize_agent()` va quindi
-    ripetuta nel processo offline: senza, Agno eliminerebbe sessione e indice
-    ma non saprebbe in quale backend cercare il payload.
+    Di solito lo fa `Agent.initialize_agent()`; fuori dalla chat va ripetuto,
+    altrimenti Agno non saprebbe dove cancellare i payload.
     """
     db = build_db(percorsi)
     filesystem = build_filesystem(percorsi, utente)
@@ -170,10 +165,8 @@ def elimina_sessioni(
 ) -> int:
     """Elimina sessioni, run, contesti e offload, poi verifica la cascata.
 
-    Un guasto dopo la cancellazione di Agno esce come `StatoParziale`, con
-    l'elenco di cio' che risulta davvero sparito: e' letto dall'archivio a
-    guasto avvenuto, non dedotto da dove ci si e' fermati, perche' e' lo
-    stato reale che l'utente deve conoscere.
+    Un guasto dopo la cancellazione di Agno esce come `StatoParziale`, con cio'
+    che risulta sparito riletto dall'archivio, non dedotto dal punto di arresto.
     """
     selezionate = list(sessioni)
     if not selezionate:
@@ -208,9 +201,8 @@ def _elimina_e_verifica(db: SqliteDb, store: ResultStore, ids: list[str], utente
         context_id = build_learning_id("session_context", session_id=session_id)
         if context_id is None:
             raise ErroreRetention("id del contesto non costruibile per " + session_id)
-        # L'id e' deterministico e globale per sessione. Non filtrare per
-        # user_id: una riga storica priva del proprietario appartiene comunque
-        # alla conversazione appena eliminata e non deve restare orfana.
+        # Nessun filtro per user_id: una riga storica senza proprietario
+        # appartiene comunque alla sessione eliminata.
         db.delete_learning(context_id)
         if _contesto_sessione_presente(db, session_id):
             raise ErroreRetention("contesto di sessione non eliminato: " + session_id)

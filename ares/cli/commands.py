@@ -35,26 +35,10 @@ from ares.state.stores import (
 class StatoChat:
     """Cio' che la REPL tiene fra un turno e l'altro, e che un comando puo' cambiare.
 
-    Prima i comandi ricevevano agente, sessione e utente come tre argomenti
-    e non potevano toccare niente: `/debug`, `/metriche` e `/sessione` hanno
-    bisogno di scrivere, e il ciclo della chat di rileggere. Un oggetto solo,
-    mutabile, e' il modo piu' corto di dirlo.
-
-    I percorsi stanno qui perche' i comandi li leggono a ogni invocazione -
-    `/sessioni` per la cartella, `/file` per il quaderno, `/esporta` per la
-    destinazione - e ricostruirli a ogni comando leggerebbe la directory
-    corrente al momento sbagliato: con `--workspace` la cartella di lavoro
-    e' quella scelta all'avvio, non quella del processo.
-
-    Le impostazioni stanno qui per la stessa ragione: `/sessione` e `/modo`
-    ricostruiscono l'agente, e devono ricostruirlo con gli stessi modelli
-    della conversazione che stanno cambiando, non con quelli che il processo
-    leggerebbe adesso.
-
-    La politica sta qui per la terza volta e per la stessa ragione: i comandi
-    leggono se lo spazio di lavoro c'e', come si chiama il file delle regole
-    e quante sessioni elencare, e devono rispondere della conversazione che
-    hanno davanti. `build_assistant`, quando ricostruisce, la riceve da qui.
+    Percorsi, impostazioni e politica sono quelli della conversazione in
+    corso: `/sessione` e `/modo` ricostruiscono l'agente con questi, non con
+    cio' che il processo leggerebbe adesso (vedi "Dipendenze esplicite" in
+    docs/architecture.md).
     """
 
     agent: Agent
@@ -66,12 +50,10 @@ class StatoChat:
     debug: bool = False
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
-    # Falso in un avvio senza nessuno che legga (`-p`, o una pipe senza `-p`):
-    # `/sessione` e `/modo` ricostruiscono l'agente e devono ripassarlo,
-    # altrimenti la ricostruzione riaccenderebbe l'apprendimento.
+    # Falso senza nessuno che legga (`-p`, pipe): una ricostruzione dell'agente
+    # deve ripassarlo, o riaccenderebbe l'apprendimento.
     interattivo: bool = True
-    # Token del prompt dell'ultimo turno, per la barra sotto il prompt: la
-    # scrive il ciclo della chat, la legge la barra a ogni ridisegno.
+    # Token del prompt dell'ultimo turno, per la barra sotto il prompt.
     finestra: int | None = None
 
 
@@ -91,14 +73,9 @@ class Comando(NamedTuple):
 # I comandi
 # ---------------------------------------------------------------------------
 #
-# Ogni comando e' una funzione con la stessa firma, anche quando non usa tutti
-# gli argomenti: e' il prezzo di avere una tabella invece di una catena di if,
-# e la tabella e' cio' che tiene allineati aiuto, completamento e abbreviazioni.
-# `argomento` e' tutto cio' che segue il primo spazio. Lo leggono `/entita`,
-# `/sessioni` e `/sessione`; per gli altri resta vuoto, e un argomento passato
-# a un comando che non lo usa viene ignorato in silenzio.
-#
-# Chi restituisce False chiude la sessione. Gli altri non restituiscono niente.
+# Ogni comando ha la stessa firma, per stare nella tabella `COMANDI`.
+# `argomento` e' cio' che segue il primo spazio; chi non lo usa lo ignora.
+# Chi restituisce False chiude la sessione.
 
 
 def _comando_aiuto(stato: StatoChat, argomento: str) -> None:
@@ -125,9 +102,7 @@ def _comando_contesto(stato: StatoChat, argomento: str) -> None:
 def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
     """Le conversazioni di questa cartella; `tutte` allarga a ogni cartella.
 
-    Le sessioni nate altrove restano fuori dall'elenco normale perche' sono
-    il lavoro di un altro progetto; quelle senza cartella - di prima che le
-    sessioni ne avessero una - compaiono sempre, altrimenti sparirebbero.
+    Quelle senza cartella registrata compaiono sempre.
     """
     parole = argomento.split()
     tutte = bool(parole) and parole[0].casefold() == "tutte"
@@ -153,14 +128,9 @@ def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
     if qui is not None:
         UI.line("(/sessioni tutte mostra anche quelle nate in altre cartelle)", style="ares.muted")
     if not argomento and all(getattr(s, "session_id", None) != stato.session_id for s in sessioni):
-        # La sessione in corso entra in archivio col primo turno salvato.
-        # Prima di allora manca dall'elenco, e un'assenza non spiegata si
-        # legge come un difetto.
-        #
-        # Si guarda l'elenco intero e solo senza filtro, perche' altrimenti la
-        # frase e' falsa in due casi raggiungibili: sotto un filtro che la
-        # esclude, e quando e' in archivio ma oltre il tetto. In tutti e due
-        # la sessione c'e', e dire che manca e' peggio del silenzio.
+        # La sessione entra in archivio col primo turno salvato: lo si spiega.
+        # Solo senza filtro e sull'elenco intero, altrimenti la frase sarebbe
+        # falsa per una sessione filtrata o oltre il tetto.
         UI.line(
             "Questa sessione (" + stato.session_id + ") compare qui dal primo turno salvato.",
             style="ares.muted",
@@ -170,9 +140,8 @@ def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
 def _comando_sessione(stato: StatoChat, argomento: str) -> None:
     """Mostra la sessione corrente o passa a un'altra senza riavviare.
 
-    Passare vuol dire ricostruire l'agente: la sessione e' fissata alla sua
-    costruzione, e il contesto appreso - obiettivo, piano, avanzamento - e'
-    per sessione. Profilo e memorie sono per utente e restano gli stessi.
+    Passare ricostruisce l'agente, perche' la sessione e' fissata alla sua
+    costruzione. Profilo e memorie sono per utente e restano gli stessi.
     """
     if not argomento:
         UI.pair("Sessione corrente", stato.session_id)
@@ -183,10 +152,8 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
     nome = argomento.split()[0]
     nuova = nome == "nuova"
     if nuova:
-        # Come un altro `ares` nella stessa cartella, senza uscire: l'id
-        # viene dalla cartella e dal momento. `nuova` e' percio' una parola
-        # riservata, e una sessione che si chiamasse cosi' non e' raggiungibile
-        # da qui; `ares --session nuova` la apre lo stesso.
+        # `nuova` e' riservata: una sessione con quel nome si apre solo con
+        # `ares --session nuova`.
         if not stato.politica.workspace.attivo:
             UI.line("Senza cartella di lavoro il nome lo scegli tu: /sessione <nome>.", style="ares.warning")
             return
@@ -219,12 +186,10 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
     """Mostra la modalita' corrente o ne sceglie un'altra, ricostruendo l'agente sulla stessa sessione.
 
     Le liste degli strumenti sono fissate alla costruzione dello spazio di
-    lavoro, e il prompt le descrive: cambiare modalita' vuol dire rifare
-    l'agente, che costa un decimo di secondo e non tocca la sessione.
+    lavoro e descritte nel prompt: per cambiarle si rifa' l'agente.
     """
     if not argomento:
-        # Gli otto strumenti sono quelli che `auto` lascia liberi: e' l'unica
-        # modalita' che li ha tutti, e la lista non va scritta due volte.
+        # `auto` e' l'unica modalita' che ha tutti gli strumenti.
         tutti = config.MODALITA["auto"][0]
         UI.pair("Modalita' corrente", stato.modo)
         righe = []
@@ -271,8 +236,7 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
 def _comando_debug(stato: StatoChat, argomento: str) -> None:
     """Accende o spegne le chiamate al modello a schermo, per il resto della sessione."""
     stato.debug = not stato.debug
-    # Le due leve che `--debug` muove all'avvio: il livello dei log di Agno e
-    # la modalita' dell'agente, che decide se stampare i propri passaggi.
+    # Le stesse due leve di `--debug`: log di Agno e `debug_mode` dell'agente.
 
     configura_log_agno(stato.debug)
     if hasattr(stato.agent, "debug_mode"):
@@ -294,9 +258,8 @@ def _comando_entita(stato: StatoChat, argomento: str) -> None:
     entita = leggi_entita(stato.agent.learning_machine, stato.utente, query=argomento)
     if not entita:
         if argomento:
-            # La ricerca delle entita' e' testuale, non semantica: senza una
-            # parola che compaia davvero nel nome o nei fatti non trova
-            # niente, e da fuori e' indistinguibile da un archivio vuoto.
+            # La ricerca e' testuale, non semantica: lo si dice, perche' un
+            # risultato vuoto sembrerebbe un archivio vuoto.
             UI.line("Nessuna entita' per '" + argomento + "'.", style="ares.muted")
             UI.line("La ricerca e' testuale: prova una parola che ci sia scritta dentro,", style="ares.muted")
             UI.line("o /entita senza argomento per l'elenco intero.", style="ares.muted")
@@ -321,10 +284,8 @@ def _comando_file(stato: StatoChat, argomento: str) -> None:
 def _comando_cartella(stato: StatoChat, argomento: str) -> None:
     """Dove Ares sta lavorando, e in che stato e' il progetto.
 
-    Serve prima di dire si' a un comando shell: il percorso, il ramo, quanti
-    file sono gia' modificati, se c'e' un ARES.md che il modello sta seguendo
-    e gli stessi avvisi dell'avvio, perche' una cartella rischiosa lo resta
-    anche dopo la conferma.
+    Percorso, ramo, file modificati, `ARES.md` e gli stessi avvisi dell'avvio:
+    serve prima di autorizzare un comando shell.
     """
     UI.heading("Cartella di lavoro")
     if not stato.politica.workspace.attivo:
@@ -357,13 +318,10 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
 
 
 def _comando_esporta(stato: StatoChat, argomento: str) -> None:
-    """La conversazione corrente in un file Markdown, per leggerla o passarla a qualcuno.
+    """La conversazione corrente in un file Markdown.
 
-    Senza argomento il file prende il nome della sessione e nasce nella
-    cartella di lavoro, e uno che esiste gia' non si tocca: il nome e' stato
-    scelto da Ares, non da chi scrive. Con un percorso esplicito si
-    sovrascrive, e lo si dice: chi rilancia `/esporta note.md` vuole la
-    versione aggiornata, non un rifiuto.
+    Senza argomento il file prende il nome della sessione nella cartella di
+    lavoro, e non sovrascrive. Con un percorso esplicito sovrascrive, e lo dice.
     """
     db = getattr(stato.agent, "db", None)
     sessione = None
@@ -373,8 +331,7 @@ def _comando_esporta(stato: StatoChat, argomento: str) -> None:
     if not scambi:
         UI.line("Niente da esportare: la sessione non ha ancora turni salvati.", style="ares.muted")
         return
-    # Un percorso relativo parte dalla cartella di lavoro, che con
-    # `--workspace` non e' quella del processo; uno assoluto resta com'e'.
+    # Un percorso relativo parte dalla cartella di lavoro, non da quella del processo.
     radice = stato.percorsi.lavoro if stato.politica.workspace.attivo else Path.cwd()
     esplicito = bool(argomento)
     if esplicito:
@@ -401,19 +358,9 @@ def _comando_esci(stato: StatoChat, argomento: str) -> bool:
     return False
 
 
-# Un elenco solo. Prima ce n'erano due - la catena di if e la stringa
-# dell'aiuto - e avevano gia' divergito: `/lavoro` esisteva da giorni e
-# nell'aiuto non compariva. Da qui si derivano l'aiuto, i candidati del TAB,
-# le abbreviazioni e i suggerimenti sui refusi: quattro cose che non possono
-# piu' contraddirsi.
-#
-# Gli alias restano fuori dall'elenco a schermo e dal TAB, ma si scrivono e si
-# abbreviano come gli altri: sono superstiti inglesi, o il nome che un comando
-# aveva prima, non comandi da imparare.
-#
-# `/sessione` e `/sessioni` condividono il prefisso fino all'ultima lettera:
-# `/sess` e' ambiguo e lo resta di proposito, perche' uno elenca e l'altro
-# cambia sessione. Il TAB li mostra entrambi.
+# L'unico elenco dei comandi: da qui derivano aiuto, TAB, abbreviazioni e
+# suggerimenti sui refusi. Gli alias funzionano ma non compaiono nell'aiuto
+# ne' nel TAB. `/sess` resta ambiguo di proposito fra `/sessione` e `/sessioni`.
 COMANDI: tuple[Comando, ...] = (
     Comando("/aiuto", ("/?",), "questo elenco", _comando_aiuto),
     Comando("/profilo", (), "il profilo utente accumulato", _comando_profilo),
@@ -488,10 +435,8 @@ def stampa_aiuto() -> None:
 def risolvi_comando(nome: str) -> tuple[Comando | None, list[str]]:
     """Trova la voce che l'utente intendeva. Ritorna (voce, righe da stampare).
 
-    Tre passaggi in quest'ordine, e l'ordine conta: un nome esatto non deve
-    mai essere reinterpretato, un troncamento vale solo se resta una voce
-    sola, e i suggerimenti sui refusi arrivano per ultimi perche' sono
-    l'ipotesi piu' debole.
+    L'ordine conta: nome esatto o alias, poi prefisso se resta una voce sola,
+    infine i suggerimenti sui refusi, che sono l'ipotesi piu' debole.
     """
     for voce in COMANDI:
         if nome == voce.nome or nome in voce.alias:
@@ -503,12 +448,10 @@ def risolvi_comando(nome: str) -> tuple[Comando | None, list[str]]:
     if len(candidati) == 1:
         return candidati[0], []
     if candidati:
-        # Ambiguo: si mostrano i candidati e non si indovina. Fra `/entita` e
-        # `/esci` una scelta sbagliata chiuderebbe la sessione.
+        # Ambiguo: si mostrano i candidati, non si indovina (`/e` potrebbe essere `/esci`).
         return None, ["Comando incompleto: " + "  ".join(voce.nome for voce in candidati)]
 
-    # cutoff alto di proposito: a 0.6 un `/fiel` proponeva anche `/profilo`,
-    # e un suggerimento sbagliato costa piu' di nessun suggerimento.
+    # Cutoff alto: un suggerimento sbagliato costa piu' di nessun suggerimento.
     vicini = difflib.get_close_matches(nome, nomi_comandi(), n=2, cutoff=0.7)
     righe = ["Comando sconosciuto: " + nome]
     if vicini:

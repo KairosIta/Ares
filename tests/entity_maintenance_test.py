@@ -212,10 +212,8 @@ def main() -> int:
         esigi(bloccato.returncode == 3, "l'audit non rispetta il lock esclusivo, o non esce con 3")
         esigi("stato di Ares" in bloccato.stderr, "il rifiuto del lock non e' spiegato")
 
-        # La fusione rifiuta una scansione incompleta: tolta la riga malformata
-        # del test dell'audit, prepariamo un grafo con due copie dello stesso
-        # progetto. La sorgente e' archiviata apposta: deve poter essere
-        # assorbita, non riattivata.
+        # Un grafo con due copie dello stesso progetto. La sorgente e'
+        # archiviata apposta: deve poter essere assorbita, non riattivata.
         db.delete_learning("entity_malformata")
         salva(
             db,

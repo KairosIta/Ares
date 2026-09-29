@@ -234,9 +234,7 @@ def _tasti_chat(completer: CompletamentoComandi) -> KeyBindings:
         buffer = event.current_buffer
         stato = buffer.complete_state
         if stato is not None and stato.current_completion is not None:
-            # TAB seleziona una voce del menu: Invio la applica e spedisce il
-            # comando nello stesso gesto, invece di richiedere un secondo
-            # Invio che in una chat sembra non aver funzionato.
+            # Invio applica la voce scelta col TAB e spedisce, senza un secondo Invio.
             buffer.apply_completion(stato.current_completion)
         buffer.validate_and_handle()
 
@@ -246,11 +244,8 @@ def _tasti_chat(completer: CompletamentoComandi) -> KeyBindings:
 
     @tasti.add("c-c", eager=True)
     def _svuota(event) -> None:
-        # Ctrl-C svuota la riga invece di chiudere la chat: chiudere per un
-        # riflesso, con un messaggio lungo a meta', costava il messaggio.
-        # Cio' che c'era scritto finisce in cronologia, e la freccia in su
-        # lo riporta. Chiudono Ctrl-D e `/esci`. Durante un turno Ctrl-C
-        # resta l'interruzione, perche' li' il prompt non c'e'.
+        # Ctrl-C svuota la riga invece di chiudere, e il testo resta in cronologia.
+        # Chiudono Ctrl-D e `/esci`; durante un turno Ctrl-C resta l'interruzione.
         buffer = event.current_buffer
         if buffer.text:
             buffer.append_to_history()
@@ -322,23 +317,17 @@ class CliInput:
             interactive = bool(sys.stdin.isatty() and sys.stdout.isatty())
         self.interactive = interactive
         self.fallback_input = fallback_input
-        # Le domande possono avere una risposta diversa dai turni: senza un
-        # terminale, chi scrive la conversazione non e' per forza chi autorizza
-        # un comando. Senza `fallback_ask` i due restano lo stesso callable,
-        # cosi' i client che leggono tutto da un flusso non cambiano.
+        # Senza terminale le conferme possono avere una sorgente diversa dai turni.
+        # Senza `fallback_ask` sono lo stesso callable.
         self.fallback_ask = fallback_ask or fallback_input
-        # Cosa scrivere a sinistra nella barra sotto il prompt: modalita',
-        # sessione, finestra. Si chiama a ogni ridisegno, cosi' dopo `/modo`
-        # o un turno la barra e' gia' aggiornata.
+        # Il testo a sinistra della barra, richiesto a ogni ridisegno.
         self._stato = stato
         self.history_warning: str | None = None
         try:
             self.history: History = CronologiaSicura(cronologia_file, cronologia_righe)
         except OSError as errore:
-            # La cronologia contiene dati utili ma non e' il motore di Ares:
-            # un disco in sola lettura o un permesso errato non deve impedire
-            # una conversazione. La sessione corrente conserva comunque le
-            # frecce su/giu in memoria e rende visibile la degradazione.
+            # Una cronologia non scrivibile non deve impedire la conversazione: resta
+            # in memoria e lo si segnala.
             self.history = InMemoryHistory()
             self.history_warning = str(errore)
         self.completer = CompletamentoComandi(comandi, argomenti)

@@ -1,26 +1,16 @@
-"""
-Prova della REPL senza l'agente
+"""Prova della REPL senza l'agente
 ===============================
 Uso:
     .venv/bin/python tests/repl_test.py
 
-Cio' che della chat si puo' provare senza costruire l'agente e senza
-modello: le conferme lette e applicate, le metriche e l'esito degli
-strumenti, il rendering Rich su pipe e su un terminale simulato,
-l'indicatore di attivita', il core del turno con eventi fabbricati, i log
-di Agno, la cronologia privata, l'editor con completamento e multilinea, i
-comandi locali.
+Cio' che della chat si prova senza agente ne' modello: conferme, metriche
+e esito degli strumenti, rendering Rich su pipe e su terminale simulato,
+indicatore di attivita', core del turno con eventi fabbricati, log di Agno,
+cronologia privata, editor e comandi locali.
 
-Stava tutto in `smoke_test.py`, che era diventato il posto dove finiva
-ogni prova offline: duemilacinquecento righe in cui l'assemblaggio
-dell'agente e il comportamento di un widget stavano nello stesso elenco.
-La divisione segue cio' che serve per girare: lo smoke costruisce
-l'agente e semina gli store, qui non si apre nessun database di Ares e un
-fallimento non puo' venire dal cablaggio.
-
-Le prove che passano per la REPL intera - il ciclo di `esegui_turno`, il
-processo separato con stdin da una pipe - restano in `cli_test.py`, che
-copre i comandi con cui Ares si usa davvero.
+Nessun database di Ares si apre qui, quindi un fallimento non puo' venire
+dal cablaggio (che prova `smoke_test.py`). Le prove che passano per la REPL
+intera stanno in `cli_test.py`.
 """
 
 import contextlib
@@ -55,11 +45,9 @@ from rich.text import Text  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi, le impostazioni e la politica della prova, letti una volta dopo
-# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei tre,
-# quindi la prova se li porta dietro e li passa a chi ne ha bisogno. Dove la
-# prova cambia un flag con `patch.object` la politica si rilegge dentro il
-# `with`: una fotografia presa prima non vedrebbe il cambiamento.
+# Percorsi, impostazioni e politica letti una volta dopo `prepara_ambiente`.
+# Dove la prova cambia un flag con `patch.object` la politica si rilegge dentro
+# il `with`.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
 POLITICA = config.leggi_politica()
@@ -105,11 +93,7 @@ class _MessaggioFinto:
 
 
 class _RunFinto:
-    """Un RunOutput ridotto ai due campi da cui si leggono le metriche.
-
-    Fabbricato invece di prodotto da un turno vero perche' questa prova
-    promette di non caricare pesi. I valori riproducono metriche plausibili.
-    """
+    """Un RunOutput ridotto ai due campi da cui si leggono le metriche, fabbricato perche' la prova non carica pesi."""
 
     def __init__(self, metrics, messages):
         self.metrics = metrics
@@ -119,11 +103,8 @@ class _RunFinto:
 def scritture_in_memoria() -> str:
     """Gli strumenti di memoria mostrano cosa hanno ricevuto; gli altri no.
 
-    L'esito di `save_learning` e' "Learning saved: <titolo>": il testo
-    dell'intuizione, che e' cio' che entra nel prompt di ogni sessione
-    futura, sta solo negli argomenti. Un `read_file` non deve invece
-    produrre niente qui, altrimenti l'eco raddoppia l'esito di ogni
-    strumento.
+    L'esito di `save_learning` riporta solo il titolo: il testo dell'intuizione
+    sta negli argomenti. Per un `read_file` l'eco raddoppierebbe l'esito.
     """
     salvataggio = ToolExecution(
         tool_name="save_learning",
@@ -176,13 +157,10 @@ def scritture_in_memoria() -> str:
 def conferme_leggibili() -> str:
     """Un comando lungo arriva intero e con i confini visibili alla conferma.
 
-    `Workspace` non e' una sandbox di processo - lo dice il suo docstring e
-    `run_command` risponde su `/etc/hostname` - quindi la conferma umana e'
-    l'unico confine che regge. Cio' che l'utente legge in quel momento e'
-    parte del confine: se un comando venisse troncato, l'autorizzazione
-    riguarderebbe qualcosa di diverso da cio' che viene eseguito.
-
-    Il caso lungo verifica anche comandi distribuiti su piu' righe.
+    `Workspace` non e' una sandbox di processo, quindi la conferma umana e'
+    l'unico confine: se il comando fosse troncato, si autorizzerebbe qualcosa
+    di diverso da cio' che viene eseguito. Il caso lungo copre anche comandi
+    su piu' righe.
     """
     comando = [
         "bash",
@@ -200,15 +178,11 @@ def conferme_leggibili() -> str:
     esigi(len(citato) == 1, "la riga del comando non e' una sola: " + repr(citato))
     ricomposto = citato[0].split("args: ", 1)[1]
 
-    # Il controllo vero e' il giro di ritorno: se la riga a schermo si
-    # rilegge come la lista di partenza, allora niente e' stato perso,
-    # niente aggiunto e le virgolette cadono dove separano davvero un
-    # argomento dal successivo. Confrontare i pezzi uno per uno non
-    # basterebbe: `shlex.join` cita, quindi l'elemento con gli spazi dentro
-    # non compare mai verbatim, ed e' proprio quello che va reso bene.
-    # Il troncamento si controlla per primo: e' la regressione piu' probabile,
-    # e su una riga tagliata `shlex.split` morirebbe con "No closing
-    # quotation", che dice cosa e' successo alla stringa e non al comando.
+    # Il controllo e' il giro di ritorno: se la riga a schermo si rilegge come
+    # la lista di partenza, niente e' perso o aggiunto e le virgolette separano
+    # gli argomenti giusti (`shlex.join` cita, quindi i pezzi con spazi non
+    # compaiono verbatim). Il troncamento si controlla prima, perche' su una
+    # riga tagliata `shlex.split` fallirebbe con un messaggio fuorviante.
     esigi("..." not in testo, "la conferma tronca il comando: " + repr(testo))
     esigi(
         shlex.split(ricomposto) == comando,
@@ -227,9 +201,7 @@ def conferme_leggibili() -> str:
 def conferma_scrittura() -> str:
     """Un `write_file` su un file esistente mostra cosa cambia, su uno nuovo il contenuto.
 
-    Il contenuto intero di un file riscritto dice tutto tranne la cosa da
-    guardare, cio' che sparisce; un file nuovo non ha un prima. Un percorso
-    fuori dalla radice non viene letto: la conferma non e' un modo per far
+    Un percorso fuori dalla radice non viene letto: la conferma non deve far
     leggere ad Ares un file che non potrebbe aprire.
     """
     radice = RADICE_PROVA / "scrittura"
@@ -283,12 +255,9 @@ def conferma_scrittura() -> str:
 def avvertenze_del_comando() -> str:
     """Le righe di attenzione nominano cio' che un comando fa oltre la directory.
 
-    Non e' un filtro: `run_command` esce dal recinto per costruzione e una
-    lista nera si aggira con un alias. E' il pezzo della conferma che dice
-    a chi legge dove guardare - la shell in coda a molti argomenti, un
-    percorso assoluto dentro una riga citata - e deve tacere sui comandi
-    che stanno nella directory, altrimenti diventa la riga che si smette di
-    leggere.
+    Non e' un filtro (una lista nera si aggira): dice a chi conferma dove
+    guardare, e tace sui comandi che restano nella directory, per non diventare
+    rumore.
     """
     radice = PERCORSI.lavoro
     avv = render.avvertenze_comando
@@ -430,10 +399,8 @@ def conferme_applicate() -> str:
 def metriche_del_turno() -> str:
     """La finestra mostrata e' il prompt vero, non la somma delle chiamate.
 
-    `accumulate_model_metrics` somma dentro la riga del modello, quindi
-    `metrics.input_tokens` comprende anche le estrazioni delle memorie.
-    Presentarlo come occupazione della finestra sarebbe sbagliato in
-    silenzio: i numeri qui sotto distinguono il totale del run dal prompt.
+    `metrics.input_tokens` include anche le estrazioni delle memorie: i numeri
+    qui distinguono il totale del run dal prompt.
     """
     principale = ModelMetrics(
         id=config.MAIN_MODEL,
@@ -502,11 +469,9 @@ class _EventoFinto:
 def esito_strumenti() -> str:
     """L'esito di uno strumento si vede, e un fallimento si vede una volta sola.
 
-    Il rischio non e' che manchi una riga: e' che ne compaiano due. Un tool
-    fallito emette `ToolCallCompleted` con dentro il testo dell'errore e
-    **poi** `ToolCallError`, in entrambi i percorsi di Agno che li producono.
-    Trattarli come alternative stampa l'errore due volte, e la prima volta
-    lo presenta come un esito riuscito.
+    Un tool fallito emette `ToolCallCompleted` con l'errore e **poi**
+    `ToolCallError`: trattarli come alternative stamperebbe l'errore due volte,
+    la prima come esito riuscito.
     """
     riuscito = ToolExecution(
         tool_name=config.WORKSPACE_PREFIX + "read_file",
@@ -578,17 +543,11 @@ def esito_strumenti() -> str:
 def renderer_rich() -> str:
     """Il renderer e' sicuro anche fuori da un terminale interattivo.
 
-    Test e pipe vedono una sola copia del testo, senza ANSI e senza
-    interpretare come markup parentesi quadre provenienti da modello, path o
-    argomenti. ``RichRunStream`` usa ora la stessa via append-only anche su un
-    TTY; il controllo successivo verifica in piu' i comandi del cursore.
-
-    I controlli di terminale non devono passare da nessuna delle vie che
-    mostrano testo scelto dal modello o letto dal workspace: il pannello di
-    conferma, il nome e l'anteprima di uno strumento, l'eco. Rich lascia
-    ``ESC`` intatto anche verso una pipe, quindi la cattura basta a vederlo
-    passare: un ``ESC [2K ESC [1G`` in un argomento cancellerebbe la riga
-    che chiede di confermare proprio quell'argomento.
+    Su test e pipe il testo compare una volta, senza ANSI e senza interpretare
+    come markup le parentesi quadre. I controlli di terminale non passano da
+    nessuna via che mostri testo del modello o del workspace (conferma, nome e
+    anteprima di uno strumento, eco): un `ESC [2K ESC [1G` in un argomento
+    cancellerebbe la riga che chiede di confermarlo.
     """
     catturato = io.StringIO()
     renderer = CliRenderer(Console(file=catturato, color_system=None, force_terminal=False, width=120))
@@ -725,9 +684,9 @@ def renderer_tty_markdown_sicuro() -> str:
 def indicatore_attivita() -> str:
     """L'attesa usa una sola riga e segue tutto il ciclo degli eventi.
 
-    L'orologio e il pulse manuali evitano sleep fragili. La larghezza cambia
-    fra due refresh: il testo ``no_wrap`` deve conservare altezza uno, che e'
-    l'invariante da cui dipende la sicurezza del resize.
+    Orologio e pulse manuali evitano sleep fragili. Al cambio di larghezza il
+    testo `no_wrap` deve restare alto una riga: da questo dipende la sicurezza
+    del resize.
     """
     catturato = io.StringIO()
     console = Console(
@@ -1189,11 +1148,8 @@ def input_repl() -> str:
 def comandi() -> str:
     """Un comando si risolve, un refuso si dichiara, un troncamento non indovina.
 
-    Il difetto che questo controllo esiste per prendere e' il silenzio: prima
-    un comando inesistente stampava l'aiuto, cioe' la stessa cosa che stampa
-    chi l'aiuto lo ha chiesto, e un refuso sembrava una risposta. L'altro e'
-    la deriva: l'elenco a schermo era una stringa scritta a mano e aveva gia'
-    perso `/lavoro`.
+    Un comando inesistente non deve stampare l'aiuto come se fosse stato
+    chiesto, e l'elenco a schermo viene da `COMANDI`, non da una copia a mano.
     """
     nomi = [voce[0] for voce in COMANDI]
     alias = [alias for voce in COMANDI for alias in voce[1]]
@@ -1289,10 +1245,9 @@ def comandi() -> str:
 def stato_della_chat() -> str:
     """`/debug`, `/metriche` e `/sessione` cambiano lo stato che il ciclo rilegge.
 
-    L'agente e' un oggetto qualunque con `debug_mode`, e `build_assistant`
-    e' sostituito: qui si prova che i comandi scrivano nello `StatoChat` e
-    che il cambio di sessione ricostruisca l'agente con il nome nuovo,
-    non che l'agente funzioni.
+    `build_assistant` e' sostituito: si prova che i comandi scrivano nello
+    `StatoChat` e che il cambio di sessione ricostruisca l'agente con il nome
+    nuovo.
     """
     from ares.cli import commands
 
@@ -1484,8 +1439,7 @@ def stato_della_chat() -> str:
 def conferme_scritte() -> str:
     """`conferma_scritta`: la frase esatta e nient'altro, e Ctrl-C e' un no.
 
-    Senza terminale la domanda passa da `input()`, che qui e' sostituito:
-    e' lo stesso ripiego che permette a uno script di rispondere da stdin.
+    Senza terminale la domanda passa da `input()`, qui sostituito.
     """
     from ares.cli.conferma import conferma_scritta
 
@@ -1515,11 +1469,10 @@ def conferme_scritte() -> str:
 def cartella_di_lavoro() -> str:
     """`cli/cartella.py`: la cartella da cui si lancia `ares` e cio' che se ne legge.
 
-    I rischi si provano su percorsi veri - la radice, la home, la radice
-    della prova che contiene stato e backup - e l'autorizzazione sui suoi
-    tre esiti: nessun rischio, rifiuto senza terminale, passaggio con
-    `--workspace`. Git si legge da un `.git` fabbricato, senza lanciare git,
-    salvo il conteggio dei file modificati, che git lo lancia davvero.
+    I rischi si provano su percorsi veri (radice, home, radice della prova con
+    stato e backup) e l'autorizzazione sui tre esiti: nessun rischio, rifiuto
+    senza terminale, passaggio con `--workspace`. Git si legge da un `.git`
+    fabbricato, tranne il conteggio dei file modificati.
     """
     from ares.agent.prompts import istruzioni_dalla_cartella, percorso_istruzioni
     from ares.cli import cartella
@@ -1664,10 +1617,9 @@ def cartella_di_lavoro() -> str:
     # testo sta fra "inizio" e "fine", cosi' il modello sa dove finisce.
     esigi("non ordini" in istruzioni[0] and "--- fine di ARES.md ---" in istruzioni[0], "ARES.md non e' delimitato")
 
-    # Un ARES.md che e' un link fuori dalla cartella non entra nel prompt: il
-    # workspace non lo contiene, e senza questo controllo entrerebbe nel system
-    # message - e, con un modello cloud, uscirebbe dalla macchina. Un link che
-    # resta dentro invece si legge: il confine e' la cartella, non il link.
+    # Un ARES.md che e' un link fuori dalla cartella non entra nel prompt (e,
+    # con un modello cloud, non esce dalla macchina). Un link che resta dentro
+    # si legge: il confine e' la cartella.
     scritto.unlink()
     fuori = RADICE_PROVA / "fuori-cartella.txt"
     fuori.write_text("segreto del sistema\n", encoding="utf-8")
@@ -1723,10 +1675,8 @@ def cartella_di_lavoro() -> str:
 def conversazioni_per_cartella() -> str:
     """Le conversazioni legate alla cartella: filtro, id nuovo, istruzioni e scelta.
 
-    Il database e' finto e restituisce sessioni fabbricate con i metadati che
-    `build_assistant` scrive: quello che si prova e' il filtro, non SQLite.
-    Una sessione senza cartella deve restare visibile in `/sessioni` e
-    sparire da `resume`, perche' e' di prima che le cartelle esistessero.
+    Il database e' finto: si prova il filtro, non SQLite. Una sessione senza
+    cartella resta visibile in `/sessioni` ma sparisce da `resume`.
     """
     from datetime import datetime
 

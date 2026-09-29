@@ -2,24 +2,24 @@
 
 Data: 13 settembre 2026.
 
-**Stato: proposta di progettazione, non implementata.** Questo documento
-approfondisce il primo passo della [roadmap](../ROADMAP.md): rendere Ares
-indipendente dall'interfaccia, collegando il contratto ai cinque punti sulla
-memoria. Le scelte proposte sono distinte dai fatti verificati nel codice.
-Non cambia la configurazione dell'apprendimento né introduce una UI.
+**Stato: proposta di progettazione, in parte implementata.** Approfondisce
+il primo passo della [roadmap](ROADMAP.md): rendere Ares indipendente
+dall'interfaccia, collegando il contratto ai cinque punti sulla memoria. Le
+scelte proposte sono distinte dai fatti verificati nel codice.
 
-**Aggiornamento del 21 settembre 2026.** I due difetti riprodotti al §2 sono
-stati corretti: l'identità dell'utente ha un solo punto di normalizzazione
-(`ares/state/identita.py`) usato da namespace, profilo/memorie, lock e
-manutenzione, e l'ID di sessione non collide più fra cartelle omonime o avvii
-nello stesso secondo. L'alfabeto dell'id è esplicito — lettere e cifre ASCII,
-punto, trattino e trattino basso — ed è l'insieme che il FileSystem di Agno
-lascia intatto: fuori di lì un id verrebbe percent-encodato o anniderebbe il
-namespace, quindi è rifiutato all'ingresso. Il debito di migrazione che ne
-deriva è dichiarato al §3, "Migrazione dell'identità". Le prove sono in
-`tests/cli_test.py`. Il resto del documento — tipi di configurazione passati
-ai costruttori, sessioni e turni come operazioni del nucleo, eventi e
-autorizzazioni — resta una proposta non implementata.
+Già implementato:
+
+- **identità dell'utente**: un solo punto di normalizzazione
+  (`ares/state/identita.py`) per namespace, profilo/memorie, lock e
+  manutenzione. L'alfabeto è lettere e cifre ASCII, punto, trattino e
+  trattino basso, cioè ciò che il FileSystem di Agno lascia intatto; il
+  resto è rifiutato all'ingresso. Il debito di migrazione è al §3;
+- **ID di sessione** univoci anche fra cartelle omonime e avvii nello stesso
+  secondo (prove in `tests/cli_test.py`);
+- **configurazione passata ai costruttori** (§4).
+
+Restano proposte sessioni e turni come operazioni del nucleo, eventi e
+autorizzazioni.
 
 ## 1. Risultato atteso e perimetro
 
@@ -42,7 +42,7 @@ Le API pubbliche coprono soltanto le operazioni necessarie ad Ares.
 
 | Area | Evidenza | Conseguenza per il contratto |
 | --- | --- | --- |
-| Configurazione | `config.leggi_percorsi()` e `config.leggi_impostazioni()` costruiscono, al confine del processo, i percorsi e i modelli di questa conversazione; ogni lettore li riceve come parametri. Identità, percorsi e impostazioni sono tre assi, non più nomi di modulo | Una conversazione deve ricevere una configurazione risolta propria, e i modelli applicativi non devono leggere né scrivere un globale |
+| Configurazione | `config.leggi_percorsi()`, `leggi_impostazioni()` e `leggi_politica()` costruiscono, al confine del processo, la configurazione di questa conversazione; ogni lettore la riceve come parametro | Una conversazione deve ricevere una configurazione risolta propria, e i modelli applicativi non devono leggere né scrivere un globale |
 | Costruzione | `build_assistant` riceve percorsi, impostazioni, politica, utente, sessione, modalità e `interattivo`; il workspace non è un parametro a sé | Il workspace sceglie i percorsi, non il costruttore: `--workspace` è una sostituzione locale, e resta da decidere se il progetto debba essere un campo a sé |
 | Turno | `turn_core` separa lo streaming dal terminale, ma espone `RunOutput` e oggetti generici | Conservare l'adattamento esistente e completare i dati pubblici |
 | Memoria | `cli/chat.py` coordina fotografia, differenze, conferma e ripristino | Il client che usa soltanto `turn_core` non eredita queste politiche |
@@ -58,31 +58,18 @@ Riferimenti locali: [config](../ares/config.py),
 [conferme degli strumenti](../ares/cli/render.py),
 [lock](../ares/state/lock.py), [archivi](../ares/state/archivi.py).
 
-### Due problemi riprodotti senza modello o archivi
+### Due problemi riprodotti, e corretti
 
-Sono state eseguite le funzioni estratte dai sorgenti con AST e dipendenze
-minime simulate, senza importare Ares né aprire database o lock reali:
+Riprodotti il 13 settembre 2026 senza modello né archivi, corretti il 21:
 
-1. `nuovo_id_sessione(Path('/progetti/a/api'), datetime(2026, 9, 13, 12))`
-   e la stessa chiamata con `/progetti/b/api` restituiscono entrambe
-   `api-20260913-120000`. Anche due aperture nella stessa cartella nello
-   stesso secondo coincidono. Il nome leggibile non è un ID univoco.
-   **Corretto il 2026-09-21:** l'ID conserva il prefisso leggibile e aggiunge
-   una coda casuale; `tests/cli_test.py` prova che cartelle omonime e avvii
-   nello stesso secondo danno ID distinti.
-2. `namespace_utente('Demo') == namespace_utente('demo')`, mentre
-   `lock_turno` deriva nomi di lock diversi dai due valori originali.
-   Namespace e concorrenza non applicano la stessa equivalenza dell'utente.
-   **Corretto il 2026-09-21:** `ares/state/identita.py` è il solo punto di
-   normalizzazione; namespace, profilo/memorie (via `build_assistant`), lock,
-   manutenzione e ispezione lo usano.
-
-Il secondo punto non dimostra una contaminazione osservata nei dati:
-dimostra che due valori equivalenti per alcuni archivi non sono coordinati
-dallo stesso lock. Profilo e User Memory ricevevano inoltre il `user_id`
-originale: non tutti gli archivi applicavano quella normalizzazione. **Ora
-tutti gli archivi ricevono la forma canonica:** profilo e User Memory per
-`user_id`, entità e intuizioni per namespace.
+1. **ID di sessione non univoci.** Cartelle omonime (`/progetti/a/api` e
+   `/progetti/b/api`) o due avvii nello stesso secondo producevano lo stesso
+   ID. Ora l'ID conserva il prefisso leggibile e aggiunge una coda casuale.
+2. **Identità dell'utente incoerente.** `namespace_utente('Demo')` e
+   `namespace_utente('demo')` coincidevano, mentre `lock_turno` derivava due
+   lock diversi, e profilo e User Memory ricevevano il valore originale. Ora
+   `ares/state/identita.py` è il solo punto di normalizzazione, e tutti gli
+   archivi ricevono la forma canonica.
 
 Nello schema SQLite di Agno 3.0.11, `session_id` è la chiave primaria della
 tabella delle sessioni. L'upsert verifica il proprietario in caso di
@@ -197,67 +184,12 @@ globali da modificare quando cambia una scheda. Collezioni di opzioni
 devono essere copiate o rese immutabili: una dataclass congelata da sola
 non impedisce la mutazione di un dizionario interno.
 
-Tre pezzi di questa separazione sono fatti. Il primo riguarda i percorsi.
-`ares/config.py` non tiene più un `PERCORSI` corrente né le viste che lo
-nascondevano (`TMP_DIR`, `DB_FILE`, `BACKUP_DIR`, `WORKSPACE_DIR`...), e
-`imposta_percorsi` non esiste: chi legge lo stato riceve un `Percorsi` come
-primo parametro, e l'unico punto in cui se ne costruisce uno è il confine del
-processo — i comandi della CLI nel proprio corpo, le prove all'import, dopo
-`prepara_ambiente`. L'identità è l'altro asse, e viaggia accanto: `Utente` non
-è un campo di `Percorsi`.
-
-Il secondo riguarda i modelli. I nomi del tuning — `MAIN_MODEL`,
-`LEARNING_MODEL`, `EMBEDDER_MODEL`, `OLLAMA_HOST`, `NUM_CTX`, `KEEP_ALIVE`,
-le temperature e i due `think` — restano in `config.py` come sorgente, dove
-`.env`, ambiente e predefiniti si incontrano una volta sola all'import, ed è
-`leggi_impostazioni()` a fotografarli in un `Impostazioni` congelato alla
-porta del processo. Da lì in poi `build_chat_model`, `build_learning_model`,
-`build_knowledge`, `build_learning_machine`, `build_assistant`,
-`istruzioni_sull_ambiente`, `descrizione`, `esamina` e la riga delle metriche
-ricevono l'oggetto: due conversazioni con modelli diversi sono due oggetti, non
-due mutazioni a distanza. Le due `options` di Ollama sono proprietà derivate
-perché non sono indipendenti dalla coppia di modelli — il contesto
-dell'estrazione si stringe solo quando i due modelli sono diversi, altrimenti
-Ollama riavvierebbe il runner a ogni passaggio perdendo la cache del prompt.
-L'avviso sul cloud è un metodo del tipo, così preflight e banner non possono
-leggere una configurazione diversa da quella che stanno per avviare.
-
-Il terzo riguarda la politica: cosa una conversazione impara, quanto contesto
-storico vede, come lavora nella cartella e cosa mostra di ciò che ha imparato.
-Anche qui i nomi restano la sorgente — `LEARN_*`, `MOSTRA_*`,
-`CONFERMA_APPRENDIMENTI`, `WORKSPACE*`, `SEARCH_PAST_SESSIONS`,
-`READ_CHAT_HISTORY`, `NUM_HISTORY_RUNS`, `SESSIONI_ELENCO` — ed è
-`leggi_politica()` a fotografarli in una `Politica` congelata fatta di quattro
-gruppi: `Apprendimento`, `Cronologia`, `Workspace`, `Mostra`. Da lì in poi
-`build_learning_machine`, `build_session_context_store`, `build_workspace`,
-`build_assistant`, le funzioni dei prompt e il client della CLI ricevono
-l'oggetto. Il caso che rende la cosa concreta è il prompt: `istruzioni_sulla_memoria`
-descriveva store ed eco da `config`, quindi poteva promettere che una scrittura
-sarebbe comparsa sotto la risposta mentre l'eco era spenta. Adesso descrive la
-stessa fotografia che ha costruito gli store, e non può descriverne altri.
-
-Restano fuori da `Politica`, con una ragione: `modo`, che è già un parametro a
-ogni confine; `OFFLOAD_TOOL_RESULTS` e `TOOL_RESULT_THRESHOLD_CHARS`, che sono
-configurazione dell'indice; `DATETIME_FORMAT`, `CRONOLOGIA_RIGHE` e
-`ENTITA_FINESTRA_RICERCA`, che sono formato del client; `BACKUP_*`,
-`SESSION_RETENTION_DAYS` e `SESSIONI_PROTETTE`, che sono retention e garanzie.
-
-La modalità non entra in `Impostazioni` né in `Politica`: è già un parametro a
-ogni confine, e l'unico difetto reale era il default che fotografava
-`config.MODO_PREDEFINITO` all'import. `build_assistant` e le tre funzioni dei
-prompt lo risolvono adesso al momento della chiamata, come faceva già
-`build_workspace`; il comando `ares` tiene il proprio default dichiarato in
-`--help`.
-
-Un'eccezione è deliberata e resta: `ares/backup/snapshots.py` legge ancora i
-nomi di modulo per scrivere il manifesto dello snapshot e per il controllo di
-compatibilità con l'embedder. Quel manifesto registra com'era configurato
-*questo processo*, e la verifica dell'embedder è una garanzia esistente: non è
-una lettura di comodo da sostituire, ed è l'unico punto rimasto.
-
-Tutti e tre i pezzi di questa separazione sono fatti: percorsi e identità,
-modelli e politica viaggiano come parametri, e nessuno di essi è più un nome di
-modulo riletto a metà strada.
+Questa separazione è fatta per percorsi, identità, modelli e politica:
+`Percorsi`, `Utente`, `Impostazioni` e `Politica` vengono costruiti al
+confine del processo e passati come parametri. Com'è organizzata, cosa
+resta fuori dalla `Politica` e l'unica eccezione (`backup/snapshots.py`)
+sono descritti in [architecture.md](architecture.md#configurazione). La
+modalità resta un parametro a sé, risolto al momento della chiamata.
 
 Il cambio modello o modalità si applica ai turni successivi; durante un
 turno attivo restituisce un conflitto, salvo futura operazione dedicata.
@@ -441,9 +373,9 @@ l'isolamento: il punto 2 deve applicarlo a ogni lettura e scrittura.
 
 Le prove deterministiche usano archivi temporanei e un adattatore simulato;
 le prove Agno verificano poi il collegamento reale. Le prove con modello
-misurano la qualità semantica separatamente. Lo studio attuale comprende
-lettura dei sorgenti e le due verifiche mirate sopra, non un'esecuzione della
-suite né una dimostrazione end-to-end di questa architettura proposta.
+misurano la qualità semantica separatamente. Lo studio si basa sulla
+lettura dei sorgenti e sulle due riproduzioni del §2, non su una
+dimostrazione end-to-end dell'architettura proposta.
 
 ## 9. Decisioni da chiudere prima del primo codice
 
