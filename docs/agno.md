@@ -1,13 +1,14 @@
 # Agno in Ares
 
-Ares usa **Agno 3.0.11**, ultima stable verificata il 25 settembre 2026, come framework dell'agente. Agno fornisce il ciclo di
-esecuzione, gli store e le primitive agentiche; Ares decide invece politica
-local-first, modelli Ollama, interfaccia, confini degli strumenti, schema dei
-dati, backup e comportamento dell'apprendimento.
+Ares usa **Agno 3.0.11** (verificata il 25 settembre 2026) come framework
+dell'agente. Agno fornisce il ciclo di esecuzione, gli store e le primitive
+agentiche; Ares decide politica local-first, modelli Ollama, interfaccia,
+confini degli strumenti, schema dei dati, backup e comportamento
+dell'apprendimento.
 
-La distinzione evita due errori opposti: duplicare nel progetto ciò che il
-framework fa già bene, oppure presentare come caratteristica di Ares una
-capacità Agno che qui non è stata configurata e verificata.
+Questa pagina serve a non duplicare ciò che il framework fa già, e a non
+presentare come funzionalità di Ares una capacità Agno che qui non è
+configurata né verificata.
 
 ## Cosa usa Ares oggi
 
@@ -24,48 +25,41 @@ capacità Agno che qui non è stata configurata e verificata.
 | `ResultStore` | risultati tool oltre 16.000 caratteri salvati lossless entro la quota Agno e sostituiti da un'anteprima | indice in `kairos.db`, payload in `filesystem.db`, entrambi inclusi nei backup; retention legata alla sessione |
 
 La [Learning Machine](https://docs.agno.com/learning/overview) di Agno offre
-anche Decision Log, modalità Propose e curatela degli apprendimenti. Sono
-primitive interessanti, ma non diventano automaticamente funzionalità di
-Ares: richiedono prima una politica utente, una rappresentazione nella CLI e
-copertura nei backup.
+anche Decision Log, modalità Propose e curatela degli apprendimenti. Qui
+non sono abilitate: ognuna richiede prima una politica utente, una
+rappresentazione nella CLI e la copertura nei backup (vedi
+[sotto](#capacità-disponibili-ma-non-abilitate)).
 
-Una in particolare non è disponibile nemmeno volendola. Le modalità di
-apprendimento sono quattro - `ALWAYS`, `AGENTIC`, `PROPOSE`, `HITL` - ma non
-valgono per tutti gli store: `PROPOSE` è supportato dal solo
-`LearnedKnowledgeStore`, mentre `UserProfileStore` e `UserMemoryStore` lo
-rifiutano con un warning, e `HITL` è dichiarato "reserved for future use;
-unsupported by every store". **In Agno 3.0.11 non esiste quindi alcun modo, a
-livello di framework, di far confermare ciò che entra in profilo e
-memorie**: è un limite del framework, non una scelta di Ares, ed è la
-ragione per cui la sezione "Confini di sicurezza" di
-`docs/architecture.md` dice ciò che dice. Il fatto è sorvegliato da
-`tests/agno_contract_test.py`, che diventa rosso il giorno in cui Agno
-cambia idea.
+**Profilo e memorie non si possono far confermare dal framework.** Delle
+quattro modalità di apprendimento (`ALWAYS`, `AGENTIC`, `PROPOSE`, `HITL`),
+`PROPOSE` vale solo per `LearnedKnowledgeStore` — `UserProfileStore` e
+`UserMemoryStore` la rifiutano — e `HITL` è "reserved for future use;
+unsupported by every store". Per questo Ares costruisce la conferma a valle
+(vedi "Confini di sicurezza" in [architecture.md](architecture.md)).
+`tests/agno_contract_test.py` diventa rosso se Agno cambia questo
+comportamento.
 
 ## Cosa porta Agno 3 ad Ares
 
 Agno 3 normalizza ogni run nella tabella `agno_runs`, lasciando alle sessioni
-solo i propri metadati. Per Ares significa scritture che non ricopiano tutta
-la cronologia a ogni turno e accesso diretto ai run. La 3.0.1 aggiunge inoltre
-cache degli schemi degli strumenti e caricamento incrementale della storia:
-due miglioramenti pertinenti a un assistente longevo con molti strumenti.
-Consulta le [note 3.0.0](https://github.com/agno-agi/agno/releases/tag/v3.0.0)
-e le [note 3.0.1](https://github.com/agno-agi/agno/releases/tag/v3.0.1).
-Le patch successive, fino alla
-[3.0.11](https://github.com/agno-agi/agno/releases/tag/v3.0.11), entrano dal
-solo `uv.lock`: il vincolo in `pyproject.toml` è `>=3.0.2,<3.1`, e ogni
-patch viene provata sulle superfici che Ares usa - le firme di
-`LearningMachine.process` e di `SessionContextStore`, che Ares sovrascrive,
-e il ciclo REPL completo - prima di entrare nel lock.
+solo i propri metadati: le scritture non ricopiano la cronologia a ogni
+turno e i run sono accessibili direttamente. La 3.0.1 aggiunge la cache
+degli schemi degli strumenti e il caricamento incrementale della storia.
+Dettagli nelle [note 3.0.0](https://github.com/agno-agi/agno/releases/tag/v3.0.0)
+e [3.0.1](https://github.com/agno-agi/agno/releases/tag/v3.0.1).
 
-Il numero della versione, però, era scritto a mano in sette posti e uno era
-rimasto indietro: il commento di `AresLearningMachine` citava la 3.0.5 col
-lock alla 3.0.9. Da questa sessione `tests/agno_contract_test.py` confronta
-le dichiarazioni con l'installato — l'elenco esplicito è
-`FILE_CHE_DICHIARANO` — quindi una patch che sale senza che le pagine salgano
-con lei rende la prova rossa, e il messaggio dice quale file allineare.
-`CHANGELOG.md` e `docs/memory-quality.md` restano fuori: citano le versioni
-di allora, non quella corrente.
+### Aggiornare Agno
+
+Il vincolo in `pyproject.toml` è `>=3.0.2,<3.1`: le patch, fino alla
+[3.0.11](https://github.com/agno-agi/agno/releases/tag/v3.0.11), entrano dal
+solo `uv.lock`. Prima di entrare nel lock ogni patch viene provata sulle
+superfici che Ares usa: le firme di `LearningMachine.process` e di
+`SessionContextStore`, che Ares sovrascrive, e il ciclo REPL completo.
+
+La versione è citata a mano in più documenti. `tests/agno_contract_test.py`
+li confronta con l'installato (l'elenco è `FILE_CHE_DICHIARANO`) e nomina il
+file da allineare. `CHANGELOG.md` e `docs/memory-quality.md` sono esclusi,
+perché citano le versioni di allora.
 
 La major estende anche l'isolamento per utente e rende stabili gli id dei
 toolkit. Ares mantiene i propri namespace espliciti `user/<id>`: per le
@@ -100,16 +94,15 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **Run normalizzati:** Ares usa le API v3 per persistere i run e continua a
   consumare `session.runs`, che Agno ricompone dalla tabella dedicata. Non ci
   sono query dirette verso la vecchia colonna JSON.
-- **Conferma dopo la scrittura tolta:** Agno richiama il modello dopo la tool
-  call di estrazione per sentirgli dire che ha finito, e quella risposta non
-  la legge nessuno: l'esito si legge da `response.tool_executions`. Era una
-  chiamata in più per profilo e per memorie — due delle cinque di un turno,
-  il 43% dei token di ingresso con il modello vero. Il contesto di sessione
-  la evitava già con `stop_after_tool_call`;
-  `AresUserProfileStore` e `AresUserMemoryStore` in `agent/learning.py` ora
-  la impostano sovrascrivendo `_build_functions_for_model` (superficie
-  privata, come il retry del contesto). `tests/learning_cost_test.py`
-  verifica le tre chiamate e che la scrittura arrivi negli store.
+- **Nessuna chiamata di chiusura dopo l'estrazione:** Agno richiamerebbe il
+  modello dopo la tool call solo per sentirgli dire che ha finito, mentre
+  l'esito si legge già da `response.tool_executions`. Profilo e memorie
+  impostano `stop_after_tool_call` sovrascrivendo
+  `_build_functions_for_model` in `agent/learning.py` (superficie privata,
+  come il retry del contesto), come già fa il contesto di sessione. I numeri
+  sono in [memory-quality.md](memory-quality.md);
+  `tests/learning_cost_test.py` verifica le tre chiamate per turno e che la
+  scrittura arrivi negli store.
 - **HITL v3:** la ripresa passa la lista `requirements` del `RunOutput`; le
   operazioni workspace sensibili continuano quindi sullo stesso run dopo la
   conferma.
@@ -131,16 +124,12 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **Decision Log:** adatto ad audit e feedback sulle decisioni; per Ares serve
   decidere cosa registrare senza trasformare ogni conversazione in
   telemetria locale rumorosa.
-- **Learning `PROPOSE`:** utilizzabile sul solo `learned_knowledge`, che in
-  Ares è già `AGENTIC` - cioè un salvataggio che il modello sceglie
-  esplicitamente, lo store meno esposto dei tre. Lì `PROPOSE` non aggiunge
-  una pausa imposta: aggiunge istruzioni nel prompt che chiedono al modello
-  di proporre e di chiamare `save_learning` solo dopo un sì. È
-  un'approvazione "soft", che dipende dall'obbedienza del modello, sullo
-  store che ne aveva meno bisogno. Sugli altri due store la modalità non
-  esiste (vedi sopra). La conferma sulla memoria durevole è perciò
-  costruita in Ares, a valle: `echo.py` legge i due store prima del turno e
-  li riscrive se l'utente dice di no (`CONFERMA_APPRENDIMENTI`).
+- **Learning `PROPOSE`:** vale solo per `learned_knowledge`, che in Ares è
+  già `AGENTIC` (il modello sceglie esplicitamente di salvare). Lì non
+  aggiunge una pausa imposta, solo istruzioni che chiedono al modello di
+  proporre prima di salvare: un'approvazione che dipende dalla sua
+  obbedienza. La conferma sulla memoria durevole è costruita in Ares
+  (`agent/echo.py`, `CONFERMA_APPRENDIMENTI`).
 - **Curator:** può deduplicare e potare apprendimenti, ma deve passare dallo
   stesso modello di anteprima, backup e applicazione già usato per le
   entità.
@@ -153,10 +142,10 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **AgentOS, Studio, scheduler, team e workflow:** Agno può esporre agenti
   tramite API e interfacce, eseguire code durevoli e coordinare più agenti.
   Ares oggi è una CLI personale su un solo host: abilitarli allargherebbe il
-  modello di sicurezza e non è parte di questo upgrade.
+  modello di sicurezza.
 - **Context Providers e integrazioni remote:** Agno offre connettori e
   accesso live a fonti esterne. Ares resta deliberatamente Ollama-only:
   l'unico servizio remoto ammesso è il cloud di Ollama, raggiunto dal
   daemon locale, per il modello conversazionale e, su scelta separata nel
-  `.env`, per quello che estrae le memorie; mai per l'embedding. Il percorso diretto
-  di Agno verso `https://ollama.com` con `api_key` non viene usato.
+  `.env`, per quello che estrae le memorie; mai per l'embedding. Il percorso
+  diretto di Agno verso `https://ollama.com` con `api_key` non viene usato.

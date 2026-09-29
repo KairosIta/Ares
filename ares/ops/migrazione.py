@@ -1,16 +1,12 @@
 """Lo stato di Ares si sposta da dentro il clone a `~/.ares`, una volta sola.
 
-Prima del comando sul PATH lo stato viveva in `tmp/` dentro il repository e
-gli snapshot in `ares-backup` accanto. Ora vivono in `~/.ares/stato` e
-`~/.ares/backup`, e chi aggiorna un clone che ha gia' mesi di memorie deve
-poterli portare dietro senza rifare niente a mano: `ares migrate` li sposta,
-i setup lo chiamano, e la chat si ferma finche' non e' successo, perche'
-partire con uno stato vuoto accanto a uno pieno li sdoppierebbe.
+Le versioni precedenti tenevano lo stato in `tmp/` nel repository e gli
+snapshot in `ares-backup`; ora stanno in `~/.ares/stato` e
+`~/.ares/backup`. `ares migrate` li sposta, i setup lo chiamano e la chat
+si ferma finche' non e' fatto, per non sdoppiare lo stato.
 
-E' uno spostamento di directory sotto lock esclusivo: sullo stesso filesystem
-e' una rinomina, e su un filesystem diverso una copia in una sorella
-temporanea che solo la rinomina rende visibile, cosi' nessuna chat lo vede a
-meta'.
+Lo spostamento avviene sotto lock esclusivo e nessuna chat lo vede a meta'
+(vedi `_sposta`).
 """
 
 import contextlib
@@ -76,17 +72,10 @@ def avviso(percorsi: Percorsi) -> list[str]:
 def _sposta(vecchio: Path, nuovo: Path) -> None:
     """Sposta `vecchio` in `nuovo` senza lasciare mai un `nuovo` a meta'.
 
-    Sullo stesso filesystem `os.rename` e' atomico e basta. Fra filesystem
-    diversi non lo e', e `shutil.move` degrada a copia piu' cancellazione: un
-    guasto a meta' lascerebbe in `nuovo` uno stato incompleto che la chat
-    aprirebbe senza accorgersene, con la copia buona ancora in `vecchio`. Qui
-    la copia va in una sorella temporanea di `nuovo` e solo la rinomina la
-    rende visibile, cosi' `nuovo` c'e' tutto o non c'e' per niente: nel primo
-    caso la chat procede, nel secondo `avviso` la ferma.
-
-    Il nome della sorella e' fisso e viene ripulito prima: i lock esclusivi
-    tengono fuori un'altra migrazione, quindi un residuo e' di un tentativo
-    precedente finito male, e ricominciare da capo e' la cosa giusta.
+    Sullo stesso filesystem basta `os.rename`. Fra filesystem diversi la copia
+    va in una sorella temporanea di `nuovo`, resa visibile solo dalla rinomina
+    finale. La sorella ha un nome fisso: un residuo viene da un tentativo
+    fallito (i lock escludono migrazioni concorrenti) e si ripulisce.
     """
     try:
         os.rename(vecchio, nuovo)
@@ -109,11 +98,8 @@ def _sposta(vecchio: Path, nuovo: Path) -> None:
 def migra() -> int:
     """Sposta stato e backup da dentro il clone a ~/.ares, se sono ancora li'.
 
-    Idempotente: dopo la prima volta dice che non c'e' niente da spostare.
-    Non tocca una parte quando la destinazione contiene gia' dei dati: lo
-    dice, e la decisione resta a chi guarda le due directory. Lo spostamento
-    non lascia mai una destinazione a meta', nemmeno fra filesystem diversi:
-    ci pensa `_sposta`.
+    Idempotente. Non tocca una parte la cui destinazione contiene gia' dati:
+    lo dice, e decide l'utente.
     """
     percorsi = config.leggi_percorsi()
     for cosa, vecchio, nuovo in conflitti(percorsi):
@@ -128,9 +114,8 @@ def migra() -> int:
 
     vecchio_lock = Path(config.VECCHIO_TMP_DIR).with_name(Path(config.VECCHIO_TMP_DIR).name + ".lock")
     try:
-        # Tutti e due i lock: quello nuovo, che le chat di questa versione
-        # prendono, e quello vecchio accanto a `tmp/`, che una chat ancora
-        # aperta dalla versione precedente potrebbe tenere.
+        # Anche il vecchio lock, che una chat della versione precedente
+        # potrebbe ancora tenere.
         with (
             lock_stato(percorsi.lock_file, esclusivo=True),
             lock_stato(vecchio_lock, esclusivo=True),
@@ -147,13 +132,10 @@ def migra() -> int:
                 rendi_privato(nuovo)
                 UI.pair("Spostato " + cosa, str(vecchio) + "  ->  " + str(nuovo), style="ares.title")
 
-            # Il vecchio lock si toglie mentre lo teniamo ancora. Dopo il
-            # rilascio, fra il `close` e l'`unlink`, un processo della versione
-            # precedente puo' prendere il lock su questo file: l'unlink lo
-            # staccherebbe dall'inode, il processo dopo ne creerebbe uno nuovo,
-            # e i due si crederebbero soli. Su Windows un file aperto non si
-            # cancella - `lock_file` lo tiene aperto finche' il contesto non
-            # esce - quindi li' il tentativo non riesce e si ripiega sotto.
+            # Si cancella il vecchio lock mentre lo si tiene: dopo il rilascio
+            # un altro processo potrebbe prenderlo, e l'unlink lo staccherebbe
+            # dall'inode lasciando due processi convinti di essere soli. Su
+            # Windows un file aperto non si cancella, e l'errore si ignora.
             with contextlib.suppress(PermissionError):
                 vecchio_lock.unlink()
     except StatoOccupato as errore:

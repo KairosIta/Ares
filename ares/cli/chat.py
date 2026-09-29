@@ -1,5 +1,4 @@
-"""
-REPL interattivo
+"""REPL interattivo
 ================
 Uso:
     ares                       nella cartella corrente, conversazione nuova
@@ -12,29 +11,16 @@ Uso:
     ares --debug               mostra le chiamate al modello
     ares --metriche            costo di ogni turno
 
-Le opzioni le dichiara `cli/app.py`, che e' il comando `ares` intero: qui
-c'e' il corpo della chat, che si importa solo quando la chat parte.
+Le opzioni le dichiara `cli/app.py`; qui c'e' il corpo della chat, importato
+solo quando la chat parte.
 
-La cartella da cui si lancia `ares` e' quella su cui Ares lavora. Prima di
-aprirla `cli/cartella.py` la guarda: se e' la home, il disco intero o una
-directory che contiene lo stato di Ares lo dice e chiede una conferma
-scritta. E' il primo dei due punti in cui l'avvio puo' fermarsi prima del
-banner; il secondo e' un `resume` senza niente da riprendere.
+La cartella di lancio e' quella di lavoro, vagliata da `cli/cartella.py`.
+Il contesto di sessione (obiettivo, piano, avanzamento) e' per conversazione
+e `ares resume` lo riapre; profilo e memorie sono per utente.
 
-Ogni conversazione nasce nella cartella e la ricorda: il contesto -
-obiettivo, piano, avanzamento - e' suo, e `ares resume` lo riapre. Il
-profilo e le memorie invece sono per utente, quindi attraversano tutte le
-conversazioni, anche una nuova.
-
-Frecce su e giu' ripercorrono cio' che hai gia' scritto, anche di una
-sessione precedente; le frecce laterali correggono la riga senza riscriverla.
-Invio spedisce il messaggio, Alt+Invio aggiunge una nuova riga, Ctrl-C
-svuota la riga e Ctrl-D chiude, come `/esci`.
-
-Comandi durante la chat: lo slash apre il menu, `/aiuto` lo descrive, il TAB
-completa e bastano le iniziali finche' restano uniche. L'elenco vive in
-`COMANDI` di `cli/commands.py`: era scritto in due posti e le copie erano
-gia' divergite.
+Tasti: frecce su/giu' per la cronologia, Invio spedisce, Alt+Invio va a
+capo, Ctrl-C svuota la riga, Ctrl-D chiude come `/esci`. Lo slash apre il
+menu dei comandi, definiti in `COMANDI` di `cli/commands.py`.
 """
 
 import sys
@@ -45,7 +31,6 @@ from pathlib import Path
 from agno.run.agent import RunOutput
 
 from ares import config
-from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
 from ares.agent.prompts import percorso_istruzioni
 from ares.agent.turn_core import run_turn_cycle
@@ -58,21 +43,19 @@ from ares.cli.log import configura_log_agno
 from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
 from ares.cli.ui import UI
 from ares.config import Impostazioni, Percorsi, Politica
+from ares.core.session import SessioneDiAltri, Sessioni
 from ares.ops import migrazione
-from ares.state.archivi import build_db
 from ares.state.git import ramo_git
 from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato, lock_stato, lock_turno
-from ares.state.stores import con_run, prima_domanda, quando_sessione, sessione_di_altri, sessioni_della_cartella
+from ares.state.stores import prima_domanda, quando_sessione
 
 
 def riga_stato(stato: StatoChat) -> str:
     """Cio' che la barra sotto il prompt dice: modalita', sessione e finestra occupata.
 
-    La finestra e' quella dell'ultimo turno, in percentuale: e' il numero
-    che dice quanto resta prima che il contesto si riempia, e leggerlo
-    sotto il prompt e' meglio che accendere `/metriche` per vederlo. Manca
-    finche' non c'e' stato un turno.
+    La finestra e' la quota di contesto usata dall'ultimo turno; manca finche'
+    non c'e' stato un turno.
     """
     pezzi = [stato.modo, stato.session_id]
     quota = quota_finestra(stato.finestra or 0, stato.impostazioni)
@@ -111,27 +94,17 @@ def _esegui_turno_protetto(
 ) -> RunOutput | None:
     """Un turno intero, con una rete sotto per cio' che Agno non prende.
 
-    Questa rete cattura molto meno di quanto sembri, e vale la pena dire cosa
-    resta fuori. Agno gestisce da se' sia `KeyboardInterrupt` sia le
-    eccezioni dentro i propri generatori di streaming - `_run_stream` alle
-    righe 1220 e 1243, `_continue_run_stream` alla 4061 - e non le rilancia:
-    un Ctrl-C mentre Ollama genera diventa un evento `RunCancelled`, che il
-    client stampa, e un guasto diventa un evento `RunError`, idem.
-    Quando il generatore termina, la REPL torna autonomamente al prompt.
+    Agno gestisce da se' Ctrl-C e guasti dentro i propri generatori di
+    streaming, trasformandoli negli eventi `RunCancelled` e `RunError`. Questa
+    rete copre il resto: costruire la chiamata, risolvere le conferme, e cio'
+    che sollevano `confirm()` o `reject()`. Anche dopo un errore le memorie
+    gia' scritte passano da eco e conferma, sotto il lock dell'utente.
 
-    Restano fuori i pezzi che non stanno dentro quei generatori: costruire gli
-    argomenti della chiamata, risolvere le conferme, e qualunque cosa
-    sollevino `confirm()` o `reject()`. Prima di un errore possono gia'
-    essere state scritte memorie: anche questi esiti passano dall'eco e
-    dalla conferma, conservando il lock dell'utente fino al ripristino.
-
-    Due rami separati perche' un Ctrl-C e' una decisione e un guasto e' un
-    imprevisto: al primo non serve mostrare niente oltre la conferma che si e'
-    fermato, al secondo serve l'errore, altrimenti sparisce.
+    Ctrl-C e guasto hanno rami separati: il primo e' una decisione e basta
+    confermarlo, il secondo va mostrato.
     """
-    # La fotografia precede il turno e non il post-hook: `update_user_memory`
-    # scrive durante il run, e una lettura fatta dopo la risposta non lo
-    # vedrebbe. Spenta nella politica, non si legge niente.
+    # La fotografia precede il turno, non il post-hook: `update_user_memory`
+    # scrive durante il run.
     stato = istantanea(agent) if politica.mostra.apprendimenti else None
     risposta = None
     try:
@@ -153,9 +126,7 @@ def _esegui_turno_protetto(
         )
 
     if stato is not None:
-        # Anche dopo una pausa lasciata li': cio' che e' stato scritto e'
-        # stato scritto, e tacerlo perche' il turno non e' finito bene
-        # sarebbe il caso in cui l'eco serve di piu'.
+        # Anche dopo una pausa: cio' che e' stato scritto va mostrato comunque.
         righe = variazioni(riduci(stato), fotografa(agent))
         UI.learned(righe)
         if righe and politica.mostra.conferma_apprendimenti:
@@ -166,9 +137,8 @@ def _esegui_turno_protetto(
 def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
     """Chiede se tenere cio' che il turno ha scritto; un no lo riporta indietro.
 
-    Invio, Ctrl-C e fine dell'input tengono: la scrittura c'e' gia' stata e
-    l'eco l'ha mostrata, quindi non fare niente lascia le cose come sono e
-    come si sono viste. Solo un `n` esplicito riscrive gli store.
+    Invio, Ctrl-C e fine dell'input tengono: la scrittura e' gia' avvenuta ed
+    e' stata mostrata. Solo un `n` esplicito riscrive gli store.
     """
     try:
         scelta = input_cli.ask("Tenere in memoria? [S/n] ").strip().lower()
@@ -187,40 +157,31 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
-def _sessione_da_aprire(
-    percorsi: Percorsi, utente: Utente, radice: Path | None, *, riprendi: bool, scegli: bool, politica: Politica
-) -> tuple[str | None, str]:
+def _sessione_da_aprire(sessioni: Sessioni, *, riprendi: bool, scegli: bool) -> tuple[str | None, str]:
     """Quale conversazione aprire quando `--session` non lo dice, e come chiamarla nel banner.
 
-    Senza `resume` ogni avvio e' una conversazione nuova, nominata dalla
-    cartella e dal momento: profilo e memorie ci sono comunque, perche' sono
-    per utente; il contesto - obiettivo, piano, avanzamento - parte vuoto.
-    Con `resume` si torna all'ultima nata in questa cartella, o a una scelta
-    dall'elenco. `None` vuol dire che non c'e' niente da riprendere, ed e'
-    gia' stato detto.
+    Senza `resume` e' una conversazione nuova. Con `resume` e' l'ultima di
+    questa cartella, o una scelta dall'elenco. `None`: niente da riprendere,
+    e l'utente e' gia' stato avvisato.
     """
-    if radice is None:
-        # Senza spazio di lavoro non c'e' una cartella a cui legarsi: resta
-        # il nome di prima, e `resume` non ha da dove riprendere.
+    if not sessioni.con_cartella:
         if riprendi:
             UI.line("Senza cartella di lavoro non c'e' niente da riprendere: usa --session.", style="ares.error")
             return None, ""
-        return "principale", ""
+        return sessioni.id_nuovo(), ""
     if not riprendi:
-        return cartella.nuovo_id_sessione(radice), "nuova"
-    precedenti = sessioni_della_cartella(build_db(percorsi), utente, radice)
+        return sessioni.id_nuovo(), "nuova"
+    precedenti = sessioni.della_cartella()
     if not precedenti:
         UI.line("Nessuna conversazione in questa cartella: `ares` da solo ne apre una nuova.", style="ares.warning")
         return None, ""
     if scegli:
-        UI.heading("Conversazioni in " + str(radice))
-        scelta = cartella.scegli_sessione(
-            [con_run(build_db(percorsi), s) for s in precedenti[: politica.mostra.sessioni]]
-        )
+        UI.heading("Conversazioni in " + str(sessioni.percorsi.lavoro))
+        scelta = cartella.scegli_sessione(sessioni.con_scambi(precedenti[: sessioni.politica.mostra.sessioni]))
         if scelta is None:
             UI.line("Nessuna conversazione ripresa.", style="ares.muted")
         return scelta, "ripresa"
-    ultima = con_run(build_db(percorsi), precedenti[0])
+    ultima = sessioni.con_scambi(precedenti[:1])[0]
     scambi = len(getattr(ultima, "runs", None) or [])
     conto = str(scambi) + (" scambio" if scambi == 1 else " scambi")
     UI.pair("Riprendo", str(ultima.session_id) + "   " + quando_sessione(ultima) + "   " + conto)
@@ -236,14 +197,9 @@ def _sessione_da_aprire(
 def _colpo_singolo(stato: StatoChat, testo: str) -> int:
     """`ares -p "..."`: un turno, la risposta, fine. Stdin in pipe si aggiunge al testo.
 
-    Niente banner e niente avvisi d'avvio: in una pipe conta la risposta.
-    Le conferme non hanno nessuno che risponda e valgono no, cosi' uno
-    strumento sensibile non passa mai da un comando lanciato da uno script;
-    e per la stessa ragione niente entra in memoria: l'eco che mostra cio'
-    che e' stato scritto e la domanda se tenerlo hanno bisogno di qualcuno
-    che legga, e qui non c'e'. L'agente nasce senza post-hook e senza
-    strumenti di memoria (`build_assistant(interattivo=False)`), e il
-    prompt glielo dice.
+    Niente banner ne' avvisi. Le conferme valgono no, cosi' uno strumento
+    sensibile non passa mai da uno script, e niente entra in memoria perche'
+    nessuno puo' leggere l'eco: l'agente nasce con `interattivo=False`.
     """
     if not sys.stdin.isatty():
         try:
@@ -280,27 +236,20 @@ def _esegui_chat(
 ) -> int:
     """La chat. Restituisce il codice di uscita secondo la tabella di `cli/comando.py`.
 
-    1 se lo stato non e' pronto o la cartella non esiste; 2 se la cartella
-    e' rifiutata, l'utente non e' valido, non c'e' niente da riprendere o `-p`
-    chiede una modalita' che scrive o esegue senza conferma (`auto`,
-    `modifiche`).
+    1 se lo stato non e' pronto o la cartella non esiste; 2 se la cartella e'
+    rifiutata, l'utente non e' valido, non c'e' niente da riprendere o `-p`
+    chiede una modalita' che agisce senza conferma (`auto`, `modifiche`).
 
-    Con `-p` su stdout esce la risposta e nient'altro: avvisi, rifiuti,
-    strumenti e metriche vanno su stderr, da prima della prima riga.
+    Con `-p` su stdout esce solo la risposta; tutto il resto va su stderr.
     """
-    # L'identita' si risolve qui, una volta sola per tutta la chat: la
-    # sessione da riprendere, la chiave di profilo e User Memory e il lock
-    # dei turni devono parlare dello stesso utente, e `Demo` e `demo` sono
-    # la stessa persona. A valle nessuno normalizza piu', quindi non esiste
-    # una seconda regola che possa divergere.
+    # L'identita' si risolve una volta sola: sessione, profilo e lock devono
+    # parlare dello stesso utente (`Demo` e `demo` sono la stessa persona).
     try:
         utente = Utente.da_grezzo(user)
     except UtenteNonValido as errore:
         UI.line("Utente non valido: " + str(errore) + ".", style="ares.error")
         return ESITO_RIFIUTO
-    # I percorsi si leggono qui, al confine del comando, e da qui in poi
-    # viaggiano per parametro: nessuno li rilegge a meta' strada, e la
-    # cartella scelta con --workspace e' un `replace` sul proprio oggetto.
+    # I percorsi si leggono al confine del comando e poi viaggiano per parametro.
     percorsi = config.leggi_percorsi()
     impostazioni = config.leggi_impostazioni()
     politica = config.leggi_politica()
@@ -326,18 +275,13 @@ def _guardie_di_avvio(
 ) -> int | None:
     """I rifiuti che vengono prima di ogni effetto.
 
-    Restituisce l'esito se la chat non puo' partire, `None` se puo'. L'ordine
-    non e' un dettaglio: da qui in poi si tocca lo stato e la cartella, e un
-    avvio rifiutato non deve aver lasciato niente dietro di se'.
+    Restituisce l'esito se la chat non puo' partire, `None` se puo'. Sta prima
+    di ogni scrittura: un avvio rifiutato non lascia niente dietro di se'.
 
-    `-p` non e' l'unico avvio senza nessuno che guardi: anche senza un
-    terminale, cioe' con stdin da una pipe, nessuno legge cio' che il modello
-    propone. In entrambi i casi vale solo una modalita' in cui niente lascia
-    traccia senza conferma: `auto` eseguirebbe comandi da un testo ostile
-    arrivato dalla stessa pipe, e `modifiche` scriverebbe file - ARES.md, uno
-    script, un Makefile - che non distruggono oggi ma eseguono domani. La
-    regola sta nella tabella delle modalita', non in un nome: se una modalita'
-    nuova scrivesse in silenzio, sarebbe rifiutata anche lei.
+    Senza nessuno che guardi (`-p` o stdin da una pipe) sono ammesse solo
+    modalita' in cui niente lascia traccia senza conferma: un testo ostile
+    nella stessa pipe non deve poter eseguire comandi ne' scrivere file. La
+    regola legge la tabella delle modalita', non i nomi.
     """
     if (prompt is not None or not presidiato) and config.modalita_scrive_in_silenzio(modo):
         UI.line(
@@ -346,14 +290,12 @@ def _guardie_di_avvio(
         )
         return ESITO_RIFIUTO
     if prompt is not None and scegli:
-        # `--scegli` resta fuori dalla regola sopra: scegliere una
-        # conversazione non autorizza niente, e da una pipe un numero si legge
-        # ancora. Con `-p` stdin e' la domanda, quindi li' non si puo'.
+        # `--scegli` non autorizza niente, quindi e' ammesso anche da una pipe;
+        # con `-p` no, perche' stdin e' la domanda.
         UI.line("--scegli non si combina con -p: nessuno sceglierebbe. Usa --session <nome>.", style="ares.error")
         return ESITO_RIFIUTO
-    # Lo stato ancora nel posto di prima ferma tutto: aprire un archivio vuoto
-    # accanto a uno pieno di mesi di memorie li sdoppierebbe, e Ares
-    # risponderebbe come al primo giorno senza che si capisca perche'.
+    # Lo stato ancora nel posto di prima ferma tutto: aprirne uno vuoto accanto
+    # sdoppierebbe l'archivio.
     ancora_di_la = migrazione.avviso(percorsi)
     if ancora_di_la:
         UI.line(ancora_di_la[0], style="ares.warning")
@@ -391,11 +333,9 @@ def _apri_input(stato: StatoChat, *, presidiato: bool) -> CliInput:
 def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path | None) -> None:
     """Banner e avvisi di apertura, tutti prima del primo turno.
 
-    All'avvio e non all'uscita: qui l'utente c'e' e puo' decidere, mentre chi
-    scrive `/esci` ha gia' finito e legge un avviso che rimandera'. Un modello
-    cloud si vede dal nome, ma il nome non dice cosa comporta. Un restore
-    interrotto lascia lo stato di prima accanto a uno ricreato vuoto: senza
-    dirlo, l'utente lo scoprirebbe da una risposta che non ricorda niente.
+    All'avvio e non all'uscita, quando l'utente puo' ancora decidere: cosa
+    comporta un modello cloud, un restore interrotto che ha lasciato lo stato
+    vecchio accanto a uno vuoto.
     """
     politica = stato.politica
     istruzioni = None
@@ -413,8 +353,7 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
     if stato.modo == "auto":
         UI.line("Modalita' auto: nessuna conferma, ogni strumento gira subito.", style="ares.warning")
 
-    # Le righe sono le stesse del preflight: la conversazione e l'estrazione
-    # delle memorie possono andare in cloud separatamente.
+    # Le stesse righe del preflight.
     avviso_cloud = stato.impostazioni.avviso_cloud()
     if avviso_cloud:
         UI.line(" ".join(avviso_cloud), style="ares.warning")
@@ -443,8 +382,8 @@ def _ciclo(input_cli: CliInput, stato: StatoChat) -> None:
     """I turni, dalla riga letta all'uscita.
 
     Un turno occupato non e' un guasto: la chat e' aperta altrove e questa
-    aspetta, perche' e' la stessa persona a scrivere. `/esci` e la fine
-    dell'input escono di qui, e il saluto resta a chi ha aperto la chat.
+    aspetta. `/esci` e la fine dell'input escono di qui; il saluto e' del
+    chiamante.
     """
     while True:
         try:
@@ -491,18 +430,14 @@ def _apri_chat(
     prompt: str | None,
     modo: str,
 ) -> int:
-    # La presenza del terminale decide se qualcuno puo' rispondere alle
-    # domande. Si guarda stdin e non stdout: e' da li' che si risponde, quindi
-    # `ares > file` con la tastiera davanti resta presidiato.
+    # Si guarda stdin, non stdout: `ares > file` con la tastiera davanti resta
+    # presidiato.
     presidiato = sys.stdin is not None and sys.stdin.isatty()
     rifiuto = _guardie_di_avvio(prompt=prompt, scegli=scegli, modo=modo, percorsi=percorsi, presidiato=presidiato)
     if rifiuto is not None:
         return rifiuto
 
-    # Poi la cartella, perche' e' l'altro passo che puo' dire no: un avvio
-    # rifiutato non deve aver toccato niente, nemmeno la directory dello
-    # stato. `workspace` e' `--workspace`; senza, e' quella da cui si e'
-    # lanciato `ares`, che `leggi_percorsi` ha gia' letto.
+    # Poi la cartella, l'altro passo che puo' dire no prima di toccare lo stato.
     radice: Path | None = None
     if politica.workspace.attivo:
         try:
@@ -512,55 +447,37 @@ def _apri_chat(
             return ESITO_GUASTO
         if not cartella.autorizza(radice, percorsi, esplicito=workspace is not None):
             return ESITO_RIFIUTO
-        # La cartella scelta resta un campo dell'oggetto, ma il `replace` e'
-        # locale: `render`, `/cartella` e `build_workspace` la ricevono da chi
-        # li chiama. Prima era un'assegnazione a `config.WORKSPACE_DIR` che
-        # nessuna firma lasciava vedere.
+        # Il `replace` e' locale: chi ha bisogno della cartella la riceve per parametro.
         percorsi = replace(percorsi, lavoro=radice)
 
-    # Poi cio' che scrive: la cronologia della REPL nasce dentro lo stato, che
-    # quindi deve esistere gia' privato quando `CliInput` ci scrive. `--help`
-    # non arriva qui: esce dentro Cyclopts.
+    # Poi cio' che scrive: la cronologia della REPL vive nello stato, che deve
+    # gia' esistere privato.
     config.prepara_archivio(percorsi)
+
+    # Senza terminale nessuno legge l'eco: apprendimento spento come in `-p`.
+    # `interattivo` passa anche alle ricostruzioni tramite `StatoChat`.
+    interattivo = prompt is None and presidiato
+    sessioni = Sessioni(percorsi, impostazioni, politica, utente, debug=debug, interattivo=interattivo)
 
     etichetta = ""
     if session is None:
-        session, etichetta = _sessione_da_aprire(
-            percorsi, utente, radice, riprendi=riprendi, scegli=scegli, politica=politica
-        )
+        session, etichetta = _sessione_da_aprire(sessioni, riprendi=riprendi, scegli=scegli)
         if session is None:
             return ESITO_RIFIUTO
 
-    # Il nome esplicito scavalca gli elenchi per cartella, gia' filtrati per
-    # utente: una sessione di un altro non si apre, e l'agente non nasce.
-    if sessione_di_altri(build_db(percorsi), session, utente):
+    configura_log_agno(debug)
+    try:
+        agent = sessioni.apri(session, modo=modo).agente
+    except SessioneDiAltri:
+        # Il nome esplicito scavalca gli elenchi per cartella: una sessione di
+        # un altro utente non si apre.
         UI.line(
             "La sessione '" + session + "' appartiene a un altro utente: non si apre.",
             style="ares.error",
         )
         return ESITO_RIFIUTO
 
-    configura_log_agno(debug)
-    # Nessuno legge l'eco quando non c'e' un terminale: senza un posto dove
-    # mostrarla, l'apprendimento automatico e' spento come in `-p`. Il flag
-    # `interattivo` e' uno solo, e vale per la costruzione e per ogni
-    # ricostruzione (`/sessione`, `/modo`), che lo ripassano da `StatoChat`.
-    interattivo = prompt is None and presidiato
-    agent = build_assistant(
-        percorsi,
-        impostazioni,
-        politica,
-        utente,
-        session_id=session,
-        debug=debug,
-        interattivo=interattivo,
-        modo=modo,
-    )
-
-    # Il flag di config e' il default, l'opzione lo accende per una sessione
-    # sola: guardare il costo dei turni e' quasi sempre una cosa che si fa per
-    # un pomeriggio, non una preferenza permanente. `/metriche`, `/debug` e
-    # `/sessione` cambiano questo stato a meta' conversazione.
+    # Il flag di config e' il default; l'opzione lo accende per questa sessione.
     stato = StatoChat(
         agent=agent,
         session_id=session,
@@ -598,18 +515,14 @@ def avvia(
 ) -> int:
     """La chat con la rete intorno: il lock e i tre modi in cui l'avvio non parte.
 
-    Restituisce il codice di uscita della tabella di `cli/comando.py`: un
-    archivio occupato vale 3, una cartella rifiutata o niente da riprendere
-    2, perche' uno script che lancia `ares` deve poterli distinguere; un
-    Ctrl-C durante l'avvio vale 0, perche' l'ha deciso l'utente.
+    Codici di `cli/comando.py`: archivio occupato 3, cartella rifiutata o
+    niente da riprendere 2, Ctrl-C durante l'avvio 0 (l'ha deciso l'utente).
     """
-    # I percorsi si leggono al confine del comando: il lock condiviso che
-    # segue vale per tutta la vita del processo, e la cartella scelta con
-    # --workspace non lo sposta (cambia `lavoro`, non `stato`).
+    # Il lock condiviso vale per tutta la vita del processo, sullo stato
+    # (`--workspace` cambia `lavoro`, non `stato`).
     percorsi = config.leggi_percorsi()
     try:
-        # Lock condiviso per tutta la vita del processo. Piu' chat possono
-        # convivere; backup e restore, che chiedono il lock esclusivo, no.
+        # Piu' chat convivono; backup e restore, che chiedono il lock esclusivo, no.
         with lock_stato(percorsi.lock_file, esclusivo=False):
             esito = _esegui_chat(
                 session=session,
@@ -628,9 +541,7 @@ def avvia(
         UI.err("Attendi che l'operazione in corso termini e riprova.", style="ares.muted")
         return ESITO_OCCUPATO
     except KeyboardInterrupt:
-        # Dentro la chat il Ctrl-C e' gia' gestito - dal prompt esce, da un
-        # turno lo interrompe. Resta scoperta la costruzione dell'agente, che
-        # apre database e indice: li' un traceback sarebbe l'unica traccia.
+        # Un Ctrl-C durante la costruzione dell'agente, l'unico non gestito altrove.
         UI.blank()
         UI.line("Avvio interrotto.", style="ares.warning")
         return 0

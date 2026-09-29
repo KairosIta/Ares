@@ -27,25 +27,18 @@ Una buona segnalazione include:
 
 ## Modello di sicurezza
 
-Ares mantiene inferenza e stato sul computer locale nell’uso ordinario e
-disabilita la telemetria Agno. I dati persistenti vivono in directory escluse
-da Git e i backup vengono verificati prima del restore.
+Nell'uso ordinario inferenza e stato restano sul computer locale, e la
+telemetria Agno è disabilitata. I dati persistenti vivono in directory
+escluse da Git; i backup vengono verificati prima del restore.
 
-Le dipendenze sono bloccate a versione e ad artefatto: `uv.lock` porta gli
-hash SHA-256 di ogni file, e setup e CI installano con `uv sync --locked`,
-che li verifica. L'installazione rifiuta così sia un
-pacchetto che non corrisponde sia una futura dipendenza priva di hash. Un pin
-dice quale versione installare, un hash dice quale file: senza, la
-ripubblicazione di una versione già esistente su PyPI passerebbe inosservata.
-
-Versione bloccata e artefatto verificato non dicono però se quella versione
-*ha un avviso pubblicato*: è una domanda sul mondo, non sul lock. Il workflow
-`Audit` la fa quando cambiano `uv.lock`, `pyproject.toml` o il workflow stesso,
-e una volta la settimana a prescindere, esportando
-dall'`uv.lock` l'elenco esatto delle dipendenze — gruppo di sviluppo compreso
-— e confrontandolo con gli advisory noti. Come CodeQL resta fuori dai
-controlli obbligatori: ciò che trova va letto quando compare, e si corregge
-con un `uv lock` deciso leggendo l'avviso.
+**Dipendenze.** `uv.lock` blocca versione e artefatto, con gli hash SHA-256
+di ogni file; setup e CI installano con `uv sync --locked`, che li verifica.
+Un pacchetto diverso o una dipendenza senza hash vengono rifiutati, quindi
+una versione ripubblicata su PyPI non passa inosservata. Il workflow `Audit`
+confronta le dipendenze bloccate (gruppo di sviluppo compreso) con gli
+advisory noti: quando cambiano `uv.lock`, `pyproject.toml` o il workflow, e
+una volta la settimana. Come CodeQL resta fuori dai controlli obbligatori:
+ciò che trova si legge quando compare e si corregge con un `uv lock`.
 
 Sono particolarmente rilevanti vulnerabilità che permettono:
 
@@ -58,72 +51,80 @@ Sono particolarmente rilevanti vulnerabilità che permettono:
 
 ## Limiti dichiarati
 
-Ares non è una sandbox. Un comando shell autorizzato opera con i permessi
-dell’utente che ha avviato il processo e può accedere alla rete. Il modello,
-i prompt e le conferme riducono il rischio operativo ma non costituiscono un
-confine di sicurezza.
+### Ares non è una sandbox
+
+Un comando shell autorizzato opera con i permessi dell’utente che ha avviato
+il processo e può accedere alla rete. Modello, prompt e conferme riducono il
+rischio operativo ma non sono un confine di sicurezza.
+
+### Conferme e modalità
 
 Tutto ciò che il modello legge — un file del progetto, l'output di un
-comando, lo stesso `ARES.md` — può contenere un'istruzione. Per questo ogni
-strumento del workspace che lascia una traccia sul disco (scrivere,
-modificare, spostare, cancellare, eseguire) chiede conferma nella modalità
-predefinita `manuale`, mostrando per intero cosa sta per fare. `modifiche`
-autorizza scrittura e modifica senza domanda; `auto` autorizza tutti gli
-strumenti senza domanda; `piano` espone soltanto quelli di lettura.
-`ARES.md` entra nel prompt come regole del progetto delimitate, non come
-ordini; un `ARES.md` che è un link fuori dalla cartella vale come assente, e
-il confine del workspace non si aggira con un link. In `ares -p` non c'è
-nessuno a rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono
-no e gli store di apprendimento non vengono
-scritti, né automaticamente né con gli strumenti. Le tre difese valgono
-anche senza `-p` quando stdin non è un terminale: è la stessa condizione —
-nessuno legge ciò che il modello propone — e la pipe che porta l'istruzione
-non risponde ad `Autorizzi?`. Cronologia e quaderno privato restano
-persistenti.
+comando, lo stesso `ARES.md` — può contenere un'istruzione. Per questo le
+modalità decidono cosa chiede conferma:
 
-La memoria durevole si scrive prima della conferma, non dopo. Profilo e
-memorie vengono scritti sia dagli strumenti che il modello chiama sia
+| Modalità | Senza domanda | Con conferma |
+| --- | --- | --- |
+| `manuale` *(predefinita)* | lettura | scrivere, modificare, spostare, cancellare, eseguire |
+| `modifiche` | lettura, scrittura, modifica | spostare, cancellare, eseguire |
+| `auto` | tutto | niente |
+| `piano` | solo strumenti di lettura | — |
+
+La conferma mostra per intero cosa sta per succedere. `ARES.md` entra nel
+prompt come regole del progetto delimitate, non come ordini; se è un link
+fuori dalla cartella vale come assente, e il confine del workspace non si
+aggira con un link.
+
+In `ares -p`, e comunque quando stdin non è un terminale, nessuno può
+rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono no e
+gli store di apprendimento non vengono scritti, né automaticamente né con
+gli strumenti. Cronologia e quaderno privato restano persistenti.
+
+### La memoria si scrive prima della conferma
+
+Profilo e memorie vengono scritti dagli strumenti del modello e
 dall'estrazione automatica dopo ogni risposta, e ciò che entra viene
-reiniettato in ogni sessione futura: un file del workspace o l'output di un
-comando che contenga un'istruzione può quindi lasciare una traccia che dura
-oltre il turno. Agno 3.0.11 non offre una modalità che imponga una conferma
-su questi due store — `PROPOSE` vale solo per le intuizioni, `HITL` per
-nessuno — quindi la conferma è costruita da Ares **a valle**: con
-`MOSTRA_APPRENDIMENTI` e `CONFERMA_APPRENDIMENTI` accesi, sotto ogni risposta
-compare per intero ciò che è cambiato in profilo e memorie e la CLI chiede
-se tenerlo; un `n` riporta i due store a com'erano prima del turno,
-riscrivendoli con l'istantanea letta allora, e verifica di esserci riuscito
-rileggendoli. È tutto o niente per turno, e funziona se qualcuno legge:
-Invio tiene. La correzione fine di una singola riga passa dagli strumenti
-di memoria, chiedendo ad Ares di correggerla o cancellarla.
+reiniettato in ogni sessione futura: un'istruzione in un file o nell'output
+di un comando può lasciare una traccia oltre il turno. Agno 3.0.11 non
+offre una conferma su questi due store (`PROPOSE` vale solo per le
+intuizioni, `HITL` per nessuno), quindi Ares la costruisce **a valle**: con
+`MOSTRA_APPRENDIMENTI` e `CONFERMA_APPRENDIMENTI` accesi, sotto ogni
+risposta compare ciò che è cambiato e la CLI chiede se tenerlo. Un `n`
+riscrive i due store com'erano prima del turno e verifica il ripristino
+rileggendoli. È tutto o niente per turno, e Invio tiene; per correggere una
+singola riga si chiede ad Ares di usare gli strumenti di memoria.
+
+### Concorrenza e proprietà delle sessioni
 
 Le chat dello stesso utente serializzano i turni con un lock esclusivo per
 utente, dall'istantanea iniziale fino alla conferma e all'eventuale
-ripristino. Una seconda chat può restare aperta, ma deve riprovare se un
-turno è già in corso; in pipe il comando termina con codice 3. Utenti diversi
-possono eseguire turni contemporanei. Una sessione dal nome fisso appartiene
-all'utente che l'ha creata: un altro utente non può aprirla, nemmeno
-nominandola con `--session` o `/sessione`. Anche un'interruzione o un errore fuori
-dal generatore passa dall'eco e dalla conferma delle scritture già avvenute.
-Il lock resta cooperativo: non protegge da programmi che scrivono direttamente
-negli archivi. Un arresto forzato del processo può comunque lasciare scritture
-non ancora mostrate o confermate.
+ripristino. Una seconda chat deve riprovare se un turno è in corso; in pipe
+il comando termina con codice 3. Utenti diversi lavorano in parallelo. Una
+sessione appartiene all'utente che l'ha creata: un altro utente non può
+aprirla, nemmeno con `--session` o `/sessione`. Anche un'interruzione o un
+errore fuori dal generatore passa dall'eco e dalla conferma.
+
+Il lock è cooperativo: non protegge da programmi che scrivono direttamente
+negli archivi. Un arresto forzato del processo può lasciare scritture non
+ancora mostrate o confermate.
+
+### Permessi su disco
 
 Su POSIX stato, cronologia e snapshot nascono privati (0700 sulle directory,
 0600 sui file); `setup.sh` applica 0600 anche a `.env`, quando esiste. Su
-Windows vale la DACL ereditata. Restano comunque leggibili da chiunque abbia
-accesso all’account che esegue Ares: i permessi separano gli utenti della
-macchina, non proteggono da chi è già dentro l’account. Per scenari multiutente
-servono isolamento e cifratura gestiti dal sistema operativo.
+Windows vale la DACL ereditata. I permessi separano gli utenti della
+macchina, ma non proteggono da chi ha già accesso all’account che esegue
+Ares: per scenari multiutente servono isolamento e cifratura del sistema
+operativo.
 
-I modelli Ollama sono artefatti esterni al repository: provenienza, licenza e
-limiti del modello scelto devono essere valutati separatamente. Se
-`ARES_MAIN_MODEL` indica un modello cloud di Ollama — che non è il valore
-distribuito — attraversa `ollama.com`, sotto la sua privacy policy, tutto
-ciò che il modello conversazionale riceve e produce: le domande e le
-risposte, il system prompt con profilo, memorie ed `ARES.md`, i file del
-workspace che legge, l'output dei comandi autorizzati, le conversazioni
-passate che rilegge. Se lo indica `ARES_LEARNING_MODEL` escono anche il
-testo dei turni e le memorie già salvate, a ogni estrazione. Gli embedding
-non escono mai. Il prompt dice al modello quale ruolo è in cloud, così non
-rassicura l'utente sulla privacy quando non può.
+### Modelli e cloud
+
+I modelli Ollama sono artefatti esterni: provenienza, licenza e limiti vanno
+valutati separatamente. Con un modello cloud in `ARES_MAIN_MODEL` (non è il
+valore distribuito) attraversa `ollama.com`, sotto la sua privacy policy,
+tutto ciò che il modello conversazionale riceve e produce: domande e
+risposte, il system prompt con profilo, memorie ed `ARES.md`, i file che
+legge, l'output dei comandi, le conversazioni passate che rilegge. Con
+`ARES_LEARNING_MODEL` escono anche il testo dei turni e le memorie già
+salvate, a ogni estrazione. Gli embedding non escono mai. Il prompt dice al
+modello quale ruolo è in cloud, così non promette una privacy che non c'è.

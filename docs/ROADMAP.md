@@ -1,6 +1,6 @@
 # Roadmap
 
-Aggiornata il 13 settembre 2026 dopo la prima analisi della memoria e del
+Impostata il 13 settembre 2026, dopo la prima analisi della memoria e del
 prompt di Ares.
 
 Ares deve poter lavorare in più cartelle e repository mantenendo
@@ -46,24 +46,27 @@ e quaderno sono condivisi fra i progetti dello stesso utente. La conferma
 attuale ripristina profilo e memorie dopo la scrittura, per l'intero turno;
 non copre gli altri archivi, e fra la scrittura e la risposta resta una
 finestra in cui un processo che muore lascia la scrittura dov'è. I lock
-coordinano i turni dello stesso utente e le operazioni di manutenzione. Dal
-21 settembre 2026 l'identità dell'utente ha una sola forma canonica —
-namespace, profilo/memorie e lock concordano — e l'ID di sessione non
-collide fra cartelle omonime o avvii nello stesso secondo.
+coordinano i turni dello stesso utente e le operazioni di manutenzione.
+L'identità dell'utente ha una sola forma canonica — namespace,
+profilo/memorie e lock concordano — e l'ID di sessione non collide fra
+cartelle omonime o avvii nello stesso secondo. Percorsi, modelli e politica
+arrivano ai costruttori come parametri, non come globali.
 
 Il prompt effettivo combina istruzioni nel codice, `ARES.md`, dati appresi
 e contesto di esecuzione. È ispezionabile con `ares inspect --prompt`, ma
 non esiste un ciclo di revisione e adozione di nuove procedure apprese.
 L'apprendimento riguarda dati e contesto, non i pesi del modello.
 
-Riferimenti: [architettura](docs/architecture.md), [integrazione Agno](docs/agno.md),
-[prompt](docs/prompt.md), [qualità della memoria](docs/memory-quality.md).
+Riferimenti: [architettura](architecture.md), [integrazione Agno](agno.md),
+[prompt](prompt.md), [qualità della memoria](memory-quality.md).
 
 ## Ordine di lavoro: nucleo condiviso, memoria, infine UI
 
-Primo studio disponibile: [identità, responsabilità e contratto del nucleo](docs/core-contract.md).
-Contiene evidenze sul codice, proposte e prove di accettazione; non è
-un'implementazione né una decisione definitiva su tutte le alternative.
+Studio di riferimento: [identità, responsabilità e contratto del nucleo](core-contract.md),
+con evidenze sul codice, proposte e prove di accettazione. Il primo
+incremento, il ciclo di vita della sessione, è pianificato in
+[core-refactor-plan.md](core-refactor-plan.md) sulla base di
+[core-refactor-audit.md](core-refactor-audit.md).
 
 La priorità è rendere Ares indipendente dall'interfaccia. La CLI sarà il
 primo client dei servizi condivisi e continuerà a permettere di usare e
@@ -121,7 +124,7 @@ propri fatti; una preferenza personale pertinente resta disponibile in
 entrambi. Spostamenti e worktree hanno un comportamento definito e provato.
 
 Approfondimento disponibile: [identità di progetto e ambiti applicati dal
-codice](docs/project-scopes.md), con le evidenze nel codice e in Agno, le
+codice](project-scopes.md), con le evidenze nel codice e in Agno, le
 proposte e le prove di accettazione. Non è un'implementazione.
 
 ### 2. Ambiti applicati dal codice in scrittura e recupero
@@ -145,7 +148,7 @@ incluse richieste ambigue e strumenti, dimostrano che nessun percorso
 automatico allarga implicitamente il contesto consentito.
 
 Approfondimento disponibile: [identità di progetto e ambiti applicati dal
-codice](docs/project-scopes.md), §3 e §6 sul trasporto dell'ambito, i limiti
+codice](project-scopes.md), §3 e §6 sul trasporto dell'ambito, i limiti
 di ogni store Agno e i percorsi che allargano il contesto.
 
 ### 3. Gestione unificata e revisione degli apprendimenti
@@ -232,8 +235,8 @@ ambito dei ricordi e cambiamenti nel tempo. Linux è l'ambiente d'uso
 attuale; il perimetro multipiattaforma della UI va ancora definito.
 
 Dopo il lavoro sul nucleo condiviso e sulla memoria, discutere flussi
-prioritari, struttura dell'interfaccia,
-rapporto con la CLI, rappresentazione degli eventi e delle approvazioni,
+prioritari, struttura dell'interfaccia, rapporto con la CLI,
+rappresentazione degli eventi e delle approvazioni,
 ispezione di memoria e prompt e configurazione dei modelli. Definire un
 primo perimetro concreto basato sui servizi condivisi già verificati.
 Mantenere il funzionamento interamente locale come possibilità. Tecnologia,

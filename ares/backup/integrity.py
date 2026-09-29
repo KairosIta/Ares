@@ -93,23 +93,13 @@ def verifica_sqlite(percorso: Path) -> None:
 def conta_tabelle_lancedb(percorso: Path) -> dict[str, int]:
     """Verifica LanceDB in un processo isolato e ne conta le righe.
 
-    Il `try` copre l'avvio della sonda e la lettura di cio' che risponde -
-    processo che non parte, timeout, stdout che non e' JSON - perche' li'
-    l'eccezione arriva da sotto e va tradotta. Gli `ErroreBackup` sollevati
-    qui dentro sono invece gia' la diagnosi, con dentro il messaggio della
-    sonda o il motivo per cui la risposta non va bene: ripassarli dal
-    traduttore li avvolgeva una seconda volta, e "LanceDB illeggibile in
-    /percorso: risposta non valida dalla sonda LanceDB" dice due volte la
-    stessa cosa mettendo il dettaglio in fondo. Vengono percio' rilanciati
-    intatti, e nominano il percorso da se': e' l'unica cosa che il messaggio
-    del wrapper aggiungeva.
+    Il `try` traduce i guasti della sonda (non parte, timeout, output non
+    JSON). Gli `ErroreBackup` sollevati dentro sono gia' la diagnosi, con il
+    percorso, e risalgono intatti per non avvolgere il messaggio due volte.
     """
     try:
         risultato = subprocess.run(
-            # Come modulo e non per percorso: un file lanciato per percorso e'
-            # `__main__` e basta, e la misura di copertura, che segue il
-            # package `ares`, non lo contava; la sonda risultava allo 0% pur
-            # girando a ogni create e verify.
+            # Come modulo, cosi' la copertura del package `ares` la misura.
             [sys.executable, "-m", "ares.backup.probe", str(percorso)],
             capture_output=True,
             text=True,
@@ -201,9 +191,8 @@ def _verifica_componenti(
     for nome in DATABASE:
         if componenti.get(nome):
             verifica_sqlite(percorso / nome)
-    # Un componente che si dichiara presente e non c'e' non verrebbe visto dai
-    # checksum, che guardano solo i file trovati: il manifest mentirebbe e il
-    # restore fallirebbe a meta'.
+    # I checksum guardano solo i file trovati: un componente dichiarato e
+    # assente va cercato a parte, o il restore fallirebbe a meta'.
     if componenti.get(cronologia) and not (percorso / cronologia).is_file():
         raise ErroreBackup("il manifest dichiara " + cronologia + ", che manca nello snapshot")
     lance = componenti.get("lancedb") or {}

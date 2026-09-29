@@ -6,8 +6,28 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **Nucleo applicativo: il servizio di sessione.** `ares/core/session.py`
+  decide l'id di una conversazione nuova, le sessioni della cartella da
+  riprendere, il proprietario prima di aprire e la costruzione dell'agente al
+  cambio di sessione o di modalità. La CLI ne è un client: `cli/chat.py` e
+  `cli/commands.py` non chiamano più `build_assistant` né
+  `sessione_di_altri`, e `nuovo_id_sessione` ha una copia sola, in
+  `core/id_sessione.py`. Nessun cambiamento visibile all'utente. La prova
+  `nucleo` usa il servizio come un client senza terminale.
+
 ### Changed
 
+- **Commenti e documentazione essenziali.** Docstring e commenti dicono il
+  contratto e il perché non ovvio; la storia del codice resta qui e nei
+  commit. Circa il 40% in meno di commenti nel pacchetto, senza cambiare una
+  riga di codice (AST verificato identico). La motivazione delle dipendenze
+  esplicite, ripetuta in molte docstring, sta ora una volta sola in
+  `docs/architecture.md`. `docs/testing.md`, `docs/core-contract.md`,
+  `CONTRIBUTING.md` e le altre pagine sono sfoltite, con tabelle al posto dei
+  paragrafi lunghi. La roadmap si sposta in `docs/ROADMAP.md`, accanto ai
+  documenti del refactor del nucleo.
 - **Il `README.md` è riorganizzato intorno a come Ares gira.** La scelta fra
   locale e cloud era raccontata in tre punti diversi — il primo bullet di
   «Perché Ares», una sottosezione annidata dentro i requisiti e un paragrafo

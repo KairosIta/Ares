@@ -1,13 +1,8 @@
-"""
-Lettura degli archivi di apprendimento
-======================================
-Un solo posto da cui leggere le entita', perche' le trappole degli store si
-moltiplicano per il numero di copie: `/entita` in `chat.py` stampava
-"Nessuna entita' registrata" con tre entita' in archivio, mentre
-`inspect_learning.py` le mostrava correttamente. Le due letture erano
-scritte due volte e solo una era giusta.
+"""Lettura degli archivi di apprendimento e delle sessioni, in un posto solo.
 
-Le funzioni qui dentro non avviano il modello e non scrivono nulla.
+Le trappole degli store (query vuote, chiavi dei fatti, namespace) vanno
+evitate una volta: ogni copia della lettura e' un'occasione per sbagliarla.
+Nessuna funzione qui scrive; solo `leggi_intuizioni` accende un modello.
 """
 
 from datetime import datetime
@@ -15,51 +10,34 @@ from typing import Any
 
 from agno.db.base import SessionType
 
-# Verifica di Agno riusata invece che riscritta: e' la meta' precisa della sua
-# ricerca - la query confrontata con i valori e non con i nomi dei campi - e
-# una copia locale verificherebbe la copia. La differenza sta in cosa le si
-# passa, non in come confronta: vedi `contenuto_entita`.
+# Il confronto query/valori di Agno, riusato; cio' che cambia e' cosa gli si
+# passa (vedi `contenuto_entita`).
 from agno.learn.utils import values_match_query
 
 from ares import config
 from ares.state.identita import Utente
 
-# Query usata quando chi chiama non ne ha una: recall() e' semantica e senza
-# query non restituisce niente, quindi serve qualcosa di abbastanza largo da
-# pescare le intuizioni tipiche di questo archivio.
+# Query larga per `recall`, che senza query non restituisce niente.
 QUERY_DI_RIPIEGO = "criterio decisione preferenza configurazione"
 
 
 def namespace_utente(utente: Utente) -> str:
-    """Contenitore di tutto cio' che appartiene a un utente.
+    """Contenitore di tutto cio' che appartiene a un utente: `user/<id>`.
 
-    Un solo posto costruisce questa stringa, perche' un refuso in una
-    concatenazione manuale non solleva errori: le scritture finiscono in un
-    contenitore, le letture ne interrogano un altro, e l'archivio sembra
-    vuoto mentre e' pieno.
-
-    La barra invece dei due punti perche' il FileSystem di Agno normalizza i
-    namespace in forma URL-safe: `user:demo` finisce nel database come
-    `user%3ademo`, mentre `user/demo` resta leggibile con qualsiasi
-    client SQLite. La forma dell'id arriva dal tipo `Utente`, che l'ha
-    gia' portata a quella canonica: qui non si normalizza una seconda volta,
-    altrimenti le due regole tornerebbero a divergere.
+    Costruito solo qui, perche' un refuso sparpaglierebbe letture e scritture
+    in contenitori diversi senza errori. La barra e non i due punti perche'
+    Agno percent-encoda i namespace (`user:demo` -> `user%3ademo`).
     """
     return "user/" + utente.id
 
 
 def namespace_entita(utente: Utente) -> str:
-    """Namespace delle entita': persone, progetti e sistemi di quell'utente.
-
-    Sottocontenitore separato perche' le entita' sono l'unico store con una
-    granularita' propria; il resto vive direttamente sotto l'utente.
-    """
+    """Namespace delle entita' di un utente, sotto il suo contenitore."""
     return namespace_utente(utente) + "/personale"
 
 
-# Campi che il framework mette e toglie da solo. Restano fuori dalla ricerca:
-# un fatto porta un `id` e due date, e cercarci dentro vuol dire che "2026"
-# trova ogni entita' scritta quest'anno.
+# Campi messi dal framework, esclusi dalla ricerca: altrimenti "2026"
+# troverebbe ogni entita' scritta quest'anno.
 CONTABILITA = ("id", "created_at", "updated_at")
 
 
@@ -75,14 +53,10 @@ def _senza_contabilita(voci: Any) -> list[Any]:
 
 
 def contenuto_entita(entita: Any) -> dict:
-    """I campi di un'entita' che sono contenuto, senza cio' che la archivia.
+    """I campi di un'entita' che sono contenuto, senza namespace, id e date.
 
-    Serve a verificare una ricerca. Agno confronta la query con **tutti** i
-    valori dell'entita', che sono anche il namespace, gli identificativi e le
-    date: qui il namespace e' `user/<utente>/personale`, quindi cercare
-    "person" restituisce l'archivio intero e sembra che il filtro non
-    funzioni. Togliendo quei campi la verifica di Agno risponde su cio' che
-    l'utente intendeva cercare.
+    Agno confronta la query con tutti i valori dell'entita': con il namespace
+    dentro, cercare "person" restituirebbe l'archivio intero.
     """
     return {
         "name": getattr(entita, "name", None),
@@ -99,17 +73,9 @@ def contenuto_entita(entita: Any) -> dict:
 def leggi_entita(lm: Any, utente: Utente, query: str = "", limit: int = 50) -> list[Any]:
     """Elenca le entita' registrate, filtrandole per query se ne arriva una.
 
-    search() e' una ricerca testuale: con query vuota non matcha nulla e
-    l'archivio sembra vuoto anche quando e' pieno. Per l'elenco integrale
-    serve list_entities(), che ordina per aggiornamento piu' recente.
-
-    Con una query, cio' che torna dallo store e' un soprainsieme: si chiede
-    una finestra larga e si scarta qui quello che ha corrisposto solo per il
-    namespace o per una data. Vedi `contenuto_entita`.
-
-    Elenco vuoto se lo store e' spento: per chi legge non c'e' differenza tra
-    nessuna entita' registrata e nessuna entita' registrabile, e la seconda
-    la dice `config.py`.
+    Senza query usa `list_entities`: `search` con query vuota non trova nulla.
+    Con una query chiede allo store una finestra larga e filtra qui con
+    `contenuto_entita`. Elenco vuoto se lo store e' spento.
     """
     store = lm.entity_memory_store
     if store is None:
@@ -125,8 +91,7 @@ def leggi_entita(lm: Any, utente: Utente, query: str = "", limit: int = 50) -> l
 def righe_entita(entita: Any, max_fatti: int = 5) -> list[str]:
     """Rende un'entita' in righe di testo gia' pronte per la stampa.
 
-    I fatti sono dizionari con chiave `content`, non `fact`: leggere la
-    chiave sbagliata restituisce None per ogni fatto senza sollevare errori.
+    Il testo di un fatto sta sotto `content`, non `fact`.
     """
     nome = getattr(entita, "name", None) or getattr(entita, "entity_id", "?")
     tipo = getattr(entita, "entity_type", "?")
@@ -140,13 +105,8 @@ def righe_entita(entita: Any, max_fatti: int = 5) -> list[str]:
 def leggi_intuizioni(lm: Any, utente: Utente, query: str = "", limit: int = 20) -> list[Any]:
     """Intuizioni apprese, cercate per somiglianza semantica.
 
-    recall() e' ricerca semantica: senza query non esiste un elenco
-    integrale, quindi una query di ripiego larga e' il meglio che si puo'
-    fare per un comando che vuole mostrare "cosa c'e' dentro".
-
-    Attenzione al costo: questa e' l'unica funzione di lettura del progetto
-    che accende un modello, perche' LanceDb vettorizza anche la query con
-    l'embedder dell'indice.
+    `recall` non ha un elenco integrale: senza query usa `QUERY_DI_RIPIEGO`.
+    Accende l'embedder per vettorizzare la query.
     """
     store = lm.learned_knowledge_store
     if store is None:
@@ -154,10 +114,8 @@ def leggi_intuizioni(lm: Any, utente: Utente, query: str = "", limit: int = 20) 
     return store.recall(query=query or QUERY_DI_RIPIEGO, user_id=utente.id, limit=limit) or []
 
 
-# La chiave, nei metadati della sessione, della cartella in cui e' nata.
-# La scrive `build_assistant` passando `metadata=` all'agente: Agno la copia
-# nella sessione nuova e la lascia com'e' in una ripresa. Le sessioni di
-# prima di questa chiave non ne hanno una, e valgono "senza cartella".
+# La chiave dei metadati di sessione con la cartella in cui e' nata, scritta
+# da `build_assistant`. Le sessioni piu' vecchie non ce l'hanno.
 CHIAVE_CARTELLA = "cartella"
 
 
@@ -171,13 +129,7 @@ def cartella_sessione(sessione: Any) -> str | None:
 
 
 def _sessioni_db(db: Any, utente: Utente, *, con_run: bool = True) -> list[Any]:
-    """Tutte le sessioni dell'utente dal database, dalla piu' toccata di recente.
-
-    L'id e' quello canonico del tipo `Utente`, come per namespace, lock e
-    profilo: `leggi_sessioni` e `sessioni_della_cartella` sono porte
-    pubbliche, e una che cercasse con la grafia grezza non troverebbe le
-    sessioni scritte con quella canonica.
-    """
+    """Tutte le sessioni dell'utente dal database, dalla piu' toccata di recente."""
     return list(
         db.get_sessions(
             session_type=SessionType.AGENT,
@@ -191,26 +143,12 @@ def _sessioni_db(db: Any, utente: Utente, *, con_run: bool = True) -> list[Any]:
 
 
 def leggi_sessioni(agent: Any, utente: Utente, query: str = "", cartella: Any = None) -> list[Any]:
-    """Le sessioni di questo utente, dalla piu' toccata di recente.
+    """Le sessioni di questo utente, dalla piu' toccata di recente, sessione corrente compresa.
 
-    Non passa dagli store di apprendimento: le conversazioni stanno nella
-    tabella delle sessioni, la stessa da cui l'agente rilegge il passato con
-    `search_past_sessions`. Quello strumento pero' salta la sessione in corso,
-    perche' il modello ce l'ha gia' davanti; qui invece torna, marcata da chi
-    stampa: chi legge a schermo non ha nessuna finestra di contesto.
-
-    Con `cartella` restano quelle nate li' e quelle senza cartella: le
-    seconde sono le conversazioni di prima che le sessioni si legassero a una
-    directory, e nasconderle le farebbe sparire da ogni elenco.
-
-    Nessun taglio qui. Chi chiama filtra e poi taglia, mai il contrario:
-    chiedere al database le prime N e filtrarle dopo nasconderebbe una
-    sessione piu' vecchia delle prime N, cioe' esattamente quella che si sta
-    cercando quando si scrive un filtro.
-
-    L'ordinamento e' per `updated_at` perche' chi riprende una conversazione
-    cerca l'ultima toccata, non l'ultima aperta; Agno fa un COALESCE su
-    `created_at`, quindi una sessione mai aggiornata non finisce in fondo.
+    Con `cartella` restano quelle nate li' e quelle senza cartella (le piu'
+    vecchie, che altrimenti sparirebbero da ogni elenco). Non taglia: chi
+    chiama filtra e poi taglia, mai il contrario, o un filtro perderebbe le
+    sessioni oltre le prime N.
     """
     db = getattr(agent, "db", None)
     if db is None:
@@ -228,11 +166,8 @@ def leggi_sessioni(agent: Any, utente: Utente, query: str = "", cartella: Any = 
 def sessioni_della_cartella(db: Any, utente: Utente, cartella: Any, *, escludi: str | None = None) -> list[Any]:
     """Le sole sessioni nate in `cartella`, dalla piu' toccata di recente.
 
-    E' la lettura di `ares resume` e dell'elenco che il modello riceve
-    all'avvio: qui una sessione senza cartella non c'entra, perche' riprendere
-    vuol dire tornare al lavoro fatto in questo posto. Senza i run, che per
-    un elenco pesano e non servono; chi vuole la prima domanda rilegge la
-    sessione con `con_run`.
+    Per `ares resume` e per l'elenco nel prompt. Senza i run: chi vuole la
+    prima domanda rilegge la sessione con `con_run`.
     """
     qui = str(cartella)
     return [
@@ -255,16 +190,10 @@ def con_run(db: Any, sessione: Any) -> Any:
 def sessione_di_altri(db: Any, session_id: str | None, utente: Utente) -> bool:
     """Vero se la sessione esiste ma appartiene a un altro utente.
 
-    `--session <nome>` e `/sessione <nome>` scavalcano gli elenchi per
-    cartella, che sono gia' filtrati per utente: senza questo controllo i run
-    di un secondo utente finirebbero nella sessione del primo, perche' Agno
-    filtra i run per solo `session_id` e il proprietario della riga non li
-    protegge. Riguarda le sole sessioni che esistono: un nome mai visto e' una
-    conversazione nuova, e si apre.
-
-    `runs_limit=1` perche' qui serve l'intestazione della riga - il
-    proprietario - e non la conversazione: senza, `get_session` caricherebbe
-    tutti i run per leggere un campo.
+    Serve a `--session` e `/sessione`, che scavalcano gli elenchi filtrati per
+    utente: Agno filtra i run per `session_id` soltanto, e senza questo
+    controllo i run di un utente finirebbero nella sessione di un altro. Legge
+    un solo run, perche' serve solo il proprietario.
     """
     if not session_id:
         return False
@@ -274,13 +203,7 @@ def sessione_di_altri(db: Any, session_id: str | None, utente: Utente) -> bool:
 
 
 def prima_domanda(sessione: Any, larghezza: int = 90) -> str:
-    """La prima cosa chiesta in una sessione, troncata.
-
-    E' l'etichetta piu' onesta che si possa dare a una conversazione senza
-    farla riassumere a un modello: dice di cosa e' partita. Il contenuto di un
-    messaggio non e' sempre una stringa - puo' essere una lista di parti - e
-    leggerlo come stringa e basta restituisce righe vuote in silenzio.
-    """
+    """La prima cosa chiesta in una sessione, troncata: l'etichetta della conversazione."""
     for run in getattr(sessione, "runs", None) or []:
         for messaggio in getattr(run, "messages", None) or []:
             if getattr(messaggio, "role", None) != "user":
@@ -310,8 +233,7 @@ def _testo_messaggio(messaggio: Any) -> str:
 def righe_sessione(sessione: Any, corrente: bool = False, con_cartella: bool = False) -> list[str]:
     """Rende una sessione in righe di testo gia' pronte per la stampa.
 
-    `con_cartella` aggiunge dove e' nata: serve nell'elenco di tutte le
-    sessioni, dove conversazioni di progetti diversi stanno una sotto l'altra.
+    `con_cartella` aggiunge dove e' nata, per gli elenchi fra cartelle.
     """
     nome = str(getattr(sessione, "session_id", "?"))
     scambi = len(getattr(sessione, "runs", None) or [])
@@ -329,11 +251,8 @@ def righe_sessione(sessione: Any, corrente: bool = False, con_cartella: bool = F
 def testo_conversazione(sessione: Any, *, modello: str = "") -> str:
     """La conversazione in Markdown: una testata, poi ogni scambio come `Tu` e `Ares`.
 
-    Solo i messaggi del turno: Agno rimette nei `messages` di ogni run anche
-    la storia precedente, marcata `from_history`, e senza il filtro ogni
-    scambio comparirebbe tante volte quanti sono i turni che lo seguono.
-    Gli strumenti chiamati stanno in una riga per turno, col solo nome: e'
-    un'esportazione da leggere, non un log.
+    Salta i messaggi `from_history`, che Agno ripete in ogni run; degli
+    strumenti riporta solo i nomi, una riga per turno.
     """
     nome = str(getattr(sessione, "session_id", "?"))
     runs = getattr(sessione, "runs", None) or []
@@ -369,14 +288,7 @@ def quando_sessione(sessione: Any) -> str:
 
 
 def _quando(timestamp: Any) -> str:
-    """Data e ora di un timestamp unix, in cifre.
-
-    In cifre e non a parole perche' i nomi di giorno e mese di `strftime`
-    seguono la locale del processo, e cambiarla e' una mutazione globale per
-    una parola.
-    """
+    """Data e ora di un timestamp unix, in cifre e in ora locale."""
     if not timestamp:
         return "data ignota"
-    # Senza fuso, quindi ora locale: e' l'ora a cui l'utente stava davvero
-    # scrivendo. Un orario in UTC sarebbe corretto e illeggibile.
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")

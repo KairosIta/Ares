@@ -1,5 +1,4 @@
-"""
-Manutenzione delle entita' di Ares
+"""Manutenzione delle entita' di Ares
 ==================================
 
 Uso:
@@ -11,9 +10,8 @@ Uso:
 
 `ares-entities` e' l'alias con gli stessi sottocomandi.
 
-La CLI coordina audit, anteprima, lock, backup e applicazione. La logica pura
-vive nei moduli `entity_audit` ed `entity_merge`; gli import pubblici storici
-restano disponibili da questo modulo per compatibilita'.
+La CLI coordina audit, anteprima, lock, backup e applicazione; la logica
+pura vive in `audit.py` e `merge.py`, i cui nomi restano importabili da qui.
 """
 
 from collections.abc import Callable, Iterable
@@ -230,9 +228,8 @@ def _esegui_audit(
         UI.line("Nessun archivio di Ares trovato in " + str(percorso), style="ares.muted")
         return 0
 
-    # Dopo il controllo e non prima: se l'archivio non c'e' questo comando lo
-    # dice e basta, non lo crea. Se c'e', la directory esiste gia' e la
-    # chiamata serve a correggerne i permessi su un clone piu' vecchio.
+    # Dopo il controllo, per non creare un archivio assente: qui serve solo
+    # a correggere i permessi di uno esistente.
     config.prepara_archivio(percorsi)
     db = SqliteDb(db_file=str(percorso))
     esito = analizza(db=db, namespace=namespace, includi_tutte_le_coppie=tutte_le_coppie)

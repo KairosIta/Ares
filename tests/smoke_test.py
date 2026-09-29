@@ -1,34 +1,17 @@
-"""
-Smoke test dell'agente
+"""Smoke test dell'agente
 ======================
 Uso:
     .venv/bin/python tests/smoke_test.py
     .venv/bin/python tests/smoke_test.py --user prova --session lavoro
 
-Costruisce l'agente, si scrive da solo i dati che gli servono e controlla che
-tornino indietro. Non chiede niente al modello: nessun peso entra in VRAM.
-Cio' che della REPL si prova senza costruire l'agente - conferme, rendering,
-editor, comandi - sta in `repl_test.py`: era qui, e questo file era
-diventato il posto dove finiva ogni prova offline.
+Costruisce l'agente, semina da se' i dati che servono in una directory
+temporanea e controlla che tornino indietro. Non chiama il modello: nessun
+peso entra in VRAM. Vale su qualunque macchina, anche appena clonata, e non
+legge ne' scrive l'archivio vero (l'ultimo controllo lo dimostra; per
+guardarci dentro c'e' `inspect_learning.py`).
 
-Prima questa prova leggeva l'archivio vero e dichiarava `n.c.` quando non ci
-trovava dati. Su un clone appena scaricato sei controlli su quattordici non
-dimostravano piu' niente e uscivano verdi lo stesso: un test che aspetta che
-qualcun altro gli prepari le precondizioni non e' un test, e' un ispettore con
-una firma. Ora le precondizioni se le costruisce, in una directory temporanea
-che cancella alla fine.
-
-Da qui discendono due cose. I controlli valgono su qualunque macchina, anche
-appena clonata. E l'archivio vero non viene ne' letto ne' scritto: l'ultimo
-controllo lo dimostra, ed e' il motivo per cui e' sparito il vecchio
-`nessuna scrittura`, che sorvegliava un rischio nato dal fatto che la prova
-girava sui dati veri. Per guardare dentro l'archivio vero c'e'
-`inspect_learning.py`.
-
-Il seme tocca solo gli store su SQLite. `learned_knowledge` resta fuori
-apposta: scriverci sopra chiamerebbe l'embedder, e questa prova promette di
-non caricare pesi. Tutti e sei i controlli che dipendevano dai dati stanno su
-SQLite, quindi la promessa costa zero copertura.
+Il seme tocca solo gli store su SQLite: `learned_knowledge` chiamerebbe
+l'embedder.
 
 Ogni prova riporta uno di tre esiti:
 
@@ -36,13 +19,10 @@ Ogni prova riporta uno di tre esiti:
     n.c.      non concludente: non c'e' abbastanza per dimostrare qualcosa
     FALLITO   il controllo non e' passato
 
-`n.c.` resta per i pochi controlli che nemmeno un seme puo' rendere
-significativi, per esempio se un giorno nessuno store usasse uno schema
-personalizzato. Solo un FALLITO cambia il codice di uscita.
+Solo un FALLITO cambia il codice di uscita.
 
-Il preflight (`ops/preflight.py`) risponde a una domanda diversa: se avvio adesso,
-il server e i modelli ci sono? Qui il server non serve. E `e2e_test.py` a una
-terza: l'agente risponde e impara? Quella costa un turno vero.
+Altre prove: `repl_test.py` per cio' che della REPL non richiede l'agente,
+`ops/preflight.py` per server e modelli, `e2e_test.py` per un turno vero.
 """
 
 import argparse
@@ -80,11 +60,9 @@ from agno.tools.workspace import Workspace  # noqa: E402
 
 from ares import config  # noqa: E402
 
-# I percorsi, le impostazioni e la politica della prova, letti una volta dopo
-# `prepara_ambiente`: `config` non tiene piu' nomi propri per nessuno dei tre,
-# quindi la prova se li porta dietro e li passa a chi ne ha bisogno. Dove la
-# prova cambia un flag con `patch.object` la politica si rilegge dentro il
-# `with`: una fotografia presa prima non vedrebbe il cambiamento.
+# Percorsi, impostazioni e politica letti una volta dopo `prepara_ambiente`.
+# Dove la prova cambia un flag con `patch.object` la politica si rilegge dentro
+# il `with`.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
 POLITICA = config.leggi_politica()
@@ -162,10 +140,7 @@ def campi_popolati(schema) -> list:
 def stato_archivio_reale() -> list:
     """Fotografia dell'archivio vero, per dimostrare che la prova non lo tocca.
 
-    Prende il posto del vecchio `nessuna scrittura`, che contava le righe
-    dell'archivio vero prima e dopo. Contarle non serve piu': ora la prova
-    scrive per mestiere, ma in un'altra directory. Cio' che va dimostrato non
-    e' che non scriva, e' che non scriva li'.
+    La prova scrive per mestiere: va dimostrato che non scriva li'.
     """
     reale = PERCORSI.home / "stato"
     if not reale.exists():
@@ -180,10 +155,8 @@ def stato_archivio_reale() -> list:
 def conta_apprendimenti(learning_type: str, namespace: str) -> int:
     """Righe di un tipo di apprendimento in un namespace, lette da SQLite.
 
-    Di proposito non passa dagli store: un controllo che usa lo stesso
-    percorso di lettura del difetto non puo' rilevarlo. `/entita` mostrava
-    zero entita' con tre in archivio, e solo un conteggio indipendente
-    rendeva visibile la differenza.
+    Non passa dagli store: un controllo con lo stesso percorso di lettura del
+    difetto non potrebbe rilevarlo.
     """
     with contextlib.closing(sqlite3.connect(PERCORSI.db_file)) as connessione:
         try:
@@ -199,11 +172,9 @@ def conta_apprendimenti(learning_type: str, namespace: str) -> int:
 def semina(lm, fs, user_id: str, session_id: str) -> str:
     """Scrive nell'archivio della prova i dati che i controlli si aspettano.
 
-    Nessuna di queste chiamate passa dal modello: sono le stesse API che
-    l'agente usa attraverso i propri strumenti, invocate direttamente. Le
-    entita' non ricevono il namespace, apposta: cosi' finiscono dove lo store
-    ha deciso di scrivere, e il controllo che le riconta dimostra qualcosa
-    sulla configurazione invece che sull'argomento appena passato.
+    Sono le API che l'agente usa con i suoi strumenti, chiamate direttamente,
+    senza modello. Le entita' non ricevono il namespace apposta: finiscono dove
+    lo store decide, e il riconteggio prova la configurazione.
     """
     seminato = []
     # Solo per gli store accesi: spegnerne uno e' lecito, e un seme che dia
@@ -263,10 +234,8 @@ def store_attivi(lm) -> str:
 def apprendimento_post_run(agent) -> str:
     """L'estrazione anticipata e' spenta e il post-hook usa il run completo.
 
-    La prova usa una macchina minimale senza store reali: chiamare il metodo
-    della LearningMachine costruita dall'agente accenderebbe il modello. Conta
-    invece le invocazioni allo stesso percorso di base che il post-hook usa in
-    produzione.
+    Una macchina minimale conta le invocazioni del percorso di base usato dal
+    post-hook: quella dell'agente accenderebbe il modello.
     """
     from types import SimpleNamespace
 
@@ -313,9 +282,7 @@ def apprendimento_post_run(agent) -> str:
     )
 
     # Le due meta' della guardia: un run senza messaggi e un post-hook senza
-    # agente non estraggono. Un'estrazione da un run vuoto non ha niente da
-    # imparare e passerebbe comunque dal modello, quindi la riga va tenuta
-    # chiusa da una prova invece che solo scritta.
+    # agente non estraggono (passerebbero comunque dal modello).
     prima = len(chiamate)
     apprendi_a_run_completato(
         run_output=SimpleNamespace(messages=[], user_id="prova", session_id="prova"),
@@ -350,10 +317,9 @@ def retry_contesto(lm) -> str:
             self.esiti = iter(esiti)
             self.chiamate = 0
             self.context_updated = False
-            # Il tetto dei tentativi e' un attributo dell'istanza e la finta
-            # non attraversa `super().__init__`: se lo prende dalla politica
-            # come fa il costruttore vero, cosi' il ciclo qui sotto prova
-            # davvero il valore configurato.
+            # La finta non attraversa `super().__init__`: prende il tetto dei
+            # tentativi dalla politica come il costruttore vero, cosi' il ciclo
+            # prova il valore configurato.
             self.tentativi_contesto = config.leggi_politica().apprendimento.tentativi_contesto
 
         def _extract_once(self, *args, **kwargs):
@@ -415,9 +381,7 @@ def retry_contesto(lm) -> str:
 def namespace_coerenti(lm, fs, user_id: str) -> str:
     """Entita', intuizioni e file finiscono nei contenitori dell'utente.
 
-    Profilo, memorie e contesto non compaiono qui perche' non hanno
-    namespace: sono per user_id e le loro config non accettano nemmeno il
-    parametro.
+    Profilo, memorie e contesto non hanno namespace: sono per `user_id`.
     """
     utente = namespace_utente(Utente.da_grezzo(user_id))
     entita = namespace_entita(Utente.da_grezzo(user_id))
@@ -437,10 +401,8 @@ def namespace_coerenti(lm, fs, user_id: str) -> str:
 def namespace_stabili(user_id: str) -> str:
     """I namespace attraversano la normalizzazione del FileSystem intatti.
 
-    E' il controllo che rende sicura la scelta della barra: se qualcuno
-    tornasse ai due punti, `user:demo` diventerebbe `user%3ademo` solo
-    dal lato dei file, e le due meta' dell'archivio si separerebbero senza
-    un errore.
+    Con i due punti `user:demo` diventerebbe `user%3ademo` solo nei file, e le
+    due meta' dell'archivio si separerebbero senza errori.
     """
     for costruito in (namespace_utente(Utente.da_grezzo(user_id)), namespace_entita(Utente.da_grezzo(user_id))):
         normalizzato = normalize_namespace(costruito)
@@ -452,21 +414,13 @@ def namespace_stabili(user_id: str) -> str:
 
 
 def chiamate_locali(agent, lm) -> str:
-    """Niente esce dalla macchina, salvo il modello conversazionale se e' cloud.
+    """Niente esce dalla macchina, salvo i modelli cloud scelti nel `.env`.
 
-    Se OLLAMA_API_KEY e' nell'ambiente e host non e' impostato, Agno manda
-    le conversazioni a https://ollama.com. Qui si controlla che ogni
-    modello e l'embedder abbiano l'host esplicito, e che quell'host sia
-    locale: un progetto che promette che niente esce non puo' dipendere da
-    una variabile d'ambiente per mantenere la promessa.
-
-    Un modello cloud di Ollama passa comunque dal daemon locale, quindi
-    l'host non lo distingue: lo distingue il nome. Agente e store di
-    apprendimento lo accettano, ciascuno per scelta esplicita nel `.env`;
-    l'embedder indicizza le intuizioni gia' scritte e deve restare locale
-    per nome. Gli store devono inoltre seguire tutti LEARNING_MODEL: uno
-    store che usasse un altro modello manderebbe le memorie dove il `.env`
-    non ha detto.
+    Con OLLAMA_API_KEY nell'ambiente e senza host esplicito Agno parlerebbe con
+    https://ollama.com: ogni modello e l'embedder devono avere un host
+    esplicito e locale. Un modello cloud passa comunque dal daemon locale, e lo
+    distingue il nome: conversazione ed estrazione lo accettano, l'embedder no.
+    Tutti gli store devono usare LEARNING_MODEL.
     """
     componenti = [("agente", agent.model)]
     for nome, store in lm.stores.items():
@@ -506,18 +460,14 @@ def chiamate_locali(agent, lm) -> str:
         urlsplit(IMPOSTAZIONI.host).hostname in ("localhost", "127.0.0.1", "::1"),
         "l'host della conversazione non e' locale: " + IMPOSTAZIONI.host,
     )
-    # La chiave non serve: e' il daemon, dopo `ollama signin`, a inoltrare i
-    # modelli cloud. Nell'ambiente di Ares farebbe solo aggiungere un header
-    # a ogni chiamata locale, e resta il segno di una configurazione che
-    # questo progetto non vuole.
+    # La chiave non serve: dopo `ollama signin` e' il daemon a inoltrare i
+    # modelli cloud.
     esigi("OLLAMA_API_KEY" not in os.environ, "OLLAMA_API_KEY e' nell'ambiente: non serve e non deve esserci")
     # L'host giusto non basta: Agno manda un evento di telemetria a
     # os-api.agno.com alla fine di ogni run, e il default e' acceso.
     esigi(agent.telemetry is False, "la telemetria di Agno e' attiva: ogni turno esce dalla macchina")
-    # `telemetry=False` nel codice non basta: prima di ogni invio Agno rilegge
-    # AGNO_TELEMETRY dall'ambiente e ci sovrascrive il valore
-    # (`agno/agent/_init.py`, set_telemetry). E' la stessa leva di
-    # OLLAMA_API_KEY: una variabile di troppo e la promessa salta.
+    # `telemetry=False` non basta: prima di ogni invio Agno rilegge
+    # AGNO_TELEMETRY dall'ambiente e sovrascrive il valore.
     esigi(
         os.environ.get("AGNO_TELEMETRY", "").lower() != "true",
         "AGNO_TELEMETRY=true nell'ambiente riaccende la telemetria nonostante telemetry=False",
@@ -533,11 +483,9 @@ def chiamate_locali(agent, lm) -> str:
 def ruoli_locali() -> str:
     """Il confine fra locale e cloud e' nel nome, e il codice lo fa rispettare.
 
-    Ollama scrive il tag cloud in due forme e le usa entrambe; un nome di
-    repository che contiene "cloud" non basta. Un modello cloud dato
-    all'embedder deve fermare la costruzione, non un turno; dato
-    all'estrazione deve invece passare, perche' e' una scelta che il `.env`
-    consente, e l'avviso che ne segue deve dire che le memorie escono.
+    Ollama scrive il tag cloud in due forme; un repository che contiene "cloud"
+    non basta. Un modello cloud per l'embedder ferma la costruzione; per
+    l'estrazione passa, con un avviso che dice che le memorie escono.
     """
     from ares.agent import runtime
 
@@ -571,8 +519,7 @@ def ruoli_locali() -> str:
 def contesto_esteso(agent, lm) -> str:
     """Ogni modello ha num_ctx esplicito e sopra il default di Ollama.
 
-    Ollama tronca a 4096 token senza dirlo, e il troncamento si manifesta
-    come un agente che dimentica invece che come un errore.
+    Ollama tronca a 4096 token senza dirlo: l'agente sembrerebbe dimenticare.
     """
     modelli = [("agente", agent.model)]
     for nome, store in lm.stores.items():
@@ -587,9 +534,8 @@ def contesto_esteso(agent, lm) -> str:
         esigi(num_ctx > 4096, nome + " passa num_ctx=" + str(num_ctx) + ", sotto o pari al default di Ollama")
         valori.append(num_ctx)
     # Stesso modello nei due ruoli, stesso num_ctx: altrimenti Ollama riavvia
-    # il runner a ogni passaggio fra risposta ed estrazione e perde la cache
-    # del prompt. Con modelli diversi l'estrazione puo' stare sotto NUM_CTX,
-    # mai sopra: il tetto lo decide comunque il modello conversazionale.
+    # il runner fra risposta ed estrazione. Con modelli diversi l'estrazione
+    # puo' stare sotto NUM_CTX, mai sopra.
     if IMPOSTAZIONI.principale == IMPOSTAZIONI.apprendimento:
         esigi(len(set(valori)) == 1, "stesso modello con num_ctx diversi: " + str(sorted(set(valori))))
     esigi(max(valori) == IMPOSTAZIONI.num_ctx, "un num_ctx supera NUM_CTX: " + str(sorted(set(valori))))
@@ -599,9 +545,8 @@ def contesto_esteso(agent, lm) -> str:
 def ragionamento_modelli(agent, lm) -> str:
     """Il pensiero resta acceso in chat e spento nelle estrazioni.
 
-    `think` e' un parametro top-level di Ollama: se finisse per errore nelle
-    options o sparisse durante un refactor, il modello tornerebbe al proprio
-    default e ogni store pagherebbe un blocco di ragionamento dopo il turno.
+    `think` e' un parametro top-level di Ollama: se finisse nelle options o
+    sparisse, ogni store pagherebbe un blocco di ragionamento.
     """
     chat_params = getattr(agent.model, "request_params", None) or {}
     esigi(
@@ -635,8 +580,7 @@ def ragionamento_modelli(agent, lm) -> str:
 def schemi_importabili(lm) -> str:
     """Gli schemi custom vivono in un modulo importabile, non in __main__.
 
-    Agno li serializza per percorso di import: definiti in __main__
-    sopravvivono al processo corrente ma non alla rilettura da database.
+    Agno li serializza per percorso di import.
     """
     trovati = []
     for nome, store in lm.stores.items():
@@ -658,9 +602,7 @@ def schemi_importabili(lm) -> str:
 class _MacchinaSenzaStore:
     """Una LearningMachine con tutti gli store spenti, quanto basta ai lettori.
 
-    Costruire un agente con i flag a False servirebbe a poco: il controllo
-    deve valere per qualunque combinazione, non per quella scelta oggi in
-    config.
+    Il controllo deve valere per qualunque combinazione di flag.
     """
 
     stores: ClassVar[dict] = {}
@@ -671,15 +613,8 @@ class _MacchinaSenzaStore:
 def identita(agent) -> str:
     """L'agente ha un nome e il modello lo sa.
 
-    Sono due cose separate: `name` finisce nel database e nelle intestazioni,
-    ma resta un'etichetta per chi legge finche' `add_name_to_context` e'
-    spento - ed e' spento di default. Un agente che si chiama Ares in
-    `assistant.py` e non lo sa quando gli chiedi come si chiama e' il tipo di
-    scollamento che non solleva errori.
-
-    Il controllo guarda il system message costruito davvero, non i due
-    attributi: e' l'unico posto dove si vede se il nome e la descrizione
-    arrivano al modello.
+    `name` resta un'etichetta finche' `add_name_to_context` e' spento (lo e' di
+    default). Si guarda il system message costruito davvero, non gli attributi.
     """
     from agno.agent import _messages
     from agno.run.base import RunContext
@@ -706,13 +641,11 @@ def identita(agent) -> str:
 
 
 def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
-    """Il modello sa quali modelli e' , quanto contesto ha, su che sistema gira e chi ha davanti.
+    """Il modello sa quali modelli e', quanto contesto ha, su che sistema gira e chi ha davanti.
 
-    La scheda e' la prima istruzione e viene letta dalle impostazioni e dal
-    sistema: qui si controlla che ogni valore ci arrivi davvero, e che la descrizione
-    e la scheda cambino quando un modello e' cloud. La frase "nessuna
-    conversazione esce di qui" e' una promessa che il modello ripete: deve
-    comparire solo quando e' vera.
+    Ogni valore della scheda deve arrivare dalle impostazioni e dal sistema, e
+    descrizione e scheda devono cambiare con un modello cloud: "nessuna
+    conversazione esce di qui" deve comparire solo quando e' vero.
     """
     import platform
 
@@ -786,17 +719,11 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
 def strumenti(agent, user_id: str) -> str:
     """Gli strumenti che Ares dovrebbe avere arrivano davvero al modello.
 
-    Ognuno e' acceso da un flag diverso e nessuno protesta se manca:
-    un agente senza `search_past_sessions` non ha modo di dire che non puo'
-    guardare in un'altra sessione, semplicemente risponde di non saperlo.
-
-    Il controllo risolve la lista come la risolve Agno all'inizio di un turno,
-    invece di rileggere i flag: e' l'unico punto in cui si vede la differenza
-    tra "configurato" e "consegnato". Due cose che qui dentro divergono:
-    `agent._learning` resta None finche' non si tocca `learning_machine`, e
-    `UserMemoryStore.get_tools` restituisce una lista vuota se `user_id` e'
-    falso - senza passarlo, `update_user_memory` manca anche quando la
-    configurazione e' giusta, e si finirebbe a riparare cio' che funziona.
+    Uno strumento mancante non protesta: il modello risponde di non sapere.
+    La lista si risolve come fa Agno a inizio turno, per vedere il consegnato e
+    non il configurato. Due trappole: `agent._learning` e' None finche' non si
+    tocca `learning_machine`, e `UserMemoryStore.get_tools` e' vuoto senza
+    `user_id`.
     """
     from agno.agent import _tools
     from agno.run.agent import RunOutput
@@ -839,11 +766,10 @@ def strumenti(agent, user_id: str) -> str:
     if config.OFFLOAD_TOOL_RESULTS:
         attesi["read_result"] = "OFFLOAD_TOOL_RESULTS"
         attesi["search_result"] = "OFFLOAD_TOOL_RESULTS"
-    # Il verso opposto, e va provato per primo: nessuna istruzione deve
-    # nominare uno strumento non consegnato, o il modello legge un ordine di
-    # chiamare qualcosa che non ha, e un 9B ci prova. Sta prima del ritorno
-    # non concludente perche' il caso peggiore e' proprio quello in cui gli
-    # strumenti sono tutti spenti e le istruzioni sono rimaste indietro.
+    # Il verso opposto, provato per primo: nessuna istruzione deve nominare uno
+    # strumento non consegnato, o il modello provera' a chiamarlo. Sta prima
+    # del ritorno non concludente perche' il caso peggiore e' con tutti gli
+    # strumenti spenti.
     istruzioni = " ".join(t for t in agent.instructions if isinstance(t, str))
     silenziosi, confermati = config.liste_modalita(config.MODO_PREDEFINITO)
     for nome in (
@@ -871,11 +797,9 @@ def strumenti(agent, user_id: str) -> str:
 def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     """Il system message intero e' in italiano, compresa la parte che scrive Agno.
 
-    Agno aggiunge da se' le guide degli store di apprendimento, del quaderno e
-    del Markdown, in inglese e per un agente di squadra. Ares le sostituisce
-    derivando gli store e scrivendo le proprie: qui si legge il messaggio
-    composto davvero e si controlla che le frasi inglesi non ci siano piu' e
-    che gli strumenti restino nominati.
+    Ares sostituisce le guide inglesi di Agno (store, quaderno, Markdown): qui
+    si verifica sul messaggio composto che le frasi inglesi manchino e gli
+    strumenti restino nominati.
     """
     from ares.agent.prompts import messaggio_di_sistema
 
@@ -910,11 +834,8 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
 def istruzioni_fuori_modalita() -> str:
     """Fuori da AGENTIC le istruzioni italiane delle intuizioni non entrano.
 
-    Ares costruisce questo store solo in `AGENTIC`, quindi il ripiego si
-    attraversa qui e non in produzione: serve a chi lo costruisse con
-    un'altra modalita', per non iniettare ordini di salvataggio in uno store
-    che non li ha. L'esito e' quello di Agno, che per una modalita' diversa
-    non scrive istruzioni: il blocco italiano deve restare fuori.
+    Ares usa solo `AGENTIC`: questo ripiego protegge chi costruisse lo store
+    con un'altra modalita'.
     """
     from agno.learn import LearnedKnowledgeConfig, LearningMode
     from agno.learn.stores import LearnedKnowledgeStore
@@ -936,10 +857,8 @@ def istruzioni_fuori_modalita() -> str:
 def modalita() -> str:
     """Le quattro modalita' sono partizioni degli otto strumenti, e il prompt le segue.
 
-    Per ognuna si costruisce lo spazio di lavoro e si guarda cosa consegna:
-    quali strumenti chiedono conferma, quali non ci sono. Poi le istruzioni:
-    la scheda nomina la modalita', il paragrafo sugli strumenti mette ogni
-    nome nella frase giusta, e in `piano` non nomina niente che scriva.
+    Per ognuna: cosa chiede conferma e cosa manca nello spazio di lavoro, e le
+    istruzioni corrispondenti; in `piano` nessuno strumento che scriva.
     """
     from agno.tools.workspace import Workspace
 
@@ -990,11 +909,8 @@ def modalita() -> str:
 def colpo_singolo(user_id: str, session_id: str) -> str:
     """`ares -p`: cio' che Ares sa entra nel prompt, ma niente puo' scriverci.
 
-    Un agente costruito con `interattivo=False` non ha il post-hook che
-    estrae profilo e memorie e non consegna al modello gli strumenti che
-    scrivono negli store; il prompt lo dice, con i nomi degli strumenti che
-    verrebbero rifiutati. Il contesto pero' resta: e' la meta' che serve
-    per rispondere.
+    Con `interattivo=False` mancano il post-hook e gli strumenti di scrittura
+    degli store, e il prompt lo dice; il contesto gia' appreso resta.
     """
     from agno.agent import _tools
     from agno.run.agent import RunOutput
@@ -1057,9 +973,8 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
 def prompt_e_capacita() -> str:
     """Il prompt composto non prescrive strumenti assenti, anche a flag spenti.
 
-    Ogni utente ha una conversazione precedente nella cartella: a store
-    vuoti il blocco storico non entra mai nel prompt e il flag spento
-    sembra rispettato anche se il modello riceverebbe un tool assente.
+    Ogni utente ha una conversazione precedente nella cartella: a store vuoti
+    il blocco storico non entrerebbe mai, e il controllo sarebbe vuoto.
     """
     from contextlib import ExitStack
 
@@ -1209,17 +1124,14 @@ def protezione_contesto(agent, user_id: str) -> str:
 def spazio_di_lavoro(agent, user_id: str) -> str:
     """Lo spazio sul disco arriva al modello con i propri nomi e i propri permessi.
 
-    Tre cose che non sollevano errori da sole. I nomi: senza prefisso Agno ne
-    scarta cinque su otto con un WARNING, e il modello resta con un
-    `read_file` che crede legga il disco. I permessi: `requires_confirmation`
-    viene deciso alla registrazione e sopravvive alla rinomina, ma se
-    smettesse di farlo la shell partirebbe senza chiedere niente e la prova
-    successiva sarebbe l'utente. La radice: e' l'unica cosa che tiene Ares
-    fuori dal proprio codice e dall'archivio.
+    - Nomi: senza prefisso Agno ne scarterebbe cinque su otto, e `read_file`
+      sembrerebbe leggere il disco.
+    - Permessi: `requires_confirmation` deve sopravvivere alla rinomina, o la
+      shell partirebbe senza chiedere.
+    - Radice: tiene Ares fuori dal proprio codice e dall'archivio.
 
-    Gli strumenti si risolvono fino allo schema per il modello, non alla
-    lista del toolkit: e' li' che si vedono sia i nomi consegnati sia i flag
-    di conferma che li accompagnano.
+    Gli strumenti si risolvono fino allo schema per il modello, dove si vedono
+    nomi e flag di conferma.
     """
     from agno.agent import _tools
     from agno.run.agent import RunOutput
@@ -1310,12 +1222,8 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
 def tempo(agent, lm, user_id: str) -> str:
     """Ares sa che ora e', e da quando sa le cose che sa.
 
-    Due canali distinti e nessuno dei due si lamenta se manca. L'ora corrente
-    la mette Agno a ogni turno; le date delle memorie ci sono in archivio da
-    sempre ma il rendering di serie le scarta, quindi la loro presenza nel
-    prompt dipende solo dallo schema personalizzato. Il controllo guarda il
-    system message costruito davvero: e' l'unico posto in cui si vede se una
-    data e' arrivata o si e' fermata in archivio.
+    L'ora la mette Agno a ogni turno; le date delle memorie arrivano solo grazie
+    allo schema personalizzato. Si guarda il system message costruito davvero.
     """
     from agno.agent import _messages
     from agno.run.base import RunContext
@@ -1354,10 +1262,8 @@ def tempo(agent, lm, user_id: str) -> str:
 def lettori_tolleranti(user_id: str) -> str:
     """I lettori sopravvivono a uno store spento invece di morire.
 
-    `config.py` invita a spegnere gli store per guadagnare latenza, e la
-    LearningMachine non li costruisce affatto: `lm.user_profile_store`
-    diventa None e `/profilo` moriva con un AttributeError su un'opzione
-    documentata.
+    Con uno store spento la LearningMachine non lo costruisce, e
+    `lm.user_profile_store` e' None.
     """
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
@@ -1439,13 +1345,10 @@ def contesto_rileggibile(lm, session_id: str) -> str:
 def eco_apprendimenti(agent, lm, user_id: str) -> str:
     """La fotografia legge cio' che e' in archivio e la differenza dice cosa e' cambiato.
 
-    Due meta'. La prima usa l'archivio seminato: la fotografia deve
-    contenere esattamente i campi e le memorie del seme, e una memoria
-    aggiunta con la stessa API che usa l'estrazione deve comparire come
-    nuova, con il suo testo intero. La seconda e' la differenza da sola, su
-    fotografie costruite a mano, perche' i rami che contano - una memoria
-    riscritta, una tolta, un campo del profilo svuotato, niente da dire -
-    non si producono seminando.
+    Prima sull'archivio seminato (fotografia uguale al seme, memoria aggiunta
+    vista come nuova e intera), poi sulla sola differenza con fotografie a mano,
+    per i rami che il seme non produce: memoria riscritta o tolta, campo
+    svuotato, nessuna variazione.
     """
     if "user_profile" not in lm.stores or "user_memory" not in lm.stores:
         return NON_CONCLUSIVO + "profilo o memorie spenti in config: la fotografia non ha niente da leggere"
@@ -1527,12 +1430,8 @@ def eco_apprendimenti(agent, lm, user_id: str) -> str:
 def entita_complete(lm, user_id: str) -> str:
     """Lo store restituisce tutte le entita' che stanno in archivio.
 
-    Il confronto e' con il conteggio grezzo in SQLite, non con il numero
-    seminato: e' il controllo che avrebbe visto `/entita` stampare "Nessuna
-    entita' registrata" con tre entita' salvate, e passare dallo stesso
-    percorso di lettura del difetto non lo avrebbe mai rilevato. Il numero
-    seminato serve come terza voce: se archivio e store concordano su un
-    valore sbagliato, lo dice questa.
+    Il confronto e' con il conteggio grezzo in SQLite; il numero seminato e' la
+    terza voce, se archivio e store concordassero su un valore sbagliato.
     """
     if "entity_memory" not in lm.stores:
         return NON_CONCLUSIVO + "entity_memory e' spento in config: non c'e' niente da seminare"
@@ -1555,8 +1454,7 @@ def entita_complete(lm, user_id: str) -> str:
 def fatti_leggibili(lm, user_id: str) -> str:
     """I fatti delle entita' si leggono con la chiave giusta.
 
-    Sono dict con chiave `content`: leggere `fact` restituisce None per
-    ogni fatto senza sollevare niente, e le entita' si stampano vuote.
+    Sono dict con chiave `content`: leggere `fact` darebbe None in silenzio.
     """
     if "entity_memory" not in lm.stores:
         return NON_CONCLUSIVO + "entity_memory e' spento in config: non c'e' nessun fatto da leggere"
@@ -1576,11 +1474,8 @@ def fatti_leggibili(lm, user_id: str) -> str:
 def entita_cercate(agent, user_id: str) -> str:
     """`/entita <testo>` filtra davvero, invece di restituire l'archivio.
 
-    Il difetto che questo controllo esiste per prendere non e' un errore ma
-    una risposta larga: la ricerca di Agno verifica la query contro tutti i
-    valori dell'entita', namespace e date comprese, e qui il namespace e'
-    `user/<utente>/personale`. Cercare "person" restituiva le entita' di ogni
-    tipo, e chi legge conclude che il filtro sia decorativo.
+    La ricerca di Agno confronta la query con tutti i valori, namespace
+    compreso (`user/<utente>/personale`): "person" troverebbe ogni entita'.
     """
     lm = agent.learning_machine
     if "entity_memory" not in lm.stores:
@@ -1635,9 +1530,8 @@ def nome_entita(entita) -> str:
 def _sessione_finta(nome: str, creata: int, domanda: str, user_id: str):
     """Una conversazione di una domanda sola, pronta per il database.
 
-    `agent_id` sul RunOutput non e' decorativo: senza,
-    `AgentSession.from_dict` scarta il run in silenzio e la sessione si
-    rilegge senza scambi.
+    Senza `agent_id` sul RunOutput, `AgentSession.from_dict` scarta il run in
+    silenzio.
     """
     from agno.models.message import Message
     from agno.run.agent import RunOutput
@@ -1654,10 +1548,9 @@ def _sessione_finta(nome: str, creata: int, domanda: str, user_id: str):
 def semina_sessioni(agent, user_id: str) -> list:
     """Quattro conversazioni finte, con date scelte per distinguere gli ordini.
 
-    `upsert_session` scrive `updated_at = created_at` all'inserimento e
-    `updated_at = adesso` su un aggiornamento: da qui la ri-scrittura di una
-    sola sessione, che e' cio' che separa "ordinata per ultima modifica" da
-    "ordinata per creazione" e da "nell'ordine in cui e' stata scritta".
+    `upsert_session` pone `updated_at = created_at` all'inserimento e `adesso`
+    all'aggiornamento: riscrivere una sessione separa ultima modifica, creazione
+    e ordine di scrittura.
     """
     semi = [
         ("prova-alfa", 1000, "domanda di alfa"),
@@ -1678,11 +1571,8 @@ def semina_sessioni(agent, user_id: str) -> list:
 def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     """L'elenco delle sessioni e' ordinato per ultima modifica, filtra e si annota.
 
-    L'ordine atteso non coincide con nessuno degli ordini sbagliati
-    plausibili - ne' quello di scrittura, ne' il suo rovescio, ne' la data di
-    creazione nei due versi - perche' un `sort_by` che il database non
-    riconosce non solleva niente: lascia la query senza ORDER BY e le righe
-    escono nell'ordine in cui stanno sul disco.
+    L'ordine atteso non coincide con nessun ordine sbagliato plausibile: un
+    `sort_by` non riconosciuto non solleva niente e lascia l'ordine del disco.
     """
     atteso = semina_sessioni(agent, user_id)
     lette = [s.session_id for s in leggi_sessioni(agent, Utente.da_grezzo(user_id))]
@@ -1707,10 +1597,9 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     esigi("domanda di gamma" in righe, "la prima domanda non compare: " + repr(righe))
     esigi("(questa)" not in " ".join(righe_sessione(prima)), "ogni sessione risulta quella in corso")
 
-    # Si filtra prima e si taglia dopo. Al contrario, una sessione piu'
-    # vecchia delle prime mostrate sarebbe irraggiungibile proprio quando la
-    # si cerca per nome. Il tetto si abbassa qui invece di seminare venti
-    # conversazioni per superarlo.
+    # Si filtra prima e si taglia dopo, o una sessione vecchia sarebbe
+    # irraggiungibile proprio cercandola per nome. Il tetto si abbassa qui
+    # invece di seminare venti conversazioni.
     tetto = config.SESSIONI_ELENCO
     config.SESSIONI_ELENCO = 2
     try:
@@ -1750,10 +1639,8 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     finally:
         config.SESSIONI_ELENCO = tetto
 
-    # La nota sulla sessione in corso va detta quando e' vera e taciuta
-    # quando non lo e'. Tre stati, in fila, perche' e' il passaggio da uno
-    # all'altro a distinguerli: prima assente davvero, poi in archivio, poi
-    # in archivio ma esclusa da un filtro.
+    # La nota sulla sessione in corso: tre stati in fila (assente, in archivio,
+    # in archivio ma esclusa da un filtro).
     catturato = io.StringIO()
     with contextlib.redirect_stdout(catturato):
         gestisci_comando(
@@ -1848,13 +1735,8 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
 def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     """Ogni comando di lettura della REPL passa sull'archivio seminato.
 
-    `repl_test` prova che un comando si risolve; qui si prova che, risolto,
-    legge davvero l'archivio e mostra cio' che il seme ci ha messo. Sono i
-    comandi con cui l'utente verifica cosa Ares sa - `/profilo`, `/memorie`,
-    `/entita` - e dopo un "no" alla conferma della memoria sono il modo di
-    controllare che il ripristino sia avvenuto: un comando che stampa vuoto
-    su un archivio pieno toglierebbe quel controllo senza che nessuna prova
-    lo dica.
+    `/profilo`, `/memorie`, `/entita` sono il modo in cui l'utente verifica cosa
+    Ares sa, anche dopo un ripristino: devono leggere davvero l'archivio.
     """
 
     def esegui_comando(riga: str) -> str:
@@ -1957,12 +1839,7 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
 
 
 def file_isolati(user_id: str) -> str:
-    """I file di un utente non si vedono da un altro utente.
-
-    Col namespace `default` di Agno erano condivisi da chiunque, mentre le
-    memorie erano gia' segregate: la segregazione a meta' e' peggio di
-    nessuna, perche' non si nota.
-    """
+    """I file di un utente non si vedono da un altro utente."""
     esigi(
         user_id != UTENTE_DI_CONTROLLO,
         "l'utente in prova e' lo stesso di controllo: non c'e' niente da confrontare",
@@ -1978,10 +1855,8 @@ def file_isolati(user_id: str) -> str:
 def indice_vettoriale(lm) -> str:
     """La tabella LanceDB si apre e la ricerca ibrida ha il suo motore.
 
-    Nessun embedding viene calcolato: l'embedder resta fuori dalla VRAM.
-    Della meta' testuale della ricerca ibrida si controlla solo che
-    `tantivy` sia importabile, perche' senza si degrada alla sola
-    similarita' vettoriale.
+    Nessun embedding viene calcolato. Senza `tantivy` la ricerca ibrida si
+    ridurrebbe alla sola similarita' vettoriale.
     """
     if lm.knowledge is None:
         return NON_CONCLUSIVO + "le intuizioni sono spente in config: non c'e' nessun indice da aprire"
@@ -1995,18 +1870,10 @@ def indice_vettoriale(lm) -> str:
 def archivio_privato() -> str:
     """Lo stato appreso non e' leggibile dagli altri utenti della macchina.
 
-    La cronologia accanto nasce a 0600 e gli snapshot a 0700/0600 da sempre;
-    i due database e l'indice vettoriale, che contengono le stesse
-    conversazioni, nascevano invece con la umask del processo - 0644 e 0755 su
-    un'installazione tipica. Si proteggeva la copia e non l'originale.
-
-    La directory e' il controllo che regge davvero, perche' senza il diritto di
-    attraversarla i modi dei file dentro non si raggiungono; i database sono
-    comunque verificati uno a uno, perche' un archivio esce da tmp/ ogni volta
-    che qualcuno lo copia altrove.
-
-    Su Windows non c'e' niente da verificare: `rendi_privato` non tocca la
-    DACL ereditata, e chmod renderebbe i file soltanto read-only.
+    La directory e' il controllo che regge (senza attraversarla i file non si
+    raggiungono), ma i database si verificano uno a uno perche' un archivio
+    puo' essere copiato altrove. Su Windows `rendi_privato` non tocca la DACL
+    ereditata, quindi non c'e' niente da verificare.
     """
     if os.name != "posix":
         return NON_CONCLUSIVO + "i permessi numerici sono una proprieta' POSIX"
@@ -2027,10 +1894,8 @@ def archivio_privato() -> str:
             "database leggibile da altri: " + percorso.name + " " + modo(percorso),
         )
 
-    # Un file gia' scritto con i permessi larghi deve essere corretto alla
-    # costruzione successiva, altrimenti la protezione varrebbe solo per i
-    # cloni nuovi e lascerebbe scoperti proprio gli archivi con dentro
-    # qualcosa.
+    # Un file gia' scritto con permessi larghi va corretto alla costruzione
+    # successiva, non solo nei cloni nuovi.
     database[0].chmod(0o644)
     build_db(
         PERCORSI,
@@ -2046,13 +1911,9 @@ def archivio_privato() -> str:
 def percorsi_a_runtime() -> str:
     """I percorsi sono un oggetto costruito quando serve, e non esistono come nomi di modulo.
 
-    `leggi_percorsi` legge un ambiente dato, non `os.environ`, quindi si
-    prova senza toccare niente: `ARES_HOME` sposta stato e backup insieme,
-    `ARES_TMP` una parte sola, i nomi derivati seguono. E non c'e' piu' un
-    `PERCORSI` di modulo da sostituire, ne' i nomi che ne erano viste: era il
-    canale per cui un modulo leggeva `DB_FILE` senza che dalla firma si
-    vedesse da dove venisse, e un nome rimesso in `config` tornerebbe a
-    esserlo senza rompere niente. Per questo la prova lo pretende.
+    `leggi_percorsi` legge un ambiente dato: `ARES_HOME` sposta stato e backup
+    insieme, `ARES_TMP` una parte sola, i nomi derivati seguono. La prova
+    pretende che nessun nome di percorso stia in `config`.
     """
     from ares.config import Percorsi, leggi_percorsi
 
@@ -2088,10 +1949,9 @@ def percorsi_a_runtime() -> str:
     ):
         esigi(not hasattr(config, nome), "config espone ancora " + nome + ": e' un canale invisibile")
 
-    # Il `.env` resta fuori da `os.environ`: le sue righe arrivano ai nomi di
-    # `config`, una variabile gia' nell'ambiente vince, e un sottoprocesso
-    # lanciato da `run_command` non le eredita. La chiave si porta in
-    # maiuscolo solo su Windows, dove `os.environ` non distingue.
+    # Il `.env` resta fuori da `os.environ`: arriva ai nomi di `config`, una
+    # variabile d'ambiente vince, e un sottoprocesso di `run_command` non lo
+    # eredita. Maiuscole solo su Windows, dove `os.environ` non distingue.
     from ares.config import leggi_ambiente
 
     radice.mkdir(parents=True, exist_ok=True)
@@ -2114,16 +1974,9 @@ def percorsi_a_runtime() -> str:
 def impostazioni_a_runtime() -> str:
     """I modelli sono un oggetto costruito quando serve, non nomi riletti a meta' strada.
 
-    `leggi_impostazioni` fotografa i nomi del tuning alla porta del processo,
-    e da li' in poi chi costruisce un modello riceve l'oggetto. La prova lo
-    pretende in due modi: un `Impostazioni` costruito a mano - modelli, host e
-    contesto tutti diversi da quelli del `.env` - deve arrivare fino ai
-    costruttori e all'avviso sul cloud, e i default che fotografavano
-    `MODO_PREDEFINITO` all'import non devono esistere piu' in nessuna firma.
-
-    E' la stessa lezione dei percorsi: finche' il valore stava in un nome di
-    modulo, una firma non diceva da dove venisse, e chi lo cambiava dopo non
-    veniva ascoltato.
+    Un `Impostazioni` costruito a mano deve arrivare fino ai costruttori e
+    all'avviso sul cloud, e nessuna firma puo' fissare `MODO_PREDEFINITO` come
+    default.
     """
     import inspect
     from dataclasses import fields
@@ -2240,16 +2093,9 @@ def impostazioni_a_runtime() -> str:
 def politica_a_runtime() -> str:
     """La politica viaggia come oggetto, e il prompt descrive quella che c'e'.
 
-    `leggi_politica` fotografa i nomi alla porta del processo; da li' in poi
-    chi costruisce l'agente e chi compone il prompt ricevono l'oggetto. La
-    prova lo pretende in tre modi: una fotografia non vede i cambiamenti
-    arrivati dopo, i gruppi sono immutabili e non contengono cio' che non e'
-    politica - la modalita', l'offload, i formati - e un prompt composto con
-    una politica scelta a mano descrive quella e non il `.env`.
-
-    E' la stessa lezione dei percorsi e dei modelli: finche' il valore stava
-    in un nome di modulo, una firma non diceva da dove venisse, e chi lo
-    cambiava dopo non veniva ascoltato.
+    Una fotografia non vede cambiamenti successivi; i gruppi sono immutabili e
+    non contengono cio' che non e' politica (modalita', offload, formati); un
+    prompt composto con una politica scelta a mano descrive quella.
     """
     from dataclasses import fields
 
@@ -2377,16 +2223,9 @@ def politica_a_runtime() -> str:
 def import_senza_effetti() -> str:
     """Importare `config` non tocca il disco.
 
-    Prima il modulo creava la directory dello stato nel proprio corpo, e
-    leggere una costante produceva un effetto: `preflight` importava
-    `config` per tre nomi di modello e si lasciava dietro un archivio, e ogni
-    prova ha dovuto imparare a scrivere `ARES_TMP` prima dell'import, con un
-    commento che spiega perche'. La creazione ora e' esplicita, e questa prova
-    e' cio' che impedisce che torni: un `mkdir` rimesso nel corpo del modulo
-    non romperebbe niente e non se ne accorgerebbe nessuno.
-
-    In un processo separato perche' qui `config` e' importato da un pezzo, e
-    un modulo si importa una volta sola.
+    La creazione dello stato e' esplicita: un `mkdir` rimesso nel corpo del
+    modulo non romperebbe niente, e solo questa prova lo vedrebbe. Gira in un
+    processo separato, perche' qui `config` e' gia' importato.
     """
     prova = Path(tempfile.mkdtemp(prefix="ares-import-"))
     ambiente = os.environ.copy()

@@ -9,42 +9,26 @@ updates:
       time: "08:00"
       timezone: Europe/Rome
     open-pull-requests-limit: 5
-    # I gruppi non sono estetica: ogni PR apre un giro intero di CI, CodeQL e
-    # Audit, e senza gruppi l'aggiornamento di ruff e quello di sqlalchemy
-    # costano due giri per lo stesso merge. Sviluppo e produzione restano
-    # separati perche' un lock si legge per intero, e un pacchetto che rompe
-    # trattiene anche gli altri: cosi' il tooling non blocca il runtime, che
-    # e' la parte che parla col modello.
+    # Gruppi per non pagare un giro di CI per pacchetto. Sviluppo e
+    # produzione separati, perche' un pacchetto che rompe trattiene il suo
+    # gruppo: il tooling non deve bloccare il runtime.
     groups:
       sviluppo:
         dependency-type: development
       produzione:
         dependency-type: production
-        # Questi tre restano fuori dal gruppo apposta. `agno` e' il framework,
-        # `openai` il client che parla col modello, `lancedb` l'indice: un
-        # gruppo li fonderebbe in un merge solo, che e' il contrario di cio'
-        # che serve loro. Ognuno va letto e provato per conto suo, e senza
-        # gruppo Dependabot apre per loro una PR singola come faceva prima.
-        # Il gruppo copre il runtime che si aggiorna senza storia.
+        # Framework, client e indice hanno una PR ciascuno: vanno letti e
+        # provati uno per uno.
         exclude-patterns:
           - agno
           - openai
           - lancedb
     labels:
       - dependencies
-    # Il backend di build e' l'unica dipendenza esclusa, e per un motivo che
-    # dependabot non puo' vedere. `uv_build` non compare nel lock: sta solo
-    # nel `requires` di [build-system], e il pavimento >=0.12.2 e' scelto per
-    # coincidere con la copia che uv 0.12.2 - la versione che la CI installa -
-    # si porta dietro. Finche' il vincolo la comprende, il package editable si
-    # costruisce senza scaricare niente.
-    #
-    # Alzare quel pavimento non aggiorna percio' nulla di installato: rende
-    # insufficiente la copia integrata e aggiunge un download a ogni build.
-    # Le due versioni vanno mosse insieme, e muoverle e' un aggiornamento
-    # dello strumento: tocca `ci.yml` e `pyproject.toml` nello stesso commit,
-    # deciso leggendo il changelog di uv. Un `<0.13` incompatibile resta
-    # visibile lo stesso, perche' e' il vincolo a fermarlo e non questa riga.
+    # `uv_build` non e' nel lock: il suo pavimento coincide con la copia
+    # integrata nell'uv della CI (0.12.2). Alzarlo da solo aggiungerebbe solo
+    # un download; si muove insieme a uv, in `ci.yml` e `pyproject.toml`
+    # nello stesso commit.
     ignore:
       - dependency-name: uv-build
 
@@ -56,13 +40,8 @@ updates:
       time: "08:00"
       timezone: Europe/Rome
     open-pull-requests-limit: 5
-    # Un gruppo solo, e non e' una preferenza. `codeql-action` compare due
-    # volte in `codeql.yml` - `init` e `analyze` - e le due action devono
-    # restare la stessa versione: Dependabot le apriva come PR separate, e
-    # ciascuna da sola lasciava il workflow incoerente. Il giro e' fallito con
-    # "Loaded a configuration file for version '4.38.1', but running version
-    # '4.37.9'". Con il gruppo viaggiano insieme, e le `actions/*` seguono la
-    # stessa PR invece di aprirne una ciascuna.
+    # Un gruppo solo: `init` e `analyze` di `codeql-action` devono avere la
+    # stessa versione, e PR separate lascerebbero il workflow incoerente.
     groups:
       actions:
         patterns:

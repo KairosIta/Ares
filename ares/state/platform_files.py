@@ -38,12 +38,9 @@ def lock_file(
 ) -> Iterator[BinaryIO]:
     """Apre e blocca un file, traducendo la sola contesa in ``FileOccupato``."""
     percorso = Path(percorso)
-    # Se il genitore non c'e' lo crea questo modulo - e' la `~/.ares` di un
-    # primo avvio - e lo crea privato: il `chmod` della politica
-    # (`config.prepara_archivio`) arriva solo se la chat prosegue, e un avvio
-    # rifiutato - `-p --modo auto`, una cartella rischiosa - lascerebbe
-    # altrimenti una casa a 0755. Un genitore che esiste gia' non si tocca:
-    # quello di un lock puo' essere una cartella di lavoro.
+    # Un genitore nuovo (la `~/.ares` di un primo avvio) nasce privato: un
+    # avvio rifiutato prima di `config.prepara_archivio` lo lascerebbe a
+    # 0755. Uno che esiste gia' non si tocca, puo' essere una cartella altrui.
     genitore_nuovo = not percorso.parent.exists()
     percorso.parent.mkdir(parents=True, exist_ok=True)
     if genitore_nuovo:
@@ -60,9 +57,8 @@ def lock_file(
         except portalocker.AlreadyLocked as errore:
             raise FileOccupato(str(percorso)) from errore
         except portalocker.LockException as errore:
-            # Il vecchio backend fcntl esponeva i guasti del filesystem come
-            # OSError. Conservare quel contratto permette alla cronologia di
-            # degradare in memoria invece di impedire l'avvio della chat.
+            # OSError, non FileOccupato: la cronologia su un guasto del
+            # filesystem ripiega in memoria invece di fermare la chat.
             raise OSError("lock non disponibile: " + str(percorso)) from errore
         acquisito = True
         yield file_lock

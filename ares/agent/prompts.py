@@ -1,8 +1,7 @@
-"""Istruzioni dell'agente condizionate alle capacita' realmente abilitate.
+"""Istruzioni dell'agente, composte solo per le capacita' realmente abilitate.
 
-In fondo, `messaggio_di_sistema` chiede ad Agno il system message intero
-cosi' come lo comporrebbe per un turno: e' cio' che `ares inspect --prompt`
-stampa, ed e' l'unico modo di leggere davvero cio' che il modello riceve.
+`messaggio_di_sistema` restituisce il system message intero che Agno
+comporrebbe per un turno: e' cio' che stampa `ares inspect --prompt`.
 """
 
 import os
@@ -15,10 +14,9 @@ from ares.config import Impostazioni, Politica
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
 
-# Gli alias di `Workspace` di Agno con il nome dello strumento che generano,
-# senza prefisso, e il verbo con cui il modello li legge. Le due liste della
-# modalita' scelgono da qui: un alias che manca in entrambe non arriva al
-# modello e non viene nominato.
+# Alias di `Workspace` -> (nome dello strumento senza prefisso, verbo per il
+# modello). Un alias assente da entrambe le liste della modalita' non viene
+# nominato.
 _SPAZIO = {
     "read": ("read_file", "leggere un file"),
     "list": ("list_files", "elencare"),
@@ -79,18 +77,9 @@ def _ruolo(modello: str, *, locale: str, cloud: str) -> str:
 def descrizione(impostazioni: Impostazioni, politica: Politica, *, interattivo: bool = True) -> str:
     """Chi e' Ares, e dove gira davvero.
 
-    La frase sulla privacy e' una promessa, e una promessa che il modello
-    ripete all'utente deve essere vera: con un modello cloud nel `.env` la
-    descrizione dice invece cosa attraversa `ollama.com`, in una riga, e che
-    la scelta e' stata della persona. Il dettaglio sta nella scheda di
-    `istruzioni_sull_ambiente`; qui c'e' l'identita'.
-
-    I due modelli arrivano dalle impostazioni e non da `config`: questa frase
-    deve descrivere la conversazione che si sta costruendo, non quella che il
-    processo aveva in mente all'import. La politica dice se l'estrazione
-    cloud ha davvero qualcosa da estrarre: con tutti gli store spenti quel
-    modello non viene mai chiamato, e minacciare un rischio che non c'e' e'
-    una promessa falsa quanto tacerne uno vero.
+    La frase sulla privacy dev'essere vera: con un modello cloud dice cosa
+    passa da `ollama.com`. L'estrazione cloud conta solo se c'e' uno store
+    automatico acceso, altrimenti quel modello non viene mai chiamato.
     """
     inizio = "Sei Ares, l'assistente personale di una sola persona. "
     fine = " Puoi usare le memorie disponibili e rileggere gli archivi per dare continuita' al lavoro insieme."
@@ -129,19 +118,9 @@ def istruzioni_sull_ambiente(
 ) -> list[str]:
     """La scheda di questo avvio: quali modelli, quanto contesto, quale sistema, chi e dove.
 
-    I modelli e il contesto vengono dalle impostazioni, il resto dal sistema:
-    niente scritto a mano, perche' una riga che dicesse "9B locale"
-    resterebbe vera nel file e falsa nel `.env`. Un modello che sa di essere
-    un modello cloud non rassicura l'utente sulla privacy; uno che sa quanti
-    token ha in vista non promette di ricordare cio' che e' gia' uscito dalla
-    finestra; uno che sa la shell non scrive `bash` su Windows.
-
-    Quanti scambi restano in vista e quali store di apprendimento esistono
-    vengono dalla politica: sono le due cose che il modello deve sapere per
-    non promettere di ricordare cio' che non ha.
-
-    `modo` vuoto vale `config.MODO_PREDEFINITO`, letto adesso: un default
-    nella firma lo fotograferebbe all'import.
+    Tutto e' ricavato da impostazioni, politica e sistema, mai scritto a mano:
+    cosi' il modello non promette privacy che non c'e', non promette di
+    ricordare cio' che e' uscito dalla finestra e non propone `bash` su Windows.
     """
     modo = modo or config.MODO_PREDEFINITO
     sistema, _ = _shell()
@@ -223,11 +202,7 @@ def istruzioni_di_collaborazione(*, interattivo: bool = True) -> list[str]:
 def istruzioni_sugli_strumenti(
     radice_lavoro=None, modo: str | None = None, *, politica: Politica, interattivo: bool = True
 ) -> list[str]:
-    """Restituisce soltanto istruzioni per strumenti presenti nel cablaggio.
-
-    Quali strumenti esistono lo dice la politica: uno store spento non ha
-    strumenti, e nominarli qui sarebbe un invito a chiamare il vuoto.
-    """
+    """Istruzioni solo per gli strumenti che la politica ha davvero cablato."""
     modo = modo or config.MODO_PREDEFINITO
     dette = []
     if interattivo and politica.apprendimento.entita:
@@ -303,14 +278,9 @@ def istruzioni_sugli_strumenti(
 def istruzioni_sulla_memoria(*, politica: Politica, interattivo: bool = True) -> list[str]:
     """Come funziona la memoria di Ares, detto al modello prima degli strumenti.
 
-    Agno spiega ogni strumento di memoria, ma non il disegno: quali store si
-    aggiornano da soli e quali no, se l'utente vede cio' che entra e se puo'
-    annullarlo, che i risultati grandi non entrano interi. Senza questo il
-    modello annuncia "me lo ricordero'" per cose che si salvano da sole, o
-    promette che una scrittura comparira' a schermo mentre l'eco e' spenta.
-
-    Il disegno viene dalla politica e non da `config`: questa e' la stessa
-    fotografia che ha costruito gli store, quindi non puo' descriverne altri.
+    Agno descrive i singoli strumenti ma non il disegno: quali store si
+    aggiornano da soli, se l'utente vede e puo' annullare cio' che entra.
+    Senza, il modello promette "me lo ricordero'" o un'eco che e' spenta.
     """
     automatici = [
         nome
@@ -376,12 +346,7 @@ def istruzioni_sulla_memoria(*, politica: Politica, interattivo: bool = True) ->
 
 
 def istruzioni_sul_quaderno() -> list[str]:
-    """Il quaderno privato, spiegato in italiano al posto del testo di Agno.
-
-    `FileSystem.instructions()` dice le stesse cose in inglese, per un agente
-    generico. Il contenuto e' quello: cosa metterci, come correggere sul
-    posto, come cercare, come ritirare una nota, cosa non conservare.
-    """
+    """Il quaderno privato, spiegato in italiano al posto di `FileSystem.instructions()`."""
     return [
         "Hai un quaderno privato e durevole, salvato in un database locale, separato dal workspace: read_file, "
         "write_file, append_file, replace_lines, list_files, search_content e move_file. Serve "
@@ -400,13 +365,10 @@ def istruzioni_sul_quaderno() -> list[str]:
 
 
 def istruzioni_senza_terminale(radice_lavoro=None, modo: str | None = None, *, politica: Politica) -> list[str]:
-    """Cosa cambia in `ares -p`: nessuno risponde e gli store non apprendono.
+    """Cosa cambia in `ares -p`: nessuno conferma e gli store non apprendono.
 
-    Le conferme valgono no perche' non c'e' chi le dia; dirlo al modello
-    prima evita che tenti uno strumento, si veda rifiutare e riprovi per
-    un'altra strada. La memoria e' spenta per lo stesso motivo: cio' che
-    entra in profilo e memorie viene mostrato e confermato da chi legge, e
-    in una pipe non legge nessuno.
+    Dirlo prima evita che il modello tenti uno strumento, si veda rifiutare e
+    riprovi per un'altra strada.
     """
     modo = modo or config.MODO_PREDEFINITO
     confermati = strumenti_spazio(config.liste_modalita(modo)[1], politica) if radice_lavoro is not None else []
@@ -433,15 +395,9 @@ def istruzioni_senza_terminale(radice_lavoro=None, modo: str | None = None, *, p
 def istruzioni_sulle_conversazioni(sessioni, *, cartella, politica: Politica) -> list[str]:
     """Le conversazioni precedenti nate nella stessa cartella, per id.
 
-    `search_past_sessions` elenca le sessioni passate dell'utente, entro il
-    tetto configurato, senza sapere dove sono nate: in una cartella con dieci
-    progetti accanto, "dove eravamo rimasti" pesca a caso. Qui il modello
-    riceve le poche di questo posto, con l'id da passare a `read_past_session`.
-    Vuoto se non ce ne sono: un'istruzione che dice "nessuna" occuperebbe spazio per niente.
-
-    Vuoto anche con lo strumento spento: `precedenti` e' gia' vuoto se
-    `sessioni_passate` e' falso, e l'istruzione non deve reintrodurre cio'
-    che il cablaggio non offre.
+    `search_past_sessions` non sa dove una sessione e' nata: qui il modello
+    riceve le poche di questa cartella, con l'id per `read_past_session`.
+    Vuoto se non ce ne sono o se lo strumento e' spento.
     """
     if not politica.cronologia.sessioni_passate or not sessioni:
         return []
@@ -468,12 +424,8 @@ def percorso_istruzioni(radice_lavoro, nome: str) -> Path | None:
     """Il file delle regole, se e' un file vero dentro la cartella.
 
     Risolve i link e pretende il contenimento: un `ARES.md` che punta fuori
-    dalla cartella non e' un file del progetto, e nominarlo o leggerlo
-    farebbe entrare nel prompt - o nel banner - qualcosa che il workspace non
-    contiene. Una sola risposta per chi lo legge all'avvio
-    (`istruzioni_dalla_cartella`) e per chi mostra se c'e' (`/cartella` e il
-    banner): la domanda e' la stessa, e due copie della regola tornerebbero a
-    divergere.
+    dalla cartella non entra ne' nel prompt ne' nel banner. Unica fonte per
+    `istruzioni_dalla_cartella`, `/cartella` e il banner.
     """
     if radice_lavoro is None:
         return None
@@ -488,13 +440,8 @@ def percorso_istruzioni(radice_lavoro, nome: str) -> Path | None:
 def istruzioni_dalla_cartella(radice_lavoro, politica: Politica) -> list[str]:
     """Il contenuto di `ARES.md` nella cartella di lavoro, se c'e'.
 
-    E' il `CLAUDE.md` di Ares: regole del progetto scritte da chi ci lavora,
-    che entrano nel prompt prima del primo turno. Il nome del file e il tetto
-    vengono dalla politica, cosi' `ares init` e questa lettura non possono
-    guardare due nomi diversi. Un file oltre il tetto viene troncato e lo si
-    dice al modello, cosi' non crede di aver letto tutto. Un file illeggibile
-    vale come assente, e un link che esce dalla cartella non e' un file del
-    progetto: il confine lo decide `percorso_istruzioni`.
+    Nome e tetto vengono dalla politica, condivisi con `ares init`. Oltre il
+    tetto il file e' troncato e il modello lo sa; illeggibile vale assente.
     """
     reale = percorso_istruzioni(radice_lavoro, politica.workspace.istruzioni)
     if reale is None:
@@ -507,11 +454,8 @@ def istruzioni_dalla_cartella(radice_lavoro, politica: Politica) -> list[str]:
     testo = grezzo[: politica.workspace.istruzioni_max_byte].decode("utf-8", errors="replace").strip()
     if not testo:
         return []
-    # Dati, non ordini. Il file lo scrive chi lavora nella cartella, ma un
-    # file e' un file: puo' essere stato copiato, generato o modificato da
-    # altri, e "seguile" davanti a un testo altrui e' la forma esatta di
-    # un'iniezione. Il confine lo tengono le conferme; qui si dice al modello
-    # come leggere.
+    # Presentato come dati, non come ordini: il file puo' venire da altri, e
+    # "seguile" davanti a un testo altrui e' la forma di un'iniezione.
     intestazione = (
         "Chi lavora in questa cartella ha lasciato in "
         + politica.workspace.istruzioni
@@ -530,18 +474,11 @@ def istruzioni_dalla_cartella(radice_lavoro, politica: Politica) -> list[str]:
 def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
     """Il system message che Agno manderebbe al modello per un turno, verbatim.
 
-    Non basta leggere `description` e `instructions`: Agno aggiunge da se' le
-    istruzioni degli strumenti, quelle della macchina di apprendimento, le
-    memorie e le entita' gia' salvate, la data e il nome. Il solo modo di
-    vedere il testo intero e' fargli fare gli stessi passi di `run()` fino al
-    messaggio, e fermarsi li': inizializzare l'agente, che e' cio' che
-    aggancia gli strumenti di memoria; leggere la sessione, o costruirne una
-    vuota in memoria se non esiste, senza scriverla; risolvere gli strumenti,
-    perche' le loro istruzioni entrano nel messaggio; e chiedere il messaggio.
-
-    Nessun passo chiama il modello. La sessione nuova resta in memoria:
-    e' `run()` a salvarla, e qui `run()` non si chiama. `determine_tools_for_model`
-    e' un interno di Agno, e per questo il vincolo su Agno nel pyproject e' stretto.
+    Ripete i passi di `run()` fino al messaggio, senza chiamare il modello ne'
+    salvare la sessione: inizializza l'agente, legge la sessione (o ne crea
+    una solo in memoria), risolve gli strumenti e chiede il messaggio.
+    `determine_tools_for_model` e' un interno di Agno: per questo il vincolo
+    su Agno nel pyproject e' stretto.
     """
     from uuid import uuid4
 
@@ -550,10 +487,8 @@ def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
     from agno.run.agent import RunOutput
     from agno.session import AgentSession
 
-    # La sessione si cerca con la stessa chiave con cui e' stata scritta, ed
-    # e' quella canonica che porta il tipo: un `--user Demo` e' gia' stato
-    # risolto a monte, quindi qui non esiste una seconda grafia con cui
-    # cercare e non si puo' comporre il prompt di una conversazione vuota.
+    # `utente.id` e' gia' canonico: e' la stessa chiave con cui la sessione
+    # e' stata scritta.
     user_id = utente.id
     agent.initialize_agent()
     sessione = agent.get_session(session_id=session_id, user_id=user_id) or AgentSession(

@@ -169,31 +169,27 @@ ares
 Se la policy di PowerShell impedisce l’avvio dello script locale, usa una
 sola volta `powershell -ExecutionPolicy Bypass -File .\setup.ps1`.
 
-Se Ollama non è già attivo, avvialo prima con `ollama serve`. Entrambi gli
-script di setup creano il virtualenv, installano esattamente le versioni di
+Se Ollama non è già attivo, avvialo prima con `ollama serve`. Gli script di
+setup creano il virtualenv, installano esattamente le versioni di
 [`uv.lock`](uv.lock) e Ares stesso, mettono `ares` sul PATH ed eseguono il
-preflight. Da quel momento `ares` si scrive da qualunque cartella: su Linux è
-un link in `~/.local/bin` al comando del venv, su Windows uno shim `ares.cmd`
-in `%USERPROFILE%\.local\bin`; `ARES_BIN_DIR` nell'ambiente della shell
-sceglie un’altra directory, e se quella non è nel PATH il setup dice la riga
-da aggiungere. Non è un `uv tool install`, che risolverebbe le
-dipendenze da capo senza guardare il lock: il comando globale è esattamente
-l’ambiente bloccato e segue il codice del clone a ogni pull.
+preflight. Il comando è un link in `~/.local/bin` su Linux e uno shim
+`ares.cmd` in `%USERPROFILE%\.local\bin` su Windows; `ARES_BIN_DIR`
+sceglie un’altra directory, e se non è nel PATH il setup dice la riga da
+aggiungere. Non è un `uv tool install`, che ignorerebbe il lock: il comando
+globale usa l’ambiente bloccato e segue il codice del clone a ogni pull.
 
 `ares` da solo apre la chat, `ares --help` elenca i sottocomandi di
 manutenzione (`ares backup`, `ares sessions`, `ares entities`, `ares
 preflight`, `ares inspect`, `ares migrate`). Gli alias `ares-backup`,
-`ares-sessions`... restano e fanno la stessa cosa; `python -m ares` continua a
-funzionare dal clone. Su Windows `setup.ps1 -SkipPreflight` prepara soltanto
-le dipendenze e viene usato dalla CI, dove Ollama non è disponibile.
+`ares-sessions`... fanno la stessa cosa, e dal clone funziona anche
+`python -m ares`. Su Windows `setup.ps1 -SkipPreflight` prepara soltanto le
+dipendenze: lo usa la CI, dove Ollama non c'è.
 
-Tutto ciò che Ares impara vive in `~/.ares`: lo stato in `stato/`, gli
-snapshot in `backup/`, fuori dal clone, che si può spostare o rifare senza
-perdere niente. `ARES_HOME` nel `.env` sposta tutto altrove. Chi aggiorna un
-clone che teneva lo stato in `tmp/` non deve fare niente: il setup chiama
-`ares migrate`, che sposta stato e snapshot in `~/.ares` una volta sola, e la
-chat si rifiuta di partire finché lo stato è ancora nel posto di prima,
-perché un archivio vuoto accanto a uno pieno li sdoppierebbe.
+Tutto ciò che Ares impara vive in `~/.ares` (lo stato in `stato/`, gli
+snapshot in `backup/`), fuori dal clone, che si può spostare o rifare senza
+perdere niente. `ARES_HOME` nel `.env` sposta tutto altrove. Un clone che
+teneva lo stato in `tmp/` viene migrato dal setup con `ares migrate`; finché
+non succede la chat non parte, per non sdoppiare l'archivio.
 
 ## Perché Ares
 
@@ -274,16 +270,16 @@ fa da solo lo decide la modalità:
 `manuale` è il valore distribuito: ciò che Ares legge — un file, l'output di
 un comando, lo stesso `ARES.md` — può contenere un'istruzione, e una
 scrittura che nessuno guarda può riscrivere uno script o un Makefile. La
-richiesta di conferma mostra per intero cosa sta per succedere, e per un file
-che esiste già la differenza riga per riga. `ares --modo modifiche` sceglie
-per una sessione, `/modo piano` cambia a metà conversazione sulla stessa
-sessione, e il modello sa in quale modalità si trova. `auto` si sceglie solo
-con `ares --modo auto` e il banner lo dice in rosso. Con `-p`, e in generale
-quando stdin non è un terminale, valgono solo `manuale` e `piano`: `auto`
-eseguirebbe e `modifiche` scriverebbe senza che nessuno guardi, una conferma
-letta dalla stessa pipe che porta l'istruzione non è una conferma, e — come
-con `-p` — gli store di apprendimento non vengono aggiornati, perché nessuno
-leggerebbe l'eco.
+conferma mostra per intero cosa sta per succedere e, per un file che esiste
+già, la differenza riga per riga. `ares --modo modifiche` sceglie per una
+sessione, `/modo piano` cambia a metà conversazione, e il modello sa in
+quale modalità si trova. `auto` si sceglie solo con `ares --modo auto`, e il
+banner lo dice in rosso.
+
+Con `-p`, e in generale quando stdin non è un terminale, valgono solo
+`manuale` e `piano`, e gli store di apprendimento non vengono aggiornati:
+nessuno guarda, e una conferma letta dalla stessa pipe che porta
+l'istruzione non è una conferma.
 
 Se la cartella è rischiosa — la home intera, la radice del disco, una
 directory di sistema, una che contiene lo stato o il codice di Ares — te lo
@@ -329,13 +325,10 @@ ares --session progetto-demo
 
 Per una risposta sola, anche dentro una pipe, `-p`: stdin si aggiunge alla
 domanda, le operazioni che chiederebbero conferma vengono rifiutate e gli
-store di apprendimento non vengono aggiornati, perché non c'è nessuno a
-leggere e confermare cosa sarebbe entrato. Le memorie già presenti restano
-nel contesto. La conversazione viene comunque archiviata e il quaderno è
-persistente: il prompt ne consente la scrittura solo per richieste esplicite
-sul quaderno, senza usarlo per aggirare l'apprendimento disattivato. Su
-stdout esce la sola risposta: strumenti chiamati, avvisi e metriche vanno su
-stderr, così uno script legge la risposta e nient'altro.
+store di apprendimento non vengono aggiornati. Le memorie già presenti
+restano nel contesto; la conversazione viene archiviata e il quaderno resta
+scrivibile, ma solo su richiesta esplicita. Su stdout esce la sola
+risposta; strumenti, avvisi e metriche vanno su stderr.
 
 ```bash
 git diff | ares -p "scrivi il messaggio di commit"
@@ -354,6 +347,7 @@ lasciandola in cronologia, `Ctrl-D` chiude come `/esci`; le frecce
 percorrono la cronologia e i suggerimenti riprendono le domande precedenti.
 La barra sotto il prompt dice modalità, sessione e, dopo il primo turno,
 quanta finestra di contesto è occupata.
+
 Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`, `/sessioni`,
 `/entita`, `/file` e `/cartella`, che mostra percorso, ramo, file modificati
 e se c'è un `ARES.md`. Quattro cambiano la sessione in corso senza
@@ -365,14 +359,11 @@ turni; `/esporta <file>` sceglie il nome.
 
 ### Cosa Ares sa di sé
 
-Il system message non è un testo fisso: si apre con una scheda letta dalla
-configurazione di quell'avvio — quale modello parla e se gira in locale o su
-`ollama.com`, quale modello estrae profilo e memorie, l'embedder, la finestra
-di contesto e quanti scambi ha in vista, sistema operativo e shell, utente,
-conversazione, cartella, ramo git e modalità — poi spiega al modello come
-funziona la propria memoria, quali archivi si aggiornano da soli e quali con
-gli strumenti, e cosa può fare senza chiedere. Le guide che Agno aggiunge
-per i propri strumenti sono riscritte in italiano, per una persona sola. Per
+Il system message non è un testo fisso: si apre con la scheda dell'avvio
+(vedi [Perché Ares](#perché-ares)), poi spiega al modello come funziona la
+sua memoria — quali archivi si aggiornano da soli e quali con gli
+strumenti — e cosa può fare senza chiedere. Le guide che Agno aggiunge per
+i propri strumenti sono riscritte in italiano, per una persona sola. Per
 leggerlo tutto, esattamente come lo riceve il modello:
 
 ```bash
@@ -380,12 +371,7 @@ ares inspect --prompt                # la conversazione che aprirebbe adesso, qu
 ares inspect --prompt --modo piano   # nella modalità piano
 ```
 
-Il prompt distingue autorizzazioni sul workspace, memoria e quaderno;
-il contesto richiesto a Ollama è distinto dal limite effettivo del servizio.
-Ares riceve anche indicazioni su collaborazione, verifica degli esiti e
-lingua: italiano predefinito, rispettando traduzioni e testi richiesti in
-altre lingue. I criteri dell'estrattore distinguono fatti, ipotesi e proposte
-non accettate. Composizione, limiti e casi di verifica sono descritti in
+Composizione, criteri dell'estrattore, limiti e casi di verifica sono in
 [docs/prompt.md](docs/prompt.md).
 
 ## Verifica
@@ -406,12 +392,9 @@ I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
 .venv/bin/python tests/run.py --copertura
 ```
 
-Ogni prova resta anche uno script eseguibile da solo
-(`.venv/bin/python tests/backup_test.py`); il runner le lancia una per
-processo, perché ognuna prepara il proprio archivio temporaneo prima di
-importare la configurazione.
-
-La distinzione fra test offline ed E2E è descritta nella
+Ogni prova è anche uno script eseguibile da solo
+(`.venv/bin/python tests/backup_test.py`). Il runner, la distinzione fra
+prove offline ed E2E e la copertura sono descritti nella
 [guida ai test](docs/testing.md).
 
 Per misurare cosa viene ricordato e recuperato su dialoghi sintetici:
@@ -431,13 +414,18 @@ la contesa termina con codice 3. Utenti diversi possono lavorare insieme.
 I comandi di manutenzione mostrano tabelle sul terminale e testo piatto in
 una pipe; gli errori vanno su stderr. Prima di toccare lo stato chiedono di
 riscrivere una frase esatta, con lo stesso editor della chat; `--yes` la
-salta, e da uno script la frase si passa su stdin. Quelli che leggono soltanto accettano
-`--json` per gli script: `ares backup list --json`, `ares backup verify
---json`, `ares sessions status --json`, `ares entities audit --json`,
-`ares preflight --json`. Il codice di uscita non cambia, ed è lo stesso per
-ogni comando, chat compresa: `0` fatto, `1` guasto, `2` rifiutato — argomenti
-incoerenti, conferma negata, cartella rifiutata, niente da riprendere — e
-`3` stato occupato da un altro processo, da riprovare.
+salta, e da uno script la frase si passa su stdin. Quelli che leggono
+soltanto accettano `--json`: `ares backup list`, `ares backup verify`,
+`ares sessions status`, `ares entities audit`, `ares preflight`.
+
+I codici di uscita sono gli stessi per ogni comando, chat compresa:
+
+| Codice | Significato |
+| --- | --- |
+| `0` | fatto |
+| `1` | guasto |
+| `2` | rifiutato: argomenti incoerenti, conferma negata, cartella rifiutata, niente da riprendere |
+| `3` | stato occupato da un altro processo, da riprovare |
 
 ### Backup
 
@@ -453,12 +441,11 @@ Gli snapshot vivono per default in `~/.ares/backup`, accanto allo stato e
 fuori dal clone; `ARES_BACKUP_DIR` nel `.env` li sposta altrove. Database,
 indice vettoriale e cronologia restano esclusi da Git.
 
-Il backup resta un comando che dai tu. La chat però se ne accorge: se l'ultimo
-snapshot ha più di `BACKUP_PROMEMORIA_GIORNI` giorni — sette per default, zero
-spegne il promemoria — all'avvio te lo ricorda con la riga da eseguire, e tace
-in tutti gli altri casi. Non prova a fare il backup da sola: un archivio con
-LanceDB dentro richiede una decina di secondi e il lock esclusivo dello stato,
-cioè esattamente ciò che non si fa mentre qualcuno sta aspettando un prompt.
+Il backup è un comando che dai tu. Se l'ultimo snapshot ha più di
+`BACKUP_PROMEMORIA_GIORNI` giorni (sette per default, zero spegne il
+promemoria) la chat all'avvio te lo ricorda con la riga da eseguire. Non lo
+fa da sola: richiede una decina di secondi e il lock esclusivo dello stato,
+proprio mentre qualcuno aspetta il prompt.
 
 ### Entità duplicate
 
@@ -497,23 +484,21 @@ viene conservato.
 
 ## Località e sicurezza
 
-Stato ed embedding restano locali e la telemetria Agno è disabilitata: non
-sono richieste chiavi API cloud, e nessuno dei tre profili di
-[Locale, cloud, o entrambi](#locale-cloud-o-entrambi) è distribuito con un
-modello che esce dalla macchina. La scelta è esplicita nel `.env`, detta a
-ogni avvio dal preflight e dal banner, scritta nel prompt perché il modello
-non prometta una privacy che non può mantenere, e verificata dallo smoke
-test, che rifiuta un modello cloud per l'embedder.
+Stato ed embedding restano locali e la telemetria Agno è disabilitata; non
+servono chiavi API. Il cloud è solo quello scelto nel `.env` (vedi
+[Locale, cloud, o entrambi](#locale-cloud-o-entrambi)), e lo smoke test
+verifica che l'embedder rifiuti un modello cloud.
 
 Ciò che il modello legge può contenere un'istruzione: per questo ogni
 strumento che lascia una traccia sul disco chiede conferma nella modalità
 distribuita, `ARES.md` entra nel prompt come regole delimitate e non come
 ordini, e `ares -p` non scrive in memoria. Installazione e download dei
-modelli richiedono accesso alla rete, e i comandi shell autorizzati possono
-usarla: Ares è un agente locale controllato, non una sandbox di sicurezza.
+modelli richiedono la rete, e i comandi shell autorizzati possono usarla:
+Ares è un agente locale controllato, non una sandbox di sicurezza. Il
+modello di sicurezza completo è in [`SECURITY.md`](SECURITY.md), che dice
+anche come segnalare un problema.
 
-Non committare lo stato appreso, snapshot, `.env` o altri dati personali. Per segnalare
-un problema di sicurezza consulta [`SECURITY.md`](SECURITY.md).
+Non committare lo stato appreso, snapshot, `.env` o altri dati personali.
 
 ## A chi non serve
 
@@ -541,7 +526,7 @@ Meglio dirlo prima, per non deludere nessuno:
 - [Strategia di test](docs/testing.md)
 - [Ambiti di progetto](docs/project-scopes.md)
 - [Contratto del core](docs/core-contract.md)
-- [Roadmap](ROADMAP.md)
+- [Roadmap](docs/ROADMAP.md)
 - [Istruzioni per contribuire](CONTRIBUTING.md)
 
 ## Stato del progetto

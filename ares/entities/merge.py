@@ -284,9 +284,8 @@ def _unisci_anagrafica(
 ) -> None:
     """Alias, descrizione e proprieta': la canonica vince, la sorgente completa.
 
-    Un campo che la canonica non ha si copia; un valore diverso non si
-    sovrascrive e finisce nei conflitti, perche' il piano li mostra prima di
-    applicare, e chi fonde deve poterli leggere.
+    Un campo assente nella canonica si copia; un valore diverso non si
+    sovrascrive e va nei conflitti, che il piano mostra prima di applicare.
     """
     canonica.aliases, contatori["alias"] = _unisci_alias(canonica, sorgente)
     if not canonica.description and sorgente.description:
@@ -312,12 +311,7 @@ def _unisci_memorie(
     contatori: dict[str, int],
     conflitti: list[str],
 ) -> None:
-    """Fatti ed eventi: due chiamate identiche tranne il campo che leggono.
-
-    I nomi cambiano - `facts` sono fatti, `events` eventi - e le caselle del
-    contatore no: tenerle qui vuol dire che la differenza sta in una riga
-    sola invece che in due blocchi da ripetere.
-    """
+    """Fatti ed eventi, con lo stesso codice: cambia solo il campo letto."""
     oggetto_canonico.facts, contatori["fatti_aggiunti"], contatori["fatti_unificati"] = _unisci_ricordi(
         _valida_collezione(oggetto_canonico, "facts", canonica.riferimento),
         _valida_collezione(oggetto_sorgente, "facts", sorgente.riferimento),
@@ -341,10 +335,8 @@ def _riscrivi_verso_canonica(
 ) -> set[tuple[str, str]]:
     """Sposta sulla canonica ogni relazione che puntava alla sorgente.
 
-    Torna le entita' toccate - la canonica piu' quelle che avevano un arco
-    verso la sorgente - che sono quelle da deduplicare e riscrivere. Un arco
-    che dopo la riscrittura punta a se stesso non si conserva: e' diventato
-    un'auto-relazione, e la fusione la toglie invece di lasciarla passare.
+    Restituisce le entita' toccate, da deduplicare e riscrivere. Un arco che
+    diventa un'auto-relazione viene tolto.
     """
     toccate = {chiave_canonica}
     for proprietario, oggetto in oggetti.items():
@@ -384,11 +376,10 @@ def _completa_reciproche(
     contatori: dict[str, int],
     ora: str,
 ) -> None:
-    """Aggiunge la relazione inversa dove manca, sul canonico e non altrove.
+    """Aggiunge la relazione inversa dove manca, solo sugli archi del canonico.
 
-    Solo gli archi che ora coinvolgono il canonico: cosi' la fusione non
-    riscrive eventuali difetti preesistenti e scollegati. L'istante e' quello
-    del piano, lo stesso che finisce in `updated_at`.
+    Cosi' la fusione non corregge difetti preesistenti e scollegati. L'istante
+    e' quello del piano, lo stesso di `updated_at`.
     """
     for proprietario, oggetto in list(oggetti.items()):
         for relazione in list(oggetto.relationships or []):

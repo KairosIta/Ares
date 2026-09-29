@@ -15,9 +15,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# `.env` puo' contenere identita', percorsi e future impostazioni locali. Non
-# e' versionato e, come lo stato appreso, non deve nascere leggibile dagli
-# altri utenti della macchina. Su Windows vale invece la DACL ereditata.
+# `.env` contiene impostazioni locali: privato come lo stato appreso.
 if [ -f .env ]; then
     chmod 600 .env
 fi
@@ -28,31 +26,17 @@ if ! command -v uv > /dev/null; then
     exit 1
 fi
 
-# `sync` porta il venv esattamente com'e' scritto in uv.lock: crea `.venv`
-# se manca, sulla versione di Python in `.python-version`, rimuove i residui
-# di installazioni manuali e installa Ares in editable, cosi' i comandi
-# `ares` e gli alias `ares-backup`... compaiono in `.venv/bin`. Il lock porta gli hash
-# degli artefatti e uv li verifica: se un file scaricato non corrisponde
-# l'installazione si ferma, invece di riuscire con altro dentro.
-#
-# `--locked` rifiuta un lock non allineato al pyproject invece di
-# riscriverlo in silenzio; `--no-dev` lascia fuori ruff, mypy e coverage, che
-# su una macchina che usa soltanto Ares non servono (CONTRIBUTING spiega come
-# averli).
+# Porta il venv esattamente a uv.lock, hash verificati, con Ares in editable.
+# `--locked` rifiuta un lock non allineato; `--no-dev` lascia fuori gli
+# strumenti di sviluppo (CONTRIBUTING spiega come averli).
 echo "Installo le dipendenze bloccate."
 uv sync --locked --no-dev
 
-# `sync` allinea cio' che e' installato al lock; `check` verifica anche che i
-# requisiti dichiarati dai pacchetti installati siano compatibili fra loro.
-# setup.ps1 fa lo stesso controllo: i due percorsi di installazione devono
-# rifiutare lo stesso ambiente incoerente.
+# Requisiti dei pacchetti installati compatibili fra loro, come in setup.ps1.
 uv pip check --python .venv/bin/python
 
-# `ares` da qualunque cartella: un link in `~/.local/bin` al comando del venv.
-# Un link e non un `uv tool install`, perche' quello risolverebbe le
-# dipendenze da capo senza guardare uv.lock: il comando globale deve essere
-# esattamente l'ambiente bloccato, e seguire il codice del clone a ogni pull.
-# `ARES_BIN_DIR` sceglie un'altra directory.
+# `ares` da qualunque cartella: un link al comando del venv, non un
+# `uv tool install`, che ignorerebbe uv.lock. `ARES_BIN_DIR` cambia directory.
 BIN_DIR="${ARES_BIN_DIR:-$HOME/.local/bin}"
 mkdir -p "$BIN_DIR"
 ln -sfn "$PWD/.venv/bin/ares" "$BIN_DIR/ares"

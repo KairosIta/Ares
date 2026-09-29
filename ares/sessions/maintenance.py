@@ -79,10 +79,8 @@ def _dati_sessione(sessione: SessioneRetention) -> dict[str, Any]:
 
 
 def _stato(percorsi: Percorsi, user: str, come_json: bool) -> int:
-    # Il confine: da qui in poi l'identita' e' un `Utente`, e nessun passo
-    # successivo puo' riportare in giro la grafia scritta sulla riga di
-    # comando. Un id invalido solleva `UtenteNonValido`, che `_esegui` sa
-    # tradurre in un rifiuto leggibile.
+    # Da qui in poi l'identita' e' un `Utente` canonico. Un id invalido
+    # solleva `UtenteNonValido`, che `_esegui` traduce in un rifiuto.
     utente = Utente.da_grezzo(user)
     db = build_db(percorsi)
     sessioni = inventario(db, utente)
@@ -127,8 +125,7 @@ def _applica(percorsi: Percorsi, utente: Utente, sessioni: Sequence[SessioneRete
         eliminate = elimina_sessioni(db, store, sessioni, utente)
     except StatoParziale as errore:
         # Non e' un rifiuto: qualcosa e' gia' stato cancellato. Il rendiconto
-        # dice cosa, e lo snapshot appena fatto e' il punto da cui si torna
-        # allo stato di prima senza dover capire il guasto.
+        # dice cosa, e lo snapshot appena fatto permette di tornare indietro.
         UI.err("Cancellazione interrotta: " + str(errore))
         UI.err(
             "Stato parziale: eliminate "
@@ -206,9 +203,8 @@ def _esegui(
 ) -> int:
     """Il contorno comune ai tre comandi: coerenza dei flag, archivio, lock, errori.
 
-    `senza_archivio` e' cio' che si fa se il database non esiste: di default
-    una riga che lo dice, ma `status --json` deve rispondere comunque con
-    dati, perche' uno script non legge le frasi.
+    `senza_archivio` risponde se il database non esiste: di default una riga,
+    ma `status --json` deve restituire comunque dati.
     """
     if yes and not apply:
         UI.err("ERRORE: --yes richiede --apply")
@@ -240,9 +236,7 @@ def status(*, user: str = config.DEFAULT_USER_ID, come_json: Annotated[bool, Par
     percorsi = config.leggi_percorsi()
 
     def vuoto() -> int:
-        # Senza archivio non si interroga niente: l'eco della risposta JSON
-        # usa la forma canonica quando l'id ne ha una, la stessa che `_stato`
-        # userebbe con l'archivio presente.
+        # Senza archivio l'eco JSON usa comunque l'id canonico, come `_stato`.
         try:
             chi = Utente.da_grezzo(user).id
         except UtenteNonValido:

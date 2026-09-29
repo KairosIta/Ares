@@ -1,9 +1,7 @@
 """Presentazione Rich della chat, separata dal motore conversazionale.
 
-Questo modulo non conosce Agno, gli store o la configurazione dell'agente:
-riceve testo gia' deciso da ``chat.py`` e lo rende. Tenere il confine qui
-permette di cambiare tema e componenti senza toccare ``continue_run`` o il
-percorso di apprendimento.
+Non conosce Agno, gli store ne' la configurazione dell'agente: riceve testo
+gia' deciso e lo rende.
 """
 
 from __future__ import annotations
@@ -57,14 +55,10 @@ ARES_THEME = Theme(
 def _testo(valore: object, style: str | None = None) -> Text:
     """Testo letterale: ne' markup Rich, ne' controlli di terminale.
 
-    Le parentesi quadre restano parentesi. I controlli ANSI vengono tolti,
-    perche' non tutto cio' che passa di qui l'ha scritto Ares: il nome di
-    uno strumento, i suoi argomenti nel pannello di conferma, l'anteprima
-    di un risultato e le righe dell'eco arrivano dal modello o da un file
-    del workspace. Rich lascia passare ``ESC`` intatto, e una sequenza in
-    un argomento di conferma puo' cancellare la riga che chiede di
-    confermarlo. Lo stream ha il proprio filtro perche' i frammenti
-    arrivano spezzati; qui il testo e' intero e basta un passaggio.
+    Nomi di strumenti, argomenti, anteprime e righe dell'eco possono venire dal
+    modello o da un file: una sequenza ANSI in un argomento potrebbe cancellare
+    la riga che chiede di confermarlo. Lo stream ha un filtro suo, perche' i
+    frammenti arrivano spezzati.
     """
     return Text(_senza_controlli(str(valore)), style=style or "")
 
@@ -72,8 +66,7 @@ def _testo(valore: object, style: str | None = None) -> Text:
 def byte_leggibili(byte: int) -> str:
     """`1.5 MiB` invece di `1572864`: per le tabelle, non per i dati.
 
-    Base 1024 con il suffisso IEC, come nella riga delle metriche della chat:
-    due convenzioni nella stessa CLI sono peggio di una qualunque delle due.
+    Base 1024 con suffisso IEC, come le metriche della chat.
     """
     valore = float(byte)
     for unita in ("B", "KiB", "MiB", "GiB"):
@@ -86,9 +79,7 @@ def byte_leggibili(byte: int) -> str:
 def _riga(console: Console, testo: Text) -> None:
     """Una riga di testo: a capo per parola sul terminale, intera in una pipe.
 
-    Rich spezza a 80 colonne anche quando nessuno guarda, e una frase
-    spezzata in due righe non si trova piu' con grep ne' con `in`. In una
-    pipe la riga resta com'e', e a portarla a capo pensa chi la legge.
+    In una pipe la riga non si spezza, cosi' resta cercabile con grep.
     """
     console.print(testo, soft_wrap=not console.is_terminal)
 
@@ -113,10 +104,8 @@ def _senza_controlli(valore: str) -> str:
 class _FiltroControlliTerminale:
     """Filtra controlli ANSI conservando lo stato fra frammenti di stream.
 
-    Un filtro applicato token per token puo' lasciar passare ``ESC [`` in un
-    frammento e ``2J`` nel successivo. Ricomporre l'intera risposta evitava
-    quel varco, ma obbligava ``Live`` a ridisegnarla tutta. Questo piccolo
-    parser consuma invece CSI, OSC, DCS/SOS/PM/APC e sequenze ESC mentre
+    Un filtro per frammento lascerebbe passare ``ESC [`` in uno e ``2J`` nel
+    successivo. Consuma CSI, OSC, DCS/SOS/PM/APC e sequenze ESC mentre
     arrivano; un comando non terminato viene scartato alla fine del turno.
     """
 
@@ -315,9 +304,8 @@ class RichRunStream:
         if risposte.is_terminal:
             risposte.print(Markdown(contenuto, code_theme="monokai", hyperlinks=False))
         else:
-            # Una pipe conserva il sorgente Markdown, utile per log e file.
-            # Si aggiunge soltanto il newline che la CLI usa per separare il
-            # prompt successivo quando il modello non ne ha gia' prodotto uno.
+            # Una pipe conserva il sorgente Markdown; si aggiunge solo il newline
+            # finale se il modello non l'ha gia' prodotto.
             risposte.print(
                 _testo(contenuto),
                 end="" if contenuto.endswith("\n") else "\n",
@@ -343,9 +331,8 @@ class RichRunStream:
     def activity_started(self, label: str) -> None:
         with self._lock:
             self._hide_activity_locked()
-            # Sono etichette decise dall'applicazione, ma il nome di un tool
-            # puo' arrivare dal modello: nessuna newline deve spezzare
-            # l'invariante di una sola riga del Live.
+            # Il nome di un tool puo' venire dal modello: niente newline, il Live
+            # deve restare di una riga.
             self._activity_label = " ".join(str(label).split())
             now = self._clock()
             self._last_visible_at = now
@@ -378,9 +365,8 @@ class RichRunStream:
         """Rende permanente il Markdown ricevuto fino a questo momento."""
         with self._lock:
             self._hide_activity_locked()
-            # Un controllo ANSI non terminato non puo' attraversare un
-            # confine semantico (tool, pausa o fine di una singola run) e
-            # inghiottire il testo della continuazione successiva.
+            # Un controllo ANSI non terminato non deve attraversare un confine
+            # (tool, pausa, fine run) e inghiottire il testo successivo.
             self._filtro.finish()
             self._flush_content_locked()
 
@@ -441,13 +427,10 @@ class CliRenderer:
             self.console = Console(theme=ARES_THEME, highlight=False)
         else:
             self.console = console
-            # Una Console iniettata (test, file o futura esportazione) non
-            # conosce il tema costruito da CliRenderer. Applicarlo qui rende
-            # i componenti indipendenti da come viene creato l'output.
+            # Una Console iniettata non conosce il tema: lo si applica qui.
             self.console.push_theme(ARES_THEME)
-        # Gli errori dei comandi di manutenzione vanno su stderr, cosi' uno
-        # script che legge stdout - o `--json` - non li trova in mezzo ai
-        # dati. `stderr=True` segue il sys.stderr corrente come sopra.
+        # Gli errori vanno su stderr, fuori dai dati che uno script legge da stdout.
+        # `stderr=True` segue il sys.stderr corrente.
         self.stderr = Console(theme=ARES_THEME, highlight=False, stderr=True)
         # Dove finisce la risposta del modello. E' la stessa console di tutto
         # il resto, salvo dentro `solo_risposte`.
@@ -457,12 +440,8 @@ class CliRenderer:
     def solo_risposte(self) -> Iterator[None]:
         """Su stdout solo la risposta del modello; tutto il resto su stderr.
 
-        E' `ares -p`: chi legge stdout da uno script vuole la risposta, e ci
-        trovava in mezzo la riga "Ares", gli strumenti chiamati, le
-        anteprime dei loro esiti e le metriche. Per la durata del blocco
-        `console` e' stderr e `risposte` resta stdout: ogni componente
-        scrive come prima, cambia solo dove arriva. Vale anche con stdout su
-        un terminale, perche' la regola non dipende da chi ascolta.
+        E' `ares -p`: per la durata del blocco `console` e' stderr e `risposte`
+        resta stdout. Vale anche con stdout su un terminale.
         """
         console, risposte = self.console, self.risposte
         self.risposte = self.console
@@ -480,11 +459,7 @@ class CliRenderer:
         _riga(self.stderr, _testo(valore, style))
 
     def pair(self, chiave: str, valore: object, *, style: str | None = None) -> None:
-        """`chiave: valore` su una riga, con la chiave attenuata.
-
-        Resta una riga sola e non una tabella perche' `Sessioni: 2` deve
-        potersi cercare con grep e leggersi anche in una pipe.
-        """
+        """`chiave: valore` su una riga, con la chiave attenuata, cercabile con grep."""
         _riga(
             self.console,
             Text.assemble(
@@ -496,11 +471,8 @@ class CliRenderer:
     def table(self, colonne: Sequence[Colonna], righe: Iterable[Sequence[object]]) -> None:
         """Una tabella compatta: intestazione attenuata, prima colonna in ciano.
 
-        Su un terminale una cella lunga va a capo dentro la propria colonna.
-        In una pipe no: la console si allarga quanto serve alla tabella,
-        perche' un nome di snapshot spezzato in tre righe non si puo' ne'
-        leggere ne' cercare, e chi legge da una pipe e' quasi sempre un
-        `grep` o un occhio che scorre un log.
+        Su un terminale una cella lunga va a capo nella sua colonna; in una pipe la
+        console si allarga, perche' un valore spezzato non si legge ne' si cerca.
         """
         tabella = Table(
             box=box.SIMPLE_HEAD,
@@ -644,9 +616,8 @@ class CliRenderer:
     def learned(self, righe: Iterable[str]) -> None:
         """Cosa e' entrato in memoria: la sintesi in evidenza, il testo attenuato.
 
-        Fuori dallo stream, perche' arriva quando il turno e' gia' chiuso e
-        l'estrazione ha finito di scrivere. Stessa forma dell'esito di uno
-        strumento: e' l'esito di un'operazione che nessuno ha chiamato.
+        Fuori dallo stream, perche' arriva a turno chiuso, con la stessa forma
+        dell'esito di uno strumento.
         """
         for indice, riga in enumerate(righe):
             self.line(riga, style="ares.success" if indice == 0 else "ares.muted")
@@ -661,14 +632,8 @@ UI = CliRenderer()
 def stampa_store(store: Any, etichetta: str, **filtri: Any) -> None:
     """Stampa uno store, o dice che e' spento invece di sollevare AttributeError.
 
-    Gli store spenti in `config.py` non sono None per errore: la
-    LearningMachine non li costruisce affatto, e `lm.user_profile_store`
-    restituisce None. Chiamarci `.print()` sopra faceva morire `/profilo` con
-    un AttributeError, e `config.py` invita esplicitamente a spegnerli per
-    guadagnare latenza. La guardia sta qui e non nei due lettori perche' li'
-    sarebbe scritta due volte, ed e' gia' successo con `/entita`. Sta in
-    `cli/ui.py` e non in `state/stores.py` perche' stampa: `state/` legge e
-    non deve importare l'interfaccia.
+    Uno store spento in `config.py` non viene costruito, e il suo attributo
+    sulla LearningMachine e' None. Sta qui e non in `state/` perche' stampa.
     """
     if store is None:
         UI.line(etichetta + ": store spento in config.py", style="ares.muted")
@@ -676,7 +641,6 @@ def stampa_store(store: Any, etichetta: str, **filtri: Any) -> None:
     store.print(**filtri)
 
 
-# Campi che il framework mette e toglie da solo. Restano fuori dalla ricerca:
-# un fatto porta un `id` e due date, e cercarci dentro vuol dire che "2026"
-# trova ogni entita' scritta quest'anno.
+# Campi gestiti dal framework, esclusi dalla ricerca: altrimenti "2026"
+# troverebbe ogni entita' scritta quest'anno.
 CONTABILITA = ("id", "created_at", "updated_at")

@@ -54,15 +54,12 @@ CRITERI_ESTRAZIONE = (
 class AresLearningMachine(LearningMachine):
     """Estrae apprendimenti soltanto quando il run e' davvero concluso.
 
-    Agno 3.0.11, la versione su cui Ares e' verificata, avvia
-    ``LearningMachine.process`` in background prima della chiamata al modello,
-    usando una fotografia dei messaggi. I documenti che citano la versione
-    sono sorvegliati da `tests/agno_contract_test.py`, che confronta la
-    dichiarazione con l'installato. Un run in pausa per conferma non genera
-    una seconda estrazione dopo ``continue_run``. Il collegamento
-    ``learning=`` resta necessario per contesto, istruzioni e strumenti; qui
-    si disattiva solo il callback anticipato, sostituito dal post-hook sul
-    RunOutput completo.
+    Agno avvia ``process`` in background prima della chiamata al modello, su
+    una fotografia parziale dei messaggi. Qui quel callback e' spento e lo
+    sostituisce il post-hook `apprendi_a_run_completato` sul RunOutput
+    completo; ``learning=`` resta collegato per contesto, istruzioni e
+    strumenti. Il comportamento di Agno e' verificato da
+    `tests/agno_contract_test.py`.
     """
 
     def process(self, *args, **kwargs) -> None:
@@ -78,11 +75,8 @@ class AresLearningMachine(LearningMachine):
 class AresSessionContextStore(SessionContextStore):
     """Riprova soltanto una tool call di contesto che non ha scritto nulla.
 
-    Il numero di tentativi arriva dal costruttore e non da un nome di modulo:
-    e' la politica della conversazione che ha costruito lo store, e leggerla
-    qui a meta' estrazione permetterebbe a un'altra sessione di cambiarla
-    sotto. `__init__` passa tutto ad Agno senza fissarne la firma, che cambia
-    fra le versioni.
+    `tentativi_contesto` sono i tentativi oltre il primo. `__init__` passa il
+    resto ad Agno senza fissarne la firma, che cambia fra le versioni.
     """
 
     last_extraction_attempts = 0
@@ -137,21 +131,13 @@ class AresSessionContextStore(SessionContextStore):
 
 
 def senza_conferma(funzioni: list[Any], nome: str) -> list[Any]:
-    """Ferma il modello dopo la scrittura, senza la chiamata di conferma.
+    """Ferma il modello dopo la tool call `nome`, senza la chiamata di chiusura.
 
-    Agno esegue la tool call, rimette il risultato nei messaggi e richiama il
-    modello per sentirgli dire che ha finito; la risposta di quella seconda
-    chiamata non la legge nessuno, perche' l'esito si legge da
-    `response.tool_executions` attraverso `was_updated`. `SessionContextStore`
-    la evita gia' per `save_session_context`, con un commento nel sorgente di
-    Agno; profilo e memorie la pagavano ancora, ed erano due delle cinque
-    chiamate di ogni turno: il 41% dei caratteri spediti per turno, quasi
-    tutto istruzioni rispedite (docs/memory-quality.md).
-
-    Il flag non cambia cosa si impara - e' la stessa scrittura che avveniva
-    prima - e non tocca la conferma di Ares, che legge e riscrive gli store
-    dopo il turno. `nome` e' quello che Agno costruisce, non uno scelto qui, e
-    `tests/learning_cost_test.py` lo verifica leggendo gli store.
+    Dopo una tool call Agno richiama il modello solo per sentirgli dire che
+    ha finito, ma l'esito si legge gia' da `response.tool_executions`: quella
+    chiamata e' costo puro (i numeri sono in docs/memory-quality.md). Cosa si
+    impara non cambia. `nome` e' quello che costruisce Agno, verificato da
+    `tests/learning_cost_test.py`.
     """
     for funzione in funzioni:
         if funzione.name == nome:
@@ -160,25 +146,17 @@ def senza_conferma(funzioni: list[Any], nome: str) -> list[Any]:
 
 
 class AresUserProfileStore(UserProfileStore):
-    """Il profilo, con una sola chiamata al modello per turno.
-
-    Le istruzioni arrivano dalla configurazione, in italiano come le altre,
-    quindi qui non c'e' niente da riscrivere: l'unica differenza da
-    `UserProfileStore` e' il flag sulla sua tool call.
-    """
+    """Il profilo, con una sola chiamata al modello per turno (vedi `senza_conferma`)."""
 
     def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
         return senza_conferma(super()._build_functions_for_model(*args, **kwargs), "update_profile")
 
 
 class AresUserMemoryStore(UserMemoryStore):
-    """Le memorie, spiegate al modello in italiano e per una persona sola.
+    """Le memorie, con una sola chiamata per turno e la guida in italiano.
 
-    Agno scrive la guida di ogni store in inglese, per un agente generico
-    che puo' avere davanti una squadra. Qui la voce e' quella del resto del
-    prompt, e dice cio' che il modello deve sapere per non sbagliare: che le
-    memorie si aggiornano da sole dopo ogni risposta, che l'utente le vede
-    e puo' annullarle, e quando invece tocca a lui usare lo strumento.
+    La guida di Agno e' inglese e pensata per un agente di squadra; questa
+    dice quando tocca al modello usare lo strumento.
     """
 
     def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
@@ -228,8 +206,7 @@ class AresLearnedKnowledgeStore(LearnedKnowledgeStore):
     """
 
     def instructions(self) -> str:
-        # Agno restituisce le istruzioni AGENTIC anche con gli strumenti
-        # spenti. In -p riapparivano cosi' ordini di salvare e regole di team.
+        # Agno restituisce le istruzioni AGENTIC anche con gli strumenti spenti.
         if not self.config.enable_agent_tools:
             return ""
         if self.config.mode != LearningMode.AGENTIC:
@@ -313,24 +290,16 @@ def build_learning_machine(
 ) -> AresLearningMachine:
     """Compone gli store attivi secondo la politica della conversazione.
 
-    Con `strumenti=False` gli store restano - il contesto che iniettano nel
-    prompt e' cio' che Ares sa dell'utente - ma non danno al modello gli
-    strumenti per scriverci: e' `ares -p`, dove nessuno legge cio' che
-    entrerebbe in memoria.
-
     `impostazioni` dice con quale modello estrarre, `politica.apprendimento`
-    quali store esistono e con quali limiti: le due risposte arrivano da
-    fuori invece di essere rilette da nomi di modulo, cosi' la macchina
-    descrive la conversazione che la riceve e non quella che il processo
-    aveva in mente all'import.
+    quali store esistono e con quali limiti. Con `strumenti=False` (`ares -p`)
+    gli store iniettano ancora il loro contesto, ma il modello non riceve gli
+    strumenti per scriverci.
     """
     learning_model = build_learning_model(impostazioni)
     apprendimento = politica.apprendimento
 
-    # Gli store con una guida per il modello - e quello che deve fermarsi dopo
-    # la scrittura - si costruiscono qui, con le classi di Ares: la macchina
-    # accetta istanze gia' fatte e non le completa, quindi db, modello e
-    # limiti vanno passati.
+    # La macchina accetta istanze gia' fatte e non le completa: db, modello e
+    # limiti vanno passati a ogni store.
     user_profile: AresUserProfileStore | bool = False
     if apprendimento.profilo:
         user_profile = AresUserProfileStore(

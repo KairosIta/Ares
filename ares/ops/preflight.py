@@ -1,25 +1,17 @@
-"""
-Verifica dell'ambiente prima di avviare l'agente
+"""Verifica dell'ambiente prima di avviare l'agente
 ================================================
+
 Uso:
     ares preflight
     ares preflight --json
 
-Risponde a una domanda sola: se avvio la chat adesso, parte? Controlla che
-il server Ollama risponda e che i modelli nominati in `config.py` siano
-davvero scaricati. Sono i due modi in cui l'avvio fallisce, e il secondo
-non da' errore finche' non arriva il primo messaggio.
+Risponde a una domanda: se avvio la chat adesso, parte? Controlla che
+Ollama risponda e che i modelli configurati siano scaricati; il secondo
+guasto altrimenti emerge solo al primo messaggio.
 
-Un modello cloud compare nell'elenco del daemon come gli altri, dopo un
-`ollama pull` che scarica solo il manifesto; qui viene marcato come tale,
-perche' chi legge "ok" deve sapere che quel ruolo esce dalla macchina. Se
-manca, il comando per rimediare include `ollama signin`: senza l'accesso il
-pull riesce ma la prima richiesta no.
-
-Non accende nessun modello e non lascia niente su disco: `esamina` riceve le
-impostazioni di cio' che si sta per avviare, e il loro import non crea piu'
-nulla, ne' chiama `prepara_archivio()`. Un comando che deve dire se l'ambiente
-funziona non e' il posto giusto per creare l'archivio.
+I modelli cloud sono marcati come tali, perche' quel ruolo esce dalla
+macchina; se mancano, il rimedio include `ollama signin`. Non accende
+modelli e non scrive su disco.
 """
 
 import json
@@ -42,21 +34,15 @@ app = nuova_app("preflight", "Controlla che Ollama risponda e che i modelli ci s
 def modelli_disponibili(host: str, timeout: int = 10) -> list:
     """Elenca i modelli scaricati sul server Ollama.
 
-    Solleva urllib.error.URLError se il server non risponde: distinguere
-    "server spento" da "modello mancante" e' meta' del valore di questo
-    controllo.
+    Solleva `urllib.error.URLError` se il server non risponde, per distinguere
+    "server spento" da "modello mancante".
     """
     with urllib.request.urlopen(host.rstrip("/") + "/api/tags", timeout=timeout) as r:
         return json.load(r).get("models", [])
 
 
 def stessa_etichetta(richiesto: str, presente: str) -> bool:
-    """Confronta due nomi di modello ignorando il tag implicito.
-
-    Ollama elenca `nomic-embed-text-v2-moe` come `nomic-embed-text-v2-moe:latest`,
-    quindi il confronto letterale darebbe un falso negativo su ogni modello
-    scritto senza tag.
-    """
+    """Confronta due nomi di modello ignorando il tag implicito `:latest`."""
 
     def normalizza(nome: str) -> str:
         return nome if ":" in nome else nome + ":latest"
@@ -67,12 +53,9 @@ def stessa_etichetta(richiesto: str, presente: str) -> bool:
 def esamina(impostazioni: Impostazioni) -> dict[str, Any]:
     """Il preflight come dati: cosa serve, cosa c'e', cosa manca.
 
-    Separato dalla stampa perche' `--json` e la tabella devono dire le
-    stesse cose, e perche' il verdetto - `pronto` - va deciso una volta.
-
-    `impostazioni` e' cio' che si sta per avviare - server, modelli, avviso
-    sul cloud - e arriva da fuori: un preflight che leggesse `config` da
-    solo direbbe se parte un'altra conversazione, non questa.
+    Separato dalla stampa perche' `--json` e la tabella dicano le stesse cose
+    e il verdetto `pronto` si decida una volta. `impostazioni` e' la
+    conversazione che si sta per avviare.
     """
     esito: dict[str, Any] = {
         "server": impostazioni.host,
@@ -92,12 +75,8 @@ def esamina(impostazioni: Impostazioni) -> dict[str, Any]:
     esito["raggiungibile"] = True
     esito["modelli_scaricati"] = len(presenti)
 
-    # I modelli davvero usati a ogni turno, che da quando l'embedder di
-    # ingestion e' stato rimosso sono tutti quelli nominati in config.py.
-    # I ruoli si accumulano invece di sovrascriversi: con MAIN_MODEL locale
-    # conviene che LEARNING_MODEL sia lo stesso modello, e allora va mostrato
-    # con entrambi i ruoli, non come un modello con un ruolo solo. Lo stesso
-    # vale con lo stesso modello cloud in entrambi.
+    # I ruoli si accumulano: lo stesso modello per conversazione ed
+    # estrazione si mostra con entrambi.
     richiesti: dict[str, list[str]] = {}
     for modello, ruolo in (
         (impostazioni.principale, "conversazione"),

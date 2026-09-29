@@ -1,36 +1,19 @@
-"""
-Schemi personalizzati per gli store di apprendimento
-====================================================
-Agno serializza le classi schema per percorso di import, quindi devono
-vivere in un modulo importabile. Definirle dentro `__main__` le fa
-sopravvivere al processo corrente ma non al round-trip su database.
+"""Schemi personalizzati per gli store di apprendimento.
 
-Gli store sono dataclass, non modelli Pydantic: i campi si dichiarano con
-`field(default=..., metadata={"description": ...})`. La descrizione finisce
-nel prompt di estrazione, quindi e' l'unica leva che hai per dire al modello
-cosa vuoi in quel campo. Scrivile come istruzioni, non come etichette.
+Agno serializza gli schemi per percorso di import: devono vivere in un
+modulo importabile, non in `__main__`.
 
-**I campi sono stringhe, e non e' una scelta di stile.** Agno costruisce lo
-strumento `update_profile` dai campi dello schema ma annota ognuno come
-`Optional[str]`, con il commento "Simplified to str for LLM compatibility"
-(`agno/learn/stores/user_profile.py`). Un campo dichiarato `List[str]` non
-diventa mai una lista: il modello puo' solo passare una stringa, e le
-dataclass non validano, quindi quella stringa finisce in archivio sotto un
-tipo che nessuno rispetta. Qui c'erano `expertise` e `tools_and_stack`
-dichiarati `List[str]` e riletti dal database come `str`. Chiedere l'elenco
-nella descrizione e' l'unico modo di ottenerne uno.
+La `description` nei metadata di ogni campo finisce nel prompt di
+estrazione: scrivila come istruzione al modello, non come etichetta.
 
-**Il contesto di sessione non si estende.** Qui vivevano anche un
-`AresSessionContext` con `blockers` e `decisions`, che il modello non ha
-mai potuto scrivere: `save_session_context` ha una firma fissa - summary,
-goal, plan, progress - costruita a mano e non dallo schema
-(`agno/learn/stores/session_context.py`). Lo schema serve solo a rileggere
-cio' che quella firma ha scritto. Erano due campi che nessun percorso poteva
-riempire, come l'embedder di ingestion prima di loro, e sono stati rimossi.
+Vincoli di Agno da conoscere prima di cambiare qualcosa:
 
-**Uno schema serve anche a cambiare come una cosa viene resa**, non solo a
-aggiungere campi: `AresMemories` non porta nessun campo nuovo, sovrascrive
-il metodo con cui le memorie diventano testo per il prompt.
+- **I campi del profilo sono stringhe.** Agno annota ogni parametro di
+  `update_profile` come `Optional[str]`, e le dataclass non validano: un
+  `List[str]` arriverebbe come stringa. Per un elenco, chiedilo nella
+  descrizione.
+- **Il contesto di sessione non si estende.** `save_session_context` ha una
+  firma fissa (summary, goal, plan, progress) che non deriva dallo schema.
 """
 
 from dataclasses import dataclass, field
@@ -97,34 +80,19 @@ class AresProfile(UserProfile):
 
 @dataclass
 class AresMemories(Memories):
-    """Memorie che portano con se' la data, invece di arrivare senza tempo.
+    """Memorie rese nel prompt con la loro data.
 
-    Ogni memoria ha `created_at` e `updated_at` in archivio da sempre: e' il
-    rendering a scartarli. `Memories.get_memories_text` costruisce le righe
-    con il solo `content`, quindi l'agente riceve cio' che sa senza sapere da
-    quando lo sa. Una preferenza dichiarata l'anno scorso e una di ieri
-    arrivano identiche, e non c'e' modo di accorgersi che una e' vecchia.
-
-    Il metodo e' l'unico punto da toccare: lo store lo chiama su qualunque
-    schema gli sia stato configurato (`to_context` fa
-    `data.get_memories_text()`, e ogni costruzione passa da
-    `self.config.schema or Memories`). Nessuna patch, nessun campo aggiunto -
-    aggiungerne uno qui sarebbe inutile, perche' le operazioni sulle memorie
-    lavorano sulla lista e non sui campi dello schema.
-
-    La data resa e' `updated_at`, cioe' l'ultima volta che quella memoria e'
-    stata confermata o riscritta, con `created_at` come ripiego. Assoluta e
-    non relativa: l'ora corrente sta nello stesso prompt, e far calcolare
-    "tre mesi fa" a un 9B aggiunge aritmetica senza aggiungere informazione.
+    `Memories.get_memories_text` usa solo `content`: il modello non saprebbe
+    se una preferenza e' di ieri o dell'anno scorso. La data e' `updated_at`
+    (ripiego `created_at`), assoluta: l'ora corrente e' gia' nel prompt, e
+    un calcolo relativo sarebbe aritmetica in piu' per un modello piccolo.
     """
 
     def get_memories_text(self) -> str:
         """Le memorie come testo per il prompt, ognuna con la sua data.
 
-        La legenda in testa non e' decorazione: una data fra parentesi quadre
-        e basta si presta a essere letta come parte di cio' che l'utente ha
-        detto. Il blocco che avvolge queste righe e' scritto da Agno, in
-        inglese e non modificabile, quindi la spiegazione puo' stare solo qui.
+        La legenda in testa evita che la data sia letta come parte di cio'
+        che l'utente ha detto.
         """
         if not self.memories:
             return ""

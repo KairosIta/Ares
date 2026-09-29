@@ -1,25 +1,17 @@
-"""
-Prova dei comandi a riga di comando, senza Ollama
+"""Prova dei comandi a riga di comando, senza Ollama
 =================================================
 Uso:
     .venv/bin/python tests/cli_test.py
 
-I moduli di Ares erano provati; i comandi con cui si usano, no. La misura di
-copertura lo diceva senza ambiguita': `preflight` e `inspect_learning`
-allo 0%, il `main()` di `backup/snapshots.py` all'1%. Sono le righe che un utente
-attraversa per prime - il preflight e' letteralmente il primo comando che si
-esegue su un clone nuovo - ed erano le uniche mai eseguite da nessuno tranne
-che a mano.
-
-Cosa viene affermato: che ogni comando termini con il codice di uscita giusto
-e stampi cio' su cui l'utente decide il passo dopo. Non che il testo sia
-formulato bene: quello si legge, non si prova.
+I comandi con cui Ares si usa: preflight, ispezione, backup, migrazione,
+sessioni e la REPL. Si afferma che ogni comando esca con il codice giusto e
+stampi cio' su cui l'utente decide il passo dopo, non che il testo sia
+formulato bene.
 
 Niente modello e niente rete verso l'esterno. Il preflight interroga un
-server HTTP finto in ascolto su localhost, che risponde con l'elenco di
-modelli deciso dalla prova: e' l'unico modo di provare i tre esiti - pronto,
-modello mancante, server spento - senza dipendere da cosa c'e' scaricato
-sulla macchina che esegue la prova.
+server HTTP finto su localhost, con l'elenco di modelli deciso dalla prova:
+cosi' si provano i tre esiti (pronto, modello mancante, server spento)
+senza dipendere da cosa c'e' sulla macchina.
 """
 
 import errno
@@ -58,8 +50,10 @@ PERCORSI = config.leggi_percorsi()
 from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
-from ares.cli import cartella, chat  # noqa: E402
+from ares.cli import chat  # noqa: E402
 from ares.cli.ui import UI  # noqa: E402
+from ares.core import id_sessione  # noqa: E402
+from ares.core import session as nucleo_sessioni  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
 from ares.state.identita import Utente, UtenteNonValido, utente_canonico  # noqa: E402
@@ -73,11 +67,9 @@ SESSIONE = "cli"
 FILE_AGENTE = "note/appunto.md"
 CONTENUTO_FILE = "riga di prova"
 
-# Nessuna di queste prove deve accendere un modello, e su una macchina di
-# sviluppo Ollama e' spesso acceso: senza questa riga la prova passerebbe qui
-# usandolo di nascosto e fallirebbe in CI, dove non c'e'. Il porto e' chiuso di
-# proposito, cosi' un tentativo di embedding si vede subito invece di
-# funzionare.
+# Ollama e' spesso acceso sulla macchina di sviluppo: la prova punta a una
+# porta chiusa, cosi' un uso nascosto del modello fallisce subito qui invece
+# che solo in CI.
 config.OLLAMA_HOST = "http://127.0.0.1:1"
 
 # Impostazioni e politica si leggono dopo, perche' devono fotografare anche
@@ -95,8 +87,7 @@ POLITICA = config.leggi_politica()
 class OllamaFinto(BaseHTTPRequestHandler):
     """Risponde a /api/tags con l'elenco deciso dalla prova.
 
-    L'elenco vive sulla classe e non sull'istanza perche' HTTPServer costruisce
-    un handler nuovo per ogni richiesta.
+    L'elenco sta sulla classe perche' HTTPServer crea un handler per richiesta.
     """
 
     modelli: ClassVar[list[str]] = []
@@ -120,12 +111,7 @@ class OllamaFinto(BaseHTTPRequestHandler):
 
 
 def porta_libera() -> int:
-    """Una porta che il sistema dichiara libera adesso.
-
-    Chiedere al sistema invece di fissarne una: una porta scelta a mano e'
-    occupata prima o poi, e il fallimento che ne segue sembra un difetto del
-    preflight.
-    """
+    """Una porta che il sistema dichiara libera adesso: una fissa prima o poi sarebbe occupata."""
     with socket.socket() as presa:
         presa.bind(("127.0.0.1", 0))
         return int(presa.getsockname()[1])
@@ -134,9 +120,7 @@ def porta_libera() -> int:
 def esegui_preflight(modelli: list[str] | None, argomenti: list[str] | None = None) -> tuple[int, str]:
     """Lancia il preflight contro un server finto, o contro nessun server.
 
-    Con `modelli=None` non avvia niente e punta a una porta chiusa: e' il caso
-    "Ollama non gira", che vale la pena provare quanto gli altri due perche'
-    e' quello in cui l'utente si trova per primo.
+    Con `modelli=None` punta a una porta chiusa: il caso "Ollama non gira".
     """
     porta = porta_libera()
     host = "http://127.0.0.1:" + str(porta)
@@ -173,20 +157,10 @@ build_filesystem(percorsi, utente).write(sys.argv[3], sys.argv[4])
 def costruisci_archivio() -> str:
     """Crea l'archivio in un processo figlio, che poi muore.
 
-    In-process sarebbe piu' breve, e su Linux funzionerebbe. Non su Windows:
-    `build_assistant` lascia aperti i due SQLite per tutta la vita del
-    processo, e li' un file aperto non si sostituisce, quindi il `restore`
-    provato piu' sotto falliva con WinError 32 - su `filesystem.db`, dentro
-    la directory che il restore stava rimpiazzando.
-
-    Non e' un dettaglio della prova: e' il modo in cui il restore si usa
-    davvero. Si ripristina con Ares chiuso, ed e' per questo che la chat
-    tiene un lock condiviso e il restore ne chiede uno esclusivo. Una prova
-    che ripristina tenendo l'archivio aperto sta provando una situazione che
-    il prodotto vieta.
-
-    Il figlio scrive anche il file dell'agente, cosi' lo snapshot creato
-    dopo lo contiene: uno snapshot di un archivio vuoto proverebbe meno.
+    `build_assistant` lascia aperti i SQLite per tutta la vita del processo, e
+    su Windows un file aperto non si sostituisce: il `restore` piu' sotto
+    fallirebbe. E' anche l'uso reale: si ripristina con Ares chiuso. Il figlio
+    scrive anche un file dell'agente, perche' lo snapshot non sia vuoto.
     """
     figlio = subprocess.run(
         [
@@ -235,12 +209,9 @@ print(agente.user_id)
 def identita_canonica() -> str:
     """Una sola forma dell'utente per namespace, entita', lock e profilo.
 
-    Riproduce il difetto del `core-contract`: `Demo` e `demo` erano la stessa
-    persona per il namespace - che minuscolizza - e due per il lock. Qui si
-    pretende che namespace, entita' e lock dicano la stessa cosa, che un id
-    fuori alfabeto sia rifiutato invece di diventare un contenitore
-    condiviso, e che una scrittura non canonica non possa nemmeno diventare
-    una identita': e' la garanzia che il tipo aggiunge alla regola.
+    `Demo` e `demo` devono essere la stessa persona ovunque; un id fuori
+    alfabeto e' rifiutato invece di diventare un contenitore condiviso; una
+    forma non canonica non puo' diventare un'identita'.
     """
     esigi(utente_canonico("  Kairos ") == "kairos", "spazi e maiuscole non normalizzati")
     demo = Utente.da_grezzo("Demo")
@@ -253,10 +224,9 @@ def identita_canonica() -> str:
     )
     esigi(namespace_entita(demo) == namespace_entita(stessa), "le entita' non seguono la stessa identita'")
 
-    # Il tipo non ammette una forma non canonica, e `da_grezzo` e' l'unica
-    # porta: una grafia sporca che arrivasse a uno store scriverebbe in un
-    # contenitore che nessun lettore canonico interroga, ed e' esattamente il
-    # modo in cui l'archivio si sdoppia senza un errore.
+    # `da_grezzo` e' l'unica porta: una grafia sporca arrivata a uno store
+    # scriverebbe in un contenitore che nessun lettore canonico interroga,
+    # sdoppiando l'archivio senza errori.
     for scrittura in ("Demo", "  demo  ", "DEMO"):
         try:
             Utente(scrittura)
@@ -327,10 +297,8 @@ def identita_canonica() -> str:
 def identita_agente() -> str:
     """L'agente porta la forma canonica a profilo e User Memory.
 
-    Profilo e memorie non hanno namespace: la loro chiave e' `user_id`, e Agno
-    la cerca com'e'. La grafia sporca si ferma al confine - `Utente.da_grezzo`
-    - ed e' quello che l'agente scrive nel campo che Agno usa come chiave: il
-    figlio costruisce l'agente da `"  Demo  "` e riporta quella che conserva.
+    Quegli store non hanno namespace: la chiave e' `user_id`. Il figlio
+    costruisce l'agente da `"  Demo  "` e riporta la chiave che conserva.
     """
     figlio = subprocess.run(
         [sys.executable, "-c", COSTRUZIONE_AGENTE],
@@ -351,17 +319,15 @@ def identita_agente() -> str:
 def id_sessione_univoci() -> str:
     """Due cartelle omonime, o lo stesso istante, non producono lo stesso id.
 
-    Era il secondo difetto riprodotto nel `core-contract`: il nome della
-    cartella troncato piu' i secondi non distingue `/a/api` da `/b/api`, e la
-    seconda conversazione avrebbe riusato la riga della prima.
+    Nome della cartella piu' secondi non distingue `/a/api` da `/b/api`.
     """
     quando = datetime(2026, 9, 21, 12, 0, 0)
-    a = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando, suffisso="aaa111")
-    b = cartella.nuovo_id_sessione(Path("/progetti/b/api"), quando, suffisso="bbb222")
+    a = id_sessione.nuovo_id_sessione(Path("/progetti/a/api"), quando, suffisso="aaa111")
+    b = id_sessione.nuovo_id_sessione(Path("/progetti/b/api"), quando, suffisso="bbb222")
     esigi(a == "api-20260921-120000-aaa111", "formato dell'id inatteso: " + repr(a))
     esigi(a != b, "cartelle omonime producono lo stesso id")
-    primo = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando)
-    secondo = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando)
+    primo = id_sessione.nuovo_id_sessione(Path("/progetti/a/api"), quando)
+    secondo = id_sessione.nuovo_id_sessione(Path("/progetti/a/api"), quando)
     esigi(primo != secondo, "due avvii nello stesso istante producono lo stesso id")
     return "id distinti per cartelle omonime e nello stesso istante"
 
@@ -375,13 +341,10 @@ LOCALE = "qwen3:9b"
 
 
 def preflight_pronto() -> str:
-    # I modelli si fissano qui e non si leggono dal `.env`: la prova deve dire
-    # la stessa cosa su una macchina con la conversazione in cloud e su una
-    # tutta locale. Il server annuncia i nomi come li scrive Ollama: con il
-    # tag esplicito dove c'e', con `:latest` aggiunto dove config.py non ne
-    # scrive uno. E' il falso negativo che `stessa_etichetta` esiste per
-    # evitare, e la differenza fra i due modelli lo mette alla prova in
-    # entrambi i versi.
+    # Modelli fissati qui e non letti dal `.env`, perche' la prova dica lo
+    # stesso con configurazioni cloud o locali. Il server annuncia i nomi come
+    # Ollama (`:latest` dove config.py non ha tag): e' il falso negativo che
+    # `stessa_etichetta` evita, provato nei due versi.
     richiesti = {LOCALE, config.EMBEDDER_MODEL}
     modelli = [nome if ":" in nome else nome + ":latest" for nome in richiesti]
     esigi(
@@ -479,9 +442,8 @@ def preflight_server_spento() -> str:
 def backup_cli(_archivio: Path) -> str:
     """Il `main()` di `ares.backup`, sottocomando per sottocomando.
 
-    Le funzioni sotto sono gia' provate da `backup_test.py`. Qui si prova lo
-    strato che le sceglie: l'analisi degli argomenti, le conferme testuali e i
-    codici di uscita, che sono cio' su cui uno script chiamante decide.
+    Le funzioni le prova `backup_test.py`; qui si prova lo strato che le
+    sceglie: argomenti, conferme testuali e codici di uscita.
     """
 
     def comando(*argomenti: str, risposta: str | None = None) -> tuple[int, str]:
@@ -529,10 +491,9 @@ def backup_cli(_archivio: Path) -> str:
     esigi(esito == 1, "verify di uno snapshot inesistente non e' uscito con 1")
     esigi("ERRORE:" in testo, "verify non spiega perche' ha rifiutato")
 
-    # L'altra meta' della tabella di `cli/comando.py`: uno stato occupato non
-    # e' un guasto. Uno script che riceve 3 puo' riprovare fra un minuto, uno
-    # che riceve 1 no, e la differenza la decide `codice_di`. Il lock
-    # condiviso qui e' la chat aperta di un'altra finestra.
+    # Uno stato occupato non e' un guasto: 3 si puo' riprovare, 1 no (lo decide
+    # `codice_di`). Il lock condiviso simula la chat aperta in un'altra
+    # finestra.
     quanti = len(snapshots.elenco_snapshot(PERCORSI))
     with lock_stato(PERCORSI.lock_file, esclusivo=False):
         esito, testo = comando("create")
@@ -574,9 +535,7 @@ def backup_cli(_archivio: Path) -> str:
 def inspect_learning_cli() -> str:
     """L'ispezione degli archivi, che non deve scrivere niente.
 
-    Prende il lock condiviso e legge cinque store. Il controllo che conta non
-    e' che stampi: e' che l'archivio sia identico prima e dopo, perche' questo
-    comando esiste per guardare senza toccare.
+    Il controllo che conta e' che l'archivio sia identico prima e dopo.
     """
     file_db = Path(PERCORSI.db_file)
     prima = file_db.stat().st_mtime_ns, file_db.stat().st_size
@@ -607,11 +566,9 @@ def inspect_learning_cli() -> str:
         inspect_learning.main()
     esigi(CONTENUTO_FILE in uscita.getvalue(), "il contenuto del file non viene stampato")
 
-    # `--prompt` costruisce l'agente e chiede ad Agno il system message senza
-    # aprire un turno. Cio' che conta: il testo e' quello intero - c'e' la
-    # parte scritta da Ares, con la cartella corrente, e c'e' quella che Agno
-    # aggiunge da se' per gli strumenti di apprendimento - e l'archivio resta
-    # com'era, perche' la sessione nuova non va salvata.
+    # `--prompt` chiede ad Agno il system message senza aprire un turno: deve
+    # contenere sia la parte di Ares (con la cartella corrente) sia quella che
+    # Agno aggiunge, e l'archivio deve restare com'era.
     uscita = io.StringIO()
     argv = ["ares-inspect", "--user", UTENTE, "--prompt"]
     with patch.object(sys, "argv", argv), redirect_stdout(uscita):
@@ -634,24 +591,18 @@ def inspect_learning_cli() -> str:
 def chat_repl() -> str:
     """La REPL intera in un processo separato, con stdin da una pipe.
 
-    Senza terminale `CliInput` ripiega su `input()`, quindi la conversazione si
-    puo' scrivere in anticipo. Il giro che si prova e' quello che nessuna prova
-    attraversava: banner, ciclo, dispatch dei comandi, uscita pulita.
+    Senza terminale `CliInput` ripiega su `input()`: si provano banner, ciclo,
+    dispatch dei comandi e uscita pulita.
 
-    Il figlio non eredita `config.OLLAMA_HOST` chiuso di questa prova - e' una
-    costante e non una variabile d'ambiente, per una scelta che `config.py`
-    motiva. Resta offline soltanto se ogni riga che gli si manda comincia con
-    `/`: quello che non comincia con `/` non e' un comando, e' un messaggio, e
-    la REPL lo manda al modello. Le righe qui sono comandi, la riga vuota e un
-    comando inesistente; l'ultima asserzione verifica che nessun turno sia
-    stato aperto, perche' e' un errore che passerebbe inosservato - in CI un
-    Ollama irraggiungibile diventa un evento di errore che la REPL stampa,
-    e la prova resterebbe verde per il motivo sbagliato.
+    Il figlio non eredita l'host Ollama chiuso di questa prova, quindi resta
+    offline solo se ogni riga comincia con `/`: il resto sarebbe un messaggio
+    per il modello. L'ultima asserzione verifica che nessun turno sia partito,
+    perche' in CI un Ollama irraggiungibile diventa un errore stampato e la
+    prova resterebbe verde per il motivo sbagliato.
     """
-    # Il figlio parte dalla cartella di lavoro della prova, come farebbe un
-    # utente che scrive `ares` nel proprio progetto: e' cosi' che la cartella
-    # viene scelta. Da `BASE_DIR` sarebbe una cartella rischiosa - contiene
-    # il codice di Ares - e senza terminale la REPL la rifiuterebbe.
+    # Il figlio parte dalla cartella di lavoro della prova, come un utente nel
+    # proprio progetto. `BASE_DIR` contiene il codice di Ares: senza terminale
+    # la REPL la rifiuterebbe.
     figlio = subprocess.run(
         [sys.executable, "-m", "ares", "--user", UTENTE, "--session", SESSIONE],
         cwd=PERCORSI.lavoro,
@@ -669,14 +620,9 @@ def chat_repl() -> str:
     esigi("appunto.md" in testo, "/file non elenca il file scritto dall'agente")
     esigi(str(PERCORSI.lavoro.resolve()) in testo, "il banner o /cartella non nominano la cartella di lavoro")
     esigi("Comando sconosciuto: /sconosciuto" in testo, "il comando ignoto non e' stato riconosciuto come tale")
-    # La riga che tiene in piedi la promessa del modulo. Una riga che non
-    # comincia con `/` non e' un comando: e' un messaggio, e la REPL lo manda
-    # al modello. Qui era gia' successo per un `/` messo in mezzo invece che
-    # in testa, e non se n'era accorto nessuno: la prova passava lo stesso,
-    # accendeva Ollama, e in CI sarebbe passata di nuovo perche' un modello
-    # irraggiungibile diventa un evento di errore che la REPL stampa e basta.
-    # `Ares` a schermo significa una cosa sola: l'intestazione che apre una
-    # risposta del modello. Il banner non la contiene, i comandi nemmeno.
+    # Una riga senza `/` in testa sarebbe un messaggio al modello. `Ares` a
+    # schermo compare solo nell'intestazione di una risposta del modello,
+    # quindi la sua assenza prova che nessun turno e' partito.
     esigi("Ares" not in testo, "la REPL ha aperto un turno col modello: " + testo[-400:])
     return "banner, comandi, riga vuota, comando ignoto e uscita"
 
@@ -684,27 +630,17 @@ def chat_repl() -> str:
 # ---------------------------------------------------------------------------
 # Il ciclo della REPL, in questo processo
 # ---------------------------------------------------------------------------
-# `chat_repl` prova la REPL da fuori, con stdin da una pipe, e per restare
-# offline puo' mandarle soltanto comandi: tutto cio' che non comincia con `/`
-# e' un messaggio e vorrebbe il modello. Restava percio' scoperta proprio la
-# meta' che conta - il turno, i suoi due gestori d'errore, le metriche, gli
-# avvisi d'avvio - cioe' le righe che un utente attraversa a ogni frase che
-# scrive.
-#
-# Qui il modello non serve: al suo posto c'e' una `run_turn_cycle` finta.
-# Quello che si prova non e' cosa risponde Ares, che dipende dal modello, ma
-# cio' che la REPL fa intorno alla risposta e che dal modello non dipende:
-# che un'eccezione non chiuda la sessione, che un Ctrl-C sia distinto da un
-# guasto, che una pausa irrisolta venga detta invece di restare appesa.
+# `chat_repl` da fuori puo' mandare solo comandi. Qui una `run_turn_cycle`
+# finta prende il posto del modello, per provare cio' che la REPL fa intorno
+# alla risposta: un'eccezione non chiude la sessione, un Ctrl-C e' distinto
+# da un guasto, una pausa irrisolta viene detta.
 
 
 def _piatto(testo: str) -> str:
-    """Il testo a schermo senza gli a-capo che ci mette la larghezza del terminale.
+    """Il testo a schermo senza gli a-capo della larghezza del terminale.
 
-    Rich manda a capo sulla colonna della console, che in una prova non e' un
-    terminale e vale 80. Una frase cercata per intero cadrebbe percio' a
-    seconda di dove si spezza, e la prova fallirebbe per la larghezza invece
-    che per il contenuto.
+    In prova Rich manda a capo a 80 colonne: senza questo, una frase cercata per
+    intero fallirebbe per la larghezza invece che per il contenuto.
     """
     return " ".join(testo.split())
 
@@ -712,9 +648,8 @@ def _piatto(testo: str) -> str:
 class FintoInput:
     """`CliInput` ridotto a cio' che il ciclo usa: una coda di righe.
 
-    Ogni elemento e' una riga da restituire oppure un'eccezione da sollevare,
-    perche' le due uscite del prompt - EOF e Ctrl-C - sono esattamente ciò
-    che chiude la REPL e vanno provate dalla stessa coda.
+    Ogni elemento e' una riga oppure un'eccezione da sollevare: EOF e Ctrl-C
+    sono le due uscite del prompt.
     """
 
     def __init__(self, righe, history_warning=None, risposte=()):
@@ -741,9 +676,7 @@ class FintoInput:
 class FintaChiamata:
     """Una chiamata al modello come la legge `_conta_chiamate`: per attributi.
 
-    Non un dict: `_conta_chiamate` usa `getattr`, quindi un dizionario passa
-    senza errori e conta zero, e la prova resterebbe verde su una riga di
-    metriche vuota.
+    Un dict passerebbe senza errori e conterebbe zero.
     """
 
     input_tokens = 4000
@@ -768,12 +701,9 @@ class FintaRisposta:
 def chat_turno() -> str:
     """I quattro esiti di `esegui_turno`, che e' la rete sotto ogni frase.
 
-    Un turno normale, uno che resta in pausa per un motivo che la CLI non sa
-    chiedere, un Ctrl-C e un guasto. Gli ultimi due sono rami separati nel
-    codice per una ragione dichiarata nel docstring - una decisione non e' un
-    imprevisto - e qui si verifica che restino distinti: se un giorno
-    l'`except Exception` inghiottisse anche il `KeyboardInterrupt`, un Ctrl-C
-    comincerebbe a somigliare a un errore e nessun'altra prova lo direbbe.
+    Turno normale, pausa che la CLI non sa chiedere, Ctrl-C e guasto. Si
+    verifica che Ctrl-C e guasto restino distinti: se `except Exception`
+    inghiottisse il `KeyboardInterrupt`, nessun'altra prova lo direbbe.
     """
     input_cli = FintoInput([])
 
@@ -830,10 +760,9 @@ def chat_turno() -> str:
     esigi("archivio irraggiungibile" in testo, "il messaggio dell'errore non compare")
     esigi("sessione resta aperta" in testo, "non viene detto che la sessione sopravvive")
 
-    # L'eco: la fotografia prima del turno e quella dopo sono diverse, e la
-    # differenza compare sotto la risposta. L'ordine conta - la prima lettura
-    # deve precedere il turno, perche' `update_user_memory` scrive durante il
-    # run - quindi la finta registra quando viene chiamata.
+    # L'eco: la differenza fra le fotografie compare sotto la risposta. La
+    # prima lettura deve precedere il turno (`update_user_memory` scrive
+    # durante il run), quindi la finta registra quando viene chiamata.
     letture: list[str] = []
     turni: list[str] = []
     ripristini: list[Istantanea] = []
@@ -1062,7 +991,7 @@ def chat_memoria_protetta() -> str:
         # codice condiviso "occupato", senza avviare il modello.
         with (
             lock_turno(PERCORSI, Utente.da_grezzo(utente)),
-            patch.object(chat, "build_assistant", lambda *a, **k: agent),
+            patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: agent),
             patch.object(chat, "CliInput", lambda **k: FintoInput(["riprova piu' tardi"])),
             patch.object(chat, "run_turn_cycle") as ciclo_spia,
             redirect_stdout(io.StringIO()),
@@ -1084,10 +1013,9 @@ def chat_memoria_protetta() -> str:
 def chat_ciclo() -> str:
     """Il giro completo di `_esegui_chat` con un modello finto.
 
-    Copre cio' che `chat_repl` non puo' raggiungere da fuori: la riga vuota
-    che non apre un turno, il messaggio che lo apre, la riga delle metriche
-    chiesta con `--metriche`, l'avviso sulla cronologia degradata, l'avviso
-    del modello cloud, il promemoria di backup e le due uscite dal prompt.
+    Copre cio' che `chat_repl` non raggiunge da fuori: riga vuota, messaggio,
+    `--metriche`, avvisi su cronologia degradata e modello cloud, promemoria di
+    backup e le due uscite dal prompt.
     """
     turni: list[str] = []
 
@@ -1099,7 +1027,7 @@ def chat_ciclo() -> str:
 
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda *a, **k: object()),
+        patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: ["Ultimo backup: mai", "Esegui ares backup create"]),
@@ -1123,7 +1051,7 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda *a, **k: object()),
+        patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
@@ -1142,7 +1070,7 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda *a, **k: object()),
+        patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
@@ -1161,14 +1089,10 @@ def chat_ciclo() -> str:
 def chat_cartella() -> str:
     """La cartella si decide prima di tutto: se non va, niente agente e niente banner.
 
-    Tre avvii: una cartella che non esiste, una che `autorizza` rifiuta, una
-    buona passata con `--workspace`. Nei primi due l'agente non deve nemmeno
-    essere costruito; nel terzo i percorsi con cui l'agente nasce devono
-    puntare alla cartella scelta e il banner nominarla, con il suo ARES.md.
-
-    La cartella si legge dai percorsi che `build_assistant` riceve, non da un
-    globale: e' cio' che il rifacimento ha cambiato, e leggerla da li' e' il
-    modo di pretendere che il `--workspace` arrivi davvero fino all'agente.
+    Tre avvii: cartella inesistente, cartella rifiutata da `autorizza`, cartella
+    buona con `--workspace`. Nel terzo i percorsi ricevuti da `build_assistant`
+    devono puntare alla cartella scelta, e il banner nominarla con il suo
+    ARES.md.
     """
     originale = PERCORSI.lavoro
     costruiti: list[dict] = []
@@ -1181,7 +1105,7 @@ def chat_cartella() -> str:
         return object()
 
     uscita = io.StringIO()
-    with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+    with patch.object(nucleo_sessioni, "build_assistant", costruisci), redirect_stdout(uscita):
         esito = chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=Path(originale) / "non-esiste")
     testo = _piatto(uscita.getvalue())
     esigi(esito == 1, "una cartella inesistente non esce con 1: " + str(esito))
@@ -1190,7 +1114,7 @@ def chat_cartella() -> str:
 
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat.cartella, "autorizza", lambda percorso, percorsi, *, esplicito: False),
         redirect_stdout(uscita),
     ):
@@ -1207,7 +1131,7 @@ def chat_cartella() -> str:
     input_cli = FintoInput(["/cartella", KeyboardInterrupt])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
         redirect_stdout(uscita),
@@ -1243,7 +1167,7 @@ def chat_cartella() -> str:
         input_cli = FintoInput(["/cartella", KeyboardInterrupt])
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: input_cli),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             redirect_stdout(uscita),
@@ -1261,10 +1185,8 @@ def chat_cartella() -> str:
 def chat_sessioni() -> str:
     """Senza `--session`: una conversazione nuova, `resume`, `--scegli` e `-p`.
 
-    L'agente e' finto ma il database e' vero: le sessioni da riprendere si
-    seminano con i metadati che `build_assistant` scrive, cosi' la lettura
-    passa da SQLite come nel prodotto. Una sessione nata altrove non deve
-    essere ripresa qui.
+    L'agente e' finto ma il database e' vero, con le sessioni seminate come le
+    scrive `build_assistant`. Una sessione nata altrove non va ripresa.
     """
     from agno.session.agent import AgentSession
 
@@ -1282,7 +1204,7 @@ def chat_sessioni() -> str:
     def avvio(**argomenti) -> tuple[int, str]:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             patch.object(sys, "stdin", io.StringIO()),
@@ -1360,7 +1282,7 @@ def chat_sessioni() -> str:
 
     uscita, errori = io.StringIO(), io.StringIO()
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(sys, "stdin", io.StringIO("dati dalla pipe\n")),
         redirect_stdout(uscita),
@@ -1388,7 +1310,7 @@ def chat_sessioni() -> str:
     # `piano` non lascia tracce: con `-p` passa, ed e' l'altra meta' della
     # regola che rifiuta `auto` e `modifiche`.
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(sys, "stdin", io.StringIO()),
         redirect_stdout(io.StringIO()),
@@ -1414,11 +1336,8 @@ def chat_sessioni() -> str:
 def migrazione_stato() -> str:
     """`ares migrate`: lo stato di un clone precedente passa in ~/.ares, e la chat aspetta.
 
-    Vecchio e nuovo sono directory della prova, e i percorsi del processo
-    vengono sostituiti alla porta sola per la durata del controllo. Si prova lo spostamento, l'idempotenza, il rifiuto
-    di toccare una destinazione piena, e che la chat si fermi finche' lo
-    stato e' ancora di la': costruire l'agente su un archivio vuoto accanto a
-    uno pieno e' esattamente cio' che la migrazione esiste per evitare.
+    Si provano spostamento, idempotenza, rifiuto di una destinazione piena, e
+    che la chat non parta finche' lo stato e' ancora nel vecchio posto.
     """
     from ares.ops import migrazione
 
@@ -1446,10 +1365,8 @@ def migrazione_stato() -> str:
             esito = migrazione.migra()
         return esito, _piatto(uscita.getvalue())
 
-    # I percorsi di questa prova: si sostituisce la porta sola - il confine
-    # del processo - invece dei nomi che non esistono piu'. Da qui in poi
-    # anche la chat legge questi, come se fosse stata lanciata con
-    # `ARES_HOME` puntato alla casa della prova.
+    # Si sostituiscono i percorsi al confine del processo: da qui anche la chat
+    # li legge, come con `ARES_HOME` puntato alla casa della prova.
     nuovo = replace(PERCORSI, home=casa, stato=casa / "stato", backup=casa / "backup")
     with (
         patch.multiple(config, VECCHIO_TMP_DIR=vecchio_tmp, VECCHIO_BACKUP_DIR=vecchio_backup),
@@ -1461,16 +1378,15 @@ def migrazione_stato() -> str:
         )
 
         uscita = io.StringIO()
-        with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+        with patch.object(nucleo_sessioni, "build_assistant", costruisci), redirect_stdout(uscita):
             esito = chat._esegui_chat(user=UTENTE)
         esigi(esito == 1 and not costruiti, "la chat e' partita con lo stato ancora nel posto di prima")
         esigi("migrate" in uscita.getvalue(), "la chat non dice come spostare lo stato: " + repr(uscita.getvalue()))
 
-        # Il vecchio lock si toglie mentre e' ancora tenuto: se restasse al
-        # rilascio, fra il `close` e l'`unlink` un altro processo potrebbe
-        # prenderlo, e l'unlink staccherebbe i due inode. La sonda guarda se il
-        # file c'e' ancora nell'istante in cui il lock viene rilasciato. Su
-        # Windows il file aperto non si cancella, quindi li' non si prova.
+        # Il vecchio lock si toglie mentre e' ancora tenuto: fra `close` e
+        # `unlink` un altro processo potrebbe prenderlo. La sonda guarda se il
+        # file c'e' ancora al rilascio. Su Windows un file aperto non si
+        # cancella, quindi li' non si prova.
         vecchio_lock = vecchio_tmp.with_name(vecchio_tmp.name + ".lock")
         esistenza_al_rilascio: dict[str, bool] = {}
         lock_originale = migrazione.lock_stato
@@ -1534,10 +1450,8 @@ def migrazione_stato() -> str:
         esigi(not vecchio_ponte.exists(), "il vecchio non e' stato rimosso dopo la copia")
         esigi(not (casa_ponte / ".stato-migrazione").exists(), "la sorella temporanea e' rimasta")
 
-        # Un guasto a meta' copia non deve lasciare un `nuovo` a meta': il
-        # vecchio resta intatto, il nuovo non compare, e `avviso` ferma la
-        # chat. Con `shutil.move` la copia parziale resterebbe al posto del
-        # nuovo, e la chat aprirebbe uno stato dimezzato senza dirlo.
+        # Un guasto a meta' copia lascia intatto il vecchio, non crea il nuovo,
+        # e `avviso` ferma la chat: niente stato dimezzato.
         vecchio_rotto = ponte / "rotto"
         vecchio_rotto.mkdir()
         (vecchio_rotto / "kairos.db").write_text("rotto", encoding="utf-8")
@@ -1566,10 +1480,8 @@ def migrazione_stato() -> str:
 def chat_residui() -> str:
     """Un restore rimasto a meta' viene detto all'avvio, e solo allora.
 
-    Il residuo e' una directory vera accanto allo stato, con il nome che il
-    restore usa: e' la funzione di lettura a trovarlo, non una finta. Si
-    prova prima con il residuo e poi senza, perche' un avviso che compare
-    sempre e' quello che smette di essere letto.
+    Il residuo e' una directory vera con il nome usato dal restore. Si prova
+    anche senza residuo: un avviso sempre presente smette di essere letto.
     """
     stato = PERCORSI.stato.resolve()
     residuo = stato.with_name("." + stato.name + "-precedente-deadbeef")
@@ -1577,7 +1489,7 @@ def chat_residui() -> str:
     def avvia() -> str:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", lambda *a, **k: object()),
+            patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
             patch.object(chat, "CliInput", lambda **k: FintoInput([])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             redirect_stdout(uscita),
@@ -1603,12 +1515,9 @@ def chat_residui() -> str:
 def sessioni_parziale() -> str:
     """`ares-sessions` con un guasto a meta': il rendiconto dice cosa e' rimasto.
 
-    La cancellazione non e' atomica - Agno elimina sessioni e run in una
-    transazione, ma payload, contesti e verifiche vengono dopo, un passo
-    alla volta - e un guasto li' non e' un rifiuto: qualcosa e' gia' sparito.
-    Due guasti iniettati, uno prima della cancellazione e uno dopo, perche'
-    il conteggio deve venire dall'archivio e non da dove ci si e' fermati:
-    nel primo caso le sessioni ci sono ancora tutte, nel secondo nessuna.
+    La cancellazione non e' atomica (payload, contesti e verifiche vengono dopo
+    la transazione di Agno). Due guasti, prima e dopo la cancellazione: il
+    conteggio deve venire dall'archivio, non da dove ci si e' fermati.
     """
     from agno.session.agent import AgentSession
 
@@ -1656,10 +1565,8 @@ def sessioni_parziale() -> str:
 def chat_avvio() -> str:
     """`main()`: il lock condiviso, l'archivio occupato e il Ctrl-C all'avvio.
 
-    Sono le righe che si attraversano prima che la REPL esista. Un backup in
-    corso deve produrre un messaggio e non un traceback, e un Ctrl-C mentre
-    Ares apre database e indice pure: e' la finestra in cui la costruzione
-    dell'agente non e' ancora protetta da nulla.
+    Un backup in corso o un Ctrl-C mentre si apre l'archivio devono produrre un
+    messaggio, non un traceback.
     """
     uscita = io.StringIO()
     codice = 0
@@ -1683,7 +1590,7 @@ def chat_avvio() -> str:
     with (
         lock_stato(PERCORSI.lock_file, esclusivo=True),
         patch.object(chat, "run_turn_cycle") as ciclo_spia,
-        patch.object(chat, "build_assistant") as costruzione_spia,
+        patch.object(nucleo_sessioni, "build_assistant") as costruzione_spia,
         redirect_stdout(uscita_pipe),
         redirect_stderr(errori_pipe),
     ):
@@ -1707,12 +1614,9 @@ def chat_avvio() -> str:
 def aiuto_senza_effetti() -> str:
     """`--help` non crea l'archivio, per nessuno dei sette comandi.
 
-    Ogni comando chiama `config.prepara_archivio()` dentro la funzione del
-    comando e non all'import, perche' `--help` esce dentro Cyclopts prima. Non e' un dettaglio estetico:
-    un archivio a 0700 creato da un comando che stampa l'aiuto e' comunque un
-    archivio che non c'era, e su una macchina condivisa e' la traccia che
-    qualcuno ha guardato. La differenza fra prima e dopo quella riga sono
-    due caratteri, e nessun'altra prova la vedrebbe.
+    `config.prepara_archivio()` si chiama nel comando, non all'import, perche'
+    `--help` esce prima in Cyclopts. Un archivio creato stampando l'aiuto e'
+    comunque una traccia su una macchina condivisa.
     """
     comandi = (
         "ares",
@@ -1744,10 +1648,8 @@ def aiuto_senza_effetti() -> str:
         finally:
             shutil.rmtree(pulita, ignore_errors=True)
 
-    # `preflight` non ha argomenti da leggere. Su di lui vale la stessa
-    # invariante presa dal verso giusto - un'esecuzione intera non deve
-    # lasciare l'archivio - e l'esito dipende da cosa gira sulla macchina,
-    # quindi non si controlla.
+    # `preflight` non ha argomenti: vale la stessa invariante (non lasciare
+    # l'archivio), mentre l'esito dipende dalla macchina e non si controlla.
     pulita = Path(tempfile.mkdtemp(prefix="ares-aiuto-"))
     stato = pulita / "stato"
     ambiente = os.environ.copy()
@@ -1771,10 +1673,8 @@ def aiuto_senza_effetti() -> str:
 def chat_non_presidiato() -> str:
     """Senza terminale nessuno legge cio' che il modello propone.
 
-    `-p` non e' l'unico avvio senza nessuno che guardi: anche con stdin da una
-    pipe, e senza `-p`, la conferma sarebbe letta dallo stesso flusso che porta
-    l'istruzione. Le guardie di avvio trattano quel caso come `-p`, e
-    `_apri_input` manda le domande a vuoto mentre i turni restano leggibili.
+    Anche con stdin da una pipe senza `-p` la conferma arriverebbe dallo stesso
+    flusso dell'istruzione: le guardie lo trattano come `-p`.
     """
 
     def guardia(*, modo: str, scegli: bool, presidiato: bool) -> int | None:
@@ -1817,7 +1717,7 @@ def chat_non_presidiato() -> str:
     def avvio(*, presidiato: bool) -> int:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             patch.object(sys, "stdin", SimpleNamespace(isatty=lambda: presidiato)),
@@ -1840,10 +1740,9 @@ def chat_non_presidiato() -> str:
 def chat_sessione_altrui() -> str:
     """Una sessione di un altro utente non si apre, e l'agente non nasce.
 
-    `--session <nome>` e `/sessione <nome>` scavalcano gli elenchi per
-    cartella, che sono gia' filtrati per utente. Senza il controllo, i run del
-    secondo utente finirebbero nella sessione del primo: Agno li carica per
-    solo `session_id`, quindi il primo li ritroverebbe nella cronologia.
+    `--session` e `/sessione` scavalcano gli elenchi filtrati per utente. Agno
+    carica i run per solo `session_id`: senza controllo, i run di un utente
+    finirebbero nella cronologia dell'altro.
     """
     from agno.session.agent import AgentSession
 
@@ -1867,7 +1766,7 @@ def chat_sessione_altrui() -> str:
     def avvio(**argomenti) -> tuple[int, str]:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             patch.object(sys, "stdin", io.StringIO()),
@@ -1914,10 +1813,8 @@ def main() -> int:
         ):
             ok(nome, prova())
 
-        # Il backup prima dell'ispezione, e non e' indifferente: il `restore`
-        # sostituisce la directory dello stato, e `inspect_learning.main()`
-        # gira qui dentro e lascia aperti i database che apre. Su Windows
-        # basta questo a far fallire il restore.
+        # Il backup prima dell'ispezione: `inspect_learning.main()` lascia
+        # aperti i database, e su Windows il `restore` fallirebbe.
         ok("backup CLI", backup_cli(RADICE_PROVA))
         ok("inspect_learning", inspect_learning_cli())
         ok("chat REPL", chat_repl())

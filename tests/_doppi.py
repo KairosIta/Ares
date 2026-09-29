@@ -1,19 +1,14 @@
-"""
-I doppi che piu' prove costruivano uguali
-=========================================
+"""Doppi condivisi fra piu' prove
+==============================
 
-Un modello finto e la tool call che gli si mette in bocca. Non stanno in
-`_comune.py`, che promette di non importare niente oltre la libreria standard:
-qui c'e' un pezzo di Agno - `Model`, `ModelResponse` - e il posto giusto e'
-accanto alle prove che lo usano. La regola di `_comune.py` vale anche qui, e
-per la stessa ragione: questo modulo non importa `ares` e non tocca `config`,
-quindi si puo' importare prima di `prepara_ambiente`.
+Un modello finto e la tool call che gli si mette in bocca. Stanno qui e non
+in `_comune.py` perche' importano Agno; come `_comune.py`, non importano
+`ares` ne' `config`, quindi si possono importare prima di
+`prepara_ambiente`.
 
-Agno chiama il modello in quattro modi - `invoke`, `ainvoke`,
-`invoke_stream`, `ainvoke_stream` - a seconda del percorso, e il corpo di
-quei metodi non cambia da una prova all'altra: cambia il copione, che arriva
-dal costruttore. `agno_contract_test.py` e `session_retention_test.py` ne
-avevano due copie, identiche in tutto tranne il nome.
+Il corpo dei quattro metodi con cui Agno chiama il modello (`invoke`,
+`ainvoke`, `invoke_stream`, `ainvoke_stream`) e' sempre uguale: cambia il
+copione, che arriva dal costruttore.
 """
 
 from __future__ import annotations
@@ -39,11 +34,8 @@ def tool_call(nome: str, **argomenti: Any) -> dict[str, Any]:
 class ModelloACopione(Model):
     """Risponde con le tool call decise dalla prova, poi conclude con "fatto".
 
-    Ogni chiamata consuma una voce del copione; esaurito, il modello chiude
-    il turno. Lo stesso oggetto vale per `invoke` e per `invoke_stream`,
-    perche' `turn_core` usa lo streaming e la prova deve attraversare quella
-    via: un doppio che rispondesse solo al primo lascerebbe scoperto il
-    secondo.
+    Ogni chiamata consuma una voce del copione; esaurito, il modello chiude il
+    turno. Risponde anche in streaming, perche' `turn_core` usa quella via.
     """
 
     def __init__(self, nome: str, copione: list[list[dict[str, Any]]] | None = None) -> None:

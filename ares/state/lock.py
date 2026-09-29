@@ -1,14 +1,9 @@
-"""
-Lock cooperativo dello stato di Ares
-====================================
+"""Lock cooperativi dello stato di Ares.
 
-La chat mantiene un lock condiviso per tutta la propria vita. Backup e restore
-chiedono quello esclusivo: se Ares e' aperto si fermano invece di copiare i due
-SQLite e LanceDB in istanti diversi.
-
-E' un lock cooperativo, non una sandbox. Protegge i percorsi ufficiali del
-progetto; uno script che scrive direttamente in tmp/ senza usarlo resta fuori
-dal contratto.
+La chat tiene un lock condiviso per tutta la sua vita; backup e restore
+chiedono quello esclusivo, cosi' non copiano gli archivi mentre Ares scrive.
+Un lock per utente serializza inoltre i turni fra chat. Sono cooperativi,
+non una sandbox: proteggono solo chi li usa.
 """
 
 from collections.abc import Iterator
@@ -29,17 +24,10 @@ class StatoOccupato(RuntimeError):
 def lock_turno(percorsi: Percorsi, utente: Utente) -> Iterator[None]:
     """Un turno per utente, dall'istantanea fino all'eventuale ripristino.
 
-    Il lock condiviso dello stato resta esterno e impedisce la manutenzione.
-    Questo lock esclusivo coordina invece le chat fra loro, anche con eco
-    spento o in pipe. Non attende: chi trova un turno attivo puo' riprovare.
-    Il nome e' un hash per non esporre l'identita' o usarla come percorso.
-    Il file resta sul disco: rimuoverlo separerebbe i lock su inode diversi.
-
-    L'id e' quello canonico del tipo `Utente`: due grafie della stessa
-    persona - `Demo` e `demo` - non possono arrivare qui come due utenti,
-    perche' non sono due `Utente`. Namespace e lock parlano percio' sempre
-    della stessa persona, e due chat non scrivono lo stesso profilo credendo
-    di essere sole.
+    Esclusivo e non bloccante: chi trova un turno attivo riceve
+    `StatoOccupato`. Il nome del file e' un hash dell'id, per non esporre
+    l'identita'; il file resta sul disco, perche' rimuoverlo separerebbe i lock
+    su inode diversi.
     """
     chiave = sha256(utente.id.encode("utf-8")).hexdigest()
     lock = percorsi.lock_file
@@ -60,12 +48,10 @@ def lock_stato(
     esclusivo: bool,
     bloccante: bool = False,
 ) -> Iterator[None]:
-    """Acquisisce il lock condiviso o esclusivo e lo rilascia sempre.
+    """Acquisisce il lock condiviso o esclusivo sul file dato e lo rilascia sempre.
 
-    Il file arriva come parametro - di norma `percorsi.lock_file` - e non ha
-    un valore predefinito: un default nella firma fotograferebbe l'archivio
-    corrente all'import, e chi ne apre un altro continuerebbe a bloccare
-    quello vero. `ops/migrazione.py` ne prende due, e li nomina entrambi.
+    Il file (di norma `percorsi.lock_file`) non ha default: `ops/migrazione.py`
+    ne usa due.
     """
     try:
         with lock_file(

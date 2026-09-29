@@ -64,11 +64,8 @@ try {
         Write-Host "Creo il virtualenv su Python $PythonVersion."
     }
 
-    # `sync` porta il venv esattamente com'e' scritto in uv.lock, creandolo se
-    # manca, e installa Ares in editable: i comandi `ares`, `ares-backup`...
-    # compaiono in .venv\Scripts. `--locked` rifiuta un lock non allineato al
-    # pyproject; `--no-dev` lascia fuori gli strumenti di sviluppo, come fa
-    # setup.sh. Gli hash del lock vengono verificati a ogni download.
+    # Porta il venv esattamente a uv.lock, hash verificati, con Ares in
+    # editable. `--locked` e `--no-dev` come in setup.sh.
     Write-Host "Installo le dipendenze bloccate."
     Invoke-External {
         & $Uv.Source sync --locked --no-dev --python $PythonVersion
@@ -78,10 +75,8 @@ try {
         & $Uv.Source pip check --python $VenvPython
     } "le dipendenze installate non sono coerenti"
 
-    # `ares` da qualunque cartella: uno shim `.cmd` che chiama il comando del
-    # venv. Uno shim e non `uv tool install`, che risolverebbe le dipendenze
-    # da capo senza guardare uv.lock: il comando globale deve essere
-    # esattamente l'ambiente bloccato, e seguire il codice del clone.
+    # `ares` da qualunque cartella: uno shim `.cmd` verso il comando del venv,
+    # non `uv tool install`, che ignorerebbe uv.lock.
     $BinDir = if ($env:ARES_BIN_DIR) { $env:ARES_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
     $Shim = Join-Path $BinDir "ares.cmd"

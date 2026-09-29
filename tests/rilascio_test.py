@@ -1,22 +1,13 @@
-"""Verifica offline che la versione di Ares sia scritta allo stesso modo
-ovunque il repository dice qual e' quella di adesso.
+"""Verifica offline che la versione di Ares sia la stessa ovunque il
+repository la dichiara.
 
-`pyproject.toml` e' la fonte, e `uv.lock` la copia che l'installazione usa
-davvero. La voce piu' recente del CHANGELOG, la riga supportata di
-`SECURITY.md` e i collegamenti di confronto in coda al CHANGELOG devono
-concordare con lei.
+La fonte e' `pyproject.toml`; devono concordare `uv.lock`, la voce piu'
+recente del CHANGELOG, la linea supportata di `SECURITY.md` e i
+collegamenti di confronto in coda al CHANGELOG. Sono posti che nessuno
+rilegge a ogni modifica, e sono gia' rimasti indietro. E' l'equivalente di
+`versione_dichiarata` in `tests/agno_contract_test.py`, applicato ad Ares.
 
-Sono quattro posti che nessuno rilegge a ogni modifica, e due se ne sono gia'
-dimenticati una volta: la release 0.7.1 dichiarava ancora la linea 0.6.x in
-`SECURITY.md`, e la 0.8.0 e' arrivata su `main` con il collegamento di
-`Unreleased` fermo alla 0.7.1. La prova e' la stessa idea di
-`versione_dichiarata` in `tests/agno_contract_test.py`, applicata ad Ares:
-la versione di Agno ha un guardiano, quella di Ares no, e infatti sono
-invecchiati i file che nessuno controlla.
-
-Il metro e' `pyproject.toml`, non il tag: la CI non ha i tag, e comunque il
-tag si crea dopo, quando il commit e' gia' su `main`. Cio' che si puo'
-pretendere prima e' che il repository concordi con se stesso.
+Il metro non e' il tag: la CI non ha i tag, e il tag si crea dopo il merge.
 """
 
 import re
@@ -55,8 +46,7 @@ def versione() -> str:
 def versione_nel_lock() -> str:
     """Il lock blocca la versione del progetto, e `uv sync --locked` lo pretende.
 
-    Il controllo e' qui perche' un `uv lock` dimenticato si vede in locale
-    subito, senza aspettare il job che sincronizza l'ambiente.
+    Controllato qui perche' un `uv lock` dimenticato si veda subito in locale.
     """
     attesa = versione()
     with (RADICE / "uv.lock").open("rb") as file:
@@ -74,9 +64,7 @@ def versione_nel_lock() -> str:
 def voce_del_changelog() -> str:
     """La voce piu' recente del CHANGELOG e' quella di `pyproject.toml`.
 
-    Anche la presenza di `## [Unreleased]` e' un controllo: e' la sezione in
-    cui si scrive prima di rilasciare, e una release che la togliesse
-    lascerebbe il prossimo cambiamento senza posto dove stare.
+    Deve esistere anche `## [Unreleased]`, dove si scrive prima del rilascio.
     """
     atteso = versione()
     changelog = testo("CHANGELOG.md")
@@ -94,10 +82,8 @@ def voce_del_changelog() -> str:
 def linea_di_security() -> str:
     """`SECURITY.md` supporta la linea della versione corrente, e non un'altra.
 
-    La riga usa `x` per la patch - una correzione di sicurezza vale per tutta
-    la linea - quindi il confronto e' su `major.minor`. La seconda riga dice
-    cosa non e' supportato, e le due devono essere complementari: e' li' che
-    la 0.7.1 e' rimasta indietro con la 0.6.x.
+    La patch e' `x`, quindi il confronto e' su `major.minor`. Le righe
+    "supportata" e "non supportata" devono essere complementari.
     """
     atteso = ".".join(versione().split(".")[:2])
     security = testo("SECURITY.md")
@@ -119,9 +105,8 @@ def linea_di_security() -> str:
 def collegamenti_di_confronto() -> str:
     """I link in coda al CHANGELOG confrontano a partire dall'ultima release.
 
-    `[Unreleased]` che punta a una versione superata mostra, nel diff, anche
-    le modifiche gia' rilasciate: e' quello che e' successo alla 0.8.0, dove
-    il collegamento era rimasto alla 0.7.1.
+    Un `[Unreleased]` fermo a una versione superata mostrerebbe nel diff anche
+    le modifiche gia' rilasciate.
     """
     atteso = versione()
     changelog = testo("CHANGELOG.md")

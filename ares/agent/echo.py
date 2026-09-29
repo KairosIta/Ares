@@ -1,45 +1,19 @@
-"""Cosa e' entrato in memoria durante un turno, letto dagli archivi.
+"""Cosa e' entrato in memoria durante un turno, e come annullarlo.
 
-Le scritture negli store non passano da un punto solo. L'estrazione
-automatica accende il modello locale dopo la risposta e scrive profilo e
-memorie attraverso strumenti interni di Agno; `update_user_memory` fa lo
-stesso durante il turno, su richiesta del modello. Intercettare quelle
-scritture vorrebbe dire agganciarsi a funzioni private del framework, che
-cambiano fra una minor e l'altra.
+Profilo e memorie si scrivono per piu' strade (estrazione automatica,
+`update_user_memory`), tutte interne ad Agno. Invece di intercettarle, il
+modulo legge i due store con le API pubbliche prima e dopo il turno: la
+differenza e' cio' che il turno ha scritto. `istantanea` conserva gli
+oggetti letti prima, `ripristina` li riscrive se l'utente rifiuta.
 
-La fotografia non ha questo problema: legge i due store con le loro API
-pubbliche prima del turno e dopo, e cio' che e' diverso e' cio' che il turno
-ha scritto, da qualunque strada sia passato. Sono due letture SQLite in piu'
-per turno, locali e senza modello.
+Limite: e' una conferma a posteriori. Se il processo muore fra la scrittura
+e la risposta (kill, crash, terminale chiuso) la scrittura resta. La
+scrittura differita e' la voce 3 di `docs/ROADMAP.md`.
 
-La stessa lettura fatta prima del turno e' anche cio' che permette di
-tornare indietro. Agno non offre una conferma su profilo e memorie -
-`PROPOSE` vale per le sole intuizioni, `HITL` per nessuno store - quindi la
-scrittura avviene comunque; ma gli store espongono `save` e `delete`, e
-riscrivere cio' che si era letto prima del turno e' una conferma a
-posteriori: cio' che l'utente rifiuta non sopravvive al turno. `istantanea`
-conserva gli oggetti come li restituiscono gli store, `ripristina` li
-riscrive.
-
-A posteriori vuol dire a posteriori, e il prezzo va detto per intero: fra
-la scrittura e la risposta c'e' una finestra, e un processo che muore li'
-dentro - un `kill`, un crash, il terminale chiuso - lascia la scrittura
-dov'e'. Il lock dell'utente copre l'attesa fra due chat, non fra due vite
-del processo, e nessun `finally` gira dopo un `SIGKILL`. La garanzia che
-questo modulo da' e' percio' condizionata: *se il processo sopravvive al
-turno, cio' che l'utente rifiuta non sopravvive*. Chiuderla del tutto
-significa scrivere in una copia provvisoria e riversarla solo dopo il
-consenso, cioe' una scrittura differita che Agno non offre su questi store:
-e' la voce 3 della `ROADMAP.md`, e va decisa li', non aggiunta qui.
-
-Solo profilo e memorie, cioe' cio' che e' durevole e attraversa le sessioni:
-un'osservazione sbagliata entra in ogni conversazione futura, ed e' per
-questo che va vista subito. Il contesto di sessione viene riscritto a ogni
-turno per costruzione - riassunto e avanzamento cambiano sempre - e
-stamparne la differenza ogni volta sarebbe la riga che si smette di leggere;
-resta a portata con `/contesto`. Entita' e intuizioni si scrivono solo con
-strumenti agentici (`remember_about`, `save_learning`), che il flusso del
-turno mostra gia' con nome, argomenti ed esito.
+Solo profilo e memorie, perche' sono durevoli e attraversano le sessioni.
+Il contesto di sessione cambia a ogni turno per costruzione (si legge con
+`/contesto`); entita' e intuizioni passano da strumenti agentici, che il
+flusso del turno mostra gia'.
 """
 
 from __future__ import annotations
@@ -47,10 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-# Campi che il framework popola da se': identificativi e date. Non sono
-# cio' che il modello ha appreso, e una data che cambia a ogni scrittura
-# farebbe comparire il profilo fra le variazioni anche quando nessun campo
-# e' cambiato.
+# Identificativi e date popolati dal framework: non sono appresi, e una
+# data aggiornata a ogni scrittura segnerebbe il profilo come cambiato.
 CAMPI_DI_SERVIZIO = frozenset({"user_id", "session_id", "agent_id", "team_id", "created_at", "updated_at", "memories"})
 
 
@@ -121,10 +93,8 @@ def _store(agent: Any) -> tuple[Any, Any, str | None]:
 def istantanea(agent: Any) -> Istantanea:
     """Legge profilo e memorie dell'utente dell'agente, senza ridurli.
 
-    Tollera tutto cio' che puo' mancare - un agente senza macchina di
-    apprendimento, uno store spento in `config.py`, un archivio ancora vuoto -
-    restituendo un'istantanea vuota: l'eco e' un di piu', e non deve poter
-    impedire un turno.
+    Se manca qualcosa (macchina, store, archivio) restituisce un'istantanea
+    vuota: l'eco non deve mai impedire un turno.
     """
     profilo, memorie, user_id = _store(agent)
     return Istantanea(
@@ -146,12 +116,9 @@ def fotografa(agent: Any) -> Fotografia:
 def ripristina(agent: Any, stato: Istantanea) -> bool:
     """Riporta profilo e memorie a un'istantanea. Vero se ci e' riuscito.
 
-    Riscrive per intero: `save` sostituisce la riga dell'utente, `delete`
-    la toglie quando prima non c'era o era vuota. Passa dalle API pubbliche
-    degli store, che inghiottono i propri errori e li scrivono nel log a
-    livello debug; per questo il risultato non si presume, si rilegge: e'
-    vero solo se la fotografia dopo il ripristino e' uguale a quella di
-    prima del turno.
+    Riscrive per intero con `save`, o `delete` se prima non c'era niente.
+    Gli store inghiottono i propri errori, quindi l'esito si verifica
+    rileggendo e confrontando le fotografie.
     """
     profilo, memorie, user_id = _store(agent)
     agent_id = getattr(agent, "id", None)
@@ -168,11 +135,8 @@ def ripristina(agent: Any, stato: Istantanea) -> bool:
 def variazioni(prima: Fotografia, dopo: Fotografia) -> list[str]:
     """Le righe da mostrare, o nessuna se il turno non ha scritto niente.
 
-    La prima riga riassume, le altre mostrano il testo intero: l'eco esiste
-    per leggere cosa e' entrato in memoria, e una memoria troncata a meta'
-    e' proprio la meta' che non si e' letta. Sono righe corte per istruzione
-    - una memoria "comprensibile da sola", un campo del profilo - e al piu'
-    `MAX_UPDATES_PER_RUN` per store.
+    La prima riga riassume, le altre riportano il testo intero, senza
+    troncare: l'eco serve a leggere davvero cosa e' entrato in memoria.
     """
     righe: list[str] = []
 

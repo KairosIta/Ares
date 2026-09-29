@@ -32,11 +32,8 @@ __all__ = [
 def _esigi_locale(nome: str, ruolo: str) -> str:
     """Rifiuta un modello cloud per un ruolo che deve restare sulla macchina.
 
-    Conversazione ed estrazione delle memorie accettano un modello cloud,
-    ciascuna per scelta esplicita nel `.env`. L'embedder no: indicizza le
-    intuizioni gia' scritte in LanceDB, e cambiarlo invaliderebbe l'indice.
-    Un errore all'avvio e' meglio di un turno che le spedisce fuori in
-    silenzio.
+    Vale per l'embedder: cambiarlo invaliderebbe l'indice LanceDB gia' scritto.
+    Meglio un errore all'avvio di un turno che spedisce fuori le intuizioni.
     """
     if config.e_modello_cloud(nome):
         raise ValueError(ruolo + " non puo' usare un modello cloud (" + nome + "): resta locale sempre.")
@@ -44,12 +41,9 @@ def _esigi_locale(nome: str, ruolo: str) -> str:
 
 
 def build_chat_model(impostazioni: Impostazioni) -> Ollama:
-    """Modello conversazionale, con il contesto esteso oltre il default di Ollama.
+    """Modello conversazionale, locale o cloud secondo `impostazioni.principale`.
 
-    Locale o cloud secondo `impostazioni.principale`; l'host resta comunque
-    quello delle impostazioni, perche' e' il daemon a inoltrare i modelli
-    cloud. Chi costruisce decide a chi si parla: qui non si rilegge un nome
-    di modulo, che il resto del processo non vedrebbe cambiare.
+    L'host resta quello locale anche per il cloud: e' il daemon a inoltrare.
     """
     return Ollama(
         id=impostazioni.principale,
@@ -64,12 +58,10 @@ def build_chat_model(impostazioni: Impostazioni) -> Ollama:
 
 
 def build_learning_model(impostazioni: Impostazioni) -> Ollama:
-    """Modello a bassa temperatura usato per l'estrazione strutturata.
+    """Modello a bassa temperatura per l'estrazione strutturata.
 
-    Locale o cloud secondo `impostazioni.apprendimento`, come la
-    conversazione: e' l'utente a decidere nel `.env` a chi affidare cio' che
-    Ares ricorda. Il contesto e' quello dell'estrazione, piu' stretto quando
-    i due modelli sono diversi - la regola sta sul tipo, non qui.
+    Locale o cloud secondo `impostazioni.apprendimento`. Il contesto ridotto,
+    quando i due modelli differiscono, lo decide `Impostazioni`.
     """
     return Ollama(
         id=impostazioni.apprendimento,
@@ -120,20 +112,11 @@ class AresWorkspace(Workspace):
 
 
 def build_workspace(percorsi: Percorsi, politica: Politica, modo: str | None = None) -> AresWorkspace:
-    """Costruisce lo spazio di lavoro sulla cartella scelta all'avvio, nella modalita' data.
+    """Costruisce lo spazio di lavoro sulla cartella di lavoro, nella modalita' data.
 
-    `modo` vuoto vale `config.MODO_PREDEFINITO`, letto adesso e non alla
-    definizione della funzione: un default nella firma fotografa il valore
-    all'import, e una prova che lo cambia con `patch.object` non lo vedrebbe.
-    La modalita' resta un parametro a se' e non entra nella politica: e' gia'
-    esplicita a ogni confine, e la politica dice il resto - prefisso e lettura
-    prima della scrittura - che non cambia da un turno all'altro.
-
-    La cartella e' quella dell'utente, decisa e autorizzata da
-    `cli/cartella.py` prima di arrivare qui: i rischi - la home, il disco
-    intero, lo stato di Ares dentro - li dice quel modulo e li conferma
-    l'utente. Qui si pretende soltanto che esista: crearla vorrebbe dire
-    lavorare in una directory vuota nata da un refuso.
+    La cartella e' gia' stata vagliata e autorizzata da `cli/cartella.py`; qui
+    si pretende solo che esista, per non lavorare in una directory nata da un
+    refuso. `modo` vuoto vale `config.MODO_PREDEFINITO`.
     """
     radice = percorsi.lavoro.resolve()
     if not radice.is_dir():

@@ -1,27 +1,20 @@
-"""
-Ispezione di cio' che l'agente ha imparato
+"""Ispezione di cio' che l'agente ha imparato
 ==========================================
+
 Uso:
     ares inspect
     ares inspect --session test_1
     ares inspect --file notes/setup.md
     ares inspect --prompt
 
-Legge gli archivi senza avviare il modello conversazionale e non scrive
-negli store. Due cose vanno dette per intero: come ogni comando che apre
-l'archivio, crea la directory dello stato se manca, cosi' su un clone nuovo
-lascia uno stato vuoto; e la ricerca fra le intuizioni vettorizza la query
-con l'embedder locale, che e' l'unica inferenza di questo comando e l'unico
-momento in cui un modello entra in memoria. Serve a rispondere alla domanda
-che conta quando un agente dice di ricordare: dove sta questa informazione,
-e la ritrovera' davvero?
+Legge gli archivi senza avviare il modello conversazionale e senza scrivere
+negli store: dove sta un'informazione, e verra' ritrovata? Due eccezioni:
+crea la directory dello stato se manca, e la ricerca fra le intuizioni usa
+l'embedder locale.
 
-`--prompt` risponde a una domanda accanto: cosa riceve il modello prima
-della prima parola dell'utente? Stampa il system message intero, cosi' come
-Agno lo comporrebbe per un turno in questa cartella - istruzioni di Ares,
-istruzioni degli strumenti e della macchina di apprendimento, memorie ed
-entita' gia' salvate - senza aprire il turno. Una modifica ai prompt si
-giudica leggendo questo, non i pezzi in `prompts.py`.
+`--prompt` stampa il system message intero che Agno comporrebbe per un
+turno in questa cartella, senza aprire il turno: e' li' che si giudica una
+modifica ai prompt.
 """
 
 from collections.abc import Sequence
@@ -55,9 +48,9 @@ def _ispeziona(
 ) -> None:
     from ares.agent.assistant import build_assistant
     from ares.agent.prompts import messaggio_di_sistema
-    from ares.cli.cartella import nuovo_id_sessione
     from ares.cli.log import configura_log_agno
     from ares.cli.ui import stampa_store
+    from ares.core.id_sessione import nuovo_id_sessione
     from ares.state.archivi import build_filesystem
     from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita
 
@@ -78,13 +71,9 @@ def _ispeziona(
         return
 
     if prompt:
-        # La conversazione che `ares` aprirebbe adesso in questa cartella,
-        # oppure quella nominata: il contesto di sessione e l'elenco delle
-        # conversazioni precedenti dipendono da quale si guarda. Verbatim,
-        # come `--file`: e' un testo da leggere o da confrontare con `diff`.
-        # Il log INFO di Agno passa da Rich su stdout: davanti al prompt ci
-        # finirebbe "Creating table" su un archivio nuovo. Warning ed errori
-        # restano, ma tolti dallo stdout che qui e' il testo e basta.
+        # Stampato verbatim, per poterlo confrontare con `diff`. Il log INFO
+        # di Agno andrebbe su stdout ("Creating table" su un archivio nuovo):
+        # si spegne, warning ed errori restano.
         configura_log_agno(False)
         session = session or nuovo_id_sessione(Path.cwd())
         agent = build_assistant(percorsi, impostazioni, politica, utente, session_id=session, modo=modo)
@@ -100,9 +89,8 @@ def _ispeziona(
         recenti = leggi_sessioni(agent, utente=utente)
         session = str(recenti[0].session_id) if recenti else "principale"
     lm = agent.learning_machine
-    # `build_assistant` passa sempre `learning=`, quindi la macchina c'e'. I
-    # singoli store possono invece essere None se spenti in config.py, ed e'
-    # `stampa_store` a dirlo invece di sollevare AttributeError.
+    # La macchina c'e' sempre; i singoli store spenti sono None e li
+    # segnala `stampa_store`.
     assert lm is not None
 
     separatore("PROFILO UTENTE   (per utente, sopravvive a ogni sessione)")
@@ -162,9 +150,7 @@ def ispeziona(
         prompt: stampa solo il system message che la chat manderebbe al modello da questa cartella.
         modo: con --prompt, la modalita' del prompt da stampare: manuale, modifiche, piano o auto.
     """
-    # Stessa forma canonica della chat: qui si leggono profilo, memorie,
-    # entita' e quaderno, e cercarli con una grafia diversa da quella con
-    # cui sono stati scritti mostrerebbe un archivio vuoto che non lo e'.
+    # La stessa forma canonica della chat, o l'archivio sembrerebbe vuoto.
     try:
         utente = Utente.da_grezzo(user)
     except UtenteNonValido as errore:

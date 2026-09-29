@@ -1,31 +1,20 @@
-"""
-Prova di funzionamento
+"""Prova di funzionamento
 ======================
 Uso:
     .venv/bin/python e2e_test.py
     .venv/bin/python e2e_test.py --conserva   non cancella l'archivio della prova
 
-Un turno di conversazione vero, con il modello acceso, su un archivio
-usa-e-getta. Risponde alla domanda che `smoke_test.py` non pone: l'agente
-risponde e impara?
+Un turno vero, con il modello acceso, su un archivio usa-e-getta: l'agente
+risponde e impara? `smoke_test.py` verifica il cablaggio senza modello;
+questa va fatta prima di un commit che tocca composizione dell'agente o
+store.
 
-Le due prove non si sostituiscono. `smoke_test.py` verifica il cablaggio in un
-secondo e mezzo senza toccare la VRAM, e va rifatto dopo ogni modifica al
-codice. Questa costa un turno intero e Ollama acceso, e va fatta prima di un
-commit che tocca la composizione dell'agente o gli store: e' l'unica che
-dimostra che il giro si chiude davvero.
-
-**Cosa viene affermato e cosa no.** Che le righe compaiano e che si rileggano
-da un processo diverso: si'. Il contesto di sessione deve sempre scrivere,
-perche' il suo prompt lo ordina esplicitamente; profilo, memorie ed entita'
-possono invece non trovare fatti durevoli. Il contenuto e la lingua restano
-fuori: sono materiale generato e un controllo su quello sarebbe intermittente
-invece che severo. Anche le intuizioni apprese restano fuori: quello store e'
-AGENTIC e scrive quando il modello decide.
-
-Il giro si chiude in un processo nuovo e non in questo: rileggere dagli
-oggetti che hanno appena scritto proverebbe che una variabile e' ancora in
-memoria, non che l'archivio conservi qualcosa.
+**Cosa si afferma.** Che le righe compaiano e si rileggano da un processo
+diverso (rileggere dagli oggetti che hanno scritto proverebbe solo che una
+variabile e' in memoria). Il contesto di sessione deve sempre scrivere;
+profilo, memorie ed entita' possono non trovare fatti durevoli. Contenuto,
+lingua e intuizioni (AGENTIC) restano fuori: un controllo su materiale
+generato sarebbe intermittente.
 """
 
 import argparse
@@ -40,10 +29,8 @@ from contextlib import closing
 
 from _comune import esigi, fallimento, ok, prepara_ambiente, pulisci
 
-# L'archivio della prova va scelto prima di importare config, che legge i
-# percorsi una volta sola: correggere l'ambiente dopo non sposterebbe lo
-# stato. Anche lo spazio di lavoro: `build_workspace` crea la directory al
-# momento di comporre l'agente.
+# Archivio e spazio di lavoro vanno scelti prima di importare `config`, che
+# fotografa i percorsi all'import.
 RADICE_PROVA = prepara_ambiente("e2e")
 ARCHIVIO_PROVA = str(RADICE_PROVA / "stato")
 SPAZIO_PROVA = str(RADICE_PROVA / "lavoro")
@@ -62,12 +49,8 @@ from ares.state.identita import Utente  # noqa: E402
 UTENTE = "prova-e2e"
 SESSIONE = "prova-e2e"
 
-# La domanda porta un fatto personale esplicito, perche' i tre store in
-# modalita' ALWAYS estraggono da cio' che l'utente dice di se': una domanda di
-# aritmetica pura darebbe una risposta corretta e niente da imparare, e la
-# prova non distinguerebbe un agente che impara da uno che risponde e basta.
-# "In una riga" tiene corto il turno: qui si misura che il giro si chiuda, non
-# quanto bene scriva il modello.
+# La domanda porta un fatto personale esplicito, perche' gli store ALWAYS
+# abbiano qualcosa da estrarre. "In una riga" tiene corto il turno.
 DOMANDA = "Mi chiamo Prova e uso Linux. In una riga: a cosa serve un file di lock delle dipendenze?"
 
 
@@ -102,12 +85,9 @@ print("entity_memory", len(leggi_entita(lm, Utente.da_grezzo(utente), limit=1000
 class RaccoglitoreAvvisi(logging.Handler):
     """Raccoglie gli avvisi che Agno emette durante il turno.
 
-    Gli errori di estrazione non fermano il turno e non tornano al chiamante:
-    Agno li registra come WARNING e va avanti. Il primo giro di questa prova ne
-    ha prodotto uno - `save_session_context` con argomenti di tool non validi -
-    e senza questo raccoglitore sarebbe rimasto una riga di log in mezzo alla
-    risposta, cioe' invisibile. Uno store in modalita' ALWAYS che fallisce in
-    silenzio costa un'inferenza per turno e non conserva niente.
+    Gli errori di estrazione non fermano il turno: Agno li registra come WARNING
+    e va avanti. Senza questo raccoglitore uno store che fallisce in silenzio
+    resterebbe invisibile.
     """
 
     def __init__(self) -> None:
@@ -140,8 +120,8 @@ def store_sempre_attivi() -> list:
 def conta_per_tipo() -> dict:
     """Righe di apprendimento per tipo, lette da SQLite invece che dagli store.
 
-    Stessa ragione dello smoke test: un conteggio che passa dallo stesso
-    codice di lettura del difetto non puo' vederlo.
+    Un conteggio che passa dal codice di lettura sotto prova non ne vedrebbe i
+    difetti.
     """
     conteggi = {}
     with closing(sqlite3.connect(PERCORSI.db_file)) as connessione:
@@ -163,12 +143,7 @@ def conta_sessioni() -> int:
 
 
 def stato_archivio_reale() -> list:
-    """Fotografia dell'archivio vero, per dimostrare che questa prova non lo tocca.
-
-    E' il controllo che rende sicuro lanciare una prova col modello acceso:
-    senza, l'unico modo di sapere che il turno non ha scritto tra i dati veri
-    sarebbe fidarsi della variabile d'ambiente.
-    """
+    """Fotografia dell'archivio vero, per dimostrare che questa prova non lo tocca."""
     reale = PERCORSI.home / "stato"
     if not reale.exists():
         return []
@@ -239,11 +214,9 @@ def main() -> int:
         esigi(bool(testo), "il modello ha risposto con un contenuto vuoto")
         ok("turno completato    ", str(len(testo)) + " caratteri in " + str(durata_turno) + " s")
 
-        # Il costo vero del turno, con i modelli veri: la riga che il client
-        # mostra sotto la risposta. Il segmento dell'apprendimento e' quello
-        # che non si vede, perche' arriva dopo che la risposta e' gia' a
-        # schermo, ed e' la misura che `learning_cost_test.py` spiega
-        # strutturalmente. Qui non si asserisce niente: dipende dal modello.
+        # Il costo vero del turno, come lo mostra il client. Solo stampato:
+        # dipende dal modello (la struttura la verifica
+        # `learning_cost_test.py`).
         from ares.cli.render import righe_metriche
 
         for riga in righe_metriche(risposta, IMPOSTAZIONI):
@@ -272,10 +245,8 @@ def main() -> int:
             ", ".join(tipo + "=" + str(quante) for tipo, quante in sorted(scritti.items())),
         )
 
-        # Il contesto, a differenza di profilo e memorie, riceve sempre
-        # l'ordine esplicito di salvare un riepilogo del turno. Dopo il retry
-        # un'assenza non e' piu' una scelta legittima del modello: e' il
-        # difetto che questa prova deve rendere rosso.
+        # Il contesto riceve sempre l'ordine di salvare un riepilogo: dopo il
+        # retry un'assenza e' un difetto.
         if config.LEARN_SESSION_CONTEXT:
             esigi(
                 scritti.get("session_context", 0) >= 1,

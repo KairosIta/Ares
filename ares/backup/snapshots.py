@@ -36,8 +36,7 @@ from ares.config import Percorsi
 from ares.state.lock import lock_stato
 from ares.state.platform_files import rendi_privato
 
-# Contratti storicamente importabili da backup.py. La façade li conserva
-# mentre implementazione e formato vivono nel modulo dedicato.
+# Riesportati da qui per chi li importa dal modulo pubblico; vivono in `integrity`.
 CHECKSUM = integrity.CHECKSUM
 DATABASE = integrity.DATABASE
 FORMATO_BACKUP = integrity.FORMATO_BACKUP
@@ -52,18 +51,14 @@ _verifica_integrita_snapshot = integrity.verifica_snapshot
 _privato = files.rendi_albero_privato
 _rinomina_directory = files.rinomina_directory_nuova
 
-# Primitive e helper storicamente usati anche dalle prove mirate.
+# Riesportati per le prove mirate.
 _installa_restore_per_copia = restore._installa_restore_per_copia
 _prepara_restore = restore._prepara_restore
 _svuota_directory = restore._svuota_directory
 
-# La cronologia della riga di comando vive nello stato insieme al resto, ma
-# non e' stato appreso: e' cio' che l'utente ha digitato. Da qui le due regole
-# asimmetriche piu' sotto - lo snapshot la copia, il restore non la riporta
-# indietro - che sono la stessa cosa detta due volte: un backup protegge da
-# una perdita, un restore fa tornare indietro Ares, non chi gli parla. Il nome
-# del file e' `percorsi.cronologia_file.name`, letto dove serve: era una
-# costante di modulo, cioe' il nome di un archivio deciso all'import.
+# La cronologia della riga di comando vive nello stato ma e' cio' che
+# l'utente ha digitato, non cio' che Ares ha appreso: lo snapshot la copia,
+# il restore non la riporta indietro.
 
 
 def _si_sovrappongono(primo: Path, secondo: Path) -> bool:
@@ -106,10 +101,8 @@ def _pubblica_snapshot(staging: Path, definitivo: Path) -> None:
 
 def valida_percorsi(percorsi: Percorsi) -> None:
     """Il backup non puo' contenere o essere contenuto da cio' che protegge."""
-    # La cartella di lavoro non e' nell'elenco: e' quella da cui si lancia
-    # `ares`, e `ares backup create` dalla home non deve fallire perche' la
-    # home contiene i backup. Che Ares lavori dove stanno i suoi backup lo
-    # dice `cli/cartella.py` all'avvio della chat, ed e' li' che si decide.
+    # La cartella di lavoro non e' nell'elenco: `ares backup create` dalla
+    # home non deve fallire. Quel rischio lo segnala `cli/cartella.py`.
     backup = percorsi.backup.resolve()
     vietati = [("lo stato", percorsi.stato), ("il progetto", config.BASE_DIR)]
     for nome, percorso in vietati:
@@ -129,21 +122,16 @@ def _root_backup(percorsi: Percorsi) -> Path:
 
 def _copia_sqlite(sorgente: Path, destinazione: Path) -> None:
     _integrita_sqlite(sorgente)
-    # `closing` e non un `finally` scritto a mano: il `connect` della
-    # destinazione sta dentro lo stesso `with`, quindi se fallisce la
-    # connessione alla sorgente si chiude comunque, per garanzia del
-    # linguaggio e non di una riga che si puo' dimenticare.
+    # Se il secondo `connect` fallisce, `closing` chiude comunque il primo.
     with (
         closing(sqlite3.connect(str(sorgente))) as origine,
         closing(sqlite3.connect(str(destinazione))) as copia,
     ):
         journal_mode = str(origine.execute("pragma journal_mode").fetchone()[0]).casefold()
         origine.backup(copia)
-        # L'API backup copia pagine e dati ma il database di destinazione
-        # nasce in DELETE mode. Agno 3 usa WAL: perderlo nello snapshot
-        # costringerebbe la prima lettura dopo un restore a riscrivere
-        # l'header del database. La copia deve conservare anche questa
-        # proprieta' persistente, non soltanto tabelle e righe.
+        # L'API backup crea la copia in DELETE mode: si ripristina il WAL
+        # dell'originale, altrimenti la prima lettura dopo un restore
+        # riscriverebbe l'header del database.
         if journal_mode == "wal":
             copia.execute("pragma journal_mode=wal").fetchone()
     rendi_privato(destinazione)
@@ -252,11 +240,9 @@ def _crea_snapshot_senza_lock(percorsi: Percorsi, tipo: str = "manuale") -> Path
             "agno_version": _versione_agno(),
             "ares_version": ares.__version__,
             "git": _git(),
-            # Eccezione deliberata: qui si leggono i nomi di modulo e non un
-            # `Impostazioni`. Il manifesto registra com'era configurato
-            # *questo* processo quando lo snapshot e' nato, ed e' l'unico
-            # posto in cui la configurazione va scritta invece che ricevuta:
-            # il backup non ha una conversazione, ha un archivio.
+            # Eccezione deliberata alle dipendenze esplicite: il manifesto
+            # registra com'era configurato questo processo (vedi
+            # docs/architecture.md).
             "models": {
                 "main": config.MAIN_MODEL,
                 "learning": config.LEARNING_MODEL,
@@ -305,10 +291,8 @@ def _ordine_snapshot(percorso: Path) -> tuple[float, str]:
 def _snapshot_dentro(root: Path) -> list[Path]:
     """Gli snapshot validi in una directory che esiste gia'.
 
-    Separata da `elenco_snapshot` perche' quella passa da `_root_backup`, che
-    la directory dei backup la crea. Va bene per chi sta per scriverci; non va
-    bene per chi vuole soltanto sapere se ci sia qualcosa, e che altrimenti si
-    lascerebbe dietro una directory vuota per aver fatto una domanda.
+    Non passa da `_root_backup`, che crea la directory: chi chiede soltanto
+    se c'e' qualcosa non deve lasciarsi dietro una directory vuota.
     """
     return sorted(
         (
@@ -321,16 +305,11 @@ def _snapshot_dentro(root: Path) -> list[Path]:
 
 
 def snapshot_incompleti(percorsi: Percorsi) -> list[Path]:
-    """Le directory nel catalogo che hanno la firma di uno snapshot ma non il manifest.
+    """Le directory nel catalogo con la firma di uno snapshot ma senza manifest.
 
-    Il fallback di `_pubblica_snapshot` - la rinomina di directory non riesce,
-    tipicamente su Windows - copia i dati e pubblica il manifest per ultimo,
-    come commit marker. Un processo ucciso fra le due lascia i dati al loro
-    posto e il manifest mai scritto: senza quest'ultimo la directory non e'
-    uno snapshot per nessun lettore, quindi `elenco_snapshot` la ignora e
-    nessun comando la nomina. Si riconosce dalla firma di un salvataggio - il
-    file dei checksum o uno dei database - cosi' una cartella qualunque messa
-    li' dall'utente non viene scambiata per un residuo.
+    Le lascia il fallback di `_pubblica_snapshot` (tipicamente su Windows) se
+    il processo muore prima di scrivere il manifest. La firma - checksum o un
+    database - evita di scambiare per residuo una cartella dell'utente.
     """
     root = percorsi.backup
     try:
@@ -368,20 +347,10 @@ def elenco_snapshot(percorsi: Percorsi) -> list[Path]:
 def promemoria_backup(percorsi: Percorsi, soglia_giorni: int | None = None) -> list[str]:
     """Le righe da mostrare all'avvio se e' ora di rifare un backup.
 
-    Elenco vuoto quando non c'e' niente da dire: nessuno stato da perdere,
-    promemoria spento in `config.py`, o uno snapshot abbastanza recente. Un
-    avviso che compare a ogni avvio smette di essere letto entro una
-    settimana, ed e' peggio di nessun avviso perche' occupa il posto di
-    quello vero.
-
-    Legge soltanto: non crea la directory dei backup, non verifica i
-    checksum, non apre i database. Costa una `iterdir` e la lettura di un
-    manifest per snapshot, ed e' sul percorso di avvio della chat.
-
-    Non solleva: un promemoria che impedisce di parlare con Ares ha invertito
-    il rapporto fra la cosa e il suo promemoria. Se qualcosa va storto qui,
-    tace - e il backup resta un comando esplicito, che e' come lo si e'
-    voluto.
+    Vuoto se non c'e' stato da perdere, se il promemoria e' spento o se c'e'
+    uno snapshot recente: un avviso a ogni avvio smette di essere letto.
+    Sta sul percorso di avvio della chat: legge soltanto (una `iterdir` e un
+    manifest per snapshot) e non solleva mai.
     """
     soglia = config.BACKUP_PROMEMORIA_GIORNI if soglia_giorni is None else soglia_giorni
     if soglia <= 0:
@@ -415,21 +384,16 @@ def residui_restore(percorsi: Percorsi) -> list[Path]:
     """Le directory che un restore interrotto puo' lasciare accanto allo stato.
 
     Su POSIX il restore e' due rinomine: lo stato corrente diventa
-    `.stato-precedente-<hex>` e la preparazione `.stato-restore-<hex>` prende il
-    suo posto. Un processo ucciso fra le due lascia il residuo e nessuno
-    stato: al riavvio Ares ne ricrea uno vuoto e, senza questa lettura,
-    riparte da zero senza dirlo. Un residuo resta anche dopo un restore
-    riuscito, quando la copia precedente non si lascia rimuovere, e su
-    Windows quando il rollback per copia fallisce a sua volta.
+    `.stato-precedente-<hex>` e la preparazione `.stato-restore-<hex>` prende
+    il suo posto. Un processo ucciso fra le due lascia il residuo e nessuno
+    stato, e Ares ripartirebbe vuoto senza dirlo. Un residuo resta anche se la
+    copia precedente non si lascia rimuovere, o su Windows se il rollback per
+    copia fallisce.
 
-    Il residuo `-precedente-` e' lo stato che c'era prima del restore, e se
-    il restore e' partito con `--skip-safety` ne e' l'unica copia; quello
-    `-restore-` e' una preparazione che non e' mai stata installata. Nessuno
-    dei due viene rimosso da qui: e' una decisione che spetta a chi puo'
-    guardarci dentro.
-
-    Legge soltanto e non solleva, per la ragione di `promemoria_backup`: e'
-    sul percorso di avvio della chat.
+    `-precedente-` e' lo stato di prima (l'unica copia, con `--skip-safety`);
+    `-restore-` e' una preparazione mai installata. Non si rimuove niente: lo
+    decide chi puo' guardarci dentro. Legge soltanto e non solleva, come
+    `promemoria_backup`.
     """
     try:
         stato = percorsi.stato.resolve()
@@ -464,11 +428,8 @@ def _ultimo_snapshot_di_tipo(percorsi: Percorsi, tipo: str) -> Path | None:
 def avviso_residui_restore(percorsi: Percorsi) -> list[str]:
     """Le righe con cui dire che un restore e' rimasto a meta', o nessuna.
 
-    La prima riga dice cosa e' successo, le altre dove sta il residuo e da
-    dove si torna indietro. Lo snapshot pre-restore, se c'e', e' il rimedio
-    che non richiede di capire il residuo: si nomina per intero, con il
-    comando, perche' chi legge questo avviso ha appena scoperto che il suo
-    archivio potrebbe essere vuoto e non ha voglia di cercare.
+    La prima dice cosa e' successo, le altre dove sta il residuo e come
+    tornare indietro, con il comando completo per lo snapshot pre-restore.
     """
     residui = residui_restore(percorsi)
     if not residui:

@@ -1,25 +1,18 @@
-"""
-Gli ambiti, come li tratta il framework
+"""Gli ambiti, come li tratta il framework
 =======================================
 
-Due premesse dello studio sugli ambiti (`docs/project-scopes.md`, §3.4): che una
-chiave in piu' in una voce di memoria sopravviva alle riscritture di Agno senza
-mai arrivare al modello, e che il filtro per namespace delle intuizioni sia
-applicato sui metadati *dopo* il limite, mentre quello dell'owner e' un
-prefiltro del motore. Sono le due cose da cui dipendono la provenienza delle
-memorie e la composizione a mano del blocco delle intuizioni: se cambiano,
-cambia la proposta, e il cambiamento deve farsi sentire qui invece che in
-produzione.
+Due premesse dello studio sugli ambiti (`docs/project-scopes.md`, par. 3.4):
 
-Queste prove non provano la proposta. L'ambito di progetto, il registro e il
-blocco composto non esistono ancora: provano le premesse, e rendono permanenti
-le misure che nello studio erano due script usa-e-getta.
+- una chiave in piu' in una voce di memoria sopravvive alle riscritture di
+  Agno senza arrivare al modello;
+- il filtro per namespace delle intuizioni si applica sui metadati *dopo*
+  il limite, mentre quello dell'owner e' un prefiltro del motore.
 
-Offline per costruzione: la prima usa il modello a copione di `_doppi.py`, la
-seconda un embedder a vettori fissi, e i documenti arrivano a LanceDB con il
-vettore gia' dentro, quindi Ollama non viene mai acceso. Il nome del file
-segue la cosa misurata, non il modulo che la contiene: quando l'ambito di
-progetto esistera', le prove di comportamento stanno qui accanto.
+Non provano la proposta, che non esiste ancora: ne provano le premesse, e
+se Agno le cambia la prova se ne accorge.
+
+Offline: il modello e' il copione di `_doppi.py`, l'embedder ha vettori
+fissi, e i documenti arrivano a LanceDB gia' vettorizzati.
 """
 
 from __future__ import annotations
@@ -29,10 +22,8 @@ from typing import Any
 
 from _comune import chiudi, esegui, esigi, prepara_ambiente
 
-# I percorsi vanno scelti prima di importare qualunque cosa di `ares`, che
-# all'import fotografa l'ambiente. Questa prova non legge `config` - non le
-# serve - ma la regola vale comunque: la radice usa-e-getta e' anche la
-# cartella in cui LanceDB scrive le sue tabelle.
+# Percorsi scelti prima di importare `ares`: la radice usa-e-getta e' anche
+# dove LanceDB scrive le sue tabelle.
 RADICE_PROVA = prepara_ambiente("ambiti-test")
 
 from _doppi import ModelloACopione, tool_call  # noqa: E402
@@ -66,16 +57,11 @@ MESSAGGI_BETA = [
 
 
 class ModelloCheRicorda(ModelloACopione):
-    """Il copione, piu' i messaggi della prima chiamata.
+    """Il copione, piu' i messaggi della prima chiamata (il prompt di estrazione).
 
-    `extract_and_save` lavora su una copia del modello (`deepcopy`), quindi
-    quello che la prova vuole leggere finirebbe sull'oggetto copiato:
-    `__deepcopy__` che restituisce se stesso lo lascia dove si puo' leggere.
-    E' la stessa ragione di `ModelloContesto` in `agno_contract_test.py`.
-
-    Solo la prima chiamata interessa: e' il prompt di estrazione. La seconda,
-    quando c'e', riporta l'esito dello strumento, cioe' cio' che il modello ha
-    appena scritto.
+    `__deepcopy__` restituisce se stesso perche' `extract_and_save` lavora su
+    una copia del modello, come per `ModelloContesto` in
+    `agno_contract_test.py`.
     """
 
     def __init__(self, nome: str, copione: list[list[dict[str, Any]]] | None = None) -> None:
@@ -207,8 +193,7 @@ DENTRO = "user/demo/progetti/alfa"
 class EmbedderAFisso(Embedder):
     """Vettori fissi: il documento personale e' identico alla query, il progetto vicino.
 
-    Serve un embedder perche' LanceDB vettorizza la query, ma nessun modello:
-    i documenti arrivano con il vettore gia' dentro e la query ha il suo qui.
+    LanceDB vettorizza la query, quindi serve un embedder, ma nessun modello.
     """
 
     def __init__(self) -> None:
@@ -294,10 +279,9 @@ def filtro_intuizioni() -> str:
 
 
 def main() -> int:
-    # LanceDB annuncia su stdout la tabella che crea e i documenti che trova,
-    # e quelle righe finirebbero in mezzo all'esito della prova. La soglia
-    # sugli handler, non sul logger: Agno riporta il livello del logger a INFO
-    # all'inizio di ogni run.
+    # LanceDB stampa su stdout tabelle e documenti, in mezzo all'esito. La
+    # soglia va sugli handler, non sul logger: Agno riporta il logger a INFO a
+    # ogni run.
     configura_log_agno(False)
     falliti, _ = esegui(
         (

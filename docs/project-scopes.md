@@ -2,23 +2,18 @@
 
 Data: 22 settembre 2026.
 
-**Stato: proposta di progettazione, non implementata.** Questo documento
-approfondisce i primi due punti della [roadmap](../ROADMAP.md) — *Identità
-stabile e memoria per progetto* e *Ambiti applicati dal codice in scrittura e
-recupero* — e ne prepara l'implementazione. Distingue i fatti verificati nel
-codice e nel framework dalle scelte proposte: finché una voce non è marcata
-come verificata, è una proposta. Non introduce un identificativo di progetto,
-non cambia le chiavi degli archivi, non migra dati esistenti. Le prove di
-accettazione sono descritte al §8 e non implementate.
+**Stato: proposta di progettazione, non implementata.** Approfondisce i
+primi due punti della [roadmap](ROADMAP.md) — *Identità stabile e memoria
+per progetto* e *Ambiti applicati dal codice in scrittura e recupero* — e ne
+prepara l'implementazione. Distingue i fatti verificati nel codice e nel
+framework dalle scelte proposte: ciò che non è marcato come verificato è una
+proposta. Le prove di accettazione (§8) non sono implementate.
 
-**Aggiornamento del 22 settembre 2026.** Le due verifiche preliminari chieste
-dal §8 sono state fatte e sono misurate al §3.4: una provenienza di progetto
+Le due verifiche preliminari sono fatte (§3.4): una provenienza di progetto
 nelle memorie si scrive con le API pubbliche, sopravvive a una riscrittura e
 va riallineata quando il turno tocca la voce; il filtro per namespace delle
 intuizioni è applicato dopo il limite, e con due ambiti può restituire zero
-intuizioni del progetto. Le due decisioni che dipendevano dalle verifiche —
-la forma della provenienza e la strategia di ricerca — sono chiuse al §9. Il
-resto del documento resta una proposta non implementata.
+intuizioni del progetto. Le decisioni che ne dipendevano sono chiuse al §9.
 
 ## 1. Risultato atteso e perimetro
 
@@ -210,13 +205,12 @@ Sono i vincoli che una proposta deve rispettare o dichiarare come debito.
    vettoriale: i risultati sono filtrati *dopo* i primi `limit`, quindi una
    ricerca ristretta può restituire meno di `limit` elementi e perdere
    corrispondenze fuori dal gruppo iniziale. Due namespace non si interrogano
-   con una sola ricerca. L'entità del taglio è misurata al §3.4: non è un
-   caso di scuola, e con il namespace del progetto il blocco iniettato può
-   restare vuoto. Va detto che oggi non succede nulla di tutto questo, perché
-   l'ambito è uno solo per utente e il filtro non toglie niente: il limite si
-   manifesta quando gli ambiti diventano due, cioè quando il §5 si realizza.
-   La stessa condizione non vale per la colonna dell'owner, che Agno applica
-   come prefiltro del motore: il percorso delle intuizioni non la usa.
+   con una sola ricerca. Il taglio è misurato al §3.4: con il namespace del
+   progetto il blocco iniettato può restare vuoto. Oggi non succede, perché
+   l'ambito è uno solo per utente; il limite si manifesta quando gli ambiti
+   diventano due (§5). La colonna dell'owner, che Agno applica come
+   prefiltro del motore, non ha questo problema, ma il percorso delle
+   intuizioni non la usa.
 5. **La colonna `metadata` delle righe di apprendimento esiste ma non è
    usata**: nessuno store la scrive e i lettori non la filtrano. Non è una
    via per il progetto senza modificare Agno.
@@ -243,14 +237,12 @@ punto in cui Ares già costruisce il testo per il prompt.
 
 ### 3.4 Esito delle due verifiche preliminari
 
-Il §8 chiedeva due verifiche prima di scegliere la forma della provenienza
-delle memorie e della ricerca delle intuizioni. Sono state fatte il 22
-settembre 2026 sui pacchetti installati, con i doppi delle prove: nessun
-modello reale, nessuna rete, un archivio temporaneo per ciascuna. Gli esiti
-seguenti sono misure, non previsioni. Le misure sono ora la prova `ambiti`
-(`tests/scoping_test.py`, nel runner offline), che le tiene ferme: se Agno
-cambia una delle due premesse il fallimento arriva lì, e questo paragrafo va
-aggiornato con lui.
+Due verifiche servivano a scegliere la forma della provenienza delle
+memorie e della ricerca delle intuizioni. Misurate il 22 settembre 2026 sui
+pacchetti installati, con i doppi delle prove: nessun modello reale, nessuna
+rete, un archivio temporaneo per ciascuna. La prova `ambiti`
+(`tests/scoping_test.py`, nel runner offline) le tiene ferme: se Agno cambia
+una delle due premesse, fallisce e questo paragrafo va aggiornato.
 
 **Memorie: la provenienza si scrive, sopravvive, e va riallineata.**
 
@@ -498,10 +490,9 @@ scelta di progetto.
 
 Le prove sono offline e deterministiche, nella forma delle prove esistenti
 ([testing.md](testing.md)): nessun modello reale, nessuna rete, un ambiente
-temporaneo per prova. Le due verifiche preliminari che il documento chiedeva
-sono già state fatte, e sono misurate al §3.4; le prove che ne derivano sono
-elencate qui come codice nuovo, perché il comportamento da fissare è quello
-della proposta, non quello del framework.
+temporaneo per prova. Le premesse nel framework sono già fissate dalla prova
+`ambiti` (§3.4); qui si elenca il comportamento della proposta, che è codice
+nuovo.
 
 | Prova | Che cosa dimostra | Tipo |
 | --- | --- | --- |
@@ -518,13 +509,10 @@ della proposta, non quello del framework.
 | Intuizioni di progetto non troncate | Con l'ambito personale che occupa il gruppo iniziale, la ricerca del progetto restituisce le sue intuizioni e non zero | codice nuovo |
 | Backup e ripristino | Il registro dei progetti e gli ambiti tornano identici dopo un ciclo di snapshot e ripristino | codice nuovo |
 
-Le due prove che dipendevano dalle verifiche sono le più vicine a un difetto
-silenzioso: entrambe passano quando i dati sono pochi, ed è la ragione per cui
-vanno scritte con un archivio popolato — l'ambito personale più grande del
-progetto, e una voce riscritta da un altro progetto. La loro **premessa nel
-framework** non è più una misura di laboratorio: la tiene ferma la prova
-`ambiti` di `tests/run.py` (§3.4). Qui resta il comportamento di Ares, che il
-codice non ha ancora.
+Le prove su provenienza e intuizioni sono le più vicine a un difetto
+silenzioso: passano quando i dati sono pochi, quindi vanno scritte con un
+archivio popolato — l'ambito personale più grande del progetto, e una voce
+riscritta da un altro progetto.
 
 ## 9. Decisioni da chiudere prima del codice
 

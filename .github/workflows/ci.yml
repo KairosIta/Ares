@@ -15,12 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Serve un job che guardi *cosa* e' cambiato, perche' i tre check richiesti
-  # dal ruleset non si possono spegnere con `paths-ignore`: una workflow
-  # saltata per percorso lascia i check in "Pending" e blocca il merge per
-  # sempre. Un job saltato da una condizione, invece, riporta "Success" - e'
-  # il documento GitHub a dirlo - quindi il nome obbligatorio resta e il
-  # lavoro non gira quando il commit tocca solo la documentazione.
+  # I check obbligatori del ruleset non si possono saltare con `paths-ignore`:
+  # una workflow saltata per percorso resta "Pending" e blocca il merge. Un
+  # job saltato da una condizione riporta invece "Success": questo job decide
+  # se il commit tocca solo documentazione, e gli altri saltano di conseguenza.
   modifiche:
     name: Cosa cambia
     runs-on: ubuntu-24.04
@@ -36,10 +34,8 @@ jobs:
           # Il diff ha bisogno del commit di partenza, non solo dell'ultimo.
           fetch-depth: 0
 
-      # Un falso "solo documenti" salterebbe le prove, quindi il default e'
-      # "cambia qualcosa": se la base non si legge, se il diff fallisce o se
-      # l'elenco e' vuoto, i job girano. Si risparmia solo quando si e'
-      # sicuri, mai il contrario.
+      # Nel dubbio (base illeggibile, diff fallito, elenco vuoto) le prove
+      # girano: si salta solo quando si e' sicuri.
       - name: Guarda cosa e' cambiato
         id: filtro
         env:
@@ -61,9 +57,8 @@ jobs:
   qualita:
     name: Analisi statica
     needs: modifiche
-    # `always()` perche' su un `modifiche` fallito l'output e' vuoto: la
-    # condizione diventa vera e il lavoro gira lo stesso. Un check
-    # obbligatorio non deve poter saltare perche' e' fallito chi lo decide.
+    # `always()`: se `modifiche` fallisce l'output e' vuoto e il lavoro gira
+    # lo stesso, invece di saltare.
     if: always() && needs.modifiche.outputs.solo_documenti != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -82,13 +77,8 @@ jobs:
       - name: Installa uv
         run: python -m pip install --disable-pip-version-check uv==0.12.2
 
-      # Un solo sistema, non la matrice: ruff e mypy danno lo stesso esito su
-      # Ubuntu e Windows, e pagarli due volte allunga la CI senza aggiungere
-      # informazione. Le differenze fra i due sistemi le trovano le prove.
-      #
-      # `--locked` rifiuta un uv.lock non allineato al pyproject invece di
-      # riscriverlo: un lock stantio deve fallire qui, non installare altro.
-      # Il gruppo dev - ruff, mypy, coverage - entra di default.
+      # Un solo sistema: ruff e mypy danno lo stesso esito ovunque.
+      # `--locked` fa fallire un uv.lock non allineato invece di riscriverlo.
       - name: Sincronizza l'ambiente
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
@@ -100,45 +90,29 @@ jobs:
       - name: Formattazione
         run: ./.venv/bin/python -m ruff format --check .
 
-      # Senza `ignore_missing_imports`: l'albero delle dipendenze e' tipizzato,
-      # quindi mypy risolve tutto davvero. Serve percio' l'ambiente completo.
-      #
-      # I tre file nominati a parte sono il cablaggio delle prove: `exclude` in
-      # pyproject.toml tiene fuori `tests/`, e quei percorsi espliciti lo
-      # scavalcano. Sono proprio i file che nessuna prova esegue - il runner e
-      # cio' che le prove importano - quindi un errore di tipo li' non lo
-      # vedrebbe nessuno.
+      # I tre file di `tests/` sono il cablaggio delle prove, che `exclude`
+      # terrebbe fuori: nominati qui, mypy li controlla (vedi pyproject.toml).
       - name: Tipi
         run: ./.venv/bin/python -m mypy . tests/run.py tests/_comune.py tests/_doppi.py
 
   tests:
-    # Il nome porta la versione perche' ora ce n'e' piu' d'una, e resta
-    # identico a prima dove la versione e' 3.12: i due check richiesti dal
-    # ruleset si chiamano ancora "Python 3.12 · ubuntu-24.04" e
-    # "Python 3.12 · windows-latest", e un nome cambiato li avrebbe fatti
+    # Il ruleset richiede i check "Python 3.12 · ubuntu-24.04" e
+    # "Python 3.12 · windows-latest": cambiare questo nome li farebbe
     # risultare mancanti su ogni PR.
     name: Python ${{ matrix.py }} · ${{ matrix.os }}
     needs: modifiche
-    # Il job gira *sempre*, e a saltare sono i passi pesanti qui sotto. Non e'
-    # una preferenza: un job a matrice saltato da una condizione non espande la
-    # matrice, quindi i nomi richiesti "Python 3.12 · ubuntu-24.04" e
-    # "Python 3.12 · windows-latest" non vengono mai creati e il ruleset
-    # blocca il merge. `always()` tiene il nome in vita anche se `modifiche`
-    # fallisce: in quel caso l'output e' vuoto e i passi girano lo stesso.
+    # Il job gira sempre e saltano solo i passi pesanti: un job a matrice
+    # saltato non espande la matrice, i check richiesti non nascerebbero e il
+    # merge resterebbe bloccato.
     if: always()
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
     strategy:
       fail-fast: false
-      # 3.12 e' la versione che setup installa e che entrambi i sistemi
-      # provano; 3.13 e' l'altro estremo di `requires-python`, e senza un
-      # giro qui quel vincolo direbbe una cosa che nessuno ha verificato.
-      # Su Ubuntu soltanto: cio' che cambia fra 3.12 e 3.13 e' l'interprete,
-      # non il sistema, e le differenze fra i due sistemi le trova gia' la
-      # riga di sopra. E' un canarino, non una guardia: la 3.13 non e' fra i
-      # controlli obbligatori del ruleset, come CodeQL e Audit e per lo
-      # stesso motivo - se un giorno diventa rossa va letta, non aggirata.
+      # 3.12 e' la versione installata dai setup, su entrambi i sistemi. 3.13
+      # e' l'altro estremo di `requires-python`, solo su Ubuntu e non
+      # obbligatoria: se diventa rossa va letta, non aggirata.
       matrix:
         include:
           - os: ubuntu-24.04
@@ -168,10 +142,8 @@ jobs:
       - name: Installa uv
         run: python -m pip install --disable-pip-version-check uv==0.12.2
 
-      # Da qui in giu' i passi pesanti, e sono questi a saltare quando il
-      # commit tocca solo `*.md`/`docs/`: il job resta in piedi perche' il nome
-      # obbligatorio esista, ma non sincronizza l'ambiente, non compila e non
-      # esegue le prove.
+      # Da qui i passi pesanti, saltati quando il commit tocca solo
+      # `*.md`/`docs/`.
       - name: Sincronizza l’ambiente
         if: runner.os != 'Windows' && needs.modifiche.outputs.solo_documenti != 'true'
         env:
@@ -187,33 +159,22 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: ./setup.ps1 -SkipPreflight
 
-      # `setup.ps1` e' il percorso d'installazione che l'utente Windows
-      # esegue davvero, e va provato cosi' com'e': senza il gruppo dev. La
-      # misura pero' vuole `coverage`, e lo stesso `sync --locked` sullo
-      # stesso venv lo aggiunge senza toccare il resto: e' un secondo passo,
-      # non una variante dello script.
+      # `setup.ps1` si prova cosi' com'e', senza gruppo dev; la misura vuole
+      # pero' `coverage`, che questo passo aggiunge allo stesso venv.
       - name: Aggiungi gli strumenti di sviluppo
         if: runner.os == 'Windows' && needs.modifiche.outputs.solo_documenti != 'true'
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
         run: uv sync --locked --python python
 
-      # L'elenco dei moduli era scritto a mano e si era gia' perso
-      # `turn_core.py`, aggiunto dopo. Qui l'esclusione e' esplicita e il
-      # resto e' automatico: un modulo nuovo entra da solo.
+      # Tutto tranne le esclusioni esplicite: un modulo nuovo entra da solo.
       - name: Compila il codice
         if: needs.modifiche.outputs.solo_documenti != 'true'
         run: ${{ matrix.python }} -m compileall -q -x "([\\/])(\.venv|\.git|htmlcov)([\\/]|$)" .
 
-      # Un passo solo, e la stessa riga che si scrive in locale: tre passi
-      # separati significavano che aggiungere una prova voleva dire
-      # ricordarsi di aggiungerla anche qui, e una prova dimenticata in CI
-      # e' una prova che non esiste.
-      #
-      # Con la misura su entrambi i sistemi. La copertura di un progetto non
-      # dipende dal sistema, ma i rami si': i percorsi Windows di `backup` e
-      # `platform_files` esistono per Windows, e misurati solo su Ubuntu
-      # risultavano scoperti anche quando il runner Windows li attraversava.
+      # La stessa riga che si usa in locale, cosi' una prova nuova entra da
+      # sola. Misura su entrambi i sistemi, perche' i rami Windows si coprono
+      # solo li'.
       - name: Prove offline
         if: needs.modifiche.outputs.solo_documenti != 'true'
         run: ${{ matrix.python }} tests/run.py --copertura

@@ -1,22 +1,13 @@
-"""
-Cio' che ogni prova ripeteva uguale
-===================================
+"""Funzioni comuni alle prove
+==========================
 
-Non un framework: le funzioni che ogni prova ripeteva uguali, e una regola.
-Ogni prova resta uno script che si lancia da solo, decide i propri percorsi
-e stampa una riga per controllo; qui c'e' soltanto cio' che era copiato
-identico in otto file, e che divergeva un poco per volta - il padding del
-nome, il formato del fallimento, se il traceback si vedeva o no.
+Non un framework: le funzioni che le prove ripetevano identiche (padding,
+formato del fallimento, traceback). Ogni prova resta uno script autonomo.
 
-La regola: questo modulo non importa `config` ne' niente di `ares`. E' la
-sola garanzia che `prepara_ambiente` funzioni, perche' `config` fotografa
-`ARES_TMP`, `ARES_BACKUP_DIR` e il `.env` quando viene importato, e da quella
-fotografia `leggi_percorsi` deriva ogni volta i percorsi - la directory
-corrente la rilegge, l'ambiente no. Una prova che importasse `config` prima di
-aver scelto i percorsi scriverebbe accanto ai dati veri, e questo modulo non
-puo' diventare la via da cui succede. Un processo per prova resta la scelta
-del runner: la fotografia letta all'import rende possibile una prova
-in-process, non la impone.
+Regola: questo modulo non importa `config` ne' niente di `ares`. `config`
+fotografa `ARES_TMP`, `ARES_BACKUP_DIR` e il `.env` all'import, quindi
+`prepara_ambiente` deve poter girare prima: una prova che importasse
+`config` troppo presto scriverebbe accanto ai dati veri.
 """
 
 from __future__ import annotations
@@ -37,14 +28,10 @@ NON_CONCLUSIVO = "non concludente: "
 def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = True) -> Path:
     """Sceglie i percorsi usa-e-getta della prova, prima che `config` li legga.
 
-    Restituisce la radice temporanea: `stato/` per l'archivio, `backup/` e
-    `lavoro/` accanto. Va chiamata prima di importare `config`, e il
-    controllo iniziale lo pretende: se `config` e' gia' in memoria i percorsi
-    sono gia' decisi, e la prova starebbe per scrivere dove non deve.
-
-    La cartella di lavoro non ha una variabile: e' la directory corrente, come
-    quando si scrive `ares` in un progetto. Per questo la prova ci entra con
-    `chdir`, e `config` la legge da li'.
+    Restituisce la radice temporanea, con `stato/`, `backup/` e `lavoro/`.
+    Fallisce se `config` e' gia' in memoria, perche' i percorsi sarebbero gia'
+    decisi. La cartella di lavoro e' la directory corrente, come per `ares` in
+    un progetto: per questo la prova ci entra con `chdir`.
     """
     if "ares.config" in sys.modules:
         raise RuntimeError("prepara_ambiente va chiamata prima di importare ares.config")
@@ -62,10 +49,8 @@ def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = Tr
 def pulisci(radice: Path) -> None:
     """Cancella la radice usa-e-getta a fine prova.
 
-    Prima esce dalla cartella di lavoro, se la prova ci sta ancora dentro:
-    su Windows la directory corrente di un processo non si cancella, e un
-    `rmtree` con gli errori ignorati lascerebbe la radice sul disco senza
-    dirlo.
+    Prima esce dalla cartella di lavoro: su Windows la directory corrente non si
+    cancella, e `rmtree` con gli errori ignorati la lascerebbe sul disco.
     """
     try:
         if Path.cwd().resolve().is_relative_to(radice.resolve()):
@@ -88,13 +73,8 @@ def ok(nome: str, nota: str) -> None:
 def fallimento(errore: BaseException, nome: str = "") -> None:
     """Stampa un fallimento in modo che si capisca dove guardare.
 
-    Un'asserzione dice gia' cosa si aspettava: basta la riga da cui viene,
-    perche' lo stesso messaggio puo' stare in due controlli. Un'eccezione
-    di altro tipo e' un guasto che la prova non prevedeva, e senza il
-    traceback resta un nome di classe e un messaggio - `KeyError: 'id'` -
-    che non dice quale delle cento righe attraversate l'ha sollevato. Era
-    la differenza fra un fallimento in CI che si legge e uno che si
-    riproduce a mano.
+    Per un'asserzione basta la riga da cui viene. Per un'eccezione imprevista
+    serve il traceback: `KeyError: 'id'` da solo non dice dove e' nato.
     """
     # Il messaggio puo' contenere l'output catturato, con i bordi Rich dentro:
     # sulla console Windows in cp1252 `print` fallirebbe e il fallimento
@@ -116,9 +96,8 @@ def fallimento(errore: BaseException, nome: str = "") -> None:
 def esegui(prove: Iterable[tuple[str, Callable[[], str]]]) -> tuple[list[str], list[str]]:
     """Esegue le prove in ordine, una riga per ciascuna; niente ferma le altre.
 
-    Restituisce i nomi dei falliti e dei non concludenti. Un fallimento non
-    interrompe la sequenza: il controllo dopo puo' dire se il guasto e' uno
-    o e' il primo di una catena, e questo si vede solo lasciandoli girare.
+    Restituisce i nomi dei falliti e dei non concludenti. Lasciarle girare dice
+    se un guasto e' isolato o il primo di una catena.
     """
     falliti, non_conclusivi = [], []
     for nome, controllo in prove:
@@ -139,9 +118,8 @@ def esegui(prove: Iterable[tuple[str, Callable[[], str]]]) -> tuple[list[str], l
 def chiudi(falliti: list[str], radice: Path) -> int:
     """Il codice di uscita di una prova, e che fine fa la sua directory.
 
-    Un fallimento conserva la radice usa-e-getta: senza, l'unica traccia di
-    cosa e' andato storto se ne andrebbe con lei. E' l'ultima riga di ogni
-    prova, e le prove fatte di controlli indipendenti la ripetevano identica.
+    Un fallimento conserva la radice usa-e-getta, che e' l'unica traccia di
+    cosa e' andato storto.
     """
     if falliti:
         print("Archivio della prova conservato:", radice)

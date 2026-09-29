@@ -45,16 +45,10 @@ class Fase:
     sessione: str = "apprendimento"
     memoria_precedente: tuple[str, ...] = ()
     avvio_precedente: str | None = None
-    # Come il valore atteso puo' essere citato, quando non lo si cita alla
-    # lettera. Il legame fra valore e citazione chiede di norma il termine
-    # esatto: e' cio' che impedisce di spacciare per prova una frase che parla
-    # d'altro. Per l'avvio quel termine non e' l'unico modo di dirlo - una
-    # memoria che riporta "ha confermato l'avvio dei lavori" sostiene il
-    # valore "iniziato" senza contenerlo - e senza questo campo una risposta
-    # corretta con la sua citazione verbatim restava non conclusiva. Va
-    # dichiarato sulla fase, non allentato per tutti: le altre diciassette fasi
-    # continuano a pretendere il termine, e la forma ammessa qui e' scritta
-    # accanto al caso invece di essere dedotta dal valutatore.
+    # Forma alternativa con cui il valore atteso puo' essere citato, quando
+    # il termine esatto non e' l'unico modo di dirlo ("ha confermato l'avvio
+    # dei lavori" sostiene "iniziato"). Si dichiara per fase: le altre
+    # continuano a pretendere il termine esatto.
     evidenza_equivalente: re.Pattern[str] | None = None
 
 
@@ -89,12 +83,9 @@ DOMANDA_AVVIO = (
     "e' confermato, 'non iniziato' se e' confermato che non ho iniziato, oppure null se non lo sai."
 )
 
-# Le forme con cui uno store dichiara un avvio avvenuto. Sta qui, sopra i
-# casi, perche' serve a due cose che devono restare d'accordo: la precondizione
-# di `avvio_confermato`, che chiede se l'avvio risulta dallo stato di prima, e
-# la citazione ammessa dalle fasi che attendono "iniziato". Quando le due
-# vivevano separate la stessa frase era prova per la prima e non per la
-# seconda, e una risposta corretta usciva non conclusiva.
+# Le forme con cui uno store dichiara un avvio avvenuto. Condivise dalla
+# precondizione di `avvio_confermato` e dalle fasi che attendono "iniziato",
+# che devono accettare le stesse frasi.
 AVVIO_AFFERMATO = re.compile(
     r"\bha\s+(?:(?:gia'|già|effettivamente)\s+)?iniziato\s+a\s+(?:lavorare|lavorarci|realizzare)\b"
     r"|\bha\s+(?:iniziato|avviato)\s+(?:il\s+)?(?:lavoro|progetto|[a-z]+-\d+)\b"
@@ -304,12 +295,9 @@ def contiene(testo: str, valore: str) -> bool:
 def cita_il_valore(testo: str, valore: str, equivalente: re.Pattern[str] | None, *, intero: bool = False) -> bool:
     """Il testo sostiene il valore: lo contiene, o ne contiene la forma dichiarata.
 
-    `intero` distingue le due domande che si fanno alla stessa citazione. La
-    prima e' se il valore ci sia; la seconda, dopo aver risalito la memoria
-    originale, e' se ci sia come parola e non come pezzo di un'altra - il
-    valore "inizi" dentro "iniziativa" non prova niente. L'equivalenza
-    dichiarata e' la stessa in entrambe: e' un'espressione con i propri
-    confini di parola, quindi non ha bisogno della distinzione.
+    Con `intero` il valore deve comparire come parola intera ("inizi" dentro
+    "iniziativa" non vale). L'equivalenza dichiarata ha gia' i suoi confini di
+    parola e vale uguale nei due casi.
     """
     letterale = contiene(testo, valore) if intero else valore in testo
     return letterale or bool(equivalente and equivalente.search(testo))
@@ -328,9 +316,8 @@ def problema_citazione(
     originali = [normalizza(t) for t in contenuti_durevoli(stato)]
     if not any(nucleo in t for t in originali):
         return "La citazione non e' riconducibile a un contenuto originale dello store."
-    # I testi su cui si cerca ambiguita' sono quelli che sostengono il valore,
-    # non i soli che lo contengono alla lettera: con una forma equivalente la
-    # lista restava vuota e la guardia sulle negazioni non guardava niente.
+    # L'ambiguita' si cerca nei testi che sostengono il valore, anche in
+    # forma equivalente, non solo in quelli che lo contengono alla lettera.
     pertinenti = [t for t in originali if cita_il_valore(t, valore, equivalente, intero=True)]
     if any(ambiguo(t) for t in pertinenti):
         return "Il contesto originale del valore contiene negazioni, incertezza o domande."
@@ -364,11 +351,8 @@ def avvio_confermato(stato: dict, progetto: str) -> bool:
 def dialogo_serializzabile(fase: Fase) -> dict:
     """La fase come dizionario, con l'equivalenza ammessa scritta per esteso.
 
-    `asdict` restituirebbe l'oggetto compilato di `evidenza_equivalente`, che
-    `json.dumps` non sa scrivere: il rapporto e' evidenza e deve contenere cio'
-    che la fase ha dichiarato, non un riferimento a un oggetto in memoria. Ne
-    conserviamo percio' il testo, che e' anche l'unica forma leggibile da chi
-    rilegge il rapporto.
+    `asdict` lascerebbe il pattern compilato, che `json.dumps` non sa scrivere;
+    il rapporto ne conserva il testo.
     """
     dati = asdict(fase)
     ammessa = dati.get("evidenza_equivalente")
