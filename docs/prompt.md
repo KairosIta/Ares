@@ -36,6 +36,12 @@ persistenti: il prompt chiede di scrivere nel quaderno solo su richiesta
 esplicita, non come ripiego per l'apprendimento spento. È una regola del
 prompt: gli strumenti del quaderno restano disponibili.
 
+Lo stesso vale per una chat con l'input da una pipe: il prompt parla di un
+avvio senza nessuno davanti, non di `-p`. Non propone `/modo`, che lì non
+porta alle modalità che scrivono senza conferma, e per gli strumenti
+rifiutati indica l'unica strada: una chat di Ares in un terminale, dove la
+persona li autorizza.
+
 Con `SEARCH_PAST_SESSIONS=False` non vengono caricate né suggerite le
 conversazioni precedenti della cartella: il prompt non prescrive
 `read_past_session` quando lo strumento non è disponibile.
@@ -79,8 +85,8 @@ Lo smoke verifica il prompt completo in 19 combinazioni di modalità,
 interattività e flag, confrontando i nomi prescritti con gli strumenti
 consegnati. Ogni caso ha una conversazione precedente nella cartella e
 controlla se il relativo blocco entra o meno nel prompt. Controlla inoltre
-che `-p` non prometta estrazione automatica e non reintroduca la guida
-inglese di Agno. Il caso `auto` non interattivo è verificato sulla fabbrica
+che `-p` non prometta estrazione automatica, non proponga `/modo` e non
+reintroduca la guida inglese di Agno. Il caso `auto` non interattivo è verificato sulla fabbrica
 dell'agente; la CLI lo rifiuta.
 
 Queste prove controllano la composizione. La qualità semantica richiede

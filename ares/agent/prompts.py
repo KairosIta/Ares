@@ -45,17 +45,26 @@ DESCRIZIONE_MODALITA = {
     "modifiche": "nel workspace scrivi e modifichi file da solo; spostamenti, cancellazioni e comandi "
     "richiedono conferma.",
     "piano": "il workspace e' in sola lettura e non puoi eseguire comandi. Proponi le modifiche "
-    "necessarie; la persona puo' cambiare modalita' con /modo. Memoria e quaderno seguono le regole "
-    "separate descritte sotto.",
+    "necessarie. Memoria e quaderno seguono le regole separate descritte sotto.",
     "auto": "gli strumenti del workspace non chiedono conferma. Controlla obiettivo, percorsi ed "
     "effetti prima di agire: questa modalita' non autorizza attivita' estranee alla richiesta.",
 }
 
 
-def istruzioni_sulla_modalita(modo: str) -> str:
-    """La riga della scheda sulla modalita' corrente."""
+def istruzioni_sulla_modalita(modo: str, *, interattivo: bool = True) -> str:
+    """La riga della scheda sulla modalita' corrente, e come la si cambia.
+
+    Senza nessuno davanti `/modo` non porta alle modalita' che scrivono in
+    silenzio (`core/autorizzazioni.py`): suggerirlo farebbe proporre al
+    modello una strada che non esiste.
+    """
     config.liste_modalita(modo)
-    return "- Modalita' " + modo + ": " + DESCRIZIONE_MODALITA.get(modo, "") + " Si cambia con /modo."
+    come = (
+        " Si cambia con /modo."
+        if interattivo
+        else " In questo avvio non si passa a una modalita' che scrive senza conferma."
+    )
+    return "- Modalita' " + modo + ": " + DESCRIZIONE_MODALITA.get(modo, "") + come
 
 
 def _shell() -> tuple[str, str]:
@@ -169,7 +178,7 @@ def istruzioni_sull_ambiente(
     if politica.apprendimento.intuizioni:
         righe.append("- Le intuizioni sono indicizzate da " + impostazioni.embedder + ", in locale.")
     if radice_lavoro is not None:
-        righe.append(istruzioni_sulla_modalita(modo))
+        righe.append(istruzioni_sulla_modalita(modo, interattivo=interattivo))
     return ["\n".join(righe)]
 
 
@@ -365,22 +374,25 @@ def istruzioni_sul_quaderno() -> list[str]:
 
 
 def istruzioni_senza_terminale(radice_lavoro=None, modo: str | None = None, *, politica: Politica) -> list[str]:
-    """Cosa cambia in `ares -p`: nessuno conferma e gli store non apprendono.
+    """Cosa cambia senza nessuno davanti (`ares -p`, input da una pipe): nessuno conferma e gli store non apprendono.
 
     Dirlo prima evita che il modello tenti uno strumento, si veda rifiutare e
-    riprovi per un'altra strada.
+    riprovi per un'altra strada; dire qual e' la strada giusta evita che ne
+    inventi una.
     """
     modo = modo or config.MODO_PREDEFINITO
     confermati = strumenti_spazio(config.liste_modalita(modo)[1], politica) if radice_lavoro is not None else []
     testo = (
-        "Questo e' un avvio con `ares -p`: un turno solo, lanciato da uno script o "
-        "da una pipe, e nessuno puo' rispondere a una tua domanda. "
+        "Questo e' un avvio senza nessuno davanti, con `ares -p` o con l'input da una pipe, "
+        "lanciato da uno script: nessuno puo' rispondere a una tua domanda. "
     )
     if confermati:
         testo += (
             "Gli strumenti che chiedono conferma - "
             + ", ".join(nome for nome, _ in confermati)
-            + " - verrebbero rifiutati: non chiamarli, di' invece cosa avresti fatto. "
+            + " - verrebbero rifiutati: non chiamarli, di' invece cosa avresti fatto. Per farli "
+            "eseguire serve una chat di Ares aperta in un terminale, dove la persona li autorizza "
+            "uno per uno. "
         )
     testo += (
         "L'apprendimento e' disattivato: profilo, memorie, contesto di sessione, entita' e intuizioni "

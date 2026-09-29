@@ -954,6 +954,10 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
         "ares -p" in istruzioni and "L'apprendimento e' disattivato" in istruzioni,
         "il prompt non dice che e' -p",
     )
+    # La strada per autorizzare e' una chat nel terminale: `/modo` e le
+    # modalita' silenziose qui non esistono, e il modello non deve proporle.
+    esigi("chat di Ares aperta in un terminale" in istruzioni, "il prompt di -p non dice dove si autorizza")
+    esigi("/modo" not in istruzioni, "il prompt di -p propone /modo")
     for nome, _ in strumenti_spazio(config.liste_modalita(config.MODO_PREDEFINITO)[1], POLITICA):
         esigi(nome in istruzioni, "il prompt di -p non nomina " + nome + " fra gli strumenti rifiutati")
     prompt = messaggio_di_sistema(muto, session_id=session_id + "-p", utente=Utente.da_grezzo(user_id))
@@ -1067,6 +1071,9 @@ def prompt_e_capacita() -> str:
             esigi("CRITICAL RULES" not in prompt, f"caso {indice}: guida inglese di Agno")
             if not interattivo:
                 esigi("Si aggiornano da soli" not in prompt, f"caso {indice}: estrazione promessa in -p")
+                esigi("/modo" not in prompt, f"caso {indice} {modo}: senza terminale il prompt propone /modo")
+            elif politica.workspace.attivo:
+                esigi("/modo" in prompt, f"caso {indice} {modo}: il prompt non dice come cambiare modalita'")
             if modo == "piano" and politica.workspace.attivo:
                 esigi("Memoria e quaderno seguono le regole" in prompt, "piano promette sola lettura globale")
             if not politica.apprendimento.intuizioni:
