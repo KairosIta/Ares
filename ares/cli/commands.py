@@ -15,7 +15,8 @@ from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.config import Impostazioni, Percorsi, Politica
-from ares.core.session import SessioneDiAltri, Sessioni
+from ares.core.autorizzazioni import ModoNonAmmesso
+from ares.core.session import SessioneAttiva, SessioneDiAltri, Sessioni
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
@@ -50,8 +51,8 @@ class StatoChat:
     metriche: bool = False
     modo: str = config.MODO_PREDEFINITO
     # Falso senza nessuno che legga (`-p`, pipe): una ricostruzione dell'agente
-    # deve ripassarlo, o riaccenderebbe l'apprendimento.
-    interattivo: bool = True
+    # deve ripassarlo, o riaccenderebbe l'apprendimento e le modalita' silenziose.
+    presidiato: bool = True
     # Token del prompt dell'ultimo turno, per la barra sotto il prompt.
     finestra: int | None = None
 
@@ -84,8 +85,8 @@ def _sessioni(stato: StatoChat) -> Sessioni:
         stato.impostazioni,
         stato.politica,
         stato.utente,
+        presidiato=stato.presidiato,
         debug=stato.debug,
-        interattivo=stato.interattivo,
     )
 
 
@@ -185,6 +186,11 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         UI.line("Il contesto e' quello di questa sessione; profilo e memorie non cambiano.", style="ares.muted")
 
 
+def modo_senza_terminale(modo: str) -> str:
+    """Il rifiuto di una modalita' che scriverebbe in silenzio senza nessuno davanti."""
+    return "La modalita' " + modo + " richiede un terminale: scriverebbe o eseguirebbe senza che nessuno guardi."
+
+
 def _comando_modo(stato: StatoChat, argomento: str) -> None:
     """Mostra la modalita' corrente o ne sceglie un'altra, ricostruendo l'agente sulla stessa sessione.
 
@@ -210,18 +216,20 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
         UI.line("/modo <nome> cambia; auto non si sceglie da qui ma con `ares --modo auto`.", style="ares.muted")
         return
     nome = argomento.split()[0]
-    if nome == "auto":
-        UI.line("La modalita' auto si sceglie solo all'avvio, con `ares --modo auto`.", style="ares.warning")
-        return
-    try:
-        config.liste_modalita(nome)
-    except ValueError as errore:
-        UI.line(str(errore), style="ares.error")
-        return
     if nome == stato.modo:
         UI.line("Sei gia' in modalita' '" + nome + "'.", style="ares.muted")
         return
-    attiva = _sessioni(stato).apri(stato.session_id, modo=nome)
+    try:
+        attiva = _sessioni(stato).cambia_modo(SessioneAttiva(stato.session_id, stato.modo, stato.agent), nome)
+    except ModoNonAmmesso as errore:
+        if errore.motivo == "avvio":
+            UI.line("La modalita' auto si sceglie solo all'avvio, con `ares --modo auto`.", style="ares.warning")
+        else:
+            UI.line(modo_senza_terminale(nome), style="ares.error")
+        return
+    except ValueError as errore:
+        UI.line(str(errore), style="ares.error")
+        return
     stato.agent, stato.modo = attiva.agente, attiva.modo
     UI.pair("Modalita'", nome, style="ares.title")
     UI.line("Stessa sessione, strumenti e prompt della modalita' nuova.", style="ares.muted")

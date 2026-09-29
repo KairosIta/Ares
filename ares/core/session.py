@@ -17,6 +17,7 @@ from agno.agent import Agent
 from ares import config
 from ares.agent.assistant import build_assistant
 from ares.config import Impostazioni, Percorsi, Politica
+from ares.core.autorizzazioni import verifica_modo
 from ares.core.id_sessione import nuovo_id_sessione
 from ares.state.archivi import build_db
 from ares.state.identita import Utente
@@ -44,8 +45,9 @@ class Sessioni:
     """Apre, riprende e cambia le conversazioni di un utente.
 
     `percorsi.lavoro` e' la cartella a cui le sessioni si legano quando lo
-    spazio di lavoro e' acceso. `interattivo=False` vale per ogni agente
-    costruito: nessun apprendimento senza qualcuno che legga.
+    spazio di lavoro e' acceso. `presidiato` e' la presenza dichiarata dal
+    client e vale per ogni agente costruito: senza, niente apprendimento
+    (nessuno leggerebbe l'eco) e niente modalita' che scrivono in silenzio.
     """
 
     def __init__(
@@ -55,15 +57,15 @@ class Sessioni:
         politica: Politica,
         utente: Utente,
         *,
+        presidiato: bool,
         debug: bool = False,
-        interattivo: bool = True,
     ) -> None:
         self.percorsi = percorsi
         self.impostazioni = impostazioni
         self.politica = politica
         self.utente = utente
         self.debug = debug
-        self.interattivo = interattivo
+        self.presidiato = presidiato
         self._db: Any = None
 
     @property
@@ -101,15 +103,17 @@ class Sessioni:
     def apri(self, nome: str, *, modo: str | None = None) -> SessioneAttiva:
         """Apre la sessione `nome`, nuova o esistente, nella modalita' data.
 
-        Solleva `SessioneDiAltri` se appartiene a un altro utente: l'agente
-        non viene costruito. `modo` vuoto vale `config.MODO_PREDEFINITO`.
+        Solleva `SessioneDiAltri` se appartiene a un altro utente e
+        `ModoNonAmmesso` se la modalita' non e' ammessa senza presenza: in
+        entrambi i casi l'agente non viene costruito. `modo` vuoto vale
+        `config.MODO_PREDEFINITO`.
         """
         if not nome:
             raise ValueError("Il nome della sessione e' vuoto.")
         if sessione_di_altri(self.db, nome, self.utente):
             raise SessioneDiAltri(nome)
         modo = modo or config.MODO_PREDEFINITO
-        config.liste_modalita(modo)
+        verifica_modo(modo, presidiato=self.presidiato)
         agente = build_assistant(
             self.percorsi,
             self.impostazioni,
@@ -117,7 +121,7 @@ class Sessioni:
             self.utente,
             session_id=nome,
             debug=self.debug,
-            interattivo=self.interattivo,
+            interattivo=self.presidiato,
             modo=modo,
         )
         return SessioneAttiva(id=nome, modo=modo, agente=agente)
@@ -131,6 +135,8 @@ class Sessioni:
 
         Gli strumenti sono fissati alla costruzione dello spazio di lavoro e
         descritti nel prompt: cambiare modalita' vuol dire ricostruire l'agente.
-        Solleva `ValueError` per una modalita' sconosciuta.
+        Solleva `ValueError` per una modalita' sconosciuta e `ModoNonAmmesso`
+        per una che a sessione aperta non si sceglie.
         """
+        verifica_modo(modo, presidiato=self.presidiato, in_corso=True)
         return self.apri(attiva.id, modo=modo)

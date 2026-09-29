@@ -11,7 +11,8 @@ from agno.run.agent import RunOutput
 from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
-from ares.config import Impostazioni, Mostra, Percorsi, Politica
+from ares.config import Impostazioni, Mostra
+from ares.core.autorizzazioni import Decisione, Richiesta
 
 # Gli eventi che aprono un'attesa, con cio' che l'indicatore dice, e quelli
 # che la chiudono.
@@ -334,16 +335,17 @@ def righe_differenza(esistente: str, nuovo: str, percorso: str) -> list:
     return righe
 
 
-def righe_richiesta(esecuzione, radice=None) -> list:
+def righe_richiesta(richiesta: Richiesta) -> list:
     """Descrive per intero cio' che si sta per autorizzare.
 
     Il confine di `Workspace` vale per i file, non per la shell: la conferma
     umana e' l'unico controllo sui comandi, quindi questo testo fa parte del
     confine. Le avvertenze seguono gli argomenti e precedono la directory.
     """
-    strumento = str(esecuzione.tool_name or "")
+    strumento = richiesta.strumento
+    radice = richiesta.radice
     righe = ["Ares chiede di eseguire: " + strumento]
-    argomenti = esecuzione.tool_args or {}
+    argomenti = richiesta.argomenti
     if not argomenti:
         righe.append("   (senza argomenti)")
     for nome, valore in argomenti.items():
@@ -365,41 +367,28 @@ def righe_richiesta(esecuzione, radice=None) -> list:
     return righe
 
 
-def chiedi_conferme(risposta, input_cli: CliInput, percorsi: Percorsi, politica: Politica) -> int:
-    """Chiede il permesso per gli strumenti in pausa. Ritorna quanti ne ha risolti.
+def chiedi_autorizzazione(richiesta: Richiesta, input_cli: CliInput) -> Decisione:
+    """Mostra la richiesta e chiede il permesso a riga di comando.
 
-    Zero ferma il ciclo: una pausa che qui non si sa gestire farebbe fermare
-    `continue_run` allo stesso punto all'infinito. Il prefisso dalla politica
-    distingue un file della cartella da uno del quaderno.
+    Il motivo di un no si chiede perche' arriva al modello. Questa domanda e'
+    l'unica traccia a schermo del rifiuto: Agno non emette eventi per
+    `reject_tool_call`.
     """
-    risolti = 0
-    for requisito in risposta.active_requirements or []:
-        if not requisito.needs_confirmation:
-            continue
-        esecuzione = requisito.tool_execution
-        nome = str(esecuzione.tool_name or "")
-        radice = percorsi.lavoro if nome.startswith(politica.workspace.prefisso) else None
-        UI.confirmation(righe_richiesta(esecuzione, radice=radice))
-        try:
-            scelta = input_cli.ask("Autorizzi? [s/N] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            # Ctrl-C davanti a una richiesta e' un no, non un errore.
-            UI.blank()
-            scelta = ""
-        if scelta in ("s", "si", "si'", "sì"):
-            requisito.confirm()
-        else:
-            try:
-                motivo = input_cli.ask("Motivo (invio per saltare): ", muted=True).strip()
-            except (EOFError, KeyboardInterrupt):
-                UI.blank()
-                motivo = ""
-            # Il motivo arriva al modello: senza, ritenterebbe una variante dello
-            # stesso comando. Questa riga e' l'unica traccia a schermo del rifiuto:
-            # Agno non emette eventi per `reject_tool_call`.
-            requisito.reject(motivo or None)
-        risolti += 1
-    return risolti
+    UI.confirmation(righe_richiesta(richiesta))
+    try:
+        scelta = input_cli.ask("Autorizzi? [s/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        # Ctrl-C davanti a una richiesta e' un no, non un errore.
+        UI.blank()
+        scelta = ""
+    if scelta in ("s", "si", "si'", "sì"):
+        return Decisione(consenti=True)
+    try:
+        motivo = input_cli.ask("Motivo (invio per saltare): ", muted=True).strip()
+    except (EOFError, KeyboardInterrupt):
+        UI.blank()
+        motivo = ""
+    return Decisione(consenti=False, motivo=motivo or None)
 
 
 def _conta_chiamate(elenco) -> tuple:

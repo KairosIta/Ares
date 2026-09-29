@@ -36,7 +36,7 @@ Il totale del package `ares/` è **10.966 righe**.
 | --- | --- | --- |
 | Interfaccia utente | `cli/` | `cli/` |
 | Ciclo del turno | `agent/turn_core.py` | nucleo applicativo |
-| Politica di conferma | `cli/render.py` + `cli/chat.py` | nucleo applicativo |
+| Politica di conferma | `core/autorizzazioni.py`; la CLI mostra e chiede (`cli/render.py`) | nucleo applicativo (fatto) |
 | Apprendimento | `agent/learning.py` | nucleo applicativo |
 | Fotografia e ripristino memoria | `agent/echo.py` + `cli/chat.py` | nucleo applicativo |
 | Lock | `state/lock.py` | nucleo / servizio |

@@ -37,6 +37,7 @@ passaggio, non cio' che scriverebbe); il terzo li costruisce davvero.
 
 import asyncio
 import re
+from contextlib import contextmanager
 from dataclasses import replace
 from importlib.metadata import version
 from pathlib import Path
@@ -72,6 +73,8 @@ from ares.agent.assistant import build_assistant  # noqa: E402
 from ares.agent.learning import build_session_context_store  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
 from ares.agent.turn_core import TurnEventKind, run_turn_cycle  # noqa: E402
+from ares.core import turn as nucleo_turno  # noqa: E402
+from ares.core.autorizzazioni import Decisione, Richiesta, risolvi_pausa  # noqa: E402
 from ares.state.identita import LUNGHEZZA_MASSIMA, Utente, UtenteNonValido  # noqa: E402
 
 UTENTE = "prova-contratto"
@@ -92,16 +95,21 @@ def copione_cancellazione() -> list[list[dict[str, Any]]]:
 
 
 class ClienteFinto:
-    """Il client di `run_turn_cycle`: raccoglie gli eventi e decide alla pausa.
+    """Il client di `run_turn_cycle` e del turno del nucleo: raccoglie gli eventi e decide alla pausa.
 
-    `decisione` conferma o rifiuta ogni requisito. Alla pausa registra se il
-    file esiste ancora: e' l'unico momento per affermare che lo strumento non e'
-    stato eseguito prima della decisione.
+    `decisione` conferma o rifiuta ogni requisito; `nessuno` e' un client
+    senza presenza, a cui il nucleo non chiede niente. I requirement li
+    risolve `core/autorizzazioni.py`, come per ogni client. Alla pausa
+    registra se il file esiste ancora: e' l'unico momento per affermare che
+    lo strumento non e' stato eseguito prima della decisione.
     """
 
     def __init__(self, decisione: str, file: Path) -> None:
         self.decisione = decisione
+        self.presidiato = decisione != "nessuno"
         self.file = file
+        self.negate: list[Richiesta] = []
+        self.guasti: list[Exception] = []
         self.eventi: list[TurnEventKind] = []
         self.pause: list[Any] = []
         self.file_presente_alla_pausa: list[bool] = []
@@ -119,16 +127,31 @@ class ClienteFinto:
         self.file_presente_alla_pausa.append(self.file.exists())
         self.run_id_alla_pausa.append(str(risposta.run_id))
         self.esiti_tool_alla_pausa.append(contenuti_tool(risposta.messages or []))
-        risolti = 0
-        for requisito in risposta.active_requirements or []:
-            if not requisito.needs_confirmation:
-                continue
-            if self.decisione == "conferma":
-                requisito.confirm()
-            else:
-                requisito.reject("non ora")
-            risolti += 1
-        return risolti
+        return risolvi_pausa(risposta, self, PERCORSI, POLITICA)
+
+    def autorizza(self, richiesta: Richiesta) -> Decisione:
+        return Decisione(self.decisione == "conferma", "non ora")
+
+    def negata(self, richiesta: Richiesta) -> None:
+        self.negate.append(richiesta)
+
+    # Il resto di `ClienteTurno`, per il turno del nucleo.
+
+    @contextmanager
+    def flusso(self):
+        yield self.on_event
+
+    def pausa_irrisolta(self) -> None:
+        raise AssertionError("il turno e' rimasto in pausa")
+
+    def interrotto(self) -> None:
+        raise AssertionError("il turno e' stato interrotto")
+
+    def guasto(self, errore: Exception) -> None:
+        self.guasti.append(errore)
+
+    def apprendimenti(self, righe: list[str], *, chiedi: bool) -> bool:
+        return True
 
 
 class ContatoreEstrazioni:
@@ -283,7 +306,37 @@ def ciclo_hitl() -> str:
         any("non ora" in testo for testo in contenuti_tool(risposta.messages or [])),
         "il motivo del rifiuto non arriva al modello: " + str(contenuti_tool(risposta.messages or [])),
     )
-    return "conferma cancella, rifiuto conserva, stesso run_id e motivo consegnato"
+
+    # Senza presenza, attraverso il turno del nucleo: nessuno e' interrogato,
+    # lo strumento non gira e il run arriva in fondo invece di restare in pausa.
+    agent.model = ModelloACopione("scripted-contract", copione_cancellazione())
+    file.write_text("da cancellare dopo conferma\n")
+    cliente = ClienteFinto("nessuno", file)
+    with patch.object(nucleo_turno, "run_turn_cycle", _ciclo_registrato(cliente)):
+        esito = nucleo_turno.esegui_turno(PERCORSI, POLITICA, agent, "cancella " + NOME_FILE, cliente)
+    esigi(cliente.guasti == [], "il turno senza presenza e' fallito: " + repr(cliente.guasti))
+    esigi(esito.risposta is not None and not esito.risposta.is_paused, "il run senza presenza e' ancora in pausa")
+    esigi(file.exists(), "senza presenza il file e' stato cancellato")
+    esigi(
+        [r.strumento for r in cliente.negate] == [config.WORKSPACE_PREFIX + "delete_file"],
+        "senza presenza la richiesta rifiutata non arriva al client: " + repr(cliente.negate),
+    )
+    esigi(len(cliente.pause) == 1, "il turno del nucleo non e' passato dalla pausa")
+    return "conferma cancella, rifiuto conserva, stesso run_id e motivo consegnato; senza presenza rifiuta da solo"
+
+
+def _ciclo_registrato(cliente: ClienteFinto):
+    """Il `run_turn_cycle` vero, con le fotografie alla pausa del client prima del nucleo."""
+
+    def ciclo(agent, testo, *, on_event, resolve_pause):
+        def pausa(risposta) -> int:
+            cliente.pause.append(risposta)
+            cliente.file_presente_alla_pausa.append(cliente.file.exists())
+            return resolve_pause(risposta)
+
+        return run_turn_cycle(agent, testo, on_event=on_event, resolve_pause=pausa)
+
+    return ciclo
 
 
 class ModelloContesto(ModelloACopione):

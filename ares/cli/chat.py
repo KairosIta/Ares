@@ -37,13 +37,21 @@ from ares.agent.turn_core import TurnEvent
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_OCCUPATO, ESITO_RIFIUTO
-from ares.cli.commands import COMANDI, StatoChat, candidati_argomento, gestisci_comando
+from ares.cli.commands import COMANDI, StatoChat, candidati_argomento, gestisci_comando, modo_senza_terminale
 from ares.cli.editor import CliInput
 from ares.cli.log import configura_log_agno
-from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
+from ares.cli.render import (
+    chiedi_autorizzazione,
+    finestra_occupata,
+    mostra_evento,
+    quota_finestra,
+    righe_metriche,
+    righe_richiesta,
+)
 from ares.cli.ui import UI
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.core import turn
+from ares.core.autorizzazioni import Decisione, ModoNonAmmesso, Richiesta, verifica_modo
 from ares.core.session import SessioneDiAltri, Sessioni
 from ares.ops import migrazione
 from ares.state.git import ramo_git
@@ -68,10 +76,10 @@ def riga_stato(stato: StatoChat) -> str:
 class ClienteCli:
     """Il turno nel terminale: stream Rich, conferme a riga di comando e l'eco della memoria."""
 
-    def __init__(self, percorsi: Percorsi, politica: Politica, input_cli: CliInput) -> None:
-        self.percorsi = percorsi
+    def __init__(self, politica: Politica, input_cli: CliInput, *, presidiato: bool) -> None:
         self.politica = politica
         self.input_cli = input_cli
+        self.presidiato = presidiato
 
     @contextmanager
     def flusso(self) -> Iterator[Callable[[TurnEvent], None]]:
@@ -80,8 +88,12 @@ class ClienteCli:
         with UI.stream() as flusso:
             yield lambda evento: mostra_evento(flusso, evento, self.politica.mostra)
 
-    def risolvi_pausa(self, output: RunOutput) -> int:
-        return chiedi_conferme(output, self.input_cli, self.percorsi, self.politica)
+    def autorizza(self, richiesta: Richiesta) -> Decisione:
+        return chiedi_autorizzazione(richiesta, self.input_cli)
+
+    def negata(self, richiesta: Richiesta) -> None:
+        # La richiesta resta nel log di una pipe anche se nessuno poteva rispondere.
+        UI.confirmation(righe_richiesta(richiesta))
 
     def pausa_irrisolta(self) -> None:
         UI.line("Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.", style="ares.warning")
@@ -112,9 +124,12 @@ class ClienteCli:
         return scelta not in ("n", "no")
 
 
-def esegui_turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica) -> RunOutput | None:
+def esegui_turno(
+    percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica, *, presidiato: bool
+) -> RunOutput | None:
     """Un turno nel terminale, con le garanzie del nucleo (`core/turn.py`)."""
-    esito = turn.esegui_turno(percorsi, politica, agent, testo, ClienteCli(percorsi, politica, input_cli))
+    cliente = ClienteCli(politica, input_cli, presidiato=presidiato)
+    esito = turn.esegui_turno(percorsi, politica, agent, testo, cliente)
     if esito.ripristino is True:
         UI.line("   ripristinato: profilo e memorie come prima del turno", style="ares.muted")
     elif esito.ripristino is False:
@@ -168,7 +183,7 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
 
     Niente banner ne' avvisi. Le conferme valgono no, cosi' uno strumento
     sensibile non passa mai da uno script, e niente entra in memoria perche'
-    nessuno puo' leggere l'eco: l'agente nasce con `interattivo=False`.
+    nessuno puo' leggere l'eco: la chat si apre senza presenza.
     """
     if not sys.stdin.isatty():
         try:
@@ -184,7 +199,7 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
         interactive=False,
         fallback_input=lambda _etichetta: "",
     )
-    risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli, stato.politica)
+    risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli, stato.politica, presidiato=stato.presidiato)
     if stato.metriche and risposta is not None:
         for riga in righe_metriche(risposta, stato.impostazioni):
             UI.metrics(riga)
@@ -246,17 +261,13 @@ def _guardie_di_avvio(
 
     Restituisce l'esito se la chat non puo' partire, `None` se puo'. Sta prima
     di ogni scrittura: un avvio rifiutato non lascia niente dietro di se'.
-
-    Senza nessuno che guardi (`-p` o stdin da una pipe) sono ammesse solo
-    modalita' in cui niente lascia traccia senza conferma: un testo ostile
-    nella stessa pipe non deve poter eseguire comandi ne' scrivere file. La
-    regola legge la tabella delle modalita', non i nomi.
+    Le modalita' ammesse senza nessuno che guardi (`-p` o stdin da una pipe)
+    le decide `verifica_modo`, la stessa regola di `/modo`.
     """
-    if (prompt is not None or not presidiato) and config.modalita_scrive_in_silenzio(modo):
-        UI.line(
-            "La modalita' " + modo + " richiede un terminale: scriverebbe o eseguirebbe senza che nessuno guardi.",
-            style="ares.error",
-        )
+    try:
+        verifica_modo(modo, presidiato=presidiato)
+    except ModoNonAmmesso:
+        UI.line(modo_senza_terminale(modo), style="ares.error")
         return ESITO_RIFIUTO
     if prompt is not None and scegli:
         # `--scegli` non autorizza niente, quindi e' ammesso anche da una pipe;
@@ -371,7 +382,9 @@ def _ciclo(input_cli: CliInput, stato: StatoChat) -> None:
             continue
 
         try:
-            risposta = esegui_turno(stato.percorsi, stato.agent, testo, input_cli, stato.politica)
+            risposta = esegui_turno(
+                stato.percorsi, stato.agent, testo, input_cli, stato.politica, presidiato=stato.presidiato
+            )
         except StatoOccupato as errore:
             UI.line(str(errore), style="ares.warning")
             UI.blank()
@@ -400,8 +413,8 @@ def _apri_chat(
     modo: str,
 ) -> int:
     # Si guarda stdin, non stdout: `ares > file` con la tastiera davanti resta
-    # presidiato.
-    presidiato = sys.stdin is not None and sys.stdin.isatty()
+    # presidiato. Con `-p` no: stdin e' la domanda, e nessuno legge l'eco.
+    presidiato = prompt is None and sys.stdin is not None and sys.stdin.isatty()
     rifiuto = _guardie_di_avvio(prompt=prompt, scegli=scegli, modo=modo, percorsi=percorsi, presidiato=presidiato)
     if rifiuto is not None:
         return rifiuto
@@ -423,10 +436,8 @@ def _apri_chat(
     # gia' esistere privato.
     config.prepara_archivio(percorsi)
 
-    # Senza terminale nessuno legge l'eco: apprendimento spento come in `-p`.
-    # `interattivo` passa anche alle ricostruzioni tramite `StatoChat`.
-    interattivo = prompt is None and presidiato
-    sessioni = Sessioni(percorsi, impostazioni, politica, utente, debug=debug, interattivo=interattivo)
+    # La presenza passa anche alle ricostruzioni tramite `StatoChat`.
+    sessioni = Sessioni(percorsi, impostazioni, politica, utente, presidiato=presidiato, debug=debug)
 
     etichetta = ""
     if session is None:
@@ -457,7 +468,7 @@ def _apri_chat(
         debug=debug,
         metriche=politica.mostra.metriche or metriche,
         modo=modo,
-        interattivo=interattivo,
+        presidiato=presidiato,
     )
 
     if prompt is not None:

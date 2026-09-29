@@ -8,6 +8,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **`/modo` rispetta la regola della presenza.** Senza terminale (stdin da
+  una pipe) `ares --modo modifiche` era rifiutato, ma `/modo modifiche`
+  arrivato dalla stessa pipe passava: un testo ostile poteva far scrivere
+  file senza conferma. Ora le due strade usano la stessa regola, nel
+  nucleo, e `/modo modifiche` risponde come l'avvio.
 - **Il contesto di sessione si riprova anche dopo una chiamata non valida.**
   Alcuni modelli (per esempio `glm-5.3-flash:cloud`) passano ogni tanto
   `plan` o `progress` come testo invece che come lista: la validazione di
@@ -39,6 +44,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   client mostra e chiede tramite il protocollo `ClienteTurno`; la CLI lo
   implementa con `ClienteCli`, e un client senza terminale ottiene le stesse
   garanzie. Nessun cambiamento visibile all'utente.
+- **Nucleo applicativo: le autorizzazioni.** `ares/core/autorizzazioni.py`
+  applica le regole che seguono dalla presenza dichiarata dal client: senza
+  nessuno che risponda nessuna modalità scrive in silenzio, e ogni strumento
+  in pausa è rifiutato senza chiedere. `confirm()` e `reject()` sui
+  requirement di Agno li chiama il nucleo; il client riceve una `Richiesta`
+  e risponde con una `Decisione`. `cli/render.py` tiene solo la
+  presentazione (`righe_richiesta`, `chiedi_autorizzazione`). Le prove
+  `nucleo` e `contratto` (con Agno vero) coprono il rifiuto senza presenza.
 
 ### Changed
 

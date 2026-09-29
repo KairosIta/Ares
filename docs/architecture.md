@@ -84,6 +84,12 @@ chiedere niente: il ciclo di vita della sessione e il turno completo.
   modalità. Restituisce una `SessioneAttiva` (id, modalità, agente); la
   sessione corrente la tiene il client.
 - `id_sessione.py`: l'id leggibile, da cartella e momento.
+- `autorizzazioni.py`: le regole che seguono dalla presenza dichiarata dal
+  client. Senza presenza nessuna modalità scrive in silenzio
+  (`verifica_modo`, anche per `/modo`) e ogni strumento in pausa è
+  rifiutato senza chiedere; con presenza il client risponde a una
+  `Richiesta` con una `Decisione`, e `confirm()`/`reject()` li chiama il
+  nucleo (`risolvi_pausa`).
 - `turn.py`: `esegui_turno` esegue un turno sotto il lock del turno
   dell'utente: fotografia di profilo e memorie, turno con le pause per gli
   strumenti, variazioni, conferma degli apprendimenti e ripristino se
@@ -199,7 +205,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 2. `agent/turn_core.py` avvia Agno e pubblica eventi indipendenti
    dall'interfaccia.
 3. Il modello può rispondere o richiedere uno strumento.
-4. Le operazioni sensibili sospendono il run in attesa di conferma del client.
+4. Le operazioni sensibili sospendono il run. Il nucleo chiede al client
+   una decisione per ciascuna, o le rifiuta da solo se il client non è
+   presidiato (`core/autorizzazioni.py`).
 5. Il core esegue `continue_run` sullo stesso run dopo la decisione.
 6. La macchina di apprendimento riceve l'output completo e aggiorna gli store.
 7. Il nucleo confronta profilo e memorie con la fotografia; il client mostra
