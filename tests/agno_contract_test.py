@@ -21,7 +21,10 @@ Sei cose che Ares da' per vere di Agno, verificate contro Agno installato.
    gemello asincrono (codice diverso, da attraversare a parte). Se uno
    cadesse, Ares ripeterebbe all'infinito o mai. Primo colpo, tetto e
    recupero - dopo il silenzio e dopo una chiamata con argomenti non validi -
-   si provano su entrambi i percorsi, insieme all'`aprocess` spento.
+   si provano su entrambi i percorsi, insieme all'`aprocess` spento. Sugli
+   stessi percorsi, `plan` e `progress` scritti come testo arrivano allo
+   strumento gia' convertiti in liste: vuol dire che `entrypoint` e' ancora
+   cio' che Agno chiama, dopo la costruzione della `Function`.
    (`stop_after_tool_call` lo verifica `learning_cost_test.py`.)
 4. **Profilo e memorie non sono confermabili.** Agno rifiuta PROPOSE su quegli
    store e HITL e' "reserved for future use": se il limite cadesse, la prova
@@ -346,16 +349,22 @@ class ModelloContesto(ModelloACopione):
     restituisce se stesso, cosi' il contatore sopravvive fra i tentativi.
 
     Tacere significa rispondere senza tool call. Sbagliare, ai tentativi di
-    `sbaglia_ai`, significa chiamare lo strumento con `plan` come stringa
-    invece che come lista, come fanno davvero alcuni modelli: la validazione
-    di Agno rifiuta la chiamata e niente viene scritto. Sono i due difetti che
-    il retry deve assorbire.
+    `sbaglia_ai`, significa chiamare lo strumento con un `plan` che nessuna
+    conversione rende una lista di testi: la validazione di Agno rifiuta la
+    chiamata e niente viene scritto. Sono i due difetti che il retry deve
+    assorbire.
+
+    Ai tentativi di `testo_ai` salva con `plan` e `progress` scritti come
+    testo, come fanno davvero alcuni modelli: Ares li converte in liste.
     """
 
-    def __init__(self, riesce_ai: set[int], sbaglia_ai: set[int] = frozenset()) -> None:
+    def __init__(
+        self, riesce_ai: set[int], sbaglia_ai: set[int] = frozenset(), testo_ai: set[int] = frozenset()
+    ) -> None:
         super().__init__("scripted-contesto")
         self.riesce_ai = set(riesce_ai)
         self.sbaglia_ai = set(sbaglia_ai)
+        self.testo_ai = set(testo_ai)
         self.tentativi = 0
 
     def __deepcopy__(self, memo: dict) -> "ModelloContesto":
@@ -387,11 +396,27 @@ class ModelloContesto(ModelloACopione):
         if self.tentativi in self.sbaglia_ai:
             return ModelResponse(
                 role="assistant",
-                tool_calls=[tool_call("save_session_context", summary="riassunto", plan="un piano come testo")],
+                tool_calls=[tool_call("save_session_context", summary="riassunto", plan={"passo": "uno"})],
+                response_usage=MessageMetrics(),
+            )
+        if self.tentativi in self.testo_ai:
+            return ModelResponse(
+                role="assistant",
+                tool_calls=[
+                    tool_call(
+                        "save_session_context",
+                        summary="riassunto",
+                        plan=PIANO_COME_TESTO,
+                        progress=AVANZAMENTO_COME_JSON,
+                    )
+                ],
                 response_usage=MessageMetrics(),
             )
         return ModelResponse(role="assistant", content="niente da aggiornare", response_usage=MessageMetrics())
 
+
+PIANO_COME_TESTO = "1. seminare\n2) rileggere\n\n- concimare"
+AVANZAMENTO_COME_JSON = '["seminato"]'
 
 MESSAGGI_CONTESTO = [
     Message(role="user", content="stiamo provando il retry del contesto di sessione"),
@@ -399,7 +424,13 @@ MESSAGGI_CONTESTO = [
 ]
 
 
-def store_contesto(riesce_ai: set[int], tentativi: int | None = None, *, sbaglia_ai: set[int] = frozenset()):
+def store_contesto(
+    riesce_ai: set[int],
+    tentativi: int | None = None,
+    *,
+    sbaglia_ai: set[int] = frozenset(),
+    testo_ai: set[int] = frozenset(),
+):
     """Lo store di contesto della prova.
 
     `tentativi` e' diverso da quello configurato: la prova pretende che valga il
@@ -412,7 +443,7 @@ def store_contesto(riesce_ai: set[int], tentativi: int | None = None, *, sbaglia
         build_db(
             PERCORSI,
         ),
-        ModelloContesto(riesce_ai, sbaglia_ai),
+        ModelloContesto(riesce_ai, sbaglia_ai, testo_ai),
         politica,
     )
 
@@ -467,6 +498,12 @@ def contesto_riprova() -> str:
     store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="sempre-sbagliato", user_id=UTENTE)
     esigi(not store.was_updated, "`was_updated` e' vero dopo sole chiamate non valide")
 
+    # Piano e avanzamento scritti come testo: salvati al primo colpo, come liste.
+    store = store_contesto(set(), testo_ai={1})
+    store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="testo", user_id=UTENTE)
+    esigi(store.last_extraction_attempts == 1, "un piano come testo non e' salvato al primo colpo")
+    _liste_convertite(store.get(session_id="testo"))
+
     # Il gemello asincrono, codice diverso dal sincrono: stessi tre casi,
     # perche' il ramo che esce dal ciclo resti coperto.
     store = store_contesto({1})
@@ -504,6 +541,11 @@ def contesto_riprova() -> str:
         "una chiamata asincrona non valida non viene ripetuta: tentativi " + str(store.last_extraction_attempts),
     )
 
+    store = store_contesto(set(), testo_ai={1})
+    asyncio.run(store.aextract_and_save(messages=MESSAGGI_CONTESTO, session_id="async-testo", user_id=UTENTE))
+    esigi(store.last_extraction_attempts == 1, "un piano asincrono come testo non e' salvato al primo colpo")
+    _liste_convertite(store.get(session_id="async-testo"))
+
     # Il numero viene dalla politica ricevuta, non da un nome di modulo: con
     # tre tentativi chiesti all'oggetto, il ciclo si ferma a tre anche se il
     # `.env` ne configura un altro.
@@ -517,7 +559,16 @@ def contesto_riprova() -> str:
     return (
         "1 al primo colpo, "
         + str(massimo)
-        + " al tetto, 2 recuperato dopo il silenzio e dopo una chiamata non valida, nei due percorsi, 4 dal parametro"
+        + " al tetto, 2 recuperato dopo il silenzio e dopo una chiamata non valida, 1 con le liste come testo,"
+        + " nei due percorsi, 4 dal parametro"
+    )
+
+
+def _liste_convertite(contesto: Any) -> None:
+    esigi(contesto is not None, "il contesto con le liste come testo non e' in archivio")
+    esigi(
+        contesto.plan == ["seminare", "rileggere", "concimare"] and contesto.progress == ["seminato"],
+        "liste convertite male: " + repr((contesto.plan, contesto.progress)),
     )
 
 

@@ -99,7 +99,8 @@ Chiede ad Agno le cinque cose su cui Ares si regge:
 3. il retry di `AresSessionContextStore` ripete solo l'estrazione che non ha
    scritto e si ferma appena scrive, nei percorsi sincrono e asincrono e nei
    tre casi — primo colpo, tetto raggiunto, recupero — e l'`aprocess`
-   anticipata di Ares non estrae nulla;
+   anticipata di Ares non estrae nulla; negli stessi percorsi `plan` e
+   `progress` scritti come testo si salvano al primo colpo, come liste;
 4. profilo e memorie rifiutano `PROPOSE` e `HITL`, motivo per cui la memoria
    durevole non passa da una conferma;
 5. la versione di Agno citata nei documenti (`FILE_CHE_DICHIARANO`) è quella
