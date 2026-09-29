@@ -223,9 +223,9 @@ def leggi_impostazioni() -> Impostazioni:
     )
 
 
-# Ollama puo' restituire JSON troncato senza errore, e allora
-# `save_session_context` non viene eseguito. In quel solo caso l'estrazione
-# del contesto si ripete, questo numero di volte; zero la disattiva.
+# Quando l'estrazione del contesto non scrive niente - il modello non chiama
+# `save_session_context`, o lo chiama con argomenti non validi - si ripete,
+# questo numero di volte; zero la disattiva.
 SESSION_CONTEXT_RETRIES = 1
 
 # ---------------------------------------------------------------------------
