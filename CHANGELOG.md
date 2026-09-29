@@ -47,6 +47,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   dipendenza diventa `sqlalchemy[asyncio]`. Con Cyclopts 5 l'aiuto dei
   comandi mostra il tipo accanto a ogni opzione (`--session STR`,
   `--workspace PATH`, `--modo CHOICE`); il resto dell'aiuto non cambia.
+- **Lock: lancedb 0.39.0, openai 3.19.2, ruff 0.16.9.** Nessuna riga di
+  codice cambia. `openai` non è usato da Ares ma lo importa
+  `agno.models.ollama`; `lancedb` regge l'indice delle intuizioni, provato
+  con salvataggio, ricerca, backup e restore reali.
 - **Commenti e documentazione essenziali.** Docstring e commenti dicono il
   contratto e il perché non ovvio; la storia del codice resta qui e nei
   commit. Circa il 40% in meno di commenti nel pacchetto, senza cambiare una
