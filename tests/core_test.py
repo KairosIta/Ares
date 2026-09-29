@@ -1,9 +1,10 @@
-"""Il servizio di sessione, usato da un client senza terminale
-==============================================================
+"""Il nucleo, usato da un client senza terminale
+==============================================
 
-`ares.core.session` decide id, proprietario e ricostruzione dell'agente; la
-CLI e' solo uno dei suoi client. Qui lo si usa come farebbe una UI senza
-terminale: nessuna stampa, nessun input, solo chiamate e valori restituiti.
+`ares.core` decide id, proprietario e ricostruzione dell'agente, le
+modalita' ammesse e cosa fare di una richiesta di autorizzazione; la CLI e'
+solo uno dei suoi client. Qui lo si usa come farebbe una UI senza terminale:
+nessuna stampa, nessun input, solo chiamate e valori restituiti.
 
 Offline: nessuna chiamata al modello. L'agente vero si costruisce una volta,
 per verificare cio' che il servizio gli passa; altrove il costruttore e'
@@ -22,11 +23,13 @@ from _comune import chiudi, esegui, esigi, prepara_ambiente
 
 RADICE_PROVA = prepara_ambiente("nucleo-test")
 
+from agno.models.response import ToolExecution  # noqa: E402
 from agno.session.agent import AgentSession  # noqa: E402
 
 from ares import config  # noqa: E402
 from ares.core import session as nucleo  # noqa: E402
 from ares.core import turn as nucleo_turno  # noqa: E402
+from ares.core.autorizzazioni import Decisione, ModoNonAmmesso, risolvi_pausa, verifica_modo  # noqa: E402
 from ares.core.id_sessione import nuovo_id_sessione  # noqa: E402
 from ares.core.session import SessioneDiAltri, Sessioni  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -38,11 +41,11 @@ IMPOSTAZIONI = config.leggi_impostazioni()
 POLITICA = config.leggi_politica()
 
 
-def _servizio(*, cartella: bool = True, interattivo: bool = False) -> Sessioni:
+def _servizio(*, cartella: bool = True, presidiato: bool = False) -> Sessioni:
     politica = POLITICA
     if not cartella:
         politica = replace(POLITICA, workspace=replace(POLITICA.workspace, attivo=False))
-    return Sessioni(PERCORSI, IMPOSTAZIONI, politica, UTENTE, interattivo=interattivo)
+    return Sessioni(PERCORSI, IMPOSTAZIONI, politica, UTENTE, presidiato=presidiato)
 
 
 class Registro:
@@ -77,7 +80,7 @@ def id_delle_sessioni() -> str:
 def apertura_e_modo() -> str:
     """`nuova`, `apri` e `cambia_modo` passano al costruttore sessione, modo e presenza."""
     registro = Registro()
-    servizio = _servizio(interattivo=False)
+    servizio = _servizio(presidiato=False)
     with patch.object(nucleo, "build_assistant", registro):
         nuova = servizio.nuova()
         esigi(nuova.modo == config.MODO_PREDEFINITO, "la modalita' predefinita non e' quella di config")
@@ -103,6 +106,113 @@ def apertura_e_modo() -> str:
         else:
             raise AssertionError("un nome vuoto apre una sessione")
     return "nuova, cambio di modalita', nomi e modalita' non validi"
+
+
+def _non_ammesso(chiamata, motivo: str) -> None:
+    """Esige che `chiamata` sollevi `ModoNonAmmesso` con `motivo`."""
+    try:
+        chiamata()
+    except ModoNonAmmesso as errore:
+        esigi(errore.motivo == motivo, "motivo sbagliato: " + errore.motivo + " invece di " + motivo)
+    else:
+        raise AssertionError("una modalita' non ammessa (" + motivo + ") viene accettata")
+
+
+def modalita_ammesse() -> str:
+    """Senza presenza nessuna modalita' scrive in silenzio; `auto` solo all'apertura.
+
+    La regola si prova sulla tabella intera, poi attraverso il servizio: una
+    modalita' rifiutata non costruisce l'agente, ne' all'apertura ne' al
+    cambio.
+    """
+    for modo in config.MODALITA:
+        if config.modalita_scrive_in_silenzio(modo):
+            _non_ammesso(lambda modo=modo: verifica_modo(modo, presidiato=False), "presenza")
+        else:
+            verifica_modo(modo, presidiato=False)
+        verifica_modo(modo, presidiato=True)
+    _non_ammesso(lambda: verifica_modo("auto", presidiato=True, in_corso=True), "avvio")
+    verifica_modo("modifiche", presidiato=True, in_corso=True)
+
+    registro = Registro()
+    with patch.object(nucleo, "build_assistant", registro):
+        senza = _servizio(presidiato=False)
+        _non_ammesso(lambda: senza.apri("pipe", modo="modifiche"), "presenza")
+        esigi(registro.chiamate == [], "una modalita' non ammessa costruisce l'agente")
+        manuale = senza.apri("pipe")
+        _non_ammesso(lambda: senza.cambia_modo(manuale, "modifiche"), "presenza")
+        esigi(len(registro.chiamate) == 1, "un cambio non ammesso costruisce l'agente")
+
+        con = _servizio(presidiato=True)
+        esigi(con.apri("tastiera", modo="auto").modo == "auto", "auto non si apre con presenza")
+        # Anche `/sessione` passa da `apri` con la modalita' corrente: auto resta.
+        _non_ammesso(lambda: con.cambia_modo(con.apri("tastiera"), "auto"), "avvio")
+    return "tabella senza presenza, auto solo all'apertura, niente agente se rifiutata"
+
+
+class Requisito:
+    """Un requirement di Agno in pausa, che ricorda come e' stato risolto."""
+
+    def __init__(self, nome: str, *, da_confermare: bool = True) -> None:
+        self.needs_confirmation = da_confermare
+        self.tool_execution = ToolExecution(tool_name=nome, tool_args={"path": "note.md"})
+        self.esito = "irrisolto"
+
+    def confirm(self) -> None:
+        self.esito = "confermato"
+
+    def reject(self, motivo=None) -> None:
+        self.esito = "rifiutato: " + str(motivo)
+
+
+class Pausa:
+    def __init__(self, *requisiti: Requisito) -> None:
+        self.active_requirements = list(requisiti)
+
+
+class Autorizzatore:
+    """Risponde da copione e registra cio' che il nucleo gli passa."""
+
+    def __init__(self, *decisioni: Decisione, presidiato: bool = True) -> None:
+        self.presidiato = presidiato
+        self.decisioni = list(decisioni)
+        self.chieste: list = []
+        self.negate: list = []
+
+    def autorizza(self, richiesta):
+        self.chieste.append(richiesta)
+        return self.decisioni.pop(0)
+
+    def negata(self, richiesta) -> None:
+        self.negate.append(richiesta)
+
+
+def autorizzazioni() -> str:
+    """Il nucleo applica le decisioni del client; senza presenza rifiuta senza chiedere."""
+    cartella = Requisito(config.WORKSPACE_PREFIX + "delete_file")
+    quaderno = Requisito("write_file")
+    interno = Requisito("interno", da_confermare=False)
+    cliente = Autorizzatore(Decisione(True), Decisione(False, "non quel file"))
+    risolti = risolvi_pausa(Pausa(interno, cartella, quaderno), cliente, PERCORSI, POLITICA)
+    esigi(risolti == 2 and interno.esito == "irrisolto", "un requirement senza conferma viene contato o toccato")
+    esigi(cartella.esito == "confermato", "il si' del client non conferma")
+    esigi(quaderno.esito == "rifiutato: non quel file", "il motivo del client non arriva al modello")
+    prima, seconda = cliente.chieste
+    esigi(
+        prima.strumento == cartella.tool_execution.tool_name and prima.argomenti == {"path": "note.md"},
+        "la richiesta non descrive lo strumento",
+    )
+    esigi(prima.radice == PERCORSI.lavoro, "uno strumento della cartella arriva senza la cartella")
+    esigi(seconda.radice is None, "uno strumento del quaderno arriva con la cartella")
+
+    nessuno = Autorizzatore(presidiato=False)
+    comando = Requisito(config.WORKSPACE_PREFIX + "run_command")
+    esigi(risolvi_pausa(Pausa(comando), nessuno, PERCORSI, POLITICA) == 1, "senza presenza la pausa resta irrisolta")
+    esigi(nessuno.chieste == [], "senza presenza il nucleo chiede al client")
+    esigi(comando.esito == "rifiutato: None", "senza presenza lo strumento non viene rifiutato: " + comando.esito)
+    esigi(len(nessuno.negate) == 1, "senza presenza il client non sa del rifiuto")
+    esigi(risolvi_pausa(Pausa(), cliente, PERCORSI, POLITICA) == 0, "una pausa senza conferme risulta risolta")
+    return "si', no con motivo, cartella e quaderno distinti, rifiuto senza presenza"
 
 
 def sessione_altrui() -> str:
@@ -145,7 +255,7 @@ def sessioni_della_cartella() -> str:
 
 def agente_vero() -> str:
     """L'agente costruito davvero porta sessione e utente, e senza terminale non apprende."""
-    attiva = _servizio(interattivo=False).apri("vera")
+    attiva = _servizio(presidiato=False).apri("vera")
     esigi(attiva.agente.session_id == "vera", "l'agente non e' sulla sessione aperta")
     esigi(attiva.agente.user_id == UTENTE.id, "l'agente non e' dell'utente del servizio")
     esigi(not attiva.agente.post_hooks, "senza terminale resta il post-hook di apprendimento")
@@ -155,8 +265,9 @@ def agente_vero() -> str:
 class ClienteSenzaTerminale:
     """Un client di `esegui_turno` che non stampa: registra e risponde da copione."""
 
-    def __init__(self, *, tenere: bool = True) -> None:
+    def __init__(self, *, tenere: bool = True, presidiato: bool = True) -> None:
         self.tenere = tenere
+        self.presidiato = presidiato
         self.chiamate: list[str] = []
         self.eventi: list[object] = []
         self.righe: list[str] = []
@@ -166,9 +277,12 @@ class ClienteSenzaTerminale:
         self.chiamate.append("flusso")
         yield self.eventi.append
 
-    def risolvi_pausa(self, output) -> int:
-        self.chiamate.append("pausa")
-        return 0
+    def autorizza(self, richiesta) -> Decisione:
+        self.chiamate.append("autorizza")
+        return Decisione(False)
+
+    def negata(self, richiesta) -> None:
+        self.chiamate.append("negata")
 
     def pausa_irrisolta(self) -> None:
         self.chiamate.append("pausa irrisolta")
@@ -236,6 +350,11 @@ def turno_senza_terminale() -> str:
     esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta, chiedi=False)
     esigi(cliente.chiamate[-1] == "apprendimenti" and ripristini == [], "senza conferma si ripristina comunque")
 
+    # Senza presenza nessuno risponde: l'eco si mostra, la domanda no.
+    cliente = ClienteSenzaTerminale(tenere=False, presidiato=False)
+    esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta)
+    esigi(cliente.chiamate[-1] == "apprendimenti" and ripristini == [], "senza presenza si chiede se tenere")
+
     cliente = ClienteSenzaTerminale()
     esito, _ = _turno(cliente, prima=vuota, dopo=vuota)
     esigi("apprendimenti" not in " ".join(cliente.chiamate) and esito.appreso == (), "eco senza niente di scritto")
@@ -247,12 +366,14 @@ def turno_senza_terminale() -> str:
     esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta, ciclo=ciclo_guasto)
     esigi(cliente.chiamate[1] == "guasto: disco pieno", "il guasto non arriva al client: " + repr(cliente.chiamate))
     esigi(ripristini == ["istantanea"], "dopo un guasto cio' che e' stato scritto non passa dalla conferma")
-    return "eventi, eco, rifiuto, conferma spenta, niente di scritto, guasto"
+    return "eventi, eco, rifiuto, conferma spenta, senza presenza, niente di scritto, guasto"
 
 
 PROVE = (
     ("id", id_delle_sessioni),
     ("apertura e modo", apertura_e_modo),
+    ("modalita' ammesse", modalita_ammesse),
+    ("autorizzazioni", autorizzazioni),
     ("sessione altrui", sessione_altrui),
     ("della cartella", sessioni_della_cartella),
     ("agente vero", agente_vero),

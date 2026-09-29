@@ -58,7 +58,7 @@ from ares.agent.turn_core import (  # noqa: E402
     normalize_events,
     run_turn_cycle,
 )
-from ares.cli import render  # noqa: E402
+from ares.cli import chat, render  # noqa: E402
 from ares.cli.commands import COMANDI, StatoChat, gestisci_comando, risolvi_comando, stampa_aiuto  # noqa: E402
 from ares.cli.editor import (  # noqa: E402
     CRONOLOGIA_INTESTAZIONE,
@@ -68,7 +68,6 @@ from ares.cli.editor import (  # noqa: E402
 )
 from ares.cli.log import AGNO_LOGGER_NAMES, configura_log_agno  # noqa: E402
 from ares.cli.render import (  # noqa: E402
-    chiedi_conferme,
     finestra_occupata,
     mostra_flusso,
     righe_argomento,
@@ -79,6 +78,7 @@ from ares.cli.render import (  # noqa: E402
 )
 from ares.cli.ui import CliRenderer, RichRunStream  # noqa: E402
 from ares.config import Impostazioni, Percorsi, Politica  # noqa: E402
+from ares.core.autorizzazioni import Richiesta, risolvi_pausa  # noqa: E402
 from ares.state import platform_files  # noqa: E402
 from ares.state.git import ramo_git  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -167,11 +167,12 @@ def conferme_leggibili() -> str:
         "-lc",
         "find . -name '*.tmp' -newer riferimento.txt -print0 | xargs -0 rm -f",
     ] + ["--opzione-" + str(n) for n in range(17)]
-    esecuzione = ToolExecution(
-        tool_name=config.WORKSPACE_PREFIX + "run_command",
-        tool_args={"args": comando, "timeout": 120},
+    richiesta = Richiesta(
+        strumento=config.WORKSPACE_PREFIX + "run_command",
+        argomenti={"args": comando, "timeout": 120},
+        radice=PERCORSI.lavoro,
     )
-    righe = righe_richiesta(esecuzione, radice=PERCORSI.lavoro)
+    righe = righe_richiesta(richiesta)
     testo = "\n".join(righe)
 
     citato = [r for r in righe if r.strip().startswith("args:")]
@@ -207,11 +208,12 @@ def conferma_scrittura() -> str:
     radice = RADICE_PROVA / "scrittura"
     radice.mkdir()
     (radice / "note.md").write_text("prima riga\nseconda riga\nterza riga\n", encoding="utf-8")
-    esistente = ToolExecution(
-        tool_name=config.WORKSPACE_PREFIX + "write_file",
-        tool_args={"path": "note.md", "content": "prima riga\nseconda riga cambiata\nterza riga\n"},
+    esistente = Richiesta(
+        strumento=config.WORKSPACE_PREFIX + "write_file",
+        argomenti={"path": "note.md", "content": "prima riga\nseconda riga cambiata\nterza riga\n"},
+        radice=radice,
     )
-    righe = righe_richiesta(esistente, radice=radice)
+    righe = righe_richiesta(esistente)
     testo = "\n".join(righe)
     esigi("differenza con il file esistente" in testo, "un file esistente non mostra la differenza")
     esigi(
@@ -219,31 +221,35 @@ def conferma_scrittura() -> str:
     )
     esigi("@@" in testo and "content:\n" not in testo, "la differenza ricopia il file intero invece del diff")
 
-    nuovo = ToolExecution(
-        tool_name=config.WORKSPACE_PREFIX + "write_file", tool_args={"path": "nuovo.md", "content": "uno\ndue\n"}
+    nuovo = Richiesta(
+        strumento=config.WORKSPACE_PREFIX + "write_file",
+        argomenti={"path": "nuovo.md", "content": "uno\ndue\n"},
+        radice=radice,
     )
-    testo = "\n".join(righe_richiesta(nuovo, radice=radice))
+    testo = "\n".join(righe_richiesta(nuovo))
     esigi(
         "differenza" not in testo and "      uno" in testo and "      due" in testo,
         "un file nuovo non e' mostrato intero",
     )
 
-    fuori = ToolExecution(
-        tool_name=config.WORKSPACE_PREFIX + "write_file",
-        tool_args={"path": "../../etc/passwd", "content": "x"},
+    fuori = Richiesta(
+        strumento=config.WORKSPACE_PREFIX + "write_file",
+        argomenti={"path": "../../etc/passwd", "content": "x"},
+        radice=radice,
     )
-    testo = "\n".join(righe_richiesta(fuori, radice=radice))
+    testo = "\n".join(righe_richiesta(fuori))
     esigi("differenza" not in testo, "un percorso fuori dalla radice viene letto per il diff")
 
     # Un file che esiste ma non si legge come testo non ha una differenza da
     # mostrare: la conferma deve dire che verra' sostituito da capo, invece di
     # far credere che non ci fosse niente.
     (radice / "binario").write_bytes(b"\xff\xfe\x00\x01")
-    illeggibile = ToolExecution(
-        tool_name=config.WORKSPACE_PREFIX + "write_file",
-        tool_args={"path": "binario", "content": "testo nuovo\n"},
+    illeggibile = Richiesta(
+        strumento=config.WORKSPACE_PREFIX + "write_file",
+        argomenti={"path": "binario", "content": "testo nuovo\n"},
+        radice=radice,
     )
-    testo = "\n".join(righe_richiesta(illeggibile, radice=radice))
+    testo = "\n".join(righe_richiesta(illeggibile))
     esigi("non si legge come testo" in testo, "un file illeggibile non viene segnalato:\n" + testo)
     esigi(
         "differenza" not in testo and "testo nuovo" in testo,
@@ -294,25 +300,32 @@ def avvertenze_del_comando() -> str:
 
     # Dentro la conferma: dopo gli argomenti, prima della directory, e solo
     # per run_command - un delete_file non ha comandi da aprire.
-    esecuzione = ToolExecution(
-        tool_name=config.WORKSPACE_PREFIX + "run_command",
-        tool_args={"args": ["bash", "-lc", "id"], "timeout": 30},
+    richiesta = Richiesta(
+        strumento=config.WORKSPACE_PREFIX + "run_command",
+        argomenti={"args": ["bash", "-lc", "id"], "timeout": 30},
+        radice=radice,
     )
-    righe = righe_richiesta(esecuzione, radice=radice)
+    righe = righe_richiesta(richiesta)
     indici = [i for i, r in enumerate(righe) if r.startswith("   attenzione")]
     esigi(len(indici) == 1, "la conferma non porta l'avvertenza della shell: " + repr(righe))
     esigi(righe[-1].startswith("   nella directory"), "l'avvertenza non precede la directory: " + repr(righe))
     esigi(indici[0] > 1, "l'avvertenza precede gli argomenti: " + repr(righe))
-    cancellazione = ToolExecution(tool_name=config.WORKSPACE_PREFIX + "delete_file", tool_args={"path": "/etc/x"})
+    cancellazione = Richiesta(
+        strumento=config.WORKSPACE_PREFIX + "delete_file", argomenti={"path": "/etc/x"}, radice=radice
+    )
     esigi(
-        not any("attenzione" in r for r in righe_richiesta(cancellazione, radice=radice)),
+        not any("attenzione" in r for r in righe_richiesta(cancellazione)),
         "un delete_file riceve le avvertenze dei comandi",
     )
     return "shell, percorsi, privilegi, rete e rm -r segnalati; comandi nella directory in silenzio"
 
 
 def conferme_applicate() -> str:
-    """Il consenso e il rifiuto risolvono davvero i requirement in pausa."""
+    """Il consenso e il rifiuto dati a riga di comando risolvono davvero i requirement in pausa.
+
+    Passa dal nucleo (`core/autorizzazioni.py`) con il client della CLI; senza
+    presenza il nucleo rifiuta senza chiedere, ma la richiesta resta a schermo.
+    """
 
     class RequisitoFinto:
         def __init__(self, nome: str, *, da_confermare: bool = True):
@@ -354,14 +367,18 @@ def conferme_applicate() -> str:
         def blank(self):
             self.righe_vuote += 1
 
+    def conferme(requisiti, input_cli, *, presidiato: bool = True) -> int:
+        cliente = chat.ClienteCli(POLITICA, input_cli, presidiato=presidiato)
+        return risolvi_pausa(RispostaFinta(requisiti), cliente, PERCORSI, POLITICA)
+
     ui = UiFinta()
-    ui_originale = render.UI
-    render.UI = ui
+    originali = render.UI, chat.UI
+    render.UI = chat.UI = ui
     try:
         ignorato = RequisitoFinto("interno", da_confermare=False)
         accettato = RequisitoFinto(config.WORKSPACE_PREFIX + "delete_file")
         input_si = InputFinto("sì")
-        risolti = chiedi_conferme(RispostaFinta([ignorato, accettato]), input_si, PERCORSI, POLITICA)
+        risolti = conferme([ignorato, accettato], input_si)
         esigi(risolti == 1, "un requisito che non chiede conferma viene contato")
         esigi(accettato.confermato and accettato.rifiutato == "mai", "il sì non conferma il requisito")
         esigi(not ignorato.confermato and ignorato.rifiutato == "mai", "un requisito interno viene modificato")
@@ -370,30 +387,30 @@ def conferme_applicate() -> str:
 
         rifiutato = RequisitoFinto(config.WORKSPACE_PREFIX + "run_command")
         input_no = InputFinto("no", "comando troppo ampio")
-        risolti = chiedi_conferme(RispostaFinta([rifiutato]), input_no, PERCORSI, POLITICA)
+        risolti = conferme([rifiutato], input_no)
         esigi(risolti == 1, "un rifiuto non risolve il requisito")
         esigi(not rifiutato.confermato, "un no conferma comunque il requisito")
         esigi(rifiutato.rifiutato == "comando troppo ampio", "il motivo del rifiuto non arriva al requirement")
         esigi(input_no.chiamate[-1][1], "il motivo del rifiuto non usa l'input attenuato")
 
         interrotto = RequisitoFinto(config.WORKSPACE_PREFIX + "move_file")
-        risolti = chiedi_conferme(
-            RispostaFinta([interrotto]),
-            InputFinto(KeyboardInterrupt(), EOFError()),
-            PERCORSI,
-            POLITICA,
-        )
+        risolti = conferme([interrotto], InputFinto(KeyboardInterrupt(), EOFError()))
         esigi(risolti == 1, "Ctrl-C lascia irrisolto il requisito")
         esigi(interrotto.rifiutato is None, "Ctrl-C inventa un motivo di rifiuto")
         esigi(ui.righe_vuote == 2, "Ctrl-C/EOF non chiudono pulitamente le due richieste")
-        esigi(
-            chiedi_conferme(RispostaFinta([]), InputFinto(), PERCORSI, POLITICA) == 0,
-            "una pausa ignota risulta risolta",
-        )
-    finally:
-        render.UI = ui_originale
+        esigi(conferme([], InputFinto()) == 0, "una pausa ignota risulta risolta")
 
-    return "sì, no con motivo, Ctrl-C/EOF e pausa ignota risolvono i requirement attesi"
+        # Un InputFinto vuoto solleva se interrogato: senza presenza non si chiede.
+        mostrate = len(ui.richieste)
+        negato = RequisitoFinto(config.WORKSPACE_PREFIX + "run_command")
+        risolti = conferme([negato], InputFinto(), presidiato=False)
+        esigi(risolti == 1 and not negato.confermato, "senza presenza il requisito non viene rifiutato")
+        esigi(negato.rifiutato is None, "senza presenza il rifiuto inventa un motivo")
+        esigi(len(ui.richieste) == mostrate + 1, "senza presenza la richiesta rifiutata non resta a schermo")
+    finally:
+        render.UI, chat.UI = originali
+
+    return "sì, no con motivo, Ctrl-C/EOF, pausa ignota e rifiuto senza presenza risolvono i requirement attesi"
 
 
 def metriche_del_turno() -> str:
@@ -1284,7 +1301,7 @@ def stato_della_chat() -> str:
         percorsi=PERCORSI,
         impostazioni=IMPOSTAZIONI,
         politica=POLITICA,
-        interattivo=False,
+        presidiato=False,
     )
 
     def comando(riga: str) -> str:
@@ -1331,6 +1348,13 @@ def stato_della_chat() -> str:
     esigi("sconosciuta" in uscita and len(costruiti) == prima, "/modo turbo non viene rifiutato")
     uscita = comando("/modo auto")
     esigi("--modo auto" in uscita and len(costruiti) == prima, "/modo auto viene accettato dalla REPL")
+    # Lo stato e' senza presenza: dalla stessa pipe dei turni non si passa a
+    # una modalita' che scrive in silenzio, come non si parte in una.
+    uscita = comando("/modo modifiche")
+    esigi(
+        "richiede un terminale" in uscita and stato.modo == "manuale" and len(costruiti) == prima,
+        "/modo modifiche senza presenza viene accettato: " + repr(uscita),
+    )
     uscita = comando("/modo manuale")
     esigi("gia'" in uscita and len(costruiti) == prima, "/modo sulla modalita' corrente ricostruisce")
     uscita = comando("/modo piano")
@@ -1340,9 +1364,9 @@ def stato_della_chat() -> str:
     )
     comando("/sessione progetto-z")
     esigi(modi[-1] == "piano", "il cambio di sessione perde la modalita'")
-    # `/sessione` e `/modo` ricostruiscono l'agente: l'interattivo dello stato
-    # (qui False, come senza terminale) deve sopravvivere, o la ricostruzione
-    # riaccenderebbe l'apprendimento.
+    # `/sessione` e `/modo` ricostruiscono l'agente: la presenza dello stato
+    # (qui assente, come senza terminale) deve sopravvivere, o la
+    # ricostruzione riaccenderebbe l'apprendimento.
     esigi(
         interattivi and all(not v for v in interattivi),
         "le ricostruzioni riaccendono l'apprendimento: " + repr(interattivi),

@@ -720,7 +720,7 @@ def chat_turno() -> str:
 
     uscita = io.StringIO()
     with patch.object(nucleo_turno, "run_turn_cycle", ciclo_ok), redirect_stdout(uscita):
-        risposta = chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
+        risposta = chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica(), presidiato=True)
     esigi(risposta is not None, "un turno riuscito non restituisce la risposta")
 
     # Pausa che il client non sa risolvere: il ciclo si ferma e lo dice.
@@ -729,7 +729,7 @@ def chat_turno() -> str:
         patch.object(nucleo_turno, "run_turn_cycle", lambda *a, **k: FintaRisposta(is_paused=True)),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica(), presidiato=True)
     esigi("in pausa" in _piatto(uscita.getvalue()), "una pausa irrisolta resta muta")
 
     # Ctrl-C fuori dal turno: nessun apprendimento, e non e' un errore.
@@ -739,7 +739,7 @@ def chat_turno() -> str:
     uscita = io.StringIO()
     with patch.object(nucleo_turno, "run_turn_cycle", ciclo_interrotto), redirect_stdout(uscita):
         esigi(
-            chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica()) is None,
+            chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica(), presidiato=True) is None,
             "un'interruzione non restituisce None",
         )
     testo = _piatto(uscita.getvalue())
@@ -753,7 +753,7 @@ def chat_turno() -> str:
     uscita = io.StringIO()
     with patch.object(nucleo_turno, "run_turn_cycle", ciclo_rotto), redirect_stdout(uscita):
         esigi(
-            chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica()) is None,
+            chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica(), presidiato=True) is None,
             "un guasto non restituisce None",
         )
     testo = _piatto(uscita.getvalue())
@@ -802,7 +802,12 @@ def chat_turno() -> str:
             redirect_stdout(uscita),
         ):
             chat.esegui_turno(
-                PERCORSI, object(), "ricorda che preferisco config.py", input_cli, config.leggi_politica()
+                PERCORSI,
+                object(),
+                "ricorda che preferisco config.py",
+                input_cli,
+                config.leggi_politica(),
+                presidiato=True,
             )
         return _piatto(uscita.getvalue()), input_cli.domande
 
@@ -846,7 +851,12 @@ def chat_turno() -> str:
         redirect_stdout(uscita),
     ):
         chat.esegui_turno(
-            PERCORSI, object(), "ricorda che preferisco config.py", InputInterrotto([]), config.leggi_politica()
+            PERCORSI,
+            object(),
+            "ricorda che preferisco config.py",
+            InputInterrotto([]),
+            config.leggi_politica(),
+            presidiato=True,
         )
     esigi(ripristini == [], "un Ctrl-C alla domanda ha ripristinato")
 
@@ -869,7 +879,7 @@ def chat_turno() -> str:
         patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica(), presidiato=True)
     esigi(input_cli.domande == [], "un turno senza scritture fa una domanda: " + repr(input_cli.domande))
 
     # Spento in config non si legge nemmeno l'archivio.
@@ -883,7 +893,7 @@ def chat_turno() -> str:
         patch.object(config, "MOSTRA_APPRENDIMENTI", False),
         redirect_stdout(uscita),
     ):
-        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
+        chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica(), presidiato=True)
     esigi(letture == [], "con l'eco spento l'archivio viene letto lo stesso")
     esigi("appreso" not in _piatto(uscita.getvalue()), "con l'eco spento compare una riga di eco")
     return (
@@ -963,7 +973,9 @@ def chat_memoria_protetta() -> str:
                 patch.object(config, "CONFERMA_APPRENDIMENTI", True),
                 redirect_stdout(uscita),
             ):
-                risposta = chat.esegui_turno(PERCORSI, agent, "ricorda", InputProtetto([]), config.leggi_politica())
+                risposta = chat.esegui_turno(
+                    PERCORSI, agent, "ricorda", InputProtetto([]), config.leggi_politica(), presidiato=True
+                )
             esigi((risposta is None) == (errore is not None), "esito del turno errato")
             esigi(fasi == ["istantanea", "turno", "conferma", "ripristino"], "lock incompleto: " + repr(fasi))
             contenuto = [m["content"] for m in store.get(user_id=utente).memories]
@@ -981,7 +993,9 @@ def chat_memoria_protetta() -> str:
             patch.object(nucleo_turno, "istantanea") as lettura_spia,
         ):
             try:
-                chat.esegui_turno(PERCORSI, agent, "non deve partire", FintoInput([]), config.leggi_politica())
+                chat.esegui_turno(
+                    PERCORSI, agent, "non deve partire", FintoInput([]), config.leggi_politica(), presidiato=True
+                )
             except StatoOccupato:
                 pass
             else:
@@ -1717,17 +1731,24 @@ def chat_non_presidiato() -> str:
         costruiti.append(argomenti)
         return object()
 
-    def avvio(*, presidiato: bool) -> int:
+    presenze: list[bool] = []
+
+    def turno(*argomenti, presidiato: bool):
+        presenze.append(presidiato)
+        return SimpleNamespace(metrics=None)
+
+    def avvio(*, presidiato: bool, prompt: str | None = None, modo: str = config.MODO_PREDEFINITO) -> int:
         uscita = io.StringIO()
         with (
             patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+            patch.object(chat, "esegui_turno", turno),
             patch.object(sys, "stdin", SimpleNamespace(isatty=lambda: presidiato)),
             redirect_stdout(uscita),
             redirect_stderr(uscita),
         ):
-            return chat._esegui_chat(user=UTENTE)
+            return chat._esegui_chat(user=UTENTE, prompt=prompt, modo=modo)
 
     esigi(
         avvio(presidiato=False) == 0 and costruiti[-1]["interattivo"] is False,
@@ -1737,7 +1758,19 @@ def chat_non_presidiato() -> str:
         avvio(presidiato=True) == 0 and costruiti[-1]["interattivo"] is True,
         "con terminale l'agente non scrive memorie",
     )
-    return "modalita' silenziose rifiutate, conferme a vuoto e niente memorie senza terminale"
+    # `-p` da un terminale e' comunque senza presenza: stdin e' la domanda e
+    # nessuno risponde alle conferme ne' legge l'eco.
+    prima = len(costruiti)
+    esigi(
+        avvio(presidiato=True, prompt="riassumi", modo="modifiche") == chat.ESITO_RIFIUTO and len(costruiti) == prima,
+        "-p da un terminale ammette una modalita' che scrive in silenzio",
+    )
+    esigi(
+        avvio(presidiato=True, prompt="riassumi") == 0 and costruiti[-1]["interattivo"] is False,
+        "-p da un terminale costruisce un agente che scrive memorie",
+    )
+    esigi(presenze == [False], "-p da un terminale fa un turno con presenza: " + repr(presenze))
+    return "modalita' silenziose rifiutate, conferme a vuoto e niente memorie senza terminale, anche -p"
 
 
 def chat_sessione_altrui() -> str:
