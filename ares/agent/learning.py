@@ -1,5 +1,10 @@
 """Configurazione e adattamenti del ciclo di apprendimento di Ares."""
 
+import functools
+import inspect
+import json
+import re
+from collections.abc import Callable
 from typing import Any
 
 from agno.db.sqlite import SqliteDb
@@ -73,6 +78,61 @@ class AresLearningMachine(LearningMachine):
         super().process(*args, **kwargs)
 
 
+# Il segno di una voce d'elenco scritta a mano: trattino, asterisco, pallino
+# o numero seguito da punto o parentesi.
+_SEGNO_VOCE = re.compile(r"^(?:[-*\u2022]|\d+[.)])\s+")
+
+# Gli argomenti di `save_session_context` che Agno vuole come lista di testi.
+_ARGOMENTI_LISTA = ("plan", "progress")
+
+
+def come_lista(valore: Any) -> Any:
+    """Una lista di testi da un testo, qualunque altro valore invariato.
+
+    Accetta un array JSON di testi o un elenco una voce per riga, senza i
+    segni d'elenco; un testo vuoto e' la lista vuota. Tutto il resto lo
+    giudica la validazione di Agno.
+    """
+    if not isinstance(valore, str):
+        return valore
+    testo = valore.strip()
+    if testo.startswith("["):
+        try:
+            decodificato = json.loads(testo)
+        except ValueError:
+            pass
+        else:
+            if isinstance(decodificato, list) and all(isinstance(voce, str) for voce in decodificato):
+                return decodificato
+    voci = (_SEGNO_VOCE.sub("", riga.strip()).strip() for riga in testo.splitlines())
+    return [voce for voce in voci if voce]
+
+
+def liste_dal_testo(entrypoint: Callable[..., Any]) -> Callable[..., Any]:
+    """`entrypoint` con `plan` e `progress` convertiti da `come_lista` prima della validazione.
+
+    `functools.wraps` tiene la firma originale, che Agno legge per decidere
+    quali argomenti sono del modello.
+    """
+
+    def converti(argomenti: dict[str, Any]) -> dict[str, Any]:
+        return {nome: come_lista(v) if nome in _ARGOMENTI_LISTA else v for nome, v in argomenti.items()}
+
+    if inspect.iscoroutinefunction(entrypoint):
+
+        @functools.wraps(entrypoint)
+        async def asincrono(*args: Any, **kwargs: Any) -> Any:
+            return await entrypoint(*args, **converti(kwargs))
+
+        return asincrono
+
+    @functools.wraps(entrypoint)
+    def sincrono(*args: Any, **kwargs: Any) -> Any:
+        return entrypoint(*args, **converti(kwargs))
+
+    return sincrono
+
+
 class AresSessionContextStore(SessionContextStore):
     """Riprova soltanto un'estrazione che non ha scritto nulla.
 
@@ -81,9 +141,14 @@ class AresSessionContextStore(SessionContextStore):
 
     Il successo non si legge da `context_updated`: Agno lo accende per
     qualunque esecuzione dello strumento, anche una rifiutata dalla
-    validazione degli argomenti (un `plan` passato come testo), e `save`
+    validazione degli argomenti (un `plan` che non e' una lista di testi), e `save`
     inghiotte i propri errori. Conta solo un contesto riletto dall'archivio
     uguale a quello appena salvato; `context_updated` viene riallineato.
+
+    Prima del retry, `plan` e `progress` passati come testo diventano liste
+    (vedi `liste_dal_testo`): e' l'errore di argomenti piu' comune, e
+    ripeterlo costa un'estrazione intera che puo' sbagliare di nuovo. Lo
+    schema mostrato al modello non cambia.
     """
 
     last_extraction_attempts = 0
@@ -100,6 +165,13 @@ class AresSessionContextStore(SessionContextStore):
     async def asave(self, session_id: str, context: Any, *args: Any, **kwargs: Any) -> None:
         await super().asave(session_id, context, *args, **kwargs)
         self._salvato = self._salvato or self._riletto(await self.aget(session_id=session_id), context)
+
+    def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
+        funzioni = super()._build_functions_for_model(*args, **kwargs)
+        for funzione in funzioni:
+            if funzione.name == "save_session_context" and funzione.entrypoint is not None:
+                funzione.entrypoint = liste_dal_testo(funzione.entrypoint)
+        return funzioni
 
     @staticmethod
     def _riletto(riletto: Any, context: Any) -> bool:

@@ -29,6 +29,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   arrivato dalla stessa pipe passava: un testo ostile poteva far scrivere
   file senza conferma. Ora le due strade usano la stessa regola, nel
   nucleo, e `/modo modifiche` risponde come l'avvio.
+- **Il contesto di sessione accetta piano e avanzamento scritti come testo.**
+  Quando un modello passa `plan` o `progress` come testo, Ares lo converte
+  in lista prima della validazione di Agno: un array JSON resta com'è, un
+  elenco diventa una voce per riga, senza trattini né numeri. Prima quella
+  chiamata veniva rifiutata e toccava al retry rifare l'estrazione, che
+  poteva sbagliare di nuovo. Lo schema mostrato al modello non cambia.
+  Con `affidabilita` su `glm-5.3-flash:cloud`: 50 estrazioni su 50 al
+  primo colpo, nessun retry (prima 2 recuperati dal retry su 40).
 - **Il contesto di sessione si riprova anche dopo una chiamata non valida.**
   Alcuni modelli (per esempio `glm-5.3-flash:cloud`) passano ogni tanto
   `plan` o `progress` come testo invece che come lista: la validazione di
