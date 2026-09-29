@@ -49,7 +49,7 @@ dependencies = [
     # Il comando `ares` e i suoi sottocomandi, da firme e docstring delle
     # funzioni, con aiuto in Rich e completamento della shell. Il pavimento e'
     # la versione con cui l'aiuto e' stato disegnato.
-    "cyclopts>=4.24.0",
+    "cyclopts>=5.0.0",
     # Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
     # aggiunge pywin32 solo su Windows, dove serve per conservare i lock
     # condivisi usati dalle chat concorrenti.
