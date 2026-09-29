@@ -16,6 +16,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `sessione_di_altri`, e `nuovo_id_sessione` ha una copia sola, in
   `core/id_sessione.py`. Nessun cambiamento visibile all'utente. La prova
   `nucleo` usa il servizio come un client senza terminale.
+- **Nucleo applicativo: il turno.** `ares/core/turn.py` esegue un turno
+  completo sotto il lock del turno dell'utente: fotografia di profilo e
+  memorie, turno, variazioni, conferma degli apprendimenti e ripristino. Il
+  client mostra e chiede tramite il protocollo `ClienteTurno`; la CLI lo
+  implementa con `ClienteCli`, e un client senza terminale ottiene le stesse
+  garanzie. Nessun cambiamento visibile all'utente.
 
 ### Changed
 
