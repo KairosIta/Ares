@@ -1,7 +1,7 @@
 # Piano di refactor del core applicativo
 
 Data: 2026-09-28, aggiornato il 2026-09-29.
-**Stato: primo passaggio implementato (servizio di sessione).**
+**Stato: implementati i primi due passaggi (sessione e turno).**
 
 ## Obiettivo
 Un nucleo applicativo indipendente dall'interfaccia, a partire dal ciclo di
@@ -34,14 +34,34 @@ Differenze dalla bozza di API in [responsibility-map.md](responsibility-map.md):
   insieme a un `elenco` che lo restituisca. La scelta fra «ultima» e «scelta
   dall'elenco» è una domanda all'utente, quindi resta alla CLI.
 
+## Secondo passaggio: il turno (fatto)
+
+`ares/core/turn.py` esegue un turno completo sotto il lock del turno
+dell'utente: fotografia di profilo e memorie, turno, variazioni, conferma
+degli apprendimenti e ripristino. Prima la sequenza stava in `cli/chat.py`.
+
+Il client offre il protocollo `ClienteTurno`:
+
+| Metodo | Cosa fa il client |
+| --- | --- |
+| `flusso()` | apre la presentazione e restituisce chi riceve gli eventi |
+| `risolvi_pausa(output)` | conferma o rifiuta gli strumenti in pausa |
+| `pausa_irrisolta()`, `interrotto()`, `guasto(errore)` | avvisa |
+| `apprendimenti(righe, chiedi=...)` | mostra cosa è entrato in memoria e, se richiesto, chiede se tenerlo |
+
+Il risultato è un `EsitoTurno` (risposta, righe apprese, esito del
+ripristino). La CLI implementa il protocollo con `ClienteCli`; la prova
+`nucleo` con un client che non stampa.
+
 ## Passi successivi
 
-1. **Turno, lock e conferma degli apprendimenti.** Oggi `cli/chat` tiene il
-   lock del turno per l'intera sequenza fotografia → turno → differenza →
-   conferma → ripristino. Va spostata in un servizio `Turni` che riceva una
-   funzione per chiedere la conferma: senza, un client senza terminale non
-   ottiene gli stessi effetti della CLI.
-2. **Riferimenti di sessione.** `SessioneRiferimento` ed `elenco` per gli
+1. **Autorizzazioni degli strumenti senza terminale.** `cli/render.py`
+   chiama `confirm/reject` sui requirement Agno e la CLI consulta `isatty()`
+   per decidere se le modalità silenziose sono ammesse. Un client desktop
+   deve poter dire la sua presenza senza passare da un terminale.
+2. **Lock dello stato.** Dura quanto la chat e lo prende ancora
+   `cli/chat.py`; va offerto dal servizio insieme all'apertura.
+3. **Riferimenti di sessione.** `SessioneRiferimento` ed `elenco` per gli
    elenchi, così la CLI smette di leggere le sessioni di Agno.
 
 ## Cosa non si tocca

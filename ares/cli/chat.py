@@ -24,16 +24,16 @@ menu dei comandi, definiti in `COMANDI` di `cli/commands.py`.
 """
 
 import sys
-from contextlib import nullcontext
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from pathlib import Path
 
 from agno.run.agent import RunOutput
 
 from ares import config
-from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
 from ares.agent.prompts import percorso_istruzioni
-from ares.agent.turn_core import run_turn_cycle
+from ares.agent.turn_core import TurnEvent
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_OCCUPATO, ESITO_RIFIUTO
@@ -43,11 +43,12 @@ from ares.cli.log import configura_log_agno
 from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
 from ares.cli.ui import UI
 from ares.config import Impostazioni, Percorsi, Politica
+from ares.core import turn
 from ares.core.session import SessioneDiAltri, Sessioni
 from ares.ops import migrazione
 from ares.state.git import ramo_git
 from ares.state.identita import Utente, UtenteNonValido
-from ares.state.lock import StatoOccupato, lock_stato, lock_turno
+from ares.state.lock import StatoOccupato, lock_stato
 from ares.state.stores import prima_domanda, quando_sessione
 
 
@@ -64,97 +65,65 @@ def riga_stato(stato: StatoChat) -> str:
     return " · ".join(pezzi)
 
 
-def _turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica) -> RunOutput | None:
-    """Il turno vero, senza le difese: le pause per autorizzare uno strumento."""
-    with UI.stream() as flusso:
-        risposta = run_turn_cycle(
-            agent,
-            testo,
-            on_event=lambda evento: mostra_evento(flusso, evento, politica.mostra),
-            resolve_pause=lambda output: chiedi_conferme(output, input_cli, percorsi, politica),
-        )
+class ClienteCli:
+    """Il turno nel terminale: stream Rich, conferme a riga di comando e l'eco della memoria."""
 
-    if risposta is not None and risposta.is_paused:
-        UI.line(
-            "Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.",
-            style="ares.warning",
-        )
-    return risposta
+    def __init__(self, percorsi: Percorsi, politica: Politica, input_cli: CliInput) -> None:
+        self.percorsi = percorsi
+        self.politica = politica
+        self.input_cli = input_cli
+
+    @contextmanager
+    def flusso(self) -> Iterator[Callable[[TurnEvent], None]]:
+        # Su Ctrl-C il renderer chiude l'anteprima e rende permanente il
+        # Markdown parziale prima che l'eccezione arrivi al nucleo.
+        with UI.stream() as flusso:
+            yield lambda evento: mostra_evento(flusso, evento, self.politica.mostra)
+
+    def risolvi_pausa(self, output: RunOutput) -> int:
+        return chiedi_conferme(output, self.input_cli, self.percorsi, self.politica)
+
+    def pausa_irrisolta(self) -> None:
+        UI.line("Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.", style="ares.warning")
+
+    def interrotto(self) -> None:
+        UI.blank()
+        UI.line("Interrotto fuori dal turno.", style="ares.warning")
+
+    def guasto(self, errore: Exception) -> None:
+        UI.blank()
+        UI.line("Il turno e' fallito - " + type(errore).__name__ + ": " + str(errore), style="ares.error")
+        UI.line("La sessione resta aperta.", style="ares.muted")
+
+    def apprendimenti(self, righe: list[str], *, chiedi: bool) -> bool:
+        """Mostra l'eco; con `chiedi`, solo un `n` esplicito rifiuta.
+
+        Invio, Ctrl-C e fine dell'input tengono: la scrittura e' gia'
+        avvenuta ed e' stata mostrata.
+        """
+        UI.learned(righe)
+        if not chiedi:
+            return True
+        try:
+            scelta = self.input_cli.ask("Tenere in memoria? [S/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            UI.blank()
+            scelta = ""
+        return scelta not in ("n", "no")
 
 
 def esegui_turno(percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica) -> RunOutput | None:
-    """Serializza il turno e la conferma con le altre chat dello stesso utente."""
-    identita = Utente.da_grezzo(getattr(agent, "user_id", None) or config.DEFAULT_USER_ID)
-    with lock_turno(percorsi, identita):
-        return _esegui_turno_protetto(percorsi, agent, testo, input_cli, politica)
-
-
-def _esegui_turno_protetto(
-    percorsi: Percorsi, agent, testo: str, input_cli: CliInput, politica: Politica
-) -> RunOutput | None:
-    """Un turno intero, con una rete sotto per cio' che Agno non prende.
-
-    Agno gestisce da se' Ctrl-C e guasti dentro i propri generatori di
-    streaming, trasformandoli negli eventi `RunCancelled` e `RunError`. Questa
-    rete copre il resto: costruire la chiamata, risolvere le conferme, e cio'
-    che sollevano `confirm()` o `reject()`. Anche dopo un errore le memorie
-    gia' scritte passano da eco e conferma, sotto il lock dell'utente.
-
-    Ctrl-C e guasto hanno rami separati: il primo e' una decisione e basta
-    confermarlo, il secondo va mostrato.
-    """
-    # La fotografia precede il turno, non il post-hook: `update_user_memory`
-    # scrive durante il run.
-    stato = istantanea(agent) if politica.mostra.apprendimenti else None
-    risposta = None
-    try:
-        risposta = _turno(percorsi, agent, testo, input_cli, politica)
-    except KeyboardInterrupt:
-        # Il context manager del renderer ha gia' chiuso l'anteprima e reso
-        # permanente l'eventuale Markdown parziale.
-        UI.blank()
-        UI.line("Interrotto fuori dal turno.", style="ares.warning")
-    except Exception as errore:
-        UI.blank()
-        UI.line(
-            "Il turno e' fallito - " + type(errore).__name__ + ": " + str(errore),
-            style="ares.error",
-        )
-        UI.line(
-            "La sessione resta aperta.",
-            style="ares.muted",
-        )
-
-    if stato is not None:
-        # Anche dopo una pausa: cio' che e' stato scritto va mostrato comunque.
-        righe = variazioni(riduci(stato), fotografa(agent))
-        UI.learned(righe)
-        if righe and politica.mostra.conferma_apprendimenti:
-            _conferma_apprendimenti(agent, stato, input_cli)
-    return risposta
-
-
-def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
-    """Chiede se tenere cio' che il turno ha scritto; un no lo riporta indietro.
-
-    Invio, Ctrl-C e fine dell'input tengono: la scrittura e' gia' avvenuta ed
-    e' stata mostrata. Solo un `n` esplicito riscrive gli store.
-    """
-    try:
-        scelta = input_cli.ask("Tenere in memoria? [S/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        UI.blank()
-        scelta = ""
-    if scelta not in ("n", "no"):
-        return
-    if ripristina(agent, stato):
+    """Un turno nel terminale, con le garanzie del nucleo (`core/turn.py`)."""
+    esito = turn.esegui_turno(percorsi, politica, agent, testo, ClienteCli(percorsi, politica, input_cli))
+    if esito.ripristino is True:
         UI.line("   ripristinato: profilo e memorie come prima del turno", style="ares.muted")
-    else:
+    elif esito.ripristino is False:
         UI.line(
             "   ripristino incompleto: profilo o memorie non corrispondono a prima del turno",
             style="ares.error",
         )
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
+    return esito.risposta
 
 
 def _sessione_da_aprire(sessioni: Sessioni, *, riprendi: bool, scegli: bool) -> tuple[str | None, str]:

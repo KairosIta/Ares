@@ -45,15 +45,15 @@ Le API pubbliche coprono soltanto le operazioni necessarie ad Ares.
 | Configurazione | `config.leggi_percorsi()`, `leggi_impostazioni()` e `leggi_politica()` costruiscono, al confine del processo, la configurazione di questa conversazione; ogni lettore la riceve come parametro | Una conversazione deve ricevere una configurazione risolta propria, e i modelli applicativi non devono leggere né scrivere un globale |
 | Costruzione | `build_assistant` riceve percorsi, impostazioni, politica, utente, sessione, modalità e `interattivo`; il workspace non è un parametro a sé | Il workspace sceglie i percorsi, non il costruttore: `--workspace` è una sostituzione locale, e resta da decidere se il progetto debba essere un campo a sé |
 | Turno | `turn_core` separa lo streaming dal terminale, ma espone `RunOutput` e oggetti generici | Conservare l'adattamento esistente e completare i dati pubblici |
-| Memoria | `cli/chat.py` coordina fotografia, differenze, conferma e ripristino | Il client che usa soltanto `turn_core` non eredita queste politiche |
-| Lock | Il lock del turno avvolge il flusso nella CLI; quello dello stato dura quanto la chat | Coordinamento e durata devono appartenere al servizio applicativo |
-| Sessioni | `cli/cartella.py` genera gli ID; `cli/commands.py` ricostruisce l'agente per cambiare sessione/modalità | Creazione e apertura devono diventare operazioni condivise |
+| Memoria | `core/turn.py` coordina fotografia, differenze, conferma e ripristino; il client mostra e chiede tramite `ClienteTurno` | Un client che usa `core/turn.py` eredita queste politiche; uno che usa soltanto `turn_core` no |
+| Lock | Il lock del turno avvolge il flusso in `core/turn.py`; quello dello stato dura quanto la chat, ancora nella CLI | Resta da portare nel servizio la durata del lock dello stato |
+| Sessioni | `core/session.py` genera gli ID, verifica il proprietario e ricostruisce l'agente per cambiare sessione/modalità | Operazioni già condivise; elenchi e rendering leggono ancora le sessioni di Agno |
 | Autorizzazioni | `cli/render.py` chiama `confirm/reject` sui requirement Agno; la cartella consulta `isatty()` | La presenza di un terminale non può determinare le capacità della desktop |
 | Manutenzione | Primitive riutilizzabili esistono, ma alcuni flussi uniscono conferma, backup, scrittura e stampa | Estrarre l'operazione completa, mantenendo il rendering nei client |
 
 Riferimenti locali: [config](../ares/config.py),
 [costruzione](../ares/agent/assistant.py), [runtime](../ares/agent/runtime.py),
-[turno](../ares/agent/turn_core.py), [CLI](../ares/cli/chat.py),
+[turno](../ares/agent/turn_core.py), [nucleo](../ares/core/), [CLI](../ares/cli/chat.py),
 [comandi](../ares/cli/commands.py), [cartella](../ares/cli/cartella.py),
 [conferme degli strumenti](../ares/cli/render.py),
 [lock](../ares/state/lock.py), [archivi](../ares/state/archivi.py).

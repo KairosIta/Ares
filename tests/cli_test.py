@@ -54,6 +54,7 @@ from ares.cli import chat  # noqa: E402
 from ares.cli.ui import UI  # noqa: E402
 from ares.core import id_sessione  # noqa: E402
 from ares.core import session as nucleo_sessioni  # noqa: E402
+from ares.core import turn as nucleo_turno  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
 from ares.state.identita import Utente, UtenteNonValido, utente_canonico  # noqa: E402
@@ -718,14 +719,14 @@ def chat_turno() -> str:
         return FintaRisposta()
 
     uscita = io.StringIO()
-    with patch.object(chat, "run_turn_cycle", ciclo_ok), redirect_stdout(uscita):
+    with patch.object(nucleo_turno, "run_turn_cycle", ciclo_ok), redirect_stdout(uscita):
         risposta = chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
     esigi(risposta is not None, "un turno riuscito non restituisce la risposta")
 
     # Pausa che il client non sa risolvere: il ciclo si ferma e lo dice.
     uscita = io.StringIO()
     with (
-        patch.object(chat, "run_turn_cycle", lambda *a, **k: FintaRisposta(is_paused=True)),
+        patch.object(nucleo_turno, "run_turn_cycle", lambda *a, **k: FintaRisposta(is_paused=True)),
         redirect_stdout(uscita),
     ):
         chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica())
@@ -736,7 +737,7 @@ def chat_turno() -> str:
         raise KeyboardInterrupt
 
     uscita = io.StringIO()
-    with patch.object(chat, "run_turn_cycle", ciclo_interrotto), redirect_stdout(uscita):
+    with patch.object(nucleo_turno, "run_turn_cycle", ciclo_interrotto), redirect_stdout(uscita):
         esigi(
             chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica()) is None,
             "un'interruzione non restituisce None",
@@ -750,7 +751,7 @@ def chat_turno() -> str:
         raise RuntimeError("archivio irraggiungibile")
 
     uscita = io.StringIO()
-    with patch.object(chat, "run_turn_cycle", ciclo_rotto), redirect_stdout(uscita):
+    with patch.object(nucleo_turno, "run_turn_cycle", ciclo_rotto), redirect_stdout(uscita):
         esigi(
             chat.esegui_turno(PERCORSI, object(), "ciao", input_cli, config.leggi_politica()) is None,
             "un guasto non restituisce None",
@@ -792,10 +793,10 @@ def chat_turno() -> str:
         input_cli = FintoInput([], risposte=risposte)
         uscita = io.StringIO()
         with (
-            patch.object(chat, "run_turn_cycle", ciclo_che_scrive),
-            patch.object(chat, "istantanea", istantanea_finta),
-            patch.object(chat, "fotografa", fotografa_finta),
-            patch.object(chat, "ripristina", ripristina_finto),
+            patch.object(nucleo_turno, "run_turn_cycle", ciclo_che_scrive),
+            patch.object(nucleo_turno, "istantanea", istantanea_finta),
+            patch.object(nucleo_turno, "fotografa", fotografa_finta),
+            patch.object(nucleo_turno, "ripristina", ripristina_finto),
             patch.object(config, "MOSTRA_APPRENDIMENTI", True),
             patch.object(config, "CONFERMA_APPRENDIMENTI", conferma),
             redirect_stdout(uscita),
@@ -836,10 +837,10 @@ def chat_turno() -> str:
     ripristini.clear()
     uscita = io.StringIO()
     with (
-        patch.object(chat, "run_turn_cycle", ciclo_che_scrive),
-        patch.object(chat, "istantanea", istantanea_finta),
-        patch.object(chat, "fotografa", fotografa_finta),
-        patch.object(chat, "ripristina", ripristina_finto),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo_che_scrive),
+        patch.object(nucleo_turno, "istantanea", istantanea_finta),
+        patch.object(nucleo_turno, "fotografa", fotografa_finta),
+        patch.object(nucleo_turno, "ripristina", ripristina_finto),
         patch.object(config, "MOSTRA_APPRENDIMENTI", True),
         patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
@@ -861,9 +862,9 @@ def chat_turno() -> str:
     input_cli = FintoInput([], risposte=["n"])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "run_turn_cycle", ciclo_ok),
-        patch.object(chat, "istantanea", lambda agent: Istantanea()),
-        patch.object(chat, "fotografa", lambda agent: Fotografia()),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo_ok),
+        patch.object(nucleo_turno, "istantanea", lambda agent: Istantanea()),
+        patch.object(nucleo_turno, "fotografa", lambda agent: Fotografia()),
         patch.object(config, "MOSTRA_APPRENDIMENTI", True),
         patch.object(config, "CONFERMA_APPRENDIMENTI", True),
         redirect_stdout(uscita),
@@ -876,9 +877,9 @@ def chat_turno() -> str:
     turni.clear()
     uscita = io.StringIO()
     with (
-        patch.object(chat, "run_turn_cycle", ciclo_ok),
-        patch.object(chat, "istantanea", istantanea_finta),
-        patch.object(chat, "fotografa", fotografa_finta),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo_ok),
+        patch.object(nucleo_turno, "istantanea", istantanea_finta),
+        patch.object(nucleo_turno, "fotografa", fotografa_finta),
         patch.object(config, "MOSTRA_APPRENDIMENTI", False),
         redirect_stdout(uscita),
     ):
@@ -907,8 +908,8 @@ def chat_memoria_protetta() -> str:
         learning_machine=SimpleNamespace(user_profile_store=None, user_memory_store=store),
     )
     store.add_memory(user_id=utente, memory="confermata nella chat B")
-    fotografia_vera = chat.istantanea
-    ripristino_vero = chat.ripristina
+    fotografia_vera = nucleo_turno.istantanea
+    ripristino_vero = nucleo_turno.ripristina
     fasi = []
 
     def esigi_contesa(fase):
@@ -955,9 +956,9 @@ def chat_memoria_protetta() -> str:
 
             uscita = io.StringIO()
             with (
-                patch.object(chat, "istantanea", fotografia),
-                patch.object(chat, "ripristina", ripristino),
-                patch.object(chat, "run_turn_cycle", ciclo),
+                patch.object(nucleo_turno, "istantanea", fotografia),
+                patch.object(nucleo_turno, "ripristina", ripristino),
+                patch.object(nucleo_turno, "run_turn_cycle", ciclo),
                 patch.object(config, "MOSTRA_APPRENDIMENTI", True),
                 patch.object(config, "CONFERMA_APPRENDIMENTI", True),
                 redirect_stdout(uscita),
@@ -976,8 +977,8 @@ def chat_memoria_protetta() -> str:
         with (
             lock_turno(PERCORSI, Utente.da_grezzo(utente)),
             patch.object(config, "MOSTRA_APPRENDIMENTI", False),
-            patch.object(chat, "run_turn_cycle") as ciclo_spia,
-            patch.object(chat, "istantanea") as lettura_spia,
+            patch.object(nucleo_turno, "run_turn_cycle") as ciclo_spia,
+            patch.object(nucleo_turno, "istantanea") as lettura_spia,
         ):
             try:
                 chat.esegui_turno(PERCORSI, agent, "non deve partire", FintoInput([]), config.leggi_politica())
@@ -993,7 +994,7 @@ def chat_memoria_protetta() -> str:
             lock_turno(PERCORSI, Utente.da_grezzo(utente)),
             patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: agent),
             patch.object(chat, "CliInput", lambda **k: FintoInput(["riprova piu' tardi"])),
-            patch.object(chat, "run_turn_cycle") as ciclo_spia,
+            patch.object(nucleo_turno, "run_turn_cycle") as ciclo_spia,
             redirect_stdout(io.StringIO()),
             redirect_stderr(io.StringIO()),
         ):
@@ -1029,7 +1030,7 @@ def chat_ciclo() -> str:
     with (
         patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
-        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: ["Ultimo backup: mai", "Esegui ares backup create"]),
         patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"),
         redirect_stdout(uscita),
@@ -1053,7 +1054,7 @@ def chat_ciclo() -> str:
     with (
         patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
-        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
         patch.object(config, "MAIN_MODEL", "qwen3:9b"),
         patch.object(config, "LEARNING_MODEL", "qwen3:9b"),
@@ -1072,7 +1073,7 @@ def chat_ciclo() -> str:
     with (
         patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
-        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
         patch.object(config, "MAIN_MODEL", "qwen3:9b"),
         patch.object(config, "LEARNING_MODEL", "glm-5.3-flash:cloud"),
@@ -1257,7 +1258,7 @@ def chat_sessioni() -> str:
             ripresi.append(testo)
             return FintaRisposta()
 
-        with patch.object(chat, "run_turn_cycle", un_turno):
+        with patch.object(nucleo_turno, "run_turn_cycle", un_turno):
             esito, testo = avvio(riprendi=True, prompt="continua")
         esigi(
             esito == 0 and ripresi == ["continua"] and costruiti[-1]["session_id"] == "ripresa-nuova",
@@ -1283,7 +1284,7 @@ def chat_sessioni() -> str:
     uscita, errori = io.StringIO(), io.StringIO()
     with (
         patch.object(nucleo_sessioni, "build_assistant", costruisci),
-        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo),
         patch.object(sys, "stdin", io.StringIO("dati dalla pipe\n")),
         redirect_stdout(uscita),
         redirect_stderr(errori),
@@ -1311,7 +1312,7 @@ def chat_sessioni() -> str:
     # regola che rifiuta `auto` e `modifiche`.
     with (
         patch.object(nucleo_sessioni, "build_assistant", costruisci),
-        patch.object(chat, "run_turn_cycle", ciclo),
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo),
         patch.object(sys, "stdin", io.StringIO()),
         redirect_stdout(io.StringIO()),
         redirect_stderr(io.StringIO()),
@@ -1589,7 +1590,7 @@ def chat_avvio() -> str:
     uscita_pipe, errori_pipe = io.StringIO(), io.StringIO()
     with (
         lock_stato(PERCORSI.lock_file, esclusivo=True),
-        patch.object(chat, "run_turn_cycle") as ciclo_spia,
+        patch.object(nucleo_turno, "run_turn_cycle") as ciclo_spia,
         patch.object(nucleo_sessioni, "build_assistant") as costruzione_spia,
         redirect_stdout(uscita_pipe),
         redirect_stderr(errori_pipe),

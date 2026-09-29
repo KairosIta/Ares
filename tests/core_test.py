@@ -12,6 +12,7 @@ sostituito da uno che registra.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from agno.session.agent import AgentSession  # noqa: E402
 
 from ares import config  # noqa: E402
 from ares.core import session as nucleo  # noqa: E402
+from ares.core import turn as nucleo_turno  # noqa: E402
 from ares.core.id_sessione import nuovo_id_sessione  # noqa: E402
 from ares.core.session import SessioneDiAltri, Sessioni  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -150,12 +152,111 @@ def agente_vero() -> str:
     return "sessione, utente e niente post-hook"
 
 
+class ClienteSenzaTerminale:
+    """Un client di `esegui_turno` che non stampa: registra e risponde da copione."""
+
+    def __init__(self, *, tenere: bool = True) -> None:
+        self.tenere = tenere
+        self.chiamate: list[str] = []
+        self.eventi: list[object] = []
+        self.righe: list[str] = []
+
+    @contextmanager
+    def flusso(self):
+        self.chiamate.append("flusso")
+        yield self.eventi.append
+
+    def risolvi_pausa(self, output) -> int:
+        self.chiamate.append("pausa")
+        return 0
+
+    def pausa_irrisolta(self) -> None:
+        self.chiamate.append("pausa irrisolta")
+
+    def interrotto(self) -> None:
+        self.chiamate.append("interrotto")
+
+    def guasto(self, errore: Exception) -> None:
+        self.chiamate.append("guasto: " + str(errore))
+
+    def apprendimenti(self, righe: list[str], *, chiedi: bool) -> bool:
+        self.chiamate.append("apprendimenti" + (" chiesti" if chiedi else ""))
+        self.righe = righe
+        return self.tenere
+
+
+class AgenteFinto:
+    user_id = UTENTE.id
+
+
+class RispostaFinta:
+    is_paused = False
+
+
+def _turno(cliente, *, prima, dopo, chiedi=True, ciclo=None):
+    """Un turno del nucleo con memoria e ciclo del modello simulati."""
+    mostra = replace(POLITICA.mostra, apprendimenti=True, conferma_apprendimenti=chiedi)
+    politica = replace(POLITICA, mostra=mostra)
+    ripristini: list[object] = []
+
+    def ciclo_predefinito(agent, testo, *, on_event, resolve_pause):
+        on_event("evento")
+        return RispostaFinta()
+
+    letture = iter([prima, dopo])
+    with (
+        patch.object(nucleo_turno, "run_turn_cycle", ciclo or ciclo_predefinito),
+        patch.object(nucleo_turno, "istantanea", lambda agent: "istantanea"),
+        patch.object(nucleo_turno, "riduci", lambda stato: next(letture)),
+        patch.object(nucleo_turno, "fotografa", lambda agent: next(letture)),
+        patch.object(nucleo_turno, "ripristina", lambda agent, stato: ripristini.append(stato) or True),
+    ):
+        esito = nucleo_turno.esegui_turno(PERCORSI, politica, AgenteFinto(), "ciao", cliente)
+    return esito, ripristini
+
+
+def turno_senza_terminale() -> str:
+    """Il turno del nucleo: eventi al client, eco, e un no che ripristina."""
+    from ares.agent.echo import Fotografia
+
+    vuota, scritta = Fotografia(), Fotografia(memorie={"m1": "usa Debian 13"})
+
+    cliente = ClienteSenzaTerminale(tenere=False)
+    esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta)
+    esigi(cliente.eventi == ["evento"], "gli eventi non arrivano al client")
+    esigi(cliente.chiamate == ["flusso", "apprendimenti chiesti"], "sequenza sbagliata: " + repr(cliente.chiamate))
+    esigi(any("usa Debian 13" in r for r in cliente.righe), "l'eco non mostra la memoria scritta")
+    esigi(ripristini == ["istantanea"] and esito.ripristino is True, "un no non ripristina la fotografia di prima")
+
+    cliente = ClienteSenzaTerminale(tenere=True)
+    esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta)
+    esigi(ripristini == [] and esito.ripristino is None, "un si' ripristina")
+
+    cliente = ClienteSenzaTerminale(tenere=False)
+    esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta, chiedi=False)
+    esigi(cliente.chiamate[-1] == "apprendimenti" and ripristini == [], "senza conferma si ripristina comunque")
+
+    cliente = ClienteSenzaTerminale()
+    esito, _ = _turno(cliente, prima=vuota, dopo=vuota)
+    esigi("apprendimenti" not in " ".join(cliente.chiamate) and esito.appreso == (), "eco senza niente di scritto")
+
+    def ciclo_guasto(agent, testo, *, on_event, resolve_pause):
+        raise RuntimeError("disco pieno")
+
+    cliente = ClienteSenzaTerminale(tenere=False)
+    esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta, ciclo=ciclo_guasto)
+    esigi(cliente.chiamate[1] == "guasto: disco pieno", "il guasto non arriva al client: " + repr(cliente.chiamate))
+    esigi(ripristini == ["istantanea"], "dopo un guasto cio' che e' stato scritto non passa dalla conferma")
+    return "eventi, eco, rifiuto, conferma spenta, niente di scritto, guasto"
+
+
 PROVE = (
     ("id", id_delle_sessioni),
     ("apertura e modo", apertura_e_modo),
     ("sessione altrui", sessione_altrui),
     ("della cartella", sessioni_della_cartella),
     ("agente vero", agente_vero),
+    ("turno", turno_senza_terminale),
 )
 
 

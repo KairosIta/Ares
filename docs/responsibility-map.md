@@ -46,6 +46,10 @@ Il totale del package `ares/` è **10.966 righe**.
 | Retention sessioni | `sessions/` | manutenzione |
 | Configurazione | `config.py` | core / ingresso |
 
+Aggiornamento del 2026-09-29: sessioni, lock del turno, fotografia, conferma
+e ripristino degli apprendimenti sono passati in `ares/core/`; lo stato
+dell'estrazione è in [core-refactor-plan.md](core-refactor-plan.md).
+
 ## Punti da estrarre prima degli altri
 
 ### 1. Gestione della sessione

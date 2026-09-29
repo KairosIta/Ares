@@ -76,7 +76,7 @@ chat non parte finché la migrazione non è avvenuta.
 ### Nucleo applicativo (`ares/core/`)
 
 Ciò che un client qualsiasi deve fare allo stesso modo, senza stampare né
-chiedere niente. Per ora il ciclo di vita della sessione:
+chiedere niente: il ciclo di vita della sessione e il turno completo.
 
 - `session.py`: `Sessioni` genera l'id di una conversazione nuova, elenca
   quelle della cartella, verifica il proprietario (`SessioneDiAltri`) e
@@ -84,6 +84,11 @@ chiedere niente. Per ora il ciclo di vita della sessione:
   modalità. Restituisce una `SessioneAttiva` (id, modalità, agente); la
   sessione corrente la tiene il client.
 - `id_sessione.py`: l'id leggibile, da cartella e momento.
+- `turn.py`: `esegui_turno` esegue un turno sotto il lock del turno
+  dell'utente: fotografia di profilo e memorie, turno con le pause per gli
+  strumenti, variazioni, conferma degli apprendimenti e ripristino se
+  l'utente rifiuta. Il client mostra e chiede tramite il protocollo
+  `ClienteTurno`; il risultato è un `EsitoTurno`.
 
 La CLI ne è un client: decide cosa chiedere e come mostrarlo. Il piano dei
 passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
@@ -189,12 +194,17 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 
 ## Flusso di un turno
 
-1. Il client consegna il messaggio al core del turno.
-2. Il core avvia Agno e pubblica eventi indipendenti dall'interfaccia.
+1. Il client consegna il messaggio a `core/turn.py`, che prende il lock del
+   turno dell'utente e fotografa profilo e memorie.
+2. `agent/turn_core.py` avvia Agno e pubblica eventi indipendenti
+   dall'interfaccia.
 3. Il modello può rispondere o richiedere uno strumento.
 4. Le operazioni sensibili sospendono il run in attesa di conferma del client.
 5. Il core esegue `continue_run` sullo stesso run dopo la decisione.
 6. La macchina di apprendimento riceve l'output completo e aggiorna gli store.
+7. Il nucleo confronta profilo e memorie con la fotografia; il client mostra
+   le variazioni e, se l'utente rifiuta, il nucleo ripristina. Poi il lock
+   si rilascia.
 
 L'apprendimento usa sempre il run finale, quindi non perde il contenuto
 prodotto dopo una conferma.
