@@ -90,7 +90,7 @@ Sono undici. Nessuna genera risposte con il modello.
 
 ### `contratto`
 
-Chiede ad Agno le cinque cose su cui Ares si regge:
+Chiede ad Agno le sette cose su cui Ares si regge:
 
 1. un turno con pausa per conferma produce una sola estrazione, quella del
    post-hook sul run completo;
@@ -105,7 +105,11 @@ Chiede ad Agno le cinque cose su cui Ares si regge:
    durevole non passa da una conferma;
 5. la versione di Agno citata nei documenti (`FILE_CHE_DICHIARANO`) è quella
    installata; `CHANGELOG.md` e `docs/memory-quality.md` sono esclusi perché
-   citano le versioni di allora.
+   citano le versioni di allora;
+6. il tetto di un id utente è `MAX_SEGMENT_CHARS` di Agno;
+7. i nomi privati di Agno elencati in `agent/agno_interni.py` esistono
+   ancora, e il mixin `FunzioniRitoccate` precede la classe di Agno negli
+   store che lo usano.
 
 Il retry mostra come si divide il lavoro con le prove con Ollama: qui si
 prova, in modo deterministico, che funziona come scritto;

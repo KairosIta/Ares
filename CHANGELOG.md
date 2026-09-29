@@ -84,6 +84,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Gli interni di Agno passano da un modulo solo.** I nomi privati di Agno
+  che Ares usa (`_build_functions_for_model`, `_should_expose_tools`,
+  `determine_tools_for_model`) stanno ora in `ares/agent/agno_interni.py`,
+  che li elenca in `INTERNI`. Gli store che ritoccano gli strumenti lo fanno
+  con il mixin `FunzioniRitoccate` e un metodo pubblico `ritocca`. La prova
+  `contratto` verifica che quei nomi esistano nella versione di Agno
+  installata e che il mixin preceda la classe di Agno: aggiornando Agno, un
+  nome sparito si vede subito e per nome, invece che come un comportamento
+  che cambia in silenzio.
 - **SQLAlchemy 2.1 e Cyclopts 5.** SQLAlchemy 2.1 non installa più
   `greenlet`, che serve ad `agno.db.sqlite` per `sqlalchemy.ext.asyncio`: la
   dipendenza diventa `sqlalchemy[asyncio]`. Con Cyclopts 5 l'aiuto dei
