@@ -6,6 +6,23 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Il contesto di sessione si riprova anche dopo una chiamata non valida.**
+  Alcuni modelli (per esempio `glm-5.3-flash:cloud`) passano ogni tanto
+  `plan` o `progress` come testo invece che come lista: la validazione di
+  Agno rifiuta la chiamata e niente viene salvato. Agno però accende
+  `context_updated` per qualunque esecuzione dello strumento, quindi il retry
+  di `AresSessionContextStore` credeva l'estrazione riuscita e il contesto di
+  quel turno andava perso. Ora conta solo un contesto riletto dall'archivio
+  dopo il salvataggio. Con `affidabilita` su `glm-5.3-flash:cloud`: prima 8
+  fallimenti su 90 estrazioni, dopo 0 su 40, con 2 recuperati dal retry.
+- **La prova `cli` non si blocca più su uno stdin ereditato.** La prova
+  della memoria protetta eseguiva `ares -p` senza sostituire stdin: con uno
+  stdin non chiuso (una pipe aperta, non `/dev/null` come in CI) `-p` lo
+  leggeva per sempre e la prova arrivava al timeout di 360 s. Ora usa uno
+  stdin vuoto, come le altre prove di `-p`.
+
 ### Added
 
 - **Nucleo applicativo: il servizio di sessione.** `ares/core/session.py`

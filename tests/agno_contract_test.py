@@ -16,11 +16,12 @@ Sei cose che Ares da' per vere di Agno, verificate contro Agno installato.
    cancellato dopo la conferma e non prima, resta dopo un rifiuto, e il run
    finisce in entrambi i casi.
 3. **Il retry di `AresSessionContextStore`.** Si regge su tre fatti di Agno:
-   `extract_and_save` esiste con quel nome, `context_updated` si accende solo
-   se il modello ha eseguito uno strumento, `aextract_and_save` e' il gemello
-   asincrono (codice diverso, da attraversare a parte). Se uno cadesse, Ares
-   ripeterebbe all'infinito o mai. Primo colpo, tetto e recupero si
-   provano su entrambi i percorsi, insieme all'`aprocess` spento.
+   `extract_and_save` esiste con quel nome, lo strumento salva passando da
+   `save`/`asave` (dove Ares rilegge l'archivio), `aextract_and_save` e' il
+   gemello asincrono (codice diverso, da attraversare a parte). Se uno
+   cadesse, Ares ripeterebbe all'infinito o mai. Primo colpo, tetto e
+   recupero - dopo il silenzio e dopo una chiamata con argomenti non validi -
+   si provano su entrambi i percorsi, insieme all'`aprocess` spento.
    (`stop_after_tool_call` lo verifica `learning_cost_test.py`.)
 4. **Profilo e memorie non sono confermabili.** Agno rifiuta PROPOSE su quegli
    store e HITL e' "reserved for future use": se il limite cadesse, la prova
@@ -286,40 +287,54 @@ def ciclo_hitl() -> str:
 
 
 class ModelloContesto(ModelloACopione):
-    """Salva il contesto soltanto ai tentativi elencati; agli altri tace.
+    """Salva il contesto soltanto ai tentativi elencati; agli altri tace o sbaglia.
 
     `extract_and_save` fa `deepcopy(self.model)` a ogni tentativo: `__deepcopy__`
     restituisce se stesso, cosi' il contatore sopravvive fra i tentativi.
 
-    Tacere significa rispondere senza tool call: e' l'estrazione che non ha
-    scritto niente, il difetto che `SESSION_CONTEXT_RETRIES` assorbe.
+    Tacere significa rispondere senza tool call. Sbagliare, ai tentativi di
+    `sbaglia_ai`, significa chiamare lo strumento con `plan` come stringa
+    invece che come lista, come fanno davvero alcuni modelli: la validazione
+    di Agno rifiuta la chiamata e niente viene scritto. Sono i due difetti che
+    il retry deve assorbire.
     """
 
-    def __init__(self, riesce_ai: set[int]) -> None:
+    def __init__(self, riesce_ai: set[int], sbaglia_ai: set[int] = frozenset()) -> None:
         super().__init__("scripted-contesto")
         self.riesce_ai = set(riesce_ai)
+        self.sbaglia_ai = set(sbaglia_ai)
         self.tentativi = 0
-        self.deve_chiudere = False
 
     def __deepcopy__(self, memo: dict) -> "ModelloContesto":
         return self
 
-    def _prossima(self) -> ModelResponse:
+    def invoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
+        return self._risposta(kwargs.get("messages", args[0] if args else []))
+
+    async def ainvoke(self, *args: Any, **kwargs: Any) -> ModelResponse:
+        return self._risposta(kwargs.get("messages", args[0] if args else []))
+
+    def _risposta(self, messaggi: list) -> ModelResponse:
         self.chiamate += 1
 
-        # Il confine fra tentativi non si conta sulle chiamate al modello: solo
-        # il tentativo che emette lo strumento ne fa due (la tool call e la
-        # riga dopo).
-        if self.deve_chiudere:
-            self.deve_chiudere = False
+        # Il confine fra tentativi si legge dai messaggi: una chiamata che
+        # vede gia' il risultato di uno strumento chiude il tentativo, non ne
+        # apre uno nuovo. Contare le chiamate non basta, perche' Agno fa o no
+        # la chiamata di chiusura secondo l'esito dello strumento.
+        if any(getattr(m, "role", None) == "tool" for m in messaggi):
             return ModelResponse(role="assistant", content="salvato", response_usage=MessageMetrics())
 
         self.tentativi += 1
         if self.tentativi in self.riesce_ai:
-            self.deve_chiudere = True
             return ModelResponse(
                 role="assistant",
                 tool_calls=[tool_call("save_session_context", summary="riassunto della prova")],
+                response_usage=MessageMetrics(),
+            )
+        if self.tentativi in self.sbaglia_ai:
+            return ModelResponse(
+                role="assistant",
+                tool_calls=[tool_call("save_session_context", summary="riassunto", plan="un piano come testo")],
                 response_usage=MessageMetrics(),
             )
         return ModelResponse(role="assistant", content="niente da aggiornare", response_usage=MessageMetrics())
@@ -331,7 +346,7 @@ MESSAGGI_CONTESTO = [
 ]
 
 
-def store_contesto(riesce_ai: set[int], tentativi: int | None = None):
+def store_contesto(riesce_ai: set[int], tentativi: int | None = None, *, sbaglia_ai: set[int] = frozenset()):
     """Lo store di contesto della prova.
 
     `tentativi` e' diverso da quello configurato: la prova pretende che valga il
@@ -344,7 +359,7 @@ def store_contesto(riesce_ai: set[int], tentativi: int | None = None):
         build_db(
             PERCORSI,
         ),
-        ModelloContesto(riesce_ai),
+        ModelloContesto(riesce_ai, sbaglia_ai),
         politica,
     )
 
@@ -386,6 +401,19 @@ def contesto_riprova() -> str:
     )
     esigi(store.get(session_id="recuperato") is not None, "il contesto recuperato non e' in archivio")
 
+    # Uno strumento chiamato con argomenti non validi non ha scritto niente:
+    # per Agno pero' e' un'esecuzione, e `context_updated` si accende lo stesso.
+    store = store_contesto({2}, sbaglia_ai={1})
+    store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="sbagliato", user_id=UTENTE)
+    esigi(
+        store.last_extraction_attempts == 2,
+        "una chiamata non valida non viene ripetuta: tentativi " + str(store.last_extraction_attempts),
+    )
+    esigi(store.get(session_id="sbagliato") is not None, "il contesto dopo una chiamata non valida non e' in archivio")
+    store = store_contesto(set(), sbaglia_ai={1, 2, 3, 4})
+    store.extract_and_save(messages=MESSAGGI_CONTESTO, session_id="sempre-sbagliato", user_id=UTENTE)
+    esigi(not store.was_updated, "`was_updated` e' vero dopo sole chiamate non valide")
+
     # Il gemello asincrono, codice diverso dal sincrono: stessi tre casi,
     # perche' il ramo che esce dal ciclo resti coperto.
     store = store_contesto({1})
@@ -416,6 +444,13 @@ def contesto_riprova() -> str:
     )
     esigi(store.get(session_id="async") is not None, "il contesto asincrono non e' in archivio")
 
+    store = store_contesto({2}, sbaglia_ai={1})
+    asyncio.run(store.aextract_and_save(messages=MESSAGGI_CONTESTO, session_id="async-sbagliato", user_id=UTENTE))
+    esigi(
+        store.last_extraction_attempts == 2 and store.get(session_id="async-sbagliato") is not None,
+        "una chiamata asincrona non valida non viene ripetuta: tentativi " + str(store.last_extraction_attempts),
+    )
+
     # Il numero viene dalla politica ricevuta, non da un nome di modulo: con
     # tre tentativi chiesti all'oggetto, il ciclo si ferma a tre anche se il
     # `.env` ne configura un altro.
@@ -429,7 +464,7 @@ def contesto_riprova() -> str:
     return (
         "1 al primo colpo, "
         + str(massimo)
-        + " al tetto e 2 recuperato, nei due percorsi sincrono e asincrono, 4 dal parametro"
+        + " al tetto, 2 recuperato dopo il silenzio e dopo una chiamata non valida, nei due percorsi, 4 dal parametro"
     )
 
 

@@ -20,6 +20,7 @@ from agno.learn.stores import (
     UserMemoryStore,
     UserProfileStore,
 )
+from agno.learn.utils import to_dict_safe
 from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
 
@@ -73,10 +74,16 @@ class AresLearningMachine(LearningMachine):
 
 
 class AresSessionContextStore(SessionContextStore):
-    """Riprova soltanto una tool call di contesto che non ha scritto nulla.
+    """Riprova soltanto un'estrazione che non ha scritto nulla.
 
     `tentativi_contesto` sono i tentativi oltre il primo. `__init__` passa il
     resto ad Agno senza fissarne la firma, che cambia fra le versioni.
+
+    Il successo non si legge da `context_updated`: Agno lo accende per
+    qualunque esecuzione dello strumento, anche una rifiutata dalla
+    validazione degli argomenti (un `plan` passato come testo), e `save`
+    inghiotte i propri errori. Conta solo un contesto riletto dall'archivio
+    uguale a quello appena salvato; `context_updated` viene riallineato.
     """
 
     last_extraction_attempts = 0
@@ -84,12 +91,31 @@ class AresSessionContextStore(SessionContextStore):
     def __init__(self, *args, tentativi_contesto: int = 0, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.tentativi_contesto = tentativi_contesto
+        self._salvato = False
+
+    def save(self, session_id: str, context: Any, *args: Any, **kwargs: Any) -> None:
+        super().save(session_id, context, *args, **kwargs)
+        self._salvato = self._salvato or self._riletto(self.get(session_id=session_id), context)
+
+    async def asave(self, session_id: str, context: Any, *args: Any, **kwargs: Any) -> None:
+        await super().asave(session_id, context, *args, **kwargs)
+        self._salvato = self._salvato or self._riletto(await self.aget(session_id=session_id), context)
+
+    @staticmethod
+    def _riletto(riletto: Any, context: Any) -> bool:
+        return riletto is not None and bool(to_dict_safe(context)) and to_dict_safe(riletto) == to_dict_safe(context)
 
     def _extract_once(self, *args, **kwargs) -> str:
-        return super().extract_and_save(*args, **kwargs)
+        self._salvato = False
+        risultato = super().extract_and_save(*args, **kwargs)
+        self.context_updated = self._salvato
+        return risultato
 
     async def _aextract_once(self, *args, **kwargs) -> str:
-        return await super().aextract_and_save(*args, **kwargs)
+        self._salvato = False
+        risultato = await super().aextract_and_save(*args, **kwargs)
+        self.context_updated = self._salvato
+        return risultato
 
     def extract_and_save(self, *args, **kwargs) -> str:
         massimo = 1 + max(0, self.tentativi_contesto)
