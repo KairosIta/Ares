@@ -19,6 +19,7 @@ anche a `python -m`.
 ```text
 ares/
 ├── config.py       impostazioni versionate e percorsi dello stato
+├── core/           nucleo applicativo: ciclo di vita della sessione, senza interfaccia
 ├── agent/          composizione dell'agente, turno, apprendimento, schemi
 ├── cli/            il comando `ares`: App Cyclopts, REPL, comandi, rendering, editor
 ├── state/          lettura degli archivi, lock, primitive di piattaforma
@@ -71,6 +72,21 @@ chat non parte finché la migrazione non è avvenuta.
   comandi di manutenzione: `table` si allarga in una pipe invece di spezzare
   le celle, `line` e `pair` non vanno a capo fuori dal terminale, `err`
   scrive su stderr e `json` emette dati puri per `--json`.
+
+### Nucleo applicativo (`ares/core/`)
+
+Ciò che un client qualsiasi deve fare allo stesso modo, senza stampare né
+chiedere niente. Per ora il ciclo di vita della sessione:
+
+- `session.py`: `Sessioni` genera l'id di una conversazione nuova, elenca
+  quelle della cartella, verifica il proprietario (`SessioneDiAltri`) e
+  costruisce l'agente all'apertura, al cambio di sessione e al cambio di
+  modalità. Restituisce una `SessioneAttiva` (id, modalità, agente); la
+  sessione corrente la tiene il client.
+- `id_sessione.py`: l'id leggibile, da cartella e momento.
+
+La CLI ne è un client: decide cosa chiedere e come mostrarlo. Il piano dei
+passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 
 ### Nucleo del turno (`ares/agent/`)
 

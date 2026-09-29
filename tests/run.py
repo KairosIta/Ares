@@ -38,6 +38,7 @@ RADICE = Path(__file__).resolve().parent.parent
 PROVE = (
     ("smoke", "smoke_test.py", False, "assemblaggio, store, lock e apprendimento simulato"),
     ("repl", "repl_test.py", False, "conferme, rendering, editor e comandi, senza l'agente"),
+    ("nucleo", "core_test.py", False, "servizio di sessione usato da un client senza terminale"),
     ("sessioni", "session_retention_test.py", False, "offload, retention, cascata e restore"),
     ("contratto", "agno_contract_test.py", False, "estrazione, conferma, retry del contesto e limiti dichiarati"),
     ("ambiti", "scoping_test.py", False, "provenienza delle memorie e filtro per namespace delle intuizioni"),

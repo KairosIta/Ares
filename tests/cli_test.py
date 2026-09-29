@@ -50,8 +50,10 @@ PERCORSI = config.leggi_percorsi()
 from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
-from ares.cli import cartella, chat  # noqa: E402
+from ares.cli import chat  # noqa: E402
 from ares.cli.ui import UI  # noqa: E402
+from ares.core import id_sessione  # noqa: E402
+from ares.core import session as nucleo_sessioni  # noqa: E402
 from ares.ops import inspect_learning, preflight  # noqa: E402
 from ares.sessions import maintenance  # noqa: E402
 from ares.state.identita import Utente, UtenteNonValido, utente_canonico  # noqa: E402
@@ -320,12 +322,12 @@ def id_sessione_univoci() -> str:
     Nome della cartella piu' secondi non distingue `/a/api` da `/b/api`.
     """
     quando = datetime(2026, 9, 21, 12, 0, 0)
-    a = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando, suffisso="aaa111")
-    b = cartella.nuovo_id_sessione(Path("/progetti/b/api"), quando, suffisso="bbb222")
+    a = id_sessione.nuovo_id_sessione(Path("/progetti/a/api"), quando, suffisso="aaa111")
+    b = id_sessione.nuovo_id_sessione(Path("/progetti/b/api"), quando, suffisso="bbb222")
     esigi(a == "api-20260921-120000-aaa111", "formato dell'id inatteso: " + repr(a))
     esigi(a != b, "cartelle omonime producono lo stesso id")
-    primo = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando)
-    secondo = cartella.nuovo_id_sessione(Path("/progetti/a/api"), quando)
+    primo = id_sessione.nuovo_id_sessione(Path("/progetti/a/api"), quando)
+    secondo = id_sessione.nuovo_id_sessione(Path("/progetti/a/api"), quando)
     esigi(primo != secondo, "due avvii nello stesso istante producono lo stesso id")
     return "id distinti per cartelle omonime e nello stesso istante"
 
@@ -989,7 +991,7 @@ def chat_memoria_protetta() -> str:
         # codice condiviso "occupato", senza avviare il modello.
         with (
             lock_turno(PERCORSI, Utente.da_grezzo(utente)),
-            patch.object(chat, "build_assistant", lambda *a, **k: agent),
+            patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: agent),
             patch.object(chat, "CliInput", lambda **k: FintoInput(["riprova piu' tardi"])),
             patch.object(chat, "run_turn_cycle") as ciclo_spia,
             redirect_stdout(io.StringIO()),
@@ -1025,7 +1027,7 @@ def chat_ciclo() -> str:
 
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda *a, **k: object()),
+        patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: ["Ultimo backup: mai", "Esegui ares backup create"]),
@@ -1049,7 +1051,7 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda *a, **k: object()),
+        patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
@@ -1068,7 +1070,7 @@ def chat_ciclo() -> str:
     input_cli = FintoInput(["ciao Ares"])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", lambda *a, **k: object()),
+        patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
@@ -1103,7 +1105,7 @@ def chat_cartella() -> str:
         return object()
 
     uscita = io.StringIO()
-    with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+    with patch.object(nucleo_sessioni, "build_assistant", costruisci), redirect_stdout(uscita):
         esito = chat._esegui_chat(session=SESSIONE, user=UTENTE, workspace=Path(originale) / "non-esiste")
     testo = _piatto(uscita.getvalue())
     esigi(esito == 1, "una cartella inesistente non esce con 1: " + str(esito))
@@ -1112,7 +1114,7 @@ def chat_cartella() -> str:
 
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat.cartella, "autorizza", lambda percorso, percorsi, *, esplicito: False),
         redirect_stdout(uscita),
     ):
@@ -1129,7 +1131,7 @@ def chat_cartella() -> str:
     input_cli = FintoInput(["/cartella", KeyboardInterrupt])
     uscita = io.StringIO()
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat, "CliInput", lambda **k: input_cli),
         patch.object(chat, "promemoria_backup", lambda *a, **k: []),
         redirect_stdout(uscita),
@@ -1165,7 +1167,7 @@ def chat_cartella() -> str:
         input_cli = FintoInput(["/cartella", KeyboardInterrupt])
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: input_cli),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             redirect_stdout(uscita),
@@ -1202,7 +1204,7 @@ def chat_sessioni() -> str:
     def avvio(**argomenti) -> tuple[int, str]:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             patch.object(sys, "stdin", io.StringIO()),
@@ -1280,7 +1282,7 @@ def chat_sessioni() -> str:
 
     uscita, errori = io.StringIO(), io.StringIO()
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(sys, "stdin", io.StringIO("dati dalla pipe\n")),
         redirect_stdout(uscita),
@@ -1308,7 +1310,7 @@ def chat_sessioni() -> str:
     # `piano` non lascia tracce: con `-p` passa, ed e' l'altra meta' della
     # regola che rifiuta `auto` e `modifiche`.
     with (
-        patch.object(chat, "build_assistant", costruisci),
+        patch.object(nucleo_sessioni, "build_assistant", costruisci),
         patch.object(chat, "run_turn_cycle", ciclo),
         patch.object(sys, "stdin", io.StringIO()),
         redirect_stdout(io.StringIO()),
@@ -1376,7 +1378,7 @@ def migrazione_stato() -> str:
         )
 
         uscita = io.StringIO()
-        with patch.object(chat, "build_assistant", costruisci), redirect_stdout(uscita):
+        with patch.object(nucleo_sessioni, "build_assistant", costruisci), redirect_stdout(uscita):
             esito = chat._esegui_chat(user=UTENTE)
         esigi(esito == 1 and not costruiti, "la chat e' partita con lo stato ancora nel posto di prima")
         esigi("migrate" in uscita.getvalue(), "la chat non dice come spostare lo stato: " + repr(uscita.getvalue()))
@@ -1487,7 +1489,7 @@ def chat_residui() -> str:
     def avvia() -> str:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", lambda *a, **k: object()),
+            patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
             patch.object(chat, "CliInput", lambda **k: FintoInput([])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             redirect_stdout(uscita),
@@ -1588,7 +1590,7 @@ def chat_avvio() -> str:
     with (
         lock_stato(PERCORSI.lock_file, esclusivo=True),
         patch.object(chat, "run_turn_cycle") as ciclo_spia,
-        patch.object(chat, "build_assistant") as costruzione_spia,
+        patch.object(nucleo_sessioni, "build_assistant") as costruzione_spia,
         redirect_stdout(uscita_pipe),
         redirect_stderr(errori_pipe),
     ):
@@ -1715,7 +1717,7 @@ def chat_non_presidiato() -> str:
     def avvio(*, presidiato: bool) -> int:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             patch.object(sys, "stdin", SimpleNamespace(isatty=lambda: presidiato)),
@@ -1764,7 +1766,7 @@ def chat_sessione_altrui() -> str:
     def avvio(**argomenti) -> tuple[int, str]:
         uscita = io.StringIO()
         with (
-            patch.object(chat, "build_assistant", costruisci),
+            patch.object(nucleo_sessioni, "build_assistant", costruisci),
             patch.object(chat, "CliInput", lambda **k: FintoInput([KeyboardInterrupt])),
             patch.object(chat, "promemoria_backup", lambda *a, **k: []),
             patch.object(sys, "stdin", io.StringIO()),

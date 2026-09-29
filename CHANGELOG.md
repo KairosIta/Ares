@@ -6,6 +6,17 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **Nucleo applicativo: il servizio di sessione.** `ares/core/session.py`
+  decide l'id di una conversazione nuova, le sessioni della cartella da
+  riprendere, il proprietario prima di aprire e la costruzione dell'agente al
+  cambio di sessione o di modalità. La CLI ne è un client: `cli/chat.py` e
+  `cli/commands.py` non chiamano più `build_assistant` né
+  `sessione_di_altri`, e `nuovo_id_sessione` ha una copia sola, in
+  `core/id_sessione.py`. Nessun cambiamento visibile all'utente. La prova
+  `nucleo` usa il servizio come un client senza terminale.
+
 ### Changed
 
 - **Commenti e documentazione essenziali.** Docstring e commenti dicono il

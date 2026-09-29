@@ -31,7 +31,6 @@ from pathlib import Path
 from agno.run.agent import RunOutput
 
 from ares import config
-from ares.agent.assistant import build_assistant
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
 from ares.agent.prompts import percorso_istruzioni
 from ares.agent.turn_core import run_turn_cycle
@@ -44,12 +43,12 @@ from ares.cli.log import configura_log_agno
 from ares.cli.render import chiedi_conferme, finestra_occupata, mostra_evento, quota_finestra, righe_metriche
 from ares.cli.ui import UI
 from ares.config import Impostazioni, Percorsi, Politica
+from ares.core.session import SessioneDiAltri, Sessioni
 from ares.ops import migrazione
-from ares.state.archivi import build_db
 from ares.state.git import ramo_git
 from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato, lock_stato, lock_turno
-from ares.state.stores import con_run, prima_domanda, quando_sessione, sessione_di_altri, sessioni_della_cartella
+from ares.state.stores import prima_domanda, quando_sessione
 
 
 def riga_stato(stato: StatoChat) -> str:
@@ -158,37 +157,31 @@ def _conferma_apprendimenti(agent, stato, input_cli: CliInput) -> None:
         UI.line("   controlla con /profilo e /memorie, o correggi con gli strumenti di memoria", style="ares.muted")
 
 
-def _sessione_da_aprire(
-    percorsi: Percorsi, utente: Utente, radice: Path | None, *, riprendi: bool, scegli: bool, politica: Politica
-) -> tuple[str | None, str]:
+def _sessione_da_aprire(sessioni: Sessioni, *, riprendi: bool, scegli: bool) -> tuple[str | None, str]:
     """Quale conversazione aprire quando `--session` non lo dice, e come chiamarla nel banner.
 
-    Senza `resume` e' una conversazione nuova, nominata da cartella e momento.
-    Con `resume` e' l'ultima di questa cartella, o una scelta dall'elenco.
-    `None`: niente da riprendere, e l'utente e' gia' stato avvisato.
+    Senza `resume` e' una conversazione nuova. Con `resume` e' l'ultima di
+    questa cartella, o una scelta dall'elenco. `None`: niente da riprendere,
+    e l'utente e' gia' stato avvisato.
     """
-    if radice is None:
-        # Senza spazio di lavoro non c'e' una cartella a cui legarsi: resta
-        # il nome di prima, e `resume` non ha da dove riprendere.
+    if not sessioni.con_cartella:
         if riprendi:
             UI.line("Senza cartella di lavoro non c'e' niente da riprendere: usa --session.", style="ares.error")
             return None, ""
-        return "principale", ""
+        return sessioni.id_nuovo(), ""
     if not riprendi:
-        return cartella.nuovo_id_sessione(radice), "nuova"
-    precedenti = sessioni_della_cartella(build_db(percorsi), utente, radice)
+        return sessioni.id_nuovo(), "nuova"
+    precedenti = sessioni.della_cartella()
     if not precedenti:
         UI.line("Nessuna conversazione in questa cartella: `ares` da solo ne apre una nuova.", style="ares.warning")
         return None, ""
     if scegli:
-        UI.heading("Conversazioni in " + str(radice))
-        scelta = cartella.scegli_sessione(
-            [con_run(build_db(percorsi), s) for s in precedenti[: politica.mostra.sessioni]]
-        )
+        UI.heading("Conversazioni in " + str(sessioni.percorsi.lavoro))
+        scelta = cartella.scegli_sessione(sessioni.con_scambi(precedenti[: sessioni.politica.mostra.sessioni]))
         if scelta is None:
             UI.line("Nessuna conversazione ripresa.", style="ares.muted")
         return scelta, "ripresa"
-    ultima = con_run(build_db(percorsi), precedenti[0])
+    ultima = sessioni.con_scambi(precedenti[:1])[0]
     scambi = len(getattr(ultima, "runs", None) or [])
     conto = str(scambi) + (" scambio" if scambi == 1 else " scambi")
     UI.pair("Riprendo", str(ultima.session_id) + "   " + quando_sessione(ultima) + "   " + conto)
@@ -461,37 +454,28 @@ def _apri_chat(
     # gia' esistere privato.
     config.prepara_archivio(percorsi)
 
+    # Senza terminale nessuno legge l'eco: apprendimento spento come in `-p`.
+    # `interattivo` passa anche alle ricostruzioni tramite `StatoChat`.
+    interattivo = prompt is None and presidiato
+    sessioni = Sessioni(percorsi, impostazioni, politica, utente, debug=debug, interattivo=interattivo)
+
     etichetta = ""
     if session is None:
-        session, etichetta = _sessione_da_aprire(
-            percorsi, utente, radice, riprendi=riprendi, scegli=scegli, politica=politica
-        )
+        session, etichetta = _sessione_da_aprire(sessioni, riprendi=riprendi, scegli=scegli)
         if session is None:
             return ESITO_RIFIUTO
 
-    # Il nome esplicito scavalca gli elenchi per cartella: una sessione di un
-    # altro utente non si apre.
-    if sessione_di_altri(build_db(percorsi), session, utente):
+    configura_log_agno(debug)
+    try:
+        agent = sessioni.apri(session, modo=modo).agente
+    except SessioneDiAltri:
+        # Il nome esplicito scavalca gli elenchi per cartella: una sessione di
+        # un altro utente non si apre.
         UI.line(
             "La sessione '" + session + "' appartiene a un altro utente: non si apre.",
             style="ares.error",
         )
         return ESITO_RIFIUTO
-
-    configura_log_agno(debug)
-    # Senza terminale nessuno legge l'eco: apprendimento spento come in `-p`.
-    # `interattivo` passa anche alle ricostruzioni tramite `StatoChat`.
-    interattivo = prompt is None and presidiato
-    agent = build_assistant(
-        percorsi,
-        impostazioni,
-        politica,
-        utente,
-        session_id=session,
-        debug=debug,
-        interattivo=interattivo,
-        modo=modo,
-    )
 
     # Il flag di config e' il default; l'opzione lo accende per questa sessione.
     stato = StatoChat(

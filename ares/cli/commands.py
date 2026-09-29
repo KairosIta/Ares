@@ -10,13 +10,13 @@ from agno.agent import Agent
 from agno.db.base import SessionType
 
 from ares import config
-from ares.agent.assistant import build_assistant
 from ares.agent.prompts import percorso_istruzioni
 from ares.cli import cartella
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.config import Impostazioni, Percorsi, Politica
-from ares.state.archivi import build_db, build_filesystem
+from ares.core.session import SessioneDiAltri, Sessioni
+from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
 from ares.state.stores import (
@@ -26,7 +26,6 @@ from ares.state.stores import (
     quando_sessione,
     righe_entita,
     righe_sessione,
-    sessione_di_altri,
     testo_conversazione,
 )
 
@@ -76,6 +75,18 @@ class Comando(NamedTuple):
 # Ogni comando ha la stessa firma, per stare nella tabella `COMANDI`.
 # `argomento` e' cio' che segue il primo spazio; chi non lo usa lo ignora.
 # Chi restituisce False chiude la sessione.
+
+
+def _sessioni(stato: StatoChat) -> Sessioni:
+    """Il servizio di sessione con la configurazione di questa conversazione."""
+    return Sessioni(
+        stato.percorsi,
+        stato.impostazioni,
+        stato.politica,
+        stato.utente,
+        debug=stato.debug,
+        interattivo=stato.interattivo,
+    )
 
 
 def _comando_aiuto(stato: StatoChat, argomento: str) -> None:
@@ -157,24 +168,16 @@ def _comando_sessione(stato: StatoChat, argomento: str) -> None:
         if not stato.politica.workspace.attivo:
             UI.line("Senza cartella di lavoro il nome lo scegli tu: /sessione <nome>.", style="ares.warning")
             return
-        nome = cartella.nuovo_id_sessione(stato.percorsi.lavoro)
+        nome = _sessioni(stato).id_nuovo()
     elif nome == stato.session_id:
         UI.line("Sei gia' nella sessione '" + nome + "'.", style="ares.muted")
         return
-    if sessione_di_altri(build_db(stato.percorsi), nome, stato.utente):
+    try:
+        attiva = _sessioni(stato).apri(nome, modo=stato.modo)
+    except SessioneDiAltri:
         UI.line("La sessione '" + nome + "' appartiene a un altro utente: non si apre.", style="ares.error")
         return
-    stato.agent = build_assistant(
-        stato.percorsi,
-        stato.impostazioni,
-        stato.politica,
-        stato.utente,
-        session_id=nome,
-        debug=stato.debug,
-        interattivo=stato.interattivo,
-        modo=stato.modo,
-    )
-    stato.session_id = nome
+    stato.agent, stato.session_id = attiva.agente, attiva.id
     UI.pair("Sessione", nome + ("  (nuova)" if nuova else ""), style="ares.title")
     if nuova:
         UI.line("Contesto vuoto; profilo e memorie non cambiano.", style="ares.muted")
@@ -218,17 +221,8 @@ def _comando_modo(stato: StatoChat, argomento: str) -> None:
     if nome == stato.modo:
         UI.line("Sei gia' in modalita' '" + nome + "'.", style="ares.muted")
         return
-    stato.agent = build_assistant(
-        stato.percorsi,
-        stato.impostazioni,
-        stato.politica,
-        stato.utente,
-        session_id=stato.session_id,
-        debug=stato.debug,
-        interattivo=stato.interattivo,
-        modo=nome,
-    )
-    stato.modo = nome
+    attiva = _sessioni(stato).apri(stato.session_id, modo=nome)
+    stato.agent, stato.modo = attiva.agente, attiva.modo
     UI.pair("Modalita'", nome, style="ares.title")
     UI.line("Stessa sessione, strumenti e prompt della modalita' nuova.", style="ares.muted")
 

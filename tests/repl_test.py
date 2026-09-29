@@ -1249,7 +1249,7 @@ def stato_della_chat() -> str:
     `StatoChat` e che il cambio di sessione ricostruisca l'agente con il nome
     nuovo.
     """
-    from ares.cli import commands
+    from ares.core import session as nucleo_sessioni
 
     class AgenteFinto:
         def __init__(self, session_id: str, debug: bool) -> None:
@@ -1289,7 +1289,7 @@ def stato_della_chat() -> str:
 
     def comando(riga: str) -> str:
         catturato = io.StringIO()
-        with contextlib.redirect_stdout(catturato), patch.object(commands, "build_assistant", costruisci):
+        with contextlib.redirect_stdout(catturato), patch.object(nucleo_sessioni, "build_assistant", costruisci):
             esigi(gestisci_comando(riga, stato) is True, riga + " chiude la sessione")
         return catturato.getvalue()
 
@@ -1682,6 +1682,7 @@ def conversazioni_per_cartella() -> str:
 
     from ares.agent.prompts import istruzioni_sulle_conversazioni
     from ares.cli import cartella
+    from ares.core.id_sessione import nuovo_id_sessione
     from ares.state.stores import cartella_sessione, leggi_sessioni, righe_sessione, sessioni_della_cartella
 
     class Messaggio:
@@ -1758,9 +1759,9 @@ def conversazioni_per_cartella() -> str:
     esigi(not any("cartella:" in r for r in righe_sessione(prima)), "la cartella compare anche senza chiederla")
 
     momento = datetime(2026, 9, 7, 9, 15, 30)
-    ident = cartella.nuovo_id_sessione(Path("/x/Mio Progetto_2"), momento, suffisso="abc123")
+    ident = nuovo_id_sessione(Path("/x/Mio Progetto_2"), momento, suffisso="abc123")
     esigi(ident == "mio-progetto-2-20260907-091530-abc123", "id nuovo inatteso: " + ident)
-    radice = cartella.nuovo_id_sessione(Path("/"), momento, suffisso="abc123")
+    radice = nuovo_id_sessione(Path("/"), momento, suffisso="abc123")
     esigi(radice == "cartella-20260907-091530-abc123", "la radice non ha un ripiego")
 
     testo = istruzioni_sulle_conversazioni([prima], cartella=qui, politica=POLITICA)

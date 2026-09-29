@@ -1,42 +1,50 @@
 # Piano di refactor del core applicativo
 
-Data: 2026-09-28.
-**Stato: piano iniziale, non ancora implementato.**
+Data: 2026-09-28, aggiornato il 2026-09-29.
+**Stato: primo passaggio implementato (servizio di sessione).**
 
 ## Obiettivo
-Creare un nucleo applicativo indipendente dall'interfaccia, a partire dal
-ciclo di vita della sessione.
+Un nucleo applicativo indipendente dall'interfaccia, a partire dal ciclo di
+vita della sessione. L'analisi di partenza è in
+[core-refactor-audit.md](core-refactor-audit.md).
 
-## Primo modulo
-- `ares/core/session.py`
-  - `SessioneRiferimento`
-  - `SessioneAttiva`
-  - `Sessioni`
-  - `elenco`
-  - `nuova`
-  - `apri`
-  - `riprendi`
+## Primo passaggio: la sessione (fatto)
 
-## Ordine di lavoro
-1. Creare il modulo di sessione con le firme del contratto minimo.
-2. Portare dentro il servizio:
-   - generazione dell'id di sessione;
-   - verifica del proprietario;
-   - apertura e ripresa;
-   - cambio di sessione;
-   - cambio di modalità.
-3. Far diventare la CLI un client del servizio.
-4. Rimuovere dalla CLI la logica di coordinamento della sessione.
-5. Aggiungere prove per il servizio e per un client senza terminale.
+`ares/core/session.py`, con la CLI come client:
 
-## Cosa non toccare nel primo passaggio
-- il formato degli archivi;
-- la logica di apprendimento;
-- la politica di conferma;
-- la retention delle sessioni;
-- la struttura dei lock.
+| Decisione | Prima | Ora |
+| --- | --- | --- |
+| id di una conversazione nuova | `cli/cartella.nuovo_id_sessione` | `Sessioni.id_nuovo` (`core/id_sessione.py`) |
+| sessioni della cartella per `resume` | `cli/chat` + `state/stores` | `Sessioni.della_cartella`, `con_scambi` |
+| proprietario prima di aprire | `cli/chat`, `cli/commands` | `Sessioni.apri` → `SessioneDiAltri` |
+| costruzione dell'agente | `cli/chat`, `/sessione`, `/modo` | `Sessioni.apri`, `nuova`, `cambia_modo` |
 
-## Risultato atteso
-La CLI diventa solo un client del servizio di sessione, senza decidere
-come nasce, come si apre o come si cambia una conversazione. Un secondo
-client senza terminale deve poter ottenere gli stessi effetti.
+La prova `nucleo` (`tests/core_test.py`) usa il servizio come un client
+senza terminale.
+
+Differenze dalla bozza di API in [responsibility-map.md](responsibility-map.md):
+
+- **Servizio senza stato proprio.** La sessione corrente resta al client, che
+  riceve una `SessioneAttiva` (id, modalità, agente) a ogni apertura. La CLI
+  costruisce il servizio dalla configurazione della conversazione.
+- **Niente `SessioneRiferimento`, `elenco` e `riprendi`, per ora.** Elenchi e
+  rendering (`/sessioni`, `ares resume --scegli`, le istruzioni al modello)
+  lavorano ancora sulle sessioni di Agno tramite `state/stores.py`: un
+  riferimento proprio va introdotto quando un secondo client ne avrà bisogno,
+  insieme a un `elenco` che lo restituisca. La scelta fra «ultima» e «scelta
+  dall'elenco» è una domanda all'utente, quindi resta alla CLI.
+
+## Passi successivi
+
+1. **Turno, lock e conferma degli apprendimenti.** Oggi `cli/chat` tiene il
+   lock del turno per l'intera sequenza fotografia → turno → differenza →
+   conferma → ripristino. Va spostata in un servizio `Turni` che riceva una
+   funzione per chiedere la conferma: senza, un client senza terminale non
+   ottiene gli stessi effetti della CLI.
+2. **Riferimenti di sessione.** `SessioneRiferimento` ed `elenco` per gli
+   elenchi, così la CLI smette di leggere le sessioni di Agno.
+
+## Cosa non si tocca
+
+Il formato degli archivi, la logica di apprendimento, la retention delle
+sessioni e la struttura dei lock.

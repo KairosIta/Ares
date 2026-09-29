@@ -48,9 +48,9 @@ def _ispeziona(
 ) -> None:
     from ares.agent.assistant import build_assistant
     from ares.agent.prompts import messaggio_di_sistema
-    from ares.cli.cartella import nuovo_id_sessione
     from ares.cli.log import configura_log_agno
     from ares.cli.ui import stampa_store
+    from ares.core.id_sessione import nuovo_id_sessione
     from ares.state.archivi import build_filesystem
     from ares.state.stores import leggi_entita, leggi_intuizioni, righe_entita
 
