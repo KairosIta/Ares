@@ -34,7 +34,9 @@ dependencies = [
     "tantivy",
     # Backend SQLite di Agno (SqliteDb): profilo, memorie, entita', sessioni e
     # il filesystem privato dell'agente. Non e' una dipendenza di agno base.
-    "sqlalchemy",
+    # L'extra asyncio porta greenlet: `agno.db.sqlite` importa
+    # `sqlalchemy.ext.asyncio`, e dalla 2.1 greenlet non arriva piu' da solo.
+    "sqlalchemy[asyncio]",
     # Non lo usiamo: lo pretende l'__init__ di agno.models.ollama, che importa
     # OllamaResponses insieme a Ollama.
     "openai",
@@ -49,7 +51,7 @@ dependencies = [
     # Il comando `ares` e i suoi sottocomandi, da firme e docstring delle
     # funzioni, con aiuto in Rich e completamento della shell. Il pavimento e'
     # la versione con cui l'aiuto e' stato disegnato.
-    "cyclopts>=4.24.0",
+    "cyclopts>=5.0.0",
     # Lock cooperativi condivisi/esclusivi su POSIX e Windows. L'extra win32
     # aggiunge pywin32 solo su Windows, dove serve per conservare i lock
     # condivisi usati dalle chat concorrenti.

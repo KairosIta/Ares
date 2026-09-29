@@ -42,6 +42,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **SQLAlchemy 2.1 e Cyclopts 5.** SQLAlchemy 2.1 non installa più
+  `greenlet`, che serve ad `agno.db.sqlite` per `sqlalchemy.ext.asyncio`: la
+  dipendenza diventa `sqlalchemy[asyncio]`. Con Cyclopts 5 l'aiuto dei
+  comandi mostra il tipo accanto a ogni opzione (`--session STR`,
+  `--workspace PATH`, `--modo CHOICE`); il resto dell'aiuto non cambia.
 - **Commenti e documentazione essenziali.** Docstring e commenti dicono il
   contratto e il perché non ovvio; la storia del codice resta qui e nei
   commit. Circa il 40% in meno di commenti nel pacchetto, senza cambiare una
