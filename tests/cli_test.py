@@ -1399,6 +1399,13 @@ def migrazione_stato() -> str:
             esito = chat._esegui_chat(user=UTENTE)
         esigi(esito == 1 and not costruiti, "la chat e' partita con lo stato ancora nel posto di prima")
         esigi("migrate" in uscita.getvalue(), "la chat non dice come spostare lo stato: " + repr(uscita.getvalue()))
+        # `inspect` apre lo stato come la chat: si ferma e lo dice, invece di
+        # mostrare un archivio vuoto.
+        errori = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(errori):
+            esito = inspect_learning.ispeziona(user=UTENTE)
+        esigi(esito == 1 and "migrate" in errori.getvalue(), "inspect legge lo stato rimasto nel posto di prima")
+        esigi(not nuovo.stato.exists(), "chat o inspect hanno creato lo stato nuovo accanto a quello vecchio")
 
         # Il vecchio lock si toglie mentre e' ancora tenuto: fra `close` e
         # `unlink` un altro processo potrebbe prenderlo. La sonda guarda se il
@@ -1588,7 +1595,7 @@ def chat_avvio() -> str:
     uscita = io.StringIO()
     codice = 0
     with (
-        patch.object(chat, "lock_stato", lambda *_, **__: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
+        patch.object(chat, "stato_in_uso", lambda *_, **__: (_ for _ in ()).throw(StatoOccupato("backup in corso"))),
         redirect_stderr(uscita),
     ):
         try:
@@ -1601,8 +1608,8 @@ def chat_avvio() -> str:
     esigi("backup in corso" in testo, "il motivo dell'occupazione non compare")
     esigi("riprova" in testo, "non viene suggerito di riprovare")
 
-    # Il lock dello stato si acquisisce prima del contesto di output della
-    # pipe: anche questo rifiuto deve lasciare stdout vuoto.
+    # Con `-p` anche il rifiuto dello stato occupato va su stderr: stdout
+    # resta vuoto, e l'agente non nasce.
     uscita_pipe, errori_pipe = io.StringIO(), io.StringIO()
     with (
         lock_stato(PERCORSI.lock_file, esclusivo=True),
@@ -1695,7 +1702,7 @@ def chat_non_presidiato() -> str:
     """
 
     def guardia(*, modo: str, scegli: bool, presidiato: bool) -> int | None:
-        return chat._guardie_di_avvio(prompt=None, scegli=scegli, modo=modo, percorsi=PERCORSI, presidiato=presidiato)
+        return chat._guardie_di_avvio(prompt=None, scegli=scegli, modo=modo, presidiato=presidiato)
 
     for modo in ("auto", "modifiche"):
         esigi(

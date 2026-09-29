@@ -48,6 +48,9 @@ class Sessioni:
     spazio di lavoro e' acceso. `presidiato` e' la presenza dichiarata dal
     client e vale per ogni agente costruito: senza, niente apprendimento
     (nessuno leggerebbe l'eco) e niente modalita' che scrivono in silenzio.
+
+    Il client lo costruisce con lo stato gia' in uso (`core/stato.py`);
+    costruirlo prepara la directory dello stato.
     """
 
     def __init__(
@@ -67,6 +70,7 @@ class Sessioni:
         self.debug = debug
         self.presidiato = presidiato
         self._db: Any = None
+        config.prepara_archivio(percorsi)
 
     @property
     def db(self) -> Any:

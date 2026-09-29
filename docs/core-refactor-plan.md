@@ -1,7 +1,7 @@
 # Piano di refactor del core applicativo
 
 Data: 2026-09-28, aggiornato il 2026-09-29.
-**Stato: implementati i primi tre passaggi (sessione, turno, autorizzazioni).**
+**Stato: implementati i primi quattro passaggi (sessione, turno, autorizzazioni, stato in uso).**
 
 ## Obiettivo
 Un nucleo applicativo indipendente dall'interfaccia, a partire dal ciclo di
@@ -79,11 +79,30 @@ Restano alla CLI le conferme scritte di `cli/cartella.py` e
 `cli/conferma.py` (cartella rischiosa, restore, prune, fusione): sono
 domande di manutenzione, non del turno.
 
+## Quarto passaggio: lo stato in uso (fatto)
+
+`ares/core/stato.py`. Un client apre lo stato con `stato_in_uso(percorsi)`
+e lo tiene per tutta la sua vita:
+
+| Condizione | Prima | Ora |
+| --- | --- | --- |
+| lock condiviso, contro backup, restore e migrazione | `avvia` in `cli/chat.py`, `ares inspect` | `stato_in_uso` → `StatoOccupato` |
+| stato ancora nel posto delle versioni vecchie | `_guardie_di_avvio`, con `ops/migrazione.py` | `stato_in_uso` → `StatoDaMigrare`, controllato sotto il lock |
+| directory dello stato privata | `cli/chat.py`, dopo la cartella | `Sessioni`, alla costruzione |
+
+Il rilevamento delle parti da spostare (`parti`, `conflitti`) sta in
+`state/vecchio_posto.py`: `ops/migrazione.py` importa la CLI e il nucleo non
+può dipendere da lei. `ares inspect` apre lo stato come la chat, e con una
+migrazione in sospeso lo dice invece di mostrare un archivio vuoto.
+
+La chat rifiuta prima gli argomenti incoerenti (modalità, `--scegli` con
+`-p`), senza lock; poi apre lo stato, chiede la cartella e costruisce
+`Sessioni`. Aprire lo stato non scrive al suo interno: un avvio rifiutato
+non lascia niente dietro di sé.
+
 ## Passi successivi
 
-1. **Lock dello stato.** Dura quanto la chat e lo prende ancora
-   `cli/chat.py`; va offerto dal servizio insieme all'apertura.
-2. **Riferimenti di sessione.** `SessioneRiferimento` ed `elenco` per gli
+1. **Riferimenti di sessione.** `SessioneRiferimento` ed `elenco` per gli
    elenchi, così la CLI smette di leggere le sessioni di Agno.
 
 ## Cosa non si tocca

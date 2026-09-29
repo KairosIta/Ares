@@ -2,8 +2,8 @@
 ==============================================
 
 `ares.core` decide id, proprietario e ricostruzione dell'agente, le
-modalita' ammesse e cosa fare di una richiesta di autorizzazione; la CLI e'
-solo uno dei suoi client. Qui lo si usa come farebbe una UI senza terminale:
+modalita' ammesse, cosa fare di una richiesta di autorizzazione e quando lo
+stato si puo' usare; la CLI e' solo uno dei suoi client. Qui lo si usa come farebbe una UI senza terminale:
 nessuna stampa, nessun input, solo chiamate e valori restituiti.
 
 Offline: nessuna chiamata al modello. L'agente vero si costruisce una volta,
@@ -13,6 +13,7 @@ sostituito da uno che registra.
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
@@ -32,7 +33,9 @@ from ares.core import turn as nucleo_turno  # noqa: E402
 from ares.core.autorizzazioni import Decisione, ModoNonAmmesso, risolvi_pausa, verifica_modo  # noqa: E402
 from ares.core.id_sessione import nuovo_id_sessione  # noqa: E402
 from ares.core.session import SessioneDiAltri, Sessioni  # noqa: E402
+from ares.core.stato import StatoDaMigrare, stato_in_uso  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
+from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
 
 UTENTE = Utente.da_grezzo("prova-nucleo")
 ALTRO = Utente.da_grezzo("prova-nucleo-altro")
@@ -215,6 +218,45 @@ def autorizzazioni() -> str:
     return "si', no con motivo, cartella e quaderno distinti, rifiuto senza presenza"
 
 
+def _esclusivo_libero(percorsi) -> bool:
+    """Vero se backup e restore potrebbero partire adesso."""
+    try:
+        with lock_stato(percorsi.lock_file, esclusivo=True):
+            return True
+    except StatoOccupato:
+        return False
+
+
+def stato_in_uso_dal_client() -> str:
+    """Il client tiene lo stato: backup e restore aspettano, e lo stato da migrare non si apre."""
+    with stato_in_uso(PERCORSI), stato_in_uso(PERCORSI):
+        esigi(not _esclusivo_libero(PERCORSI), "con lo stato in uso un backup potrebbe partire")
+    esigi(_esclusivo_libero(PERCORSI), "il lock condiviso resta dopo l'uscita")
+
+    vecchio = RADICE_PROVA / "vecchio-clone" / "tmp"
+    vecchio.mkdir(parents=True)
+    (vecchio / "kairos.db").write_text("db", encoding="utf-8")
+    casa = RADICE_PROVA / "casa-nuova"
+    nuovi = replace(PERCORSI, home=casa, stato=casa / "stato", backup=casa / "backup")
+    with patch.object(config, "VECCHIO_TMP_DIR", vecchio):
+        try:
+            with stato_in_uso(nuovi):
+                raise AssertionError("lo stato nel posto di prima si apre")
+        except StatoDaMigrare as errore:
+            esigi([p[0] for p in errore.parti] == ["lo stato"], "parti da spostare sbagliate: " + repr(errore.parti))
+    esigi(not nuovi.stato.exists(), "il rifiuto ha creato lo stato nuovo")
+    esigi(_esclusivo_libero(nuovi), "il rifiuto lascia il lock condiviso")
+
+    # Aprire lo stato non scrive; il servizio di sessione prepara la directory, privata.
+    with stato_in_uso(nuovi):
+        esigi(not nuovi.stato.exists(), "aprire lo stato ha creato la directory")
+        Sessioni(nuovi, IMPOSTAZIONI, POLITICA, UTENTE, presidiato=True)
+        esigi(nuovi.stato.is_dir(), "il servizio di sessione non prepara la directory dello stato")
+        if os.name == "posix":
+            esigi((nuovi.stato.stat().st_mode & 0o777) == 0o700, "la directory dello stato non e' privata")
+    return "lock condiviso finche' serve, migrazione in sospeso rifiutata senza scrivere, directory privata"
+
+
 def sessione_altrui() -> str:
     """La sessione di un altro utente solleva `SessioneDiAltri` senza costruire l'agente."""
     servizio = _servizio()
@@ -374,6 +416,7 @@ PROVE = (
     ("apertura e modo", apertura_e_modo),
     ("modalita' ammesse", modalita_ammesse),
     ("autorizzazioni", autorizzazioni),
+    ("stato in uso", stato_in_uso_dal_client),
     ("sessione altrui", sessione_altrui),
     ("della cartella", sessioni_della_cartella),
     ("agente vero", agente_vero),

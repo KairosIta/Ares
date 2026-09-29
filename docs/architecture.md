@@ -84,6 +84,9 @@ chiedere niente: il ciclo di vita della sessione e il turno completo.
   modalità. Restituisce una `SessioneAttiva` (id, modalità, agente); la
   sessione corrente la tiene il client.
 - `id_sessione.py`: l'id leggibile, da cartella e momento.
+- `stato.py`: `stato_in_uso` tiene il lock condiviso dello stato per tutta
+  la vita del client e rifiuta lo stato rimasto nel posto delle versioni
+  vecchie (`StatoDaMigrare`). La usano la chat e `ares inspect`.
 - `autorizzazioni.py`: le regole che seguono dalla presenza dichiarata dal
   client. Senza presenza nessuna modalità scrive in silenzio
   (`verifica_modo`, anche per `/modo`) e ogni strumento in pausa è
@@ -152,7 +155,7 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   cartella, `ares resume` solo quelle di qui.
 - `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato;
   `platform_files.py` ne uniforma le primitive fra POSIX e Windows. Le chat
-  tengono il lock condiviso. Un secondo lock esclusivo per utente copre
+  tengono il lock condiviso, attraverso `core/stato.py`. Un secondo lock esclusivo per utente copre
   ogni turno, dall'istantanea degli apprendimenti alla conferma e al
   rollback: una seconda chat dello stesso utente resta aperta, ma un turno
   occupato viene rifiutato prima di leggere l'istantanea o chiamare il
