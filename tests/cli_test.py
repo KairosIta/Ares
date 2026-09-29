@@ -1000,7 +1000,9 @@ def chat_memoria_protetta() -> str:
         ):
             esigi(chat.avvia(session=SESSIONE, user=utente) == 0, "la contesa ha chiuso la REPL con errore")
             uscita_pipe, errori_pipe = io.StringIO(), io.StringIO()
-            with redirect_stdout(uscita_pipe), redirect_stderr(errori_pipe):
+            # `-p` legge stdin fino alla fine se non e' un terminale: senza
+            # sostituirlo, uno stdin ereditato e mai chiuso blocca la prova.
+            with redirect_stdout(uscita_pipe), redirect_stderr(errori_pipe), patch.object(sys, "stdin", io.StringIO()):
                 codice = chat.avvia(session=SESSIONE, user=utente, prompt="ciao")
             esigi(codice == 3, "la pipe non esce con occupato")
             esigi(uscita_pipe.getvalue() == "", "la contesa per utente sporca stdout")

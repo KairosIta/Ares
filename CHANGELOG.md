@@ -17,6 +17,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   quel turno andava perso. Ora conta solo un contesto riletto dall'archivio
   dopo il salvataggio. Con `affidabilita` su `glm-5.3-flash:cloud`: prima 8
   fallimenti su 90 estrazioni, dopo 0 su 40, con 2 recuperati dal retry.
+- **La prova `cli` non si blocca più su uno stdin ereditato.** La prova
+  della memoria protetta eseguiva `ares -p` senza sostituire stdin: con uno
+  stdin non chiuso (una pipe aperta, non `/dev/null` come in CI) `-p` lo
+  leggeva per sempre e la prova arrivava al timeout di 360 s. Ora usa uno
+  stdin vuoto, come le altre prove di `-p`.
 
 ### Added
 
