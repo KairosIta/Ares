@@ -53,10 +53,11 @@ from ares.config import Impostazioni, Percorsi, Politica
 from ares.core import turn
 from ares.core.autorizzazioni import Decisione, ModoNonAmmesso, Richiesta, verifica_modo
 from ares.core.session import SessioneDiAltri, Sessioni
+from ares.core.stato import StatoDaMigrare, stato_in_uso
 from ares.ops import migrazione
 from ares.state.git import ramo_git
 from ares.state.identita import Utente, UtenteNonValido
-from ares.state.lock import StatoOccupato, lock_stato
+from ares.state.lock import StatoOccupato
 from ares.state.stores import prima_domanda, quando_sessione
 
 
@@ -237,32 +238,46 @@ def _esegui_chat(
     percorsi = config.leggi_percorsi()
     impostazioni = config.leggi_impostazioni()
     politica = config.leggi_politica()
+    # Si guarda stdin, non stdout: `ares > file` con la tastiera davanti resta
+    # presidiato. Con `-p` no: stdin e' la domanda, e nessuno legge l'eco.
+    presidiato = prompt is None and sys.stdin is not None and sys.stdin.isatty()
     with UI.solo_risposte() if prompt is not None else nullcontext():
-        return _apri_chat(
-            percorsi=percorsi,
-            impostazioni=impostazioni,
-            politica=politica,
-            session=session,
-            utente=utente,
-            debug=debug,
-            metriche=metriche,
-            workspace=workspace,
-            riprendi=riprendi,
-            scegli=scegli,
-            prompt=prompt,
-            modo=modo,
-        )
+        rifiuto = _guardie_di_avvio(prompt=prompt, scegli=scegli, modo=modo, presidiato=presidiato)
+        if rifiuto is not None:
+            return rifiuto
+        try:
+            # Il lock condiviso vale per tutta la chat, sullo stato (`--workspace`
+            # cambia `lavoro`, non `stato`). `StatoOccupato` lo gestisce `avvia`.
+            with stato_in_uso(percorsi):
+                return _apri_chat(
+                    percorsi=percorsi,
+                    impostazioni=impostazioni,
+                    politica=politica,
+                    session=session,
+                    utente=utente,
+                    debug=debug,
+                    metriche=metriche,
+                    workspace=workspace,
+                    riprendi=riprendi,
+                    scegli=scegli,
+                    prompt=prompt,
+                    modo=modo,
+                    presidiato=presidiato,
+                )
+        except StatoDaMigrare as errore:
+            righe = migrazione.righe_avviso(errore.parti)
+            UI.line(righe[0], style="ares.warning")
+            for riga in righe[1:]:
+                UI.line(riga, style="ares.muted")
+            return ESITO_GUASTO
 
 
-def _guardie_di_avvio(
-    *, prompt: str | None, scegli: bool, modo: str, percorsi: Percorsi, presidiato: bool
-) -> int | None:
-    """I rifiuti che vengono prima di ogni effetto.
+def _guardie_di_avvio(*, prompt: str | None, scegli: bool, modo: str, presidiato: bool) -> int | None:
+    """I rifiuti che dipendono solo dagli argomenti, prima di toccare lo stato.
 
-    Restituisce l'esito se la chat non puo' partire, `None` se puo'. Sta prima
-    di ogni scrittura: un avvio rifiutato non lascia niente dietro di se'.
-    Le modalita' ammesse senza nessuno che guardi (`-p` o stdin da una pipe)
-    le decide `verifica_modo`, la stessa regola di `/modo`.
+    Restituisce l'esito se la chat non puo' partire, `None` se puo'. Le
+    modalita' ammesse senza nessuno che guardi (`-p` o stdin da una pipe) le
+    decide `verifica_modo`, la stessa regola di `/modo`.
     """
     try:
         verifica_modo(modo, presidiato=presidiato)
@@ -274,14 +289,6 @@ def _guardie_di_avvio(
         # con `-p` no, perche' stdin e' la domanda.
         UI.line("--scegli non si combina con -p: nessuno sceglierebbe. Usa --session <nome>.", style="ares.error")
         return ESITO_RIFIUTO
-    # Lo stato ancora nel posto di prima ferma tutto: aprirne uno vuoto accanto
-    # sdoppierebbe l'archivio.
-    ancora_di_la = migrazione.avviso(percorsi)
-    if ancora_di_la:
-        UI.line(ancora_di_la[0], style="ares.warning")
-        for riga in ancora_di_la[1:]:
-            UI.line(riga, style="ares.muted")
-        return ESITO_GUASTO
     return None
 
 
@@ -411,15 +418,13 @@ def _apri_chat(
     scegli: bool,
     prompt: str | None,
     modo: str,
+    presidiato: bool,
 ) -> int:
-    # Si guarda stdin, non stdout: `ares > file` con la tastiera davanti resta
-    # presidiato. Con `-p` no: stdin e' la domanda, e nessuno legge l'eco.
-    presidiato = prompt is None and sys.stdin is not None and sys.stdin.isatty()
-    rifiuto = _guardie_di_avvio(prompt=prompt, scegli=scegli, modo=modo, percorsi=percorsi, presidiato=presidiato)
-    if rifiuto is not None:
-        return rifiuto
+    """La chat con lo stato gia' in uso: cartella, sessione, agente e turni.
 
-    # Poi la cartella, l'altro passo che puo' dire no prima di toccare lo stato.
+    La cartella e' l'ultimo passo che puo' dire no prima di scrivere: un avvio
+    rifiutato non lascia niente dietro di se'.
+    """
     radice: Path | None = None
     if politica.workspace.attivo:
         try:
@@ -432,11 +437,9 @@ def _apri_chat(
         # Il `replace` e' locale: chi ha bisogno della cartella la riceve per parametro.
         percorsi = replace(percorsi, lavoro=radice)
 
-    # Poi cio' che scrive: la cronologia della REPL vive nello stato, che deve
-    # gia' esistere privato.
-    config.prepara_archivio(percorsi)
-
-    # La presenza passa anche alle ricostruzioni tramite `StatoChat`.
+    # Il servizio prepara la directory dello stato, dove vive anche la
+    # cronologia della REPL. La presenza passa anche alle ricostruzioni
+    # tramite `StatoChat`.
     sessioni = Sessioni(percorsi, impostazioni, politica, utente, presidiato=presidiato, debug=debug)
 
     etichetta = ""
@@ -493,29 +496,24 @@ def avvia(
     prompt: str | None = None,
     modo: str = config.MODO_PREDEFINITO,
 ) -> int:
-    """La chat con la rete intorno: il lock e i tre modi in cui l'avvio non parte.
+    """La chat con la rete intorno: lo stato occupato e il Ctrl-C durante l'avvio.
 
     Codici di `cli/comando.py`: archivio occupato 3, cartella rifiutata o
     niente da riprendere 2, Ctrl-C durante l'avvio 0 (l'ha deciso l'utente).
     """
-    # Il lock condiviso vale per tutta la vita del processo, sullo stato
-    # (`--workspace` cambia `lavoro`, non `stato`).
-    percorsi = config.leggi_percorsi()
     try:
-        # Piu' chat convivono; backup e restore, che chiedono il lock esclusivo, no.
-        with lock_stato(percorsi.lock_file, esclusivo=False):
-            esito = _esegui_chat(
-                session=session,
-                user=user,
-                debug=debug,
-                metriche=metriche,
-                workspace=workspace,
-                riprendi=riprendi,
-                scegli=scegli,
-                prompt=prompt,
-                modo=modo,
-            )
-            return esito if isinstance(esito, int) else 0
+        esito = _esegui_chat(
+            session=session,
+            user=user,
+            debug=debug,
+            metriche=metriche,
+            workspace=workspace,
+            riprendi=riprendi,
+            scegli=scegli,
+            prompt=prompt,
+            modo=modo,
+        )
+        return esito if isinstance(esito, int) else 0
     except StatoOccupato as errore:
         UI.err("Impossibile avviare Ares: " + str(errore))
         UI.err("Attendi che l'operazione in corso termini e riprova.", style="ares.muted")

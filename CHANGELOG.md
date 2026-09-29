@@ -8,6 +8,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **`ares inspect` si ferma se lo stato è ancora nel posto di prima.**
+  Prima mostrava un archivio vuoto senza dire perché; ora dà lo stesso
+  avviso della chat, con il comando per spostarlo, ed esce con 1.
+- **Le prove ignorano `FORCE_COLOR`.** Con un terminale che forza i colori
+  (`FORCE_COLOR`, `TTY_COMPATIBLE`, `TTY_INTERACTIVE`) Rich colorava anche
+  l'output su pipe e le prove che leggono il testo fallivano. `prepara_ambiente`
+  toglie queste variabili prima di importare Ares.
 - **`/modo` rispetta la regola della presenza.** Senza terminale (stdin da
   una pipe) `ares --modo modifiche` era rifiutato, ma `/modo modifiche`
   arrivato dalla stessa pipe passava: un testo ostile poteva far scrivere
@@ -52,6 +59,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   e risponde con una `Decisione`. `cli/render.py` tiene solo la
   presentazione (`righe_richiesta`, `chiedi_autorizzazione`). Le prove
   `nucleo` e `contratto` (con Agno vero) coprono il rifiuto senza presenza.
+- **Nucleo applicativo: lo stato in uso.** `ares/core/stato.py` tiene il
+  lock condiviso dello stato per tutta la vita del client e rifiuta lo
+  stato rimasto nel posto delle versioni vecchie; `Sessioni` prepara la
+  directory dello stato. La chat non prende più il lock da sé, e gli
+  argomenti incoerenti si rifiutano prima di toccare lo stato.
 
 ### Changed
 

@@ -25,6 +25,10 @@ from pathlib import Path
 NON_CONCLUSIVO = "non concludente: "
 
 
+# Le variabili con cui Rich tratta una pipe come un terminale.
+RICH_FORZATURE = ("FORCE_COLOR", "TTY_COMPATIBLE", "TTY_INTERACTIVE")
+
+
 def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = True) -> Path:
     """Sceglie i percorsi usa-e-getta della prova, prima che `config` li legga.
 
@@ -36,6 +40,11 @@ def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = Tr
     if "ares.config" in sys.modules:
         raise RuntimeError("prepara_ambiente va chiamata prima di importare ares.config")
     radice = Path(tempfile.mkdtemp(prefix="ares-" + prefisso + "-"))
+    # Le prove leggono il testo che Ares stampa su una pipe: un terminale che
+    # forza i colori (`FORCE_COLOR`, ereditato anche dai processi figli)
+    # lo riempirebbe di sequenze ANSI.
+    for variabile in RICH_FORZATURE:
+        os.environ.pop(variabile, None)
     os.environ["ARES_TMP"] = str(radice / "stato")
     if backup:
         os.environ["ARES_BACKUP_DIR"] = str(radice / "backup")
