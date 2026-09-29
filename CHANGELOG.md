@@ -8,6 +8,15 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Senza terminale il modello non propone più `/modo auto`.** Con
+  `ares -p` il prompt diceva «Si cambia con /modo» anche lì, e davanti a
+  una scrittura rifiutata il modello consigliava di rilanciare con
+  `/modo auto`, che senza terminale non esiste. Ora il prompt di un avvio
+  senza nessuno davanti non nomina `/modo` e indica l'unica strada: una chat
+  di Ares in un terminale. Vale anche per la chat con l'input da una pipe,
+  che il prompt descriveva come «un turno solo». Con `glm-5.3-flash:cloud`,
+  su tre prove della stessa richiesta, tre risposte indicano la chat nel
+  terminale e nessuna `/modo`.
 - **`ares inspect` si ferma se lo stato è ancora nel posto di prima.**
   Prima mostrava un archivio vuoto senza dire perché; ora dà lo stesso
   avviso della chat, con il comando per spostarlo, ed esce con 1.
