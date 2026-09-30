@@ -79,6 +79,12 @@ Verifica locale del 2026-09-30 su Linux/Python 3.12.14 e Agno 3.0.11:
   Ares ora tiene zitti gli avvisi interni di LanceDB; chi li vuole li
   riaccende con `LANCEDB_LOG=warn`.
 
+### Security
+
+- `urllib3` passa da 2.7.0 a 2.8.0 per CVE-2026-97687, CVE-2026-97688 e
+  CVE-2026-97689. Arriva solo con il client dei namespace remoti di
+  LanceDB, che Ares non usa: l'indice è una directory locale.
+
 ## [0.9.0] - 2026-09-30
 
 Ares ha un nucleo applicativo indipendente dall'interfaccia. Sessioni,
