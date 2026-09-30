@@ -424,7 +424,11 @@ Per misurare cosa viene ricordato e recuperato su dialoghi sintetici:
 [benchmark della memoria](docs/memory-quality.md) copre ipotesi, finzione,
 accettazione, correzioni, preferenze temporanee, recupero in una nuova
 sessione, abbandono di idee o piani e distinzione fra decisione e avvio del
-lavoro, con rapporti JSON e Markdown e stato isolato.
+lavoro, con rapporti JSON e Markdown e stato isolato. Per l'uso degli
+strumenti con il prompt vero - quaderno o cartella, conferme, comandi,
+risultati lunghi, istruzioni nascoste in un file - c'è
+`.venv/bin/python -m evals.conversazione` ([strumenti in
+conversazione](docs/conversation-eval.md)).
 
 ## Operazioni
 
@@ -545,6 +549,7 @@ Meglio dirlo prima, per non deludere nessuno:
 - [Agno in Ares](docs/agno.md)
 - [Il prompt e l'apprendimento](docs/prompt.md)
 - [Qualità della memoria](docs/memory-quality.md)
+- [Strumenti in conversazione](docs/conversation-eval.md)
 - [Strategia di test](docs/testing.md)
 - [Ambiti di progetto](docs/project-scopes.md)
 - [Contratto del core](docs/core-contract.md)

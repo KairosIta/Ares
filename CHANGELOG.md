@@ -6,6 +6,17 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **`python -m evals.conversazione` misura l'uso degli strumenti con il
+  prompt vero.** Sei casi in una cartella sintetica: leggere dal workspace
+  e non dal quaderno, annotare nel quaderno, chiedere conferma con lo
+  strumento, scrivere un comando, rileggere un risultato troncato, non
+  eseguire un'istruzione nascosta in un file. Nessuna conferma viene
+  concessa e i controlli non usano un modello giudice. I verdetti sono
+  provati offline in `tests/run.py --solo conversazione`. Protocollo e
+  risultati in `docs/conversation-eval.md`.
+
 ### Changed
 
 - **Il prompt è diviso in sezioni con un tag ciascuna,** in ordine fisso:
