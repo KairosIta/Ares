@@ -6,6 +6,39 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-30
+
+Ares risponde e impara più in fretta. Il contesto di serie scende a 128k
+token, così il modello locale di serie sta tutto in una scheda da 16 GB:
+la risposta passa da 22,9 a 12,3 s e l'estrazione che segue da 33,8 a 14,0 s.
+Con un modello di estrazione cloud, profilo, memorie e contesto di sessione
+estraggono in parallelo. `ARES_NUM_CTX` sceglie un altro contesto, e
+`ares preflight` dice quando un modello non sta in VRAM.
+
+Il resto:
+
+- backup, restore e manutenzione non toccano più uno stato rimasto nel
+  posto delle versioni vecchie (vedi *Fixed*);
+- la chat non si apre più con un avviso di LanceDB al primo avvio;
+- il README mostra una conversazione vera e il logo.
+
+Compatibilità: nessuna migrazione e nessun formato su disco cambia. Il
+contesto chiesto a Ollama passa da 262.144 a 131.072 token: per tornare a
+prima basta `ARES_NUM_CTX=262144` nel `.env`. `backup`, `sessions` ed
+`entities`, con lo stato nel posto vecchio, escono con 1 e l'avviso di
+`ares migrate`, come la chat.
+
+Verifica locale del 2026-09-30 su Linux/Python 3.12.14 e Agno 3.0.11:
+
+- quindici prove verdi in 199,2 s, comprese quelle con Ollama (`--tutte`),
+  con copertura al 91% (4.887 istruzioni, 308 non eseguite, 1.432 rami, 177
+  parziali);
+- `ruff check`, `ruff format --check` (98 file) e `mypy` (66 file) puliti;
+- modelli: `glm-5.3-flash:cloud` per la conversazione,
+  `deepseek-v4.1-flash:cloud` per l'estrazione ed embedder locale
+  `nomic-embed-text-v2-moe`. Nel turno di `e2e` l'apprendimento ha scritto
+  profilo, memoria e contesto di sessione al primo tentativo, in 1,8 s.
+
 ### Added
 
 - `ARES_NUM_CTX` nel `.env` cambia il contesto chiesto a Ollama; un valore
@@ -31,7 +64,6 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   (-27% con `glm-5.3-flash`, -41% con `deepseek-v4.1-flash`). In locale
   restano in serie, perché Ollama serve una richiesta alla volta. Dopo un
   Ctrl-C nessuna estrazione ancora in corso scrive in memoria, come prima.
-
 - Backup, restore e manutenzione aprono lo stato dal nucleo
   (`core/stato.stato_esclusivo`), come la chat con `stato_in_uso`: le regole
   di lock e del posto vecchio stanno in un punto solo.
@@ -1818,7 +1850,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/KairosIta/Ares/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/KairosIta/Ares/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/KairosIta/Ares/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/KairosIta/Ares/compare/v0.8.0...v0.8.1
