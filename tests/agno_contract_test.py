@@ -3,7 +3,7 @@
 Uso:
     .venv/bin/python tests/agno_contract_test.py
 
-Sei cose che Ares da' per vere di Agno, verificate contro Agno installato.
+Sette cose che Ares da' per vere di Agno, verificate contro Agno installato.
 
 1. **L'apprendimento avviene una volta per turno, sul run completo.** Agno
    avvia `LearningMachine.process` prima di chiamare il modello; Ares lo
@@ -32,6 +32,9 @@ Sei cose che Ares da' per vere di Agno, verificate contro Agno installato.
 5. **La versione di Agno dichiarata nei documenti e' quella installata.**
 6. **Il tetto di un id utente e' quello di Agno** per i segmenti del
    namespace (`MAX_SEGMENT_CHARS`).
+7. **Gli interni di Agno che Ares usa esistono ancora.** Sono elencati in
+   `ares/agent/agno_interni.py`; il mixin degli store ritoccati precede la
+   classe di Agno.
 
 Niente modello e niente rete: il modello e' un copione di tool call. Nei
 primi due controlli gli store di apprendimento sono spenti (si conta il
@@ -39,6 +42,7 @@ passaggio, non cio' che scriverebbe); il terzo li costruisce davvero.
 """
 
 import asyncio
+import importlib
 import re
 from contextlib import contextmanager
 from dataclasses import replace
@@ -72,6 +76,8 @@ from ares import config  # noqa: E402
 # si legge in `main()`, dopo aver spento gli store.
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
+from ares.agent import learning  # noqa: E402
+from ares.agent.agno_interni import INTERNI, FunzioniRitoccate  # noqa: E402
 from ares.agent.assistant import build_assistant  # noqa: E402
 from ares.agent.learning import build_session_context_store  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
@@ -660,6 +666,38 @@ def versione_dichiarata() -> str:
     return "Agno " + installata + " in " + str(len(FILE_CHE_DICHIARANO)) + " dichiarazioni"
 
 
+def interni_presenti() -> str:
+    """Gli interni di Agno elencati in `agno_interni.INTERNI` esistono ancora.
+
+    Senza questo controllo un nome sparito farebbe tacere in silenzio il
+    mixin (Agno non chiamerebbe piu' `ritocca`) o romperebbe
+    `ares inspect --prompt` solo quando qualcuno lo usa.
+    """
+    mancanti = []
+    for modulo, oggetto, attributo in INTERNI:
+        try:
+            trovato = getattr(importlib.import_module(modulo), oggetto)
+            if attributo:
+                getattr(trovato, attributo)
+        except (ImportError, AttributeError):
+            mancanti.append(".".join(filter(None, (modulo, oggetto, attributo))))
+    esigi(not mancanti, "interni di Agno spariti: " + ", ".join(mancanti))
+
+    # Il mixin va prima della classe di Agno, o il suo override non vale.
+    ritoccati = [
+        classe
+        for classe in vars(learning).values()
+        if isinstance(classe, type) and issubclass(classe, FunzioniRitoccate) and classe is not FunzioniRitoccate
+    ]
+    esigi(len(ritoccati) == 3, "store ritoccati: " + str([c.__name__ for c in ritoccati]))
+    for classe in ritoccati:
+        esigi(
+            classe._build_functions_for_model is FunzioniRitoccate._build_functions_for_model,
+            classe.__name__ + " non passa da FunzioniRitoccate: il mixin e' dopo la classe di Agno",
+        )
+    return str(len(INTERNI)) + " interni presenti, " + str(len(ritoccati)) + " store ritoccati"
+
+
 def limite_utente() -> str:
     """Il tetto di `Utente` e' quello che Agno usa per i segmenti del namespace.
 
@@ -708,6 +746,7 @@ def main() -> int:
             ("ciclo HITL", ciclo_hitl),
             ("retry contesto", contesto_riprova),
             ("memoria non confermabile", memoria_non_confermabile),
+            ("interni di Agno", interni_presenti),
             ("limite utente", limite_utente),
             ("versione dichiarata", versione_dichiarata),
         )

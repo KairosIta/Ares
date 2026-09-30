@@ -112,6 +112,10 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `learning.py` configura gli store e il post-hook sul run completo, e
   riscrive in italiano, per una persona sola, la guida che Agno mette nel
   prompt in inglese per memorie, entità e intuizioni.
+- `agno_interni.py` è l'unico posto che tocca nomi privati di Agno
+  (`_build_functions_for_model`, `_should_expose_tools`,
+  `determine_tools_for_model`); `INTERNI` li elenca e la prova `contratto`
+  verifica che esistano nella versione installata.
 - `prompts.py` compone il prompt solo con ciò che è davvero abilitato:
   - una scheda dell'avvio: modelli (e se sono locali o cloud), embedder,
     finestra di contesto, sistema e shell, utente, conversazione, cartella e

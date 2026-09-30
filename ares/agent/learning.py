@@ -29,6 +29,7 @@ from agno.learn.utils import to_dict_safe
 from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
 
+from ares.agent.agno_interni import FunzioniRitoccate, strumenti_esposti
 from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
 from ares.config import Impostazioni, Politica
@@ -133,7 +134,7 @@ def liste_dal_testo(entrypoint: Callable[..., Any]) -> Callable[..., Any]:
     return sincrono
 
 
-class AresSessionContextStore(SessionContextStore):
+class AresSessionContextStore(FunzioniRitoccate, SessionContextStore):
     """Riprova soltanto un'estrazione che non ha scritto nulla.
 
     `tentativi_contesto` sono i tentativi oltre il primo. `__init__` passa il
@@ -166,8 +167,7 @@ class AresSessionContextStore(SessionContextStore):
         await super().asave(session_id, context, *args, **kwargs)
         self._salvato = self._salvato or self._riletto(await self.aget(session_id=session_id), context)
 
-    def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
-        funzioni = super()._build_functions_for_model(*args, **kwargs)
+    def ritocca(self, funzioni: list[Any]) -> list[Any]:
         for funzione in funzioni:
             if funzione.name == "save_session_context" and funzione.entrypoint is not None:
                 funzione.entrypoint = liste_dal_testo(funzione.entrypoint)
@@ -243,25 +243,25 @@ def senza_conferma(funzioni: list[Any], nome: str) -> list[Any]:
     return funzioni
 
 
-class AresUserProfileStore(UserProfileStore):
+class AresUserProfileStore(FunzioniRitoccate, UserProfileStore):
     """Il profilo, con una sola chiamata al modello per turno (vedi `senza_conferma`)."""
 
-    def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
-        return senza_conferma(super()._build_functions_for_model(*args, **kwargs), "update_profile")
+    def ritocca(self, funzioni: list[Any]) -> list[Any]:
+        return senza_conferma(funzioni, "update_profile")
 
 
-class AresUserMemoryStore(UserMemoryStore):
+class AresUserMemoryStore(FunzioniRitoccate, UserMemoryStore):
     """Le memorie, con una sola chiamata per turno e la guida in italiano.
 
     La guida di Agno e' inglese e pensata per un agente di squadra; questa
     dice quando tocca al modello usare lo strumento.
     """
 
-    def _build_functions_for_model(self, *args: Any, **kwargs: Any) -> list[Any]:
-        return senza_conferma(super()._build_functions_for_model(*args, **kwargs), "add_memory")
+    def ritocca(self, funzioni: list[Any]) -> list[Any]:
+        return senza_conferma(funzioni, "add_memory")
 
     def instructions(self) -> str:
-        if not self._should_expose_tools or not self.config.agent_can_update_memories:
+        if not strumenti_esposti(self) or not self.config.agent_can_update_memories:
             return ""
         return (
             "<istruzioni_memorie>\n"
@@ -278,7 +278,7 @@ class AresEntityMemoryStore(EntityMemoryStore):
     """Le entita', spiegate in italiano: quattro strumenti e quando usarli."""
 
     def instructions(self) -> str:
-        if not self._should_expose_tools:
+        if not strumenti_esposti(self):
             return ""
         return (
             "<istruzioni_entita>\n"

@@ -97,9 +97,9 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **Nessuna chiamata di chiusura dopo l'estrazione:** Agno richiamerebbe il
   modello dopo la tool call solo per sentirgli dire che ha finito, mentre
   l'esito si legge già da `response.tool_executions`. Profilo e memorie
-  impostano `stop_after_tool_call` sovrascrivendo
-  `_build_functions_for_model` in `agent/learning.py` (superficie privata,
-  come il retry del contesto), come già fa il contesto di sessione. I numeri
+  impostano `stop_after_tool_call` con il mixin `FunzioniRitoccate` di
+  `agent/agno_interni.py`, che sovrascrive `_build_functions_for_model`
+  (superficie privata), come già fa il contesto di sessione. I numeri
   sono in [memory-quality.md](memory-quality.md);
   `tests/learning_cost_test.py` verifica le tre chiamate per turno e che la
   scrittura arrivi negli store.

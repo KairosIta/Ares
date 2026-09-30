@@ -20,7 +20,8 @@ requires-python = ">=3.12,<3.14"
 # versioni cambiano solo con un `uv lock` deliberato.
 dependencies = [
     # Il framework dell'agente. Vincolo stretto perche' agno.learn cambia fra
-    # minor e Ares usa alcuni interni: la 3.1 va provata prima di adottarla.
+    # minor e Ares usa alcuni interni, elencati in ares/agent/agno_interni.py:
+    # la 3.1 va provata prima di adottarla.
     "agno>=3.0.2,<3.1",
     # Client del server Ollama su localhost:11434. Serve sia al modello
     # conversazionale sia a OllamaEmbedder.

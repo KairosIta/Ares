@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ares import config
+from ares.agent.agno_interni import funzioni_per_modello
 from ares.config import Impostazioni, Politica
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
@@ -489,12 +490,11 @@ def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
     Ripete i passi di `run()` fino al messaggio, senza chiamare il modello ne'
     salvare la sessione: inizializza l'agente, legge la sessione (o ne crea
     una solo in memoria), risolve gli strumenti e chiede il messaggio.
-    `determine_tools_for_model` e' un interno di Agno: per questo il vincolo
-    su Agno nel pyproject e' stretto.
+    La risoluzione degli strumenti e' un interno di Agno (vedi
+    `agno_interni`).
     """
     from uuid import uuid4
 
-    from agno.agent._tools import determine_tools_for_model
     from agno.run import RunContext
     from agno.run.agent import RunOutput
     from agno.session import AgentSession
@@ -512,7 +512,7 @@ def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
     contesto = RunContext(run_id=str(uuid4()), session_id=session_id, user_id=user_id, metadata=agent.metadata)
     esito = RunOutput(run_id=contesto.run_id, session_id=session_id, user_id=user_id)
     strumenti = agent.get_tools(run_response=esito, run_context=contesto, session=sessione, user_id=user_id)
-    funzioni = determine_tools_for_model(
+    funzioni = funzioni_per_modello(
         agent,
         model=agent.model,
         processed_tools=strumenti,
