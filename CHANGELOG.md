@@ -6,51 +6,50 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
-### Fixed
+## [0.9.0] - 2026-09-30
 
-- **Senza terminale il modello non propone più `/modo auto`.** Con
-  `ares -p` il prompt diceva «Si cambia con /modo» anche lì, e davanti a
-  una scrittura rifiutata il modello consigliava di rilanciare con
-  `/modo auto`, che senza terminale non esiste. Ora il prompt di un avvio
-  senza nessuno davanti non nomina `/modo` e indica l'unica strada: una chat
-  di Ares in un terminale. Vale anche per la chat con l'input da una pipe,
-  che il prompt descriveva come «un turno solo». Con `glm-5.3-flash:cloud`,
-  su tre prove della stessa richiesta, tre risposte indicano la chat nel
-  terminale e nessuna `/modo`.
-- **`ares inspect` si ferma se lo stato è ancora nel posto di prima.**
-  Prima mostrava un archivio vuoto senza dire perché; ora dà lo stesso
-  avviso della chat, con il comando per spostarlo, ed esce con 1.
-- **Le prove ignorano `FORCE_COLOR`.** Con un terminale che forza i colori
-  (`FORCE_COLOR`, `TTY_COMPATIBLE`, `TTY_INTERACTIVE`) Rich colorava anche
-  l'output su pipe e le prove che leggono il testo fallivano. `prepara_ambiente`
-  toglie queste variabili prima di importare Ares.
-- **`/modo` rispetta la regola della presenza.** Senza terminale (stdin da
-  una pipe) `ares --modo modifiche` era rifiutato, ma `/modo modifiche`
-  arrivato dalla stessa pipe passava: un testo ostile poteva far scrivere
-  file senza conferma. Ora le due strade usano la stessa regola, nel
-  nucleo, e `/modo modifiche` risponde come l'avvio.
-- **Il contesto di sessione accetta piano e avanzamento scritti come testo.**
-  Quando un modello passa `plan` o `progress` come testo, Ares lo converte
-  in lista prima della validazione di Agno: un array JSON resta com'è, un
-  elenco diventa una voce per riga, senza trattini né numeri. Prima quella
-  chiamata veniva rifiutata e toccava al retry rifare l'estrazione, che
-  poteva sbagliare di nuovo. Lo schema mostrato al modello non cambia.
-  Con `affidabilita` su `glm-5.3-flash:cloud`: 50 estrazioni su 50 al
-  primo colpo, nessun retry (prima 2 recuperati dal retry su 40).
-- **Il contesto di sessione si riprova anche dopo una chiamata non valida.**
-  Alcuni modelli (per esempio `glm-5.3-flash:cloud`) passano ogni tanto
-  `plan` o `progress` come testo invece che come lista: la validazione di
-  Agno rifiuta la chiamata e niente viene salvato. Agno però accende
-  `context_updated` per qualunque esecuzione dello strumento, quindi il retry
-  di `AresSessionContextStore` credeva l'estrazione riuscita e il contesto di
-  quel turno andava perso. Ora conta solo un contesto riletto dall'archivio
-  dopo il salvataggio. Con `affidabilita` su `glm-5.3-flash:cloud`: prima 8
-  fallimenti su 90 estrazioni, dopo 0 su 40, con 2 recuperati dal retry.
-- **La prova `cli` non si blocca più su uno stdin ereditato.** La prova
-  della memoria protetta eseguiva `ares -p` senza sostituire stdin: con uno
-  stdin non chiuso (una pipe aperta, non `/dev/null` come in CI) `-p` lo
-  leggeva per sempre e la prova arrivava al timeout di 360 s. Ora usa uno
-  stdin vuoto, come le altre prove di `-p`.
+Ares ha un nucleo applicativo indipendente dall'interfaccia. Sessioni,
+turno, autorizzazioni, stato in uso e riferimenti di sessione stanno in
+`ares/core/`, e la CLI ne è un client: un secondo client, come una UI
+desktop, può aprire conversazioni, eseguire turni e raccogliere le conferme
+senza riscrivere le regole. Portare le regole nel nucleo ha fatto emergere
+un buco di sicurezza presente fino alla 0.8.2: da una pipe, `/modo
+modifiche` faceva scrivere file senza conferma (vedi *Security*).
+
+Il resto:
+
+- il contesto di sessione è più affidabile con i modelli che scrivono le
+  liste come testo;
+- `/sessioni` e il TAB non rileggono più tutta la storia;
+- `ares inspect` si ferma su una migrazione in sospeso;
+- i documenti dicono cosa può fare un comando della shell, soprattutto in
+  `auto`;
+- entrano SQLAlchemy 2.1 e Cyclopts 5.
+
+Compatibilità: nessuna migrazione e nessun formato su disco cambia. Due
+comportamenti della CLI cambiano:
+
+- con stdin che non è un terminale, `/modo modifiche` è rifiutato come
+  `--modo modifiche` all'avvio;
+- `ares inspect`, con lo stato ancora nel posto delle versioni vecchie, esce
+  con 1.
+
+L'aiuto dei comandi mostra il tipo accanto alle opzioni. Chi importa i
+moduli interni trova le sessioni in `ares.state.sessioni` invece che in
+`ares.state.stores`, e le regole di sessione, turno e conferme in
+`ares.core`.
+
+Verifica locale del 2026-09-30 su Linux/Python 3.12.14 e Agno 3.0.11:
+
+- dodici prove offline verdi, con copertura al 91% (4.723 istruzioni, 306
+  non eseguite, 1.390 rami, 177 parziali);
+- `ruff check`, `ruff format --check` (98 file) e `mypy` (66 file) puliti;
+- prove con Ollama (`--tutte`) verdi: `affidabilita`, `intuizioni` e `e2e`,
+  con `glm-5.3-flash:cloud` per conversazione ed estrazione ed embedder
+  locale `nomic-embed-text-v2-moe`. Nel turno di `e2e` l'apprendimento ha
+  speso 4.832 token di ingresso e 2.578 di uscita, e l'archivio vero non è
+  stato toccato;
+- `tests/run.py --tutte`: 15 prove in 126,8 s.
 
 ### Added
 
@@ -81,10 +80,7 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   stato rimasto nel posto delle versioni vecchie; `Sessioni` prepara la
   directory dello stato. La chat non prende più il lock da sé, e gli
   argomenti incoerenti si rifiutano prima di toccare lo stato.
-
-### Changed
-
-- **Le sessioni arrivano ai client come riferimenti.** `state/sessioni.py`
+- **Nucleo applicativo: i riferimenti di sessione.** `state/sessioni.py`
   legge le conversazioni e restituisce `SessioneRiferimento` (id, cartella,
   ultima modifica, scambi, prima domanda) e `Conversazione`. Gli oggetti di
   Agno non escono da lì.
@@ -93,6 +89,9 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   - La CLI non legge più le sessioni di Agno, e `/esporta` non passa più dal
     database dell'agente.
   - Prompt ed esportazione restano identici byte per byte.
+
+### Changed
+
 - **`/sessioni` e il TAB non leggono più tutta la storia.** Prima caricavano
   i run di ogni sessione dell'utente: 0,40 s con 200 sessioni da 30 scambi,
   a ogni TAB. Ora filtrano e tagliano senza i run, e rileggono solo le
@@ -151,6 +150,58 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   Ares non serve, e l'elenco della documentazione collega anche `prompt.md`,
   `memory-quality.md`, `project-scopes.md` e `core-contract.md`. Il riassunto
   in inglese nomina il cloud e diventa un elenco leggibile.
+
+### Fixed
+
+- **Senza terminale il modello non propone più `/modo auto`.** Con
+  `ares -p` il prompt diceva «Si cambia con /modo» anche lì, e davanti a
+  una scrittura rifiutata il modello consigliava di rilanciare con
+  `/modo auto`, che senza terminale non esiste. Ora il prompt di un avvio
+  senza nessuno davanti non nomina `/modo` e indica l'unica strada: una chat
+  di Ares in un terminale. Vale anche per la chat con l'input da una pipe,
+  che il prompt descriveva come «un turno solo». Con `glm-5.3-flash:cloud`,
+  su tre prove della stessa richiesta, tre risposte indicano la chat nel
+  terminale e nessuna `/modo`.
+- **`ares inspect` si ferma se lo stato è ancora nel posto di prima.**
+  Prima mostrava un archivio vuoto senza dire perché; ora dà lo stesso
+  avviso della chat, con il comando per spostarlo, ed esce con 1.
+- **Il contesto di sessione accetta piano e avanzamento scritti come testo.**
+  Quando un modello passa `plan` o `progress` come testo, Ares lo converte
+  in lista prima della validazione di Agno: un array JSON resta com'è, un
+  elenco diventa una voce per riga, senza trattini né numeri. Prima quella
+  chiamata veniva rifiutata e toccava al retry rifare l'estrazione, che
+  poteva sbagliare di nuovo. Lo schema mostrato al modello non cambia.
+  Con `affidabilita` su `glm-5.3-flash:cloud`: 50 estrazioni su 50 al
+  primo colpo, nessun retry (prima 2 recuperati dal retry su 40).
+- **Il contesto di sessione si riprova anche dopo una chiamata non valida.**
+  Alcuni modelli (per esempio `glm-5.3-flash:cloud`) passano ogni tanto
+  `plan` o `progress` come testo invece che come lista: la validazione di
+  Agno rifiuta la chiamata e niente viene salvato. Agno però accende
+  `context_updated` per qualunque esecuzione dello strumento, quindi il retry
+  di `AresSessionContextStore` credeva l'estrazione riuscita e il contesto di
+  quel turno andava perso. Ora conta solo un contesto riletto dall'archivio
+  dopo il salvataggio. Con `affidabilita` su `glm-5.3-flash:cloud`: prima 8
+  fallimenti su 90 estrazioni, dopo 0 su 40, con 2 recuperati dal retry.
+- **Le prove ignorano `FORCE_COLOR`.** Con un terminale che forza i colori
+  (`FORCE_COLOR`, `TTY_COMPATIBLE`, `TTY_INTERACTIVE`) Rich colorava anche
+  l'output su pipe e le prove che leggono il testo fallivano. `prepara_ambiente`
+  toglie queste variabili prima di importare Ares.
+- **La prova `cli` non si blocca più su uno stdin ereditato.** La prova
+  della memoria protetta eseguiva `ares -p` senza sostituire stdin: con uno
+  stdin non chiuso (una pipe aperta, non `/dev/null` come in CI) `-p` lo
+  leggeva per sempre e la prova arrivava al timeout di 360 s. Ora usa uno
+  stdin vuoto, come le altre prove di `-p`.
+
+### Security
+
+- **`/modo` rispetta la regola della presenza.** Senza terminale (stdin da
+  una pipe) `ares --modo modifiche` era rifiutato, ma `/modo modifiche`
+  arrivato dalla stessa pipe passava: un testo ostile poteva far scrivere
+  file senza conferma. Ora le due strade usano la stessa regola, nel
+  nucleo, e `/modo modifiche` risponde come l'avvio.
+  Riguarda tutte le versioni fino alla 0.8.2: chi manda ad Ares input non
+  fidato da una pipe deve aggiornare. Una pipe non può comunque passare ad
+  `auto`, che si sceglie solo all'avvio.
 
 ## [0.8.2] - 2026-09-25
 
@@ -1726,7 +1777,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/KairosIta/Ares/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/KairosIta/Ares/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/KairosIta/Ares/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/KairosIta/Ares/compare/v0.7.1...v0.8.0
