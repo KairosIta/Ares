@@ -42,6 +42,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   installava uno snapshot nel posto nuovo e sdoppiava l'archivio, e `backup
   create`, `sessions` ed `entities` dicevano di non trovare niente. Ora si
   fermano con l'avviso di `ares migrate` ed escono con 1, come la chat.
+- Al primo avvio su uno stato nuovo la chat si apriva con una riga di log
+  di LanceDB (`WARN lance::dataset::write::insert] No existing dataset ...`).
+  Ares ora tiene zitti gli avvisi interni di LanceDB; chi li vuole li
+  riaccende con `LANCEDB_LOG=warn`.
 
 ## [0.9.0] - 2026-09-30
 
