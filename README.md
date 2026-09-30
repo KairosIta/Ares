@@ -189,7 +189,8 @@ Tutto ciò che Ares impara vive in `~/.ares` (lo stato in `stato/`, gli
 snapshot in `backup/`), fuori dal clone, che si può spostare o rifare senza
 perdere niente. `ARES_HOME` nel `.env` sposta tutto altrove. Un clone che
 teneva lo stato in `tmp/` viene migrato dal setup con `ares migrate`; finché
-non succede la chat non parte, per non sdoppiare l'archivio.
+non succede né la chat né backup e manutenzione partono, per non sdoppiare
+l'archivio.
 
 ## Perché Ares
 

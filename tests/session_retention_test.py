@@ -223,10 +223,13 @@ def retention() -> str:
             "--apply",
             "--yes",
         )
+        # Chi legge soltanto convive con la chat.
+        lettura = esegui_cli("status", "--user", UTENTE)
     esigi(
         bloccata.returncode == 3 and "Chiudi la chat" in bloccata.stderr,
         "prune partito con una chat aperta",
     )
+    esigi(lettura.returncode == 0, "status fermato da una chat aperta: " + lettura.stderr.strip())
     esigi(
         principale.db.get_session(session_id=SESSIONE_VECCHIA) is not None,
         "prune bloccato ha scritto",

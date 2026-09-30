@@ -1,7 +1,7 @@
 # Piano di refactor del core applicativo
 
 Data: 2026-09-28, aggiornato il 2026-09-30.
-**Stato: implementati i cinque passaggi (sessione, turno, autorizzazioni, stato in uso, riferimenti di sessione).**
+**Stato: implementati i sei passaggi (sessione, turno, autorizzazioni, stato in uso, riferimenti di sessione, lock della manutenzione).**
 
 ## Obiettivo
 Un nucleo applicativo indipendente dall'interfaccia, a partire dal ciclo di
@@ -125,6 +125,31 @@ prompt, che non devono riprendere una sessione vecchia da una cartella
 qualunque). La resa in testo è del client: `cli/conversazioni.py` per il
 terminale e il Markdown, `agent/prompts.py` per il modello. Il prompt e
 l'esportazione sono identici byte per byte a prima.
+
+## Sesto passaggio: il lock della manutenzione (fatto)
+
+`core/stato.py` ha `stato_esclusivo`, accanto a `stato_in_uso`: lock
+esclusivo e lo stesso controllo del posto, dentro il lock.
+
+| Operazione | Prima | Ora |
+| --- | --- | --- |
+| `backup create`, `prune`, `restore` | `lock_stato` in `backup/` | `stato_esclusivo` |
+| `sessions`, `entities` con `--apply` | `lock_stato` in `esegui_protetto` | `stato_esclusivo` |
+| `sessions status`, `entities audit`, anteprime | `lock_stato` condiviso in `esegui_protetto` | `stato_in_uso` |
+| `ares migrate` | due `lock_stato` esclusivi | invariato: è l'operazione che risolve il posto vecchio |
+
+Prima la manutenzione non guardava il posto vecchio. Con lo stato in `tmp/`
+del clone e uno snapshot già in `~/.ares`, la chat si fermava ma `backup
+restore` installava lo stato nel posto nuovo: l'archivio restava sdoppiato,
+un conflitto che `ares migrate` non risolve. `backup create`, `sessions` ed
+`entities` dicevano «nessuno stato» o «nessun archivio». Ora si fermano con
+l'avviso di `ares migrate` ed escono con 1, come la chat. `sessions`, senza
+archivio, controlla il posto senza lock (`verifica_posto`), per non creare
+niente dove Ares non c'è ancora.
+
+Restano come prima `acquisisci_lock=False`, con cui snapshot e restore si
+chiamano dentro un lock già preso, e `backup list` e `verify`, che non
+prendono lock.
 
 ## Cosa non si tocca
 

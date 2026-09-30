@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from ares.backup import files, integrity
 from ares.config import Percorsi
-from ares.state.lock import lock_stato
+from ares.core.stato import stato_esclusivo
 from ares.state.platform_files import rendi_privato
 
 # Alias usati da import e monkeypatch delle prove; l'implementazione sta in `files`.
@@ -122,7 +122,7 @@ def ripristina_snapshot(
     operazioni: OperazioniRestore,
 ) -> Path | None:
     """Ripristina uno snapshot verificato e ritorna l'eventuale pre-restore."""
-    with lock_stato(percorsi.lock_file, esclusivo=True):
+    with stato_esclusivo(percorsi):
         snapshot = operazioni.risolvi_snapshot(percorsi, nome)
         manifest = operazioni.verifica_snapshot(percorsi, snapshot, True)
         sicurezza = None

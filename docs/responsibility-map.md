@@ -39,7 +39,7 @@ Il totale del package `ares/` è **10.966 righe**.
 | Politica di conferma | `core/autorizzazioni.py`; la CLI mostra e chiede (`cli/render.py`) | nucleo applicativo (fatto) |
 | Apprendimento | `agent/learning.py` | nucleo applicativo |
 | Fotografia e ripristino memoria | `agent/echo.py` + `cli/chat.py` | nucleo applicativo |
-| Lock | primitive in `state/lock.py`; durata in `core/stato.py` e `core/turn.py` | nucleo / servizio (fatto per chat e turno) |
+| Lock | primitive in `state/lock.py`; durata in `core/stato.py` e `core/turn.py` | nucleo / servizio (fatto per chat, turno e manutenzione) |
 | Sessioni | `core/session.py` (`elenco`, `conversazione`); lettura in `state/sessioni.py`; resa in `cli/conversazioni.py` | nucleo applicativo (fatto) |
 | Backup | `backup/` | infrastruttura |
 | Entità | `entities/` | manutenzione |

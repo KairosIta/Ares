@@ -35,7 +35,7 @@ from ares.core import turn as nucleo_turno  # noqa: E402
 from ares.core.autorizzazioni import Decisione, ModoNonAmmesso, risolvi_pausa, verifica_modo  # noqa: E402
 from ares.core.id_sessione import nuovo_id_sessione  # noqa: E402
 from ares.core.session import SessioneDiAltri, Sessioni  # noqa: E402
-from ares.core.stato import StatoDaMigrare, stato_in_uso  # noqa: E402
+from ares.core.stato import StatoDaMigrare, stato_esclusivo, stato_in_uso, verifica_posto  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
 from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
 
@@ -257,6 +257,45 @@ def stato_in_uso_dal_client() -> str:
         if os.name == "posix":
             esigi((nuovi.stato.stat().st_mode & 0o777) == 0o700, "la directory dello stato non e' privata")
     return "lock condiviso finche' serve, migrazione in sospeso rifiutata senza scrivere, directory privata"
+
+
+def manutenzione_esclusiva() -> str:
+    """La manutenzione che scrive tiene lo stato da sola, e lo stato da migrare non la fa partire."""
+    with stato_in_uso(PERCORSI):
+        try:
+            with stato_esclusivo(PERCORSI):
+                raise AssertionError("con una chat aperta la manutenzione parte")
+        except StatoOccupato:
+            pass
+    with stato_esclusivo(PERCORSI):
+        try:
+            with stato_in_uso(PERCORSI):
+                raise AssertionError("durante la manutenzione una chat apre lo stato")
+        except StatoOccupato:
+            pass
+    esigi(_esclusivo_libero(PERCORSI), "il lock esclusivo resta dopo l'uscita")
+
+    # Anche i soli backup nel posto di prima fermano: uno snapshot nuovo li sdoppierebbe.
+    vecchi = RADICE_PROVA / "vecchio-backup"
+    (vecchi / "20260101-manuale").mkdir(parents=True)
+    casa = RADICE_PROVA / "casa-manutenzione"
+    nuovi = replace(PERCORSI, home=casa, stato=casa / "stato", backup=casa / "backup")
+    with patch.object(config, "VECCHIO_BACKUP_DIR", vecchi):
+        try:
+            verifica_posto(nuovi)
+            raise AssertionError("i backup nel posto di prima passano la verifica")
+        except StatoDaMigrare as errore:
+            esigi([p[0] for p in errore.parti] == ["i backup"], "parti da spostare sbagliate: " + repr(errore.parti))
+        esigi(not casa.exists(), "la verifica senza lock ha scritto qualcosa")
+        try:
+            with stato_esclusivo(nuovi):
+                raise AssertionError("la manutenzione parte con i backup nel posto di prima")
+        except StatoDaMigrare:
+            pass
+        esigi(_esclusivo_libero(nuovi), "il rifiuto lascia il lock esclusivo")
+    with stato_esclusivo(nuovi):
+        pass
+    return "esclusiva con chat e manutenzione, backup da migrare rifiutati, verifica senza scrivere"
 
 
 def sessione_altrui() -> str:
@@ -501,6 +540,7 @@ PROVE = (
     ("modalita' ammesse", modalita_ammesse),
     ("autorizzazioni", autorizzazioni),
     ("stato in uso", stato_in_uso_dal_client),
+    ("manutenzione", manutenzione_esclusiva),
     ("sessione altrui", sessione_altrui),
     ("elenco", elenco_delle_sessioni),
     ("agente vero", agente_vero),

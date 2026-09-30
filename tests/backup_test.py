@@ -53,6 +53,7 @@ from ares.backup.snapshots import (  # noqa: E402
     valida_percorsi,
     verifica_snapshot,
 )
+from ares.core.stato import StatoDaMigrare  # noqa: E402
 from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
 
 OPERAZIONE_LANCEDB = r"""
@@ -420,7 +421,7 @@ def prova_rollback_rinomina() -> None:
         os.rename(sorgente, destinazione_rinomina)
 
     with (
-        patch("ares.backup.restore.lock_stato", return_value=nullcontext()),
+        patch("ares.backup.restore.stato_esclusivo", return_value=nullcontext()),
         patch("ares.backup.restore._prepara_restore", return_value=staging),
         patch("ares.backup.restore._rinomina_directory", side_effect=rinomina_con_guasto),
         patch("ares.backup.restore.os.name", "posix"),
@@ -469,7 +470,7 @@ def prova_rollback_doppio_guasto() -> None:
         os.rename(sorgente, destinazione_rinomina)
 
     with (
-        patch("ares.backup.restore.lock_stato", return_value=nullcontext()),
+        patch("ares.backup.restore.stato_esclusivo", return_value=nullcontext()),
         patch("ares.backup.restore._prepara_restore", return_value=staging),
         patch("ares.backup.restore._rinomina_directory", side_effect=rinomina_doppio_guasto),
         patch("ares.backup.restore.os.name", "posix"),
@@ -614,6 +615,37 @@ def prova_guardie_restore() -> None:
         "destinazione della rinomina esiste gia'",
     )
     esigi(sorgente.is_dir() and destinazione.is_dir(), "la rinomina rifiutata ha modificato le directory")
+
+
+def prova_restore_da_migrare() -> None:
+    """Con lo stato ancora nel posto di prima il restore non installa uno stato nuovo accanto.
+
+    Lo snapshot sta gia' nel posto nuovo, lo stato no: prima il restore lo
+    installava e l'archivio restava sdoppiato, un conflitto che `ares migrate`
+    non risolve.
+    """
+    casa = RADICE_PROVA / "casa-da-migrare"
+    nuovi = replace(PERCORSI, home=casa, stato=casa / "stato", backup=casa / "backup")
+    nuovi.stato.mkdir(parents=True)
+    crea_sqlite(Path(nuovi.db_file), "da-migrare")
+    snapshot = crea_snapshot(nuovi)
+    vecchio = RADICE_PROVA / "clone-da-migrare" / "tmp"
+    vecchio.parent.mkdir()
+    nuovi.stato.rename(vecchio)
+    with patch.object(config, "VECCHIO_TMP_DIR", vecchio):
+        for azione in (
+            lambda: ripristina_snapshot(nuovi, snapshot.name),
+            lambda: crea_snapshot(nuovi),
+            lambda: pota_snapshot(nuovi, 1),
+        ):
+            try:
+                azione()
+            except StatoDaMigrare:
+                pass
+            else:
+                esigi(False, "una manutenzione e' partita con lo stato ancora nel posto di prima")
+    esigi(not nuovi.stato.exists(), "il restore ha installato lo stato accanto a quello da migrare")
+    esigi(elenco_snapshot(nuovi) == [snapshot], "la manutenzione rifiutata ha toccato gli snapshot")
 
 
 def prova_residui_restore() -> None:
@@ -856,6 +888,9 @@ def main() -> int:
 
         prova_guardie_restore()
         ok("guardie restore", "staging fallito ripulito e destinazione esistente preservata")
+
+        prova_restore_da_migrare()
+        ok("stato da migrare", "restore, create e prune rifiutati senza sdoppiare l'archivio")
 
         aggiungi_sqlite(Path(PERCORSI.db_file), "profilo-modificato")
         aggiungi_sqlite(Path(PERCORSI.fs_db_file), "nota-modificata")

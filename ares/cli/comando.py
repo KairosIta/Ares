@@ -14,7 +14,8 @@ from cyclopts import App, Group, Parameter
 import ares
 from ares.cli.ui import UI
 from ares.config import Percorsi
-from ares.state.lock import StatoOccupato, lock_stato
+from ares.core.stato import StatoDaMigrare, stato_esclusivo, stato_in_uso
+from ares.state.lock import StatoOccupato
 
 # I codici di uscita, uguali per ogni comando:
 #
@@ -38,6 +39,18 @@ def codice_di(errore: BaseException) -> int:
     return ESITO_OCCUPATO if isinstance(errore, StatoOccupato) else ESITO_GUASTO
 
 
+def avvisa_da_migrare(errore: StatoDaMigrare) -> int:
+    """L'avviso di `ares migrate` su stderr; vale 1, come per la chat."""
+    # Qui e non in cima: `ops/migrazione.py` importa questo modulo.
+    from ares.ops.migrazione import righe_avviso
+
+    righe = righe_avviso(errore.parti)
+    UI.err(righe[0], style="ares.warning")
+    for riga in righe[1:]:
+        UI.err(riga, style="ares.muted")
+    return ESITO_GUASTO
+
+
 def esegui_protetto(
     percorsi: Percorsi,
     azione: Callable[[], int],
@@ -47,18 +60,22 @@ def esegui_protetto(
     guasti: tuple[type[BaseException], ...] = (OSError,),
     riprova: str = "Attendi che chat, backup, restore o manutenzione terminino e riprova.",
 ) -> int:
-    """Esegue `azione` sotto il lock dello stato indicato da `percorsi`.
+    """Esegue `azione` con lo stato indicato da `percorsi` aperto dal nucleo.
 
-    `rifiuti` valgono 2, `guasti` 1, lo stato occupato 3. Ogni altra eccezione
-    passa: un traceback inatteso va letto, non nascosto dietro un codice.
+    `esclusivo` per chi scrive (`stato_esclusivo`), condiviso per chi legge.
+    `rifiuti` valgono 2, `guasti` 1, lo stato occupato 3, lo stato da migrare
+    1. Ogni altra eccezione passa: un traceback inatteso va letto, non
+    nascosto dietro un codice.
     """
     try:
-        with lock_stato(percorsi.lock_file, esclusivo=esclusivo):
+        with (stato_esclusivo if esclusivo else stato_in_uso)(percorsi):
             return azione()
     except StatoOccupato as errore:
         UI.err("Impossibile usare lo stato di Ares: " + str(errore))
         UI.err(riprova, style="ares.muted")
         return ESITO_OCCUPATO
+    except StatoDaMigrare as errore:
+        return avvisa_da_migrare(errore)
     except rifiuti as errore:
         UI.err("Rifiutato: " + str(errore))
         return ESITO_RIFIUTO

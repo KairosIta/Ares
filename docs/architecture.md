@@ -48,7 +48,8 @@ chat non parte finché la migrazione non è avvenuta.
 - `comando.py` dà a tutte le App gli stessi titoli e la console di `ui.py`,
   e tiene i codici di uscita — 0 fatto, 1 guasto, 2 rifiutato, 3 occupato —
   con `esegui_protetto`, il contorno di lock ed errori condiviso dalle
-  manutenzioni.
+  manutenzioni: apre lo stato dal nucleo, esclusivo per chi scrive e
+  condiviso per chi legge.
 - `chat.py` avvia e coordina la REPL. `commands.py` contiene la tabella dei
   comandi locali, il loro dispatch e lo `StatoChat` che `/sessione`,
   `/metriche` e `/debug` modificano a metà conversazione. `render.py`
@@ -85,8 +86,10 @@ chiedere niente: il ciclo di vita della sessione e il turno completo.
   sessione corrente la tiene il client.
 - `id_sessione.py`: l'id leggibile, da cartella e momento.
 - `stato.py`: `stato_in_uso` tiene il lock condiviso dello stato per tutta
-  la vita del client e rifiuta lo stato rimasto nel posto delle versioni
-  vecchie (`StatoDaMigrare`). La usano la chat e `ares inspect`.
+  la vita del client, `stato_esclusivo` quello esclusivo per backup,
+  restore e manutenzioni che scrivono. Entrambi rifiutano lo stato o i
+  backup rimasti nel posto delle versioni vecchie (`StatoDaMigrare`): solo
+  `ares migrate` li tocca, con i suoi lock.
 - `autorizzazioni.py`: le regole che seguono dalla presenza dichiarata dal
   client. Senza presenza nessuna modalità scrive in silenzio
   (`verifica_modo`, anche per `/modo`) e ogni strumento in pausa è
@@ -162,7 +165,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   `ares resume` e il prompt solo quelle di qui (`nate_qui`).
 - `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato;
   `platform_files.py` ne uniforma le primitive fra POSIX e Windows. Le chat
-  tengono il lock condiviso, attraverso `core/stato.py`. Un secondo lock esclusivo per utente copre
+  tengono il lock condiviso e la manutenzione quello esclusivo, attraverso
+  `core/stato.py`; `ops/migrazione.py` è l'unico che usa `lock_stato`
+  direttamente. Un secondo lock esclusivo per utente copre
   ogni turno, dall'istantanea degli apprendimenti alla conferma e al
   rollback: una seconda chat dello stesso utente resta aperta, ma un turno
   occupato viene rifiutato prima di leggere l'istantanea o chiamare il

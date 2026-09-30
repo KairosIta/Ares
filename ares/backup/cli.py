@@ -19,11 +19,12 @@ from cyclopts import Parameter
 
 from ares import config
 from ares.backup import integrity
-from ares.cli.comando import ESITO_RIFIUTO, codice_di, nuova_app
+from ares.cli.comando import ESITO_RIFIUTO, avvisa_da_migrare, codice_di, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
 from ares.config import Percorsi
-from ares.state.lock import StatoOccupato, lock_stato
+from ares.core.stato import StatoDaMigrare, stato_esclusivo
+from ares.state.lock import StatoOccupato
 
 
 @dataclass(frozen=True)
@@ -65,13 +66,16 @@ def _protetto(funzione):
 
     Le operazioni prendono il lock da sole, dentro `snapshots`; qui si
     traducono soltanto le eccezioni con la tabella di `cli/comando.py`: lo
-    stato occupato vale 3, uno snapshot corrotto o un disco che non scrive 1.
+    stato occupato vale 3, uno snapshot corrotto o un disco che non scrive 1,
+    come lo stato ancora da migrare, che dice anche come spostarlo.
     """
 
     @functools.wraps(funzione)
     def involucro(*argomenti, **opzioni):
         try:
             return funzione(*argomenti, **opzioni)
+        except StatoDaMigrare as errore:
+            return avvisa_da_migrare(errore)
         except (integrity.ErroreBackup, StatoOccupato, OSError) as errore:
             UI.err("ERRORE: " + str(errore))
             return codice_di(errore)
@@ -219,7 +223,7 @@ def pota(*, keep: int = config.BACKUP_KEEP, yes: bool = False) -> int:
     # Fra anteprima e conferma potrebbe essere nato uno snapshot. Non eliminare
     # mai qualcosa che l'utente non ha appena visto.
     nomi_visti = [percorso.name for percorso in candidati]
-    with lock_stato(percorsi.lock_file, esclusivo=True):
+    with stato_esclusivo(percorsi):
         attuali = operazioni.elenco_snapshot(percorsi)
         candidati_attuali = attuali[:-keep] if len(attuali) > keep else []
         if [percorso.name for percorso in candidati_attuali] != nomi_visti:

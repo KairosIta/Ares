@@ -21,11 +21,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ares import config
-from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_OCCUPATO, ESITO_RIFIUTO, nuova_app
+from ares.cli.comando import ESITO_FATTO, ESITO_OCCUPATO, ESITO_RIFIUTO, avvisa_da_migrare, nuova_app
 from ares.cli.ui import UI, byte_leggibili
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.core.stato import StatoDaMigrare, stato_in_uso
-from ares.ops.migrazione import righe_avviso
 from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato
 
@@ -171,11 +170,7 @@ def ispeziona(
         return ESITO_OCCUPATO
     except StatoDaMigrare as errore:
         # Altrimenti mostrerebbe un archivio vuoto senza dire perche'.
-        righe = righe_avviso(errore.parti)
-        UI.err(righe[0], style="ares.warning")
-        for riga in righe[1:]:
-            UI.err(riga, style="ares.muted")
-        return ESITO_GUASTO
+        return avvisa_da_migrare(errore)
     return ESITO_FATTO
 
 
