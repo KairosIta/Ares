@@ -79,17 +79,16 @@ from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduc
 from ares.agent.prompts import strumenti_spazio  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.cli.commands import StatoChat, gestisci_comando  # noqa: E402
+from ares.cli.conversazioni import righe_sessione  # noqa: E402
 from ares.cli.ui import stampa_store  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
+from ares.state.sessioni import elenca, riferimento, tronca  # noqa: E402
 from ares.state.stores import (  # noqa: E402
     leggi_entita,
     leggi_intuizioni,
-    leggi_sessioni,
     namespace_entita,
     namespace_utente,
-    prima_domanda,
     righe_entita,
-    righe_sessione,
 )
 
 # Utente che non esiste in nessun archivio: serve solo a controllare che i
@@ -1582,22 +1581,25 @@ def sessioni_elencate(agent, user_id: str, session_id: str) -> str:
     `sort_by` non riconosciuto non solleva niente e lascia l'ordine del disco.
     """
     atteso = semina_sessioni(agent, user_id)
-    lette = [s.session_id for s in leggi_sessioni(agent, Utente.da_grezzo(user_id))]
+    lette = list(elenca(agent.db, Utente.da_grezzo(user_id), ambito="tutte").nomi)
     esigi(lette == atteso, "ordine per ultima modifica non rispettato: " + repr(lette))
 
     # Il filtro guarda il nome, e taglia dopo aver filtrato: una sessione che
     # corrisponde ma e' vecchia deve restare visibile.
-    filtrate = [s.session_id for s in leggi_sessioni(agent, Utente.da_grezzo(user_id), query="LAVORO")]
+    filtrate = list(elenca(agent.db, Utente.da_grezzo(user_id), ambito="tutte", testo="LAVORO").nomi)
     esigi(filtrate == ["lavoro-gamma", "lavoro-delta"], "il filtro sul nome non funziona: " + repr(filtrate))
-    esigi(leggi_sessioni(agent, Utente.da_grezzo(user_id), query="pipppo") == [], "un filtro inventato trova qualcosa")
+    esigi(
+        elenca(agent.db, Utente.da_grezzo(user_id), ambito="tutte", testo="pipppo").totale == 0,
+        "un filtro inventato trova qualcosa",
+    )
 
     # Nessuna sessione di un altro utente.
     esigi(
-        leggi_sessioni(agent, Utente.da_grezzo(UTENTE_DI_CONTROLLO)) == [],
+        elenca(agent.db, Utente.da_grezzo(UTENTE_DI_CONTROLLO), ambito="tutte").totale == 0,
         "le sessioni di un utente si vedono da un altro utente",
     )
 
-    prima = leggi_sessioni(agent, Utente.da_grezzo(user_id))[0]
+    prima = elenca(agent.db, Utente.da_grezzo(user_id), ambito="tutte", limite=1).voci[0]
     righe = " ".join(righe_sessione(prima, corrente=True))
     esigi("(questa)" in righe, "la sessione in corso non e' marcata: " + repr(righe))
     esigi("1 scambio" in righe, "il numero di scambi e' sbagliato: " + repr(righe))
@@ -1797,8 +1799,8 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     esigi("/profilo" in uscita and "/esci" in uscita, "/aiuto non elenca i comandi: " + repr(uscita))
 
     # Le funzioni pure dietro `/sessioni`, sui rami che il seme non tocca: un
-    # messaggio il cui contenuto e' una lista di parti, un agente senza
-    # archivio, una sessione senza data.
+    # messaggio il cui contenuto e' una lista di parti e una sessione senza
+    # data.
     class Messaggio:
         def __init__(self, role, content):
             self.role = role
@@ -1814,12 +1816,11 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
         created_at = None
         runs = (Run([Messaggio("assistant", "x"), Messaggio("user", ["prima ", {"text": "parte"}, {"altro": 1}])]),)
 
-    a_parti = prima_domanda(Sessione())
+    a_parti = riferimento(Sessione()).inizio
     esigi(a_parti == "prima parte", "un contenuto a parti non si legge: " + repr(a_parti))
-    righe = righe_sessione(Sessione())
+    righe = righe_sessione(riferimento(Sessione()))
     esigi("data ignota" in righe[0], "una sessione senza data non lo dice: " + repr(righe))
-    esigi(prima_domanda(Sessione(), larghezza=5) == "prima...", "il troncamento della domanda non avviene")
-    esigi(leggi_sessioni(object(), Utente.da_grezzo(user_id)) == [], "un agente senza archivio non da' un elenco vuoto")
+    esigi(tronca(a_parti, 5) == "prima...", "il troncamento della domanda non avviene")
 
     # Le memorie come testo per il prompt: la legenda in testa, la data fra
     # quadre, una voce che non e' un dict resa com'e', una vuota saltata.

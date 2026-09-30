@@ -61,7 +61,7 @@ applica davvero, non ciò che il nome suggerisce.
 | Intuizioni (`lancedb/learned_knowledge`) | utente, sotto `user/<id>` | `namespace_utente(utente)` | [learning.py](../ares/agent/learning.py), [runtime.py](../ares/agent/runtime.py) |
 | Quaderno e file dell'agente (`filesystem.db`) | utente: non per cartella, non per sessione | `namespace=namespace_utente(utente)` | [archivi.py](../ares/state/archivi.py), [prompts.py](../ares/agent/prompts.py) |
 | Payload di offload (`filesystem.db`) | utente in scrittura, utente più sessione in lettura | namespace del quaderno e `run_context` | [archivi.py](../ares/state/archivi.py) |
-| Sessioni e cronologia chat (`kairos.db`) | utente, con la cartella come etichetta nei metadati | `user_id`; `metadata={CHIAVE_CARTELLA: str(spazio.root)}` | [assistant.py](../ares/agent/assistant.py), [stores.py](../ares/state/stores.py) |
+| Sessioni e cronologia chat (`kairos.db`) | utente, con la cartella come etichetta nei metadati | `user_id`; `metadata={CHIAVE_CARTELLA: str(spazio.root)}` | [assistant.py](../ares/agent/assistant.py), [sessioni.py](../ares/state/sessioni.py) |
 | File del progetto (workspace) | cartella: directory corrente o `--workspace` | `percorsi.lavoro` | [config.py](../ares/config.py), [runtime.py](../ares/agent/runtime.py) |
 | Istruzioni `ARES.md` | cartella | `radice_lavoro` più nome configurato | [prompts.py](../ares/agent/prompts.py) |
 | Cronologia del REPL | installazione: né utente né cartella | `percorsi.cronologia_file` | [config.py](../ares/config.py), [chat.py](../ares/cli/chat.py) |
@@ -71,9 +71,8 @@ applica davvero, non ciò che il nome suggerisce.
 Tre letture di questa tabella:
 
 1. **La cartella è un'etichetta, non un'identità.** Entra in un solo posto dei
-   dati — `metadata[CHIAVE_CARTELLA]` — e in un solo filtro: `leggi_sessioni`
-   con `cartella=` e `sessioni_della_cartella`, entrambi confronti di stringhe
-   sul percorso risolto. Nessuno store di apprendimento la riceve.
+   dati — `metadata[CHIAVE_CARTELLA]` — e in un solo filtro: `elenca` con gli
+   ambiti `qui` e `nate_qui`, confronti di stringhe sul percorso risolto. Nessuno store di apprendimento la riceve.
 2. **Solo due archivi hanno un asse di namespace**: entità e intuizioni. Gli
    altri sono per utente o per sessione e non offrono un posto dove mettere il
    progetto senza cambiare le chiavi.
@@ -92,7 +91,7 @@ decisi uno per uno quando l'ambito diventa parte del contratto (§6.3).
 | --- | --- | --- |
 | `search_past_sessions` (strumento Agno) | `user_id`, meno la sessione corrente: **nessuna cartella** | `agno/agent/_default_tools.py:490-503` |
 | `read_past_session` (strumento Agno) | `session_id` più `user_id`: nessuna verifica della cartella di nascita | `agno/agent/_default_tools.py:587-591` |
-| `leggi_sessioni(cartella=None)` | solo `user_id`; è il percorso di `/sessioni tutte` e di `ares inspect` senza `--session` | [stores.py](../ares/state/stores.py), [commands.py](../ares/cli/commands.py), [inspect_learning.py](../ares/ops/inspect_learning.py) |
+| `elenca(ambito="tutte")` | solo `user_id`; è il percorso di `/sessioni tutte` e di `ares inspect` senza `--session` | [sessioni.py](../ares/state/sessioni.py), [commands.py](../ares/cli/commands.py), [inspect_learning.py](../ares/ops/inspect_learning.py) |
 | Quaderno | solo il namespace dell'utente: `read_file`, `list_files`, `search_content` leggono note scritte altrove | [archivi.py](../ares/state/archivi.py), [prompts.py](../ares/agent/prompts.py) |
 | `ares inspect --file` | solo il namespace dell'utente | [inspect_learning.py](../ares/ops/inspect_learning.py) |
 | Entità e intuizioni | namespace dell'utente, uguale in ogni cartella | [stores.py](../ares/state/stores.py) |

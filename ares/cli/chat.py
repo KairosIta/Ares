@@ -38,6 +38,7 @@ from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_OCCUPATO, ESITO_RIFIUTO
 from ares.cli.commands import COMANDI, StatoChat, candidati_argomento, gestisci_comando, modo_senza_terminale
+from ares.cli.conversazioni import conto_scambi
 from ares.cli.editor import CliInput
 from ares.cli.log import configura_log_agno
 from ares.cli.render import (
@@ -58,7 +59,7 @@ from ares.ops import migrazione
 from ares.state.git import ramo_git
 from ares.state.identita import Utente, UtenteNonValido
 from ares.state.lock import StatoOccupato
-from ares.state.stores import prima_domanda, quando_sessione
+from ares.state.sessioni import quando, tronca
 
 
 def riga_stato(stato: StatoChat) -> str:
@@ -156,27 +157,24 @@ def _sessione_da_aprire(sessioni: Sessioni, *, riprendi: bool, scegli: bool) -> 
         return sessioni.id_nuovo(), ""
     if not riprendi:
         return sessioni.id_nuovo(), "nuova"
-    precedenti = sessioni.della_cartella()
-    if not precedenti:
+    precedenti = sessioni.elenco(ambito="nate_qui", limite=None if scegli else 1)
+    if not precedenti.totale:
         UI.line("Nessuna conversazione in questa cartella: `ares` da solo ne apre una nuova.", style="ares.warning")
         return None, ""
     if scegli:
         UI.heading("Conversazioni in " + str(sessioni.percorsi.lavoro))
-        scelta = cartella.scegli_sessione(sessioni.con_scambi(precedenti[: sessioni.politica.mostra.sessioni]))
+        scelta = cartella.scegli_sessione(precedenti.voci)
         if scelta is None:
             UI.line("Nessuna conversazione ripresa.", style="ares.muted")
         return scelta, "ripresa"
-    ultima = sessioni.con_scambi(precedenti[:1])[0]
-    scambi = len(getattr(ultima, "runs", None) or [])
-    conto = str(scambi) + (" scambio" if scambi == 1 else " scambi")
-    UI.pair("Riprendo", str(ultima.session_id) + "   " + quando_sessione(ultima) + "   " + conto)
-    inizio = prima_domanda(ultima)
-    if inizio:
-        UI.line("    inizio: " + inizio, style="ares.muted")
-    if len(precedenti) > 1:
-        altre = "    altre " + str(len(precedenti) - 1) + " in questa cartella: ares resume --scegli"
+    ultima = precedenti.voci[0]
+    UI.pair("Riprendo", ultima.id + "   " + quando(ultima) + "   " + conto_scambi(ultima.scambi))
+    if ultima.inizio:
+        UI.line("    inizio: " + tronca(ultima.inizio, 90), style="ares.muted")
+    if precedenti.totale > 1:
+        altre = "    altre " + str(precedenti.totale - 1) + " in questa cartella: ares resume --scegli"
         UI.line(altre, style="ares.muted")
-    return str(ultima.session_id), "ripresa"
+    return ultima.id, "ripresa"
 
 
 def _colpo_singolo(stato: StatoChat, testo: str) -> int:

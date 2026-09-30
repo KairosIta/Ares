@@ -1248,11 +1248,18 @@ def chat_sessioni() -> str:
         ("ripresa-vecchia", 1000, qui),
         ("ripresa-nuova", 2000, qui),
         ("altrove", 3000, "/un/altro/progetto"),
+        # Senza cartella e piu' recente: `resume` non deve riprenderla.
+        ("orfana", 4000, None),
     )
     try:
         for identificativo, quando, dove in seminate:
             db.upsert_session(
-                AgentSession(session_id=identificativo, user_id=UTENTE, metadata={"cartella": dove}, created_at=quando)
+                AgentSession(
+                    session_id=identificativo,
+                    user_id=UTENTE,
+                    metadata={"cartella": dove} if dove else None,
+                    created_at=quando,
+                )
             )
         esito, testo = avvio(riprendi=True)
         esigi(esito == 0 and costruiti[-1]["session_id"] == "ripresa-nuova", "resume non riapre l'ultima di qui")

@@ -151,12 +151,15 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `archivi.py` apre i due SQLite, privati e con i pragma di Agno già
   materializzati, e costruisce il deposito dei risultati grandi. Sta qui e
   non nell'agente perché anche la retention delle sessioni lo usa.
-- `stores.py` è l'unico punto da cui si leggono entità, intuizioni e
-  sessioni: non scrive, non stampa, e non accende il modello salvo
-  l'embedding della query sulle intuizioni. Ogni sessione porta nei
-  metadati la cartella in cui è nata (la passa `build_assistant`, Agno la
-  conserva nelle riprese): `/sessioni` mostra quelle di qui e quelle senza
-  cartella, `ares resume` solo quelle di qui.
+- `stores.py` è l'unico punto da cui si leggono entità e intuizioni: non
+  scrive, non stampa, e non accende il modello salvo l'embedding della
+  query sulle intuizioni.
+- `sessioni.py` legge le conversazioni come `SessioneRiferimento` e
+  `Conversazione`, senza far uscire gli oggetti di Agno; i run si leggono
+  solo per le voci mostrate. Ogni sessione porta nei metadati la cartella in
+  cui è nata (la passa `build_assistant`, Agno la conserva nelle riprese):
+  `/sessioni` mostra quelle di qui e quelle senza cartella (`qui`),
+  `ares resume` e il prompt solo quelle di qui (`nate_qui`).
 - `lock.py` espone il lock cooperativo condiviso/esclusivo dello stato;
   `platform_files.py` ne uniforma le primitive fra POSIX e Windows. Le chat
   tengono il lock condiviso, attraverso `core/stato.py`. Un secondo lock esclusivo per utente copre

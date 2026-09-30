@@ -1,7 +1,7 @@
 # Piano di refactor del core applicativo
 
-Data: 2026-09-28, aggiornato il 2026-09-29.
-**Stato: implementati i primi quattro passaggi (sessione, turno, autorizzazioni, stato in uso).**
+Data: 2026-09-28, aggiornato il 2026-09-30.
+**Stato: implementati i cinque passaggi (sessione, turno, autorizzazioni, stato in uso, riferimenti di sessione).**
 
 ## Obiettivo
 Un nucleo applicativo indipendente dall'interfaccia, a partire dal ciclo di
@@ -15,7 +15,7 @@ vita della sessione. L'analisi di partenza è in
 | Decisione | Prima | Ora |
 | --- | --- | --- |
 | id di una conversazione nuova | `cli/cartella.nuovo_id_sessione` | `Sessioni.id_nuovo` (`core/id_sessione.py`) |
-| sessioni della cartella per `resume` | `cli/chat` + `state/stores` | `Sessioni.della_cartella`, `con_scambi` |
+| sessioni della cartella per `resume` | `cli/chat` + `state/stores` | `Sessioni.elenco` (quinto passaggio) |
 | proprietario prima di aprire | `cli/chat`, `cli/commands` | `Sessioni.apri` → `SessioneDiAltri` |
 | costruzione dell'agente | `cli/chat`, `/sessione`, `/modo` | `Sessioni.apri`, `nuova`, `cambia_modo` |
 
@@ -27,12 +27,9 @@ Differenze dalla bozza di API in [responsibility-map.md](responsibility-map.md):
 - **Servizio senza stato proprio.** La sessione corrente resta al client, che
   riceve una `SessioneAttiva` (id, modalità, agente) a ogni apertura. La CLI
   costruisce il servizio dalla configurazione della conversazione.
-- **Niente `SessioneRiferimento`, `elenco` e `riprendi`, per ora.** Elenchi e
-  rendering (`/sessioni`, `ares resume --scegli`, le istruzioni al modello)
-  lavorano ancora sulle sessioni di Agno tramite `state/stores.py`: un
-  riferimento proprio va introdotto quando un secondo client ne avrà bisogno,
-  insieme a un `elenco` che lo restituisca. La scelta fra «ultima» e «scelta
-  dall'elenco» è una domanda all'utente, quindi resta alla CLI.
+- **Niente `riprendi`.** La scelta fra «ultima» e «scelta dall'elenco» è una
+  domanda all'utente, quindi resta alla CLI, che la risolve con `elenco`
+  (quinto passaggio).
 
 ## Secondo passaggio: il turno (fatto)
 
@@ -100,10 +97,34 @@ La chat rifiuta prima gli argomenti incoerenti (modalità, `--scegli` con
 `Sessioni`. Aprire lo stato non scrive al suo interno: un avvio rifiutato
 non lascia niente dietro di sé.
 
-## Passi successivi
+## Quinto passaggio: i riferimenti di sessione (fatto)
 
-1. **Riferimenti di sessione.** `SessioneRiferimento` ed `elenco` per gli
-   elenchi, così la CLI smette di leggere le sessioni di Agno.
+`ares/state/sessioni.py` legge le conversazioni e le restituisce come
+`SessioneRiferimento` (id, cartella, ultima modifica, scambi, prima domanda) e
+`Conversazione` (gli scambi, per `/esporta`): gli oggetti di sessione di Agno
+non escono da lì. Sta in `state/` perché lo usa anche il prompt, e `agent/`
+non dipende dal nucleo.
+
+| Lettura | Prima | Ora |
+| --- | --- | --- |
+| `/sessioni`, TAB su `/sessione` | `leggi_sessioni` sull'agente, con i run di tutte le sessioni | `Sessioni.elenco(ambito="qui" o "tutte")` |
+| `ares resume`, `--scegli` | `della_cartella` + `con_scambi`, oggetti Agno | `Sessioni.elenco(ambito="nate_qui")` |
+| `/esporta` | `stato.agent.db.get_session` | `Sessioni.conversazione` |
+| conversazioni nel prompt | `sessioni_della_cartella` + `con_run` | `elenca(ambito="nate_qui", escludi=...)` |
+| `ares inspect` senza `--session` | `leggi_sessioni`, con tutti i run, per un id | `elenca(ambito="tutte", limite=0).nomi` |
+
+Un elenco filtra, conta e taglia sulle sessioni senza run; poi rilegge con i
+run solo le voci tagliate, con `get_session`, che unisce anche i run rimasti
+nella vecchia colonna di Agno. Su un archivio di prova con messaggi da 2 KB,
+`/sessioni` costava 0,11 s con 60 sessioni da 30 scambi e 0,40 s con 200, e
+cresceva con la storia; ora legge solo le 20 mostrate, in circa 0,03 s.
+
+Gli ambiti restano due regole diverse, come prima: `qui` (quelle di qui e
+quelle senza cartella, per `/sessioni`) e `nate_qui` (per `resume` e il
+prompt, che non devono riprendere una sessione vecchia da una cartella
+qualunque). La resa in testo è del client: `cli/conversazioni.py` per il
+terminale e il Markdown, `agent/prompts.py` per il modello. Il prompt e
+l'esportazione sono identici byte per byte a prima.
 
 ## Cosa non si tocca
 

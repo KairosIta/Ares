@@ -37,7 +37,7 @@ from ares.agent.runtime import (
 )
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.identita import Utente
-from ares.state.stores import CHIAVE_CARTELLA, con_run, sessioni_della_cartella
+from ares.state.sessioni import CHIAVE_CARTELLA, SessioneRiferimento, elenca
 
 __all__ = [
     "AresLearningMachine",
@@ -92,12 +92,18 @@ def build_assistant(
     spazio = build_workspace(percorsi, politica, modo) if politica.workspace.attivo else None
 
     metadata = None
-    precedenti: list = []
+    precedenti: tuple[SessioneRiferimento, ...] = ()
     if spazio is not None:
         metadata = {CHIAVE_CARTELLA: str(spazio.root)}
         if politica.cronologia.sessioni_passate:
-            recenti = sessioni_della_cartella(db, utente, spazio.root, escludi=session_id)
-            precedenti = [con_run(db, s) for s in recenti[: politica.cronologia.sessioni_nel_prompt]]
+            precedenti = elenca(
+                db,
+                utente,
+                ambito="nate_qui",
+                cartella=spazio.root,
+                escludi=session_id,
+                limite=politica.cronologia.sessioni_nel_prompt,
+            ).voci
 
     return Agent(
         name="Ares",

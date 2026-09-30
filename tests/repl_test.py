@@ -1417,32 +1417,39 @@ def stato_della_chat() -> str:
             letti.append(argomenti)
             return SimpleNamespace(session_id=argomenti["session_id"], user_id="utente", runs=runs, metadata={})
 
-    stato.agent.db = DbFinto()
-    uscita = comando("/esporta")
-    atteso = PERCORSI.lavoro / (nome_nuova + ".md")
-    esigi("Esportata" in uscita and atteso.is_file(), "/esporta non scrive il file della sessione: " + repr(uscita))
-    esigi(
-        letti[-1]["session_id"] == nome_nuova and letti[-1]["user_id"] == "utente", "/esporta legge un'altra sessione"
-    )
-    testo = atteso.read_text(encoding="utf-8")
-    esigi(testo.startswith("# Conversazione " + nome_nuova), "l'esportazione non ha la testata: " + repr(testo[:80]))
-    esigi(
-        testo.count("Ciao Ares") == 1 and testo.count("Salve!") == 1, "la storia riportata da Agno raddoppia gli scambi"
-    )
-    esigi(
-        testo.count("## Tu") == 2 and testo.count("## Ares") == 2,
-        "mancano turni o ne compaiono di vuoti: " + repr(testo),
-    )
-    esigi("istruzioni" not in testo, "il messaggio di sistema finisce nell'esportazione")
-    esigi("_strumenti: workspace_read_file_" in testo, "gli strumenti del turno non compaiono una volta sola")
-    esigi("- scambi: 2" in testo, "la testata non conta gli scambi")
-    uscita = comando("/esporta")
-    esigi("esiste gia'" in uscita, "/esporta sovrascrive il file con il nome scelto da Ares")
-    scelto = PERCORSI.lavoro / "note.md"
-    uscita = comando("/esporta " + str(scelto))
-    esigi("Esportata" in uscita and scelto.is_file(), "/esporta <file> non scrive dove chiesto: " + repr(uscita))
-    uscita = comando("/esporta " + str(scelto))
-    esigi("Sovrascritta" in uscita, "/esporta <file> su un file che esiste non dice che sovrascrive: " + repr(uscita))
+    # `/esporta` legge dal database del nucleo, non da quello dell'agente.
+    with patch.object(nucleo_sessioni, "build_db", lambda _percorsi: DbFinto()):
+        uscita = comando("/esporta")
+        atteso = PERCORSI.lavoro / (nome_nuova + ".md")
+        esigi("Esportata" in uscita and atteso.is_file(), "/esporta non scrive il file della sessione: " + repr(uscita))
+        esigi(
+            letti[-1]["session_id"] == nome_nuova and letti[-1]["user_id"] == "utente",
+            "/esporta legge un'altra sessione",
+        )
+        testo = atteso.read_text(encoding="utf-8")
+        esigi(
+            testo.startswith("# Conversazione " + nome_nuova), "l'esportazione non ha la testata: " + repr(testo[:80])
+        )
+        esigi(
+            testo.count("Ciao Ares") == 1 and testo.count("Salve!") == 1,
+            "la storia riportata da Agno raddoppia gli scambi",
+        )
+        esigi(
+            testo.count("## Tu") == 2 and testo.count("## Ares") == 2,
+            "mancano turni o ne compaiono di vuoti: " + repr(testo),
+        )
+        esigi("istruzioni" not in testo, "il messaggio di sistema finisce nell'esportazione")
+        esigi("_strumenti: workspace_read_file_" in testo, "gli strumenti del turno non compaiono una volta sola")
+        esigi("- scambi: 2" in testo, "la testata non conta gli scambi")
+        uscita = comando("/esporta")
+        esigi("esiste gia'" in uscita, "/esporta sovrascrive il file con il nome scelto da Ares")
+        scelto = PERCORSI.lavoro / "note.md"
+        uscita = comando("/esporta " + str(scelto))
+        esigi("Esportata" in uscita and scelto.is_file(), "/esporta <file> non scrive dove chiesto: " + repr(uscita))
+        uscita = comando("/esporta " + str(scelto))
+        esigi(
+            "Sovrascritta" in uscita, "/esporta <file> su un file che esiste non dice che sovrascrive: " + repr(uscita)
+        )
     # La riga della barra sotto il prompt: modalita' e sessione sempre, la
     # finestra solo dopo un turno, e con `<1` sotto l'uno per cento.
     from ares.cli.chat import riga_stato
@@ -1706,8 +1713,9 @@ def conversazioni_per_cartella() -> str:
 
     from ares.agent.prompts import istruzioni_sulle_conversazioni
     from ares.cli import cartella
+    from ares.cli.conversazioni import righe_sessione
     from ares.core.id_sessione import nuovo_id_sessione
-    from ares.state.stores import cartella_sessione, leggi_sessioni, righe_sessione, sessioni_della_cartella
+    from ares.state.sessioni import cartella_di, elenca, riferimento
 
     class Messaggio:
         def __init__(self, role, content):
@@ -1731,53 +1739,59 @@ def conversazioni_per_cartella() -> str:
         def __init__(self, sessioni):
             self.sessioni = sessioni
             self.chiamate: list[dict] = []
+            self.riletti: list[str] = []
 
         def get_sessions(self, **argomenti):
             self.chiamate.append(argomenti)
             return list(self.sessioni)
 
         def get_session(self, session_id, **_argomenti):
+            self.riletti.append(session_id)
             return next((s for s in self.sessioni if s.session_id == session_id), None)
 
-    class Agente:
-        def __init__(self, db):
-            self.db = db
-
     qui, altrove = "/progetti/qui", "/progetti/altrove"
-    prima = Sessione("qui-1", qui, runs=[Run([Messaggio("user", "prima domanda qui")])])
+    prima = Sessione("qui-1", qui, runs=[Run([Messaggio("user", "  prima   domanda\nqui ")])])
     db = Db([Sessione("qui-2", qui), Sessione("altrove-1", altrove), Sessione("vecchia"), prima])
-    agente = Agente(db)
+    utente = Utente.da_grezzo("u")
 
-    def nomi(sessioni) -> list[str]:
-        return [s.session_id for s in sessioni]
+    def nomi(**argomenti) -> list[str]:
+        return list(elenca(db, utente, **argomenti).nomi)
 
+    esigi(nomi(ambito="tutte") == ["qui-2", "altrove-1", "vecchia", "qui-1"], "senza cartella si filtra")
     esigi(
-        nomi(leggi_sessioni(agente, Utente.da_grezzo("u"))) == ["qui-2", "altrove-1", "vecchia", "qui-1"],
-        "senza cartella si filtra",
+        nomi(ambito="qui", cartella=qui) == ["qui-2", "vecchia", "qui-1"],
+        "`qui` non tiene quelle di qui e quelle senza cartella",
     )
+    esigi(nomi(ambito="qui", cartella=qui, testo="QUI") == ["qui-2", "qui-1"], "filtro e testo insieme")
+    esigi(nomi(ambito="nate_qui", cartella=qui) == ["qui-2", "qui-1"], "`nate_qui` vede sessioni non nate qui")
+    esigi(nomi(ambito="nate_qui", cartella=qui, escludi="qui-2") == ["qui-1"], "escludi non esclude")
+    esigi(all(c.get("include_runs") is False for c in db.chiamate), "l'elenco carica i run di tutte le sessioni")
+    for ambito in ("qui", "nate_qui"):
+        try:
+            elenca(db, utente, ambito=ambito)
+        except ValueError:
+            pass
+        else:
+            esigi(False, "l'ambito " + ambito + " senza cartella non e' rifiutato")
+
+    # Si filtra, si conta, si taglia; solo le voci tagliate si rileggono con i run.
+    db.riletti.clear()
+    tagliato = elenca(db, utente, ambito="nate_qui", cartella=qui, testo="1", limite=1)
+    esigi(tagliato.totale == 1 and tagliato.voci[0].id == "qui-1", "il filtro dopo il taglio perde sessioni")
+    esigi(db.riletti == ["qui-1"], "rilette sessioni oltre il limite: " + repr(db.riletti))
+    esigi(elenca(db, utente, ambito="tutte", limite=0).voci == (), "limite 0 legge delle voci")
+    voce = tagliato.voci[0]
     esigi(
-        nomi(leggi_sessioni(agente, Utente.da_grezzo("u"), cartella=qui)) == ["qui-2", "vecchia", "qui-1"],
-        "il filtro per cartella non tiene quelle di qui e quelle senza cartella",
+        (voce.scambi, voce.inizio, voce.cartella, voce.aggiornata) == (1, "prima domanda qui", qui, 1_700_000_000),
+        "riferimento inatteso: " + repr(voce),
     )
-    esigi(
-        nomi(leggi_sessioni(agente, Utente.da_grezzo("u"), query="QUI", cartella=qui)) == ["qui-2", "qui-1"],
-        "filtro e testo insieme",
-    )
-    esigi(
-        nomi(sessioni_della_cartella(db, Utente.da_grezzo("u"), qui)) == ["qui-2", "qui-1"],
-        "resume vede sessioni non di qui",
-    )
-    esigi(
-        nomi(sessioni_della_cartella(db, Utente.da_grezzo("u"), qui, escludi="qui-2")) == ["qui-1"],
-        "escludi non esclude",
-    )
-    esigi(db.chiamate[-1].get("include_runs") is False, "l'elenco per la ripresa carica i run di tutte")
-    leggi_sessioni(agente, Utente.da_grezzo("Demo"))
+    elenca(db, Utente.da_grezzo("Demo"), ambito="tutte")
     esigi(
         db.chiamate[-1]["user_id"] == "demo",
         "le sessioni non usano la forma canonica: " + repr(db.chiamate[-1]["user_id"]),
     )
-    esigi(cartella_sessione(Sessione("x")) is None and cartella_sessione(prima) == qui, "cartella_sessione")
+    esigi(cartella_di(Sessione("x")) is None and cartella_di(prima) == qui, "cartella_di")
+    prima = riferimento(prima)
     righe = righe_sessione(prima, con_cartella=True)
     esigi(any("cartella: " + qui in r for r in righe), "con_cartella non la mostra: " + repr(righe))
     esigi(not any("cartella:" in r for r in righe_sessione(prima)), "la cartella compare anche senza chiederla")
@@ -1810,7 +1824,7 @@ def conversazioni_per_cartella() -> str:
             patch("builtins.input", finto_input),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            return cartella.scegli_sessione([prima, Sessione("qui-2", qui)])
+            return cartella.scegli_sessione([prima, riferimento(Sessione("qui-2", qui))])
 
     esigi(scelta("2") == "qui-2", "il numero scelto non apre quella sessione")
     esigi(scelta("1") == "qui-1", "il primo numero non apre la prima")

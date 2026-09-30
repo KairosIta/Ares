@@ -21,7 +21,7 @@ from ares.core.autorizzazioni import verifica_modo
 from ares.core.id_sessione import nuovo_id_sessione
 from ares.state.archivi import build_db
 from ares.state.identita import Utente
-from ares.state.stores import con_run, sessione_di_altri, sessioni_della_cartella
+from ares.state.sessioni import Ambito, Conversazione, Elenco, conversazione, elenca, sessione_di_altri
 
 
 class SessioneDiAltri(PermissionError):
@@ -90,19 +90,29 @@ class Sessioni:
             return nuovo_id_sessione(self.percorsi.lavoro)
         return "principale"
 
-    def della_cartella(self) -> list[Any]:
-        """Le sessioni nate nella cartella di lavoro, dalla piu' recente, senza i run.
+    def elenco(self, *, ambito: Ambito = "qui", testo: str = "", limite: int | None = None) -> Elenco:
+        """Le conversazioni dell'utente, dalla piu' recente.
 
-        Vuoto senza spazio di lavoro. Per contare gli scambi o leggere la
-        prima domanda serve `con_scambi`.
+        `ambito` e' relativo alla cartella di lavoro (vedi `state/sessioni.py`);
+        senza spazio di lavoro vale solo `tutte`, e gli altri sollevano
+        `ValueError`.
+        `testo` filtra sul nome. `limite`, se non dato, e' quello della
+        politica: solo le voci entro il limite si leggono con i loro scambi.
         """
-        if not self.con_cartella:
-            return []
-        return sessioni_della_cartella(self.db, self.utente, self.percorsi.lavoro)
+        if ambito != "tutte" and not self.con_cartella:
+            raise ValueError("senza cartella di lavoro l'ambito " + ambito + " non ha senso")
+        return elenca(
+            self.db,
+            self.utente,
+            ambito=ambito,
+            cartella=self.percorsi.lavoro if ambito != "tutte" else None,
+            testo=testo,
+            limite=self.politica.mostra.sessioni if limite is None else limite,
+        )
 
-    def con_scambi(self, sessioni: list[Any]) -> list[Any]:
-        """Le stesse sessioni rilette con i loro run."""
-        return [con_run(self.db, sessione) for sessione in sessioni]
+    def conversazione(self, nome: str) -> Conversazione | None:
+        """La conversazione `nome` di questo utente, o None se non c'e' o e' di un altro."""
+        return conversazione(self.db, self.utente, nome)
 
     def apri(self, nome: str, *, modo: str | None = None) -> SessioneAttiva:
         """Apre la sessione `nome`, nuova o esistente, nella modalita' data.
