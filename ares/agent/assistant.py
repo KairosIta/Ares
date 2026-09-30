@@ -7,6 +7,7 @@ importano da qui.
 from agno.agent import Agent
 
 from ares import config
+from ares.agent.agno_interni import sostituisci_istruzione_risultati
 from ares.agent.learning import (
     AresLearningMachine,
     AresSessionContextStore,
@@ -16,6 +17,7 @@ from ares.agent.learning import (
 )
 from ares.agent.prompts import (
     descrizione,
+    istruzione_sui_risultati,
     istruzioni_dalla_cartella,
     istruzioni_di_collaborazione,
     istruzioni_senza_terminale,
@@ -91,6 +93,9 @@ def build_assistant(
     fs = build_filesystem(percorsi, utente)
     spazio = build_workspace(percorsi, politica, modo) if politica.workspace.attivo else None
 
+    if config.OFFLOAD_TOOL_RESULTS:
+        sostituisci_istruzione_risultati(istruzione_sui_risultati())
+
     metadata = None
     precedenti: tuple[SessioneRiferimento, ...] = ()
     if spazio is not None:
@@ -106,8 +111,9 @@ def build_assistant(
             ).voci
 
     return Agent(
+        # Il nome lo dice gia' la descrizione, in italiano: acceso, Agno
+        # aggiungerebbe "Your name is: Ares." in coda.
         name="Ares",
-        add_name_to_context=True,
         description=descrizione(impostazioni, politica, interattivo=interattivo),
         model=build_chat_model(impostazioni),
         db=db,

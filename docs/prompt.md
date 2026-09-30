@@ -89,6 +89,12 @@ che `-p` non prometta estrazione automatica, non proponga `/modo` e non
 reintroduca la guida inglese di Agno. Il caso `auto` non interattivo è verificato sulla fabbrica
 dell'agente; la CLI lo rifiuta.
 
+Il controllo della lingua non usa un elenco di frasi note: segnala ogni
+riga con parole inglesi, fuori dai blocchi di dati (memorie, entità,
+`ARES.md`). La riga dell'ora, che Agno compone da sé, è l'unica eccezione
+dichiarata. Il nome è detto dalla descrizione, e la guida ai risultati
+lunghi sostituisce quella di Agno invece di affiancarla.
+
 Queste prove controllano la composizione. La qualità semantica richiede
 modelli reali e casi ripetuti; le prove con Ollama verificano il ciclo di
 apprendimento e il riuso delle intuizioni, senza dimostrare che ogni memoria
