@@ -646,69 +646,57 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
 
     from ares.agent import prompts
 
-    scheda = agent.instructions[0]
-    esigi(isinstance(scheda, str) and scheda.startswith("Dove sei"), "la scheda non e' la prima istruzione")
+    scheda = next((t for t in agent.instructions if t.startswith("<ambiente>")), "")
+    avvio = agent.instructions[-1]
+    esigi(avvio.startswith("<questo_avvio>"), "la sezione dell'avvio non e' l'ultima istruzione")
     for valore, nome in (
         (IMPOSTAZIONI.principale, "MAIN_MODEL"),
         (IMPOSTAZIONI.embedder, "EMBEDDER_MODEL"),
         (str(IMPOSTAZIONI.num_ctx), "NUM_CTX"),
         (str(config.NUM_HISTORY_RUNS), "NUM_HISTORY_RUNS"),
         (platform.system(), "il sistema"),
-        (user_id, "l'utente"),
-        (session_id, "la sessione"),
     ):
         esigi(valore in scheda, "la scheda non dice " + nome + ": " + repr(valore))
+    for valore, nome in ((user_id, "l'utente"), (session_id, "la sessione")):
+        esigi(valore in avvio, "l'avvio non dice " + nome + ": " + repr(valore))
     if IMPOSTAZIONI.apprendimento == IMPOSTAZIONI.principale:
         esigi("lo stesso modello" in scheda, "con un modello solo la scheda non lo dice")
     else:
         esigi(IMPOSTAZIONI.apprendimento in scheda, "la scheda non dice LEARNING_MODEL")
     if POLITICA.workspace.attivo:
-        esigi(str(PERCORSI.lavoro.resolve()) in scheda, "la scheda non dice la cartella di lavoro")
+        esigi(str(PERCORSI.lavoro.resolve()) in avvio, "l'avvio non dice la cartella di lavoro")
 
     # Locale e cloud, a prescindere dal `.env` di questa macchina.
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
         impostazioni_locali = config.leggi_impostazioni()
         locale = prompts.descrizione(impostazioni_locali, POLITICA)
-        scheda_locale = prompts.istruzioni_sull_ambiente(
-            impostazioni=impostazioni_locali,
-            politica=POLITICA,
-            utente=Utente.da_grezzo(user_id),
-            session_id=session_id,
-        )[0]
+        scheda_locale = prompts.istruzioni_sull_ambiente(impostazioni=impostazioni_locali, politica=POLITICA)[0]
     esigi("esce di qui" in locale and "ollama.com" not in locale, "in locale la descrizione parla di cloud")
-    esigi("in locale" in scheda_locale and "server remoto" not in scheda_locale, "in locale la scheda parla di cloud")
+    esigi("in locale" in scheda_locale and "in cloud" not in scheda_locale, "in locale la scheda parla di cloud")
     with patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"), patch.object(config, "LEARNING_MODEL", "qwen3:9b"):
         impostazioni_cloud = config.leggi_impostazioni()
         cloud = prompts.descrizione(impostazioni_cloud, POLITICA)
-        scheda_cloud = prompts.istruzioni_sull_ambiente(
-            impostazioni=impostazioni_cloud,
-            politica=POLITICA,
-            utente=Utente.da_grezzo(user_id),
-            session_id=session_id,
-        )[0]
+        scheda_cloud = prompts.istruzioni_sull_ambiente(impostazioni=impostazioni_cloud, politica=POLITICA)[0]
     esigi(
-        "esce di qui" not in cloud and "ti fa parlare sta su ollama.com" in cloud,
-        "con la conversazione in cloud la descrizione promette privacy",
+        "esce di qui" not in cloud and "ti fa parlare sta su ollama.com" in cloud and "l'output dei comandi" in cloud,
+        "con la conversazione in cloud la descrizione promette privacy, o non dice cosa esce",
     )
-    esigi("server remoto" in scheda_cloud and "qwen3:9b, in locale" in scheda_cloud, "la scheda non distingue i ruoli")
+    esigi("in cloud" in scheda_cloud and "qwen3:9b, in locale" in scheda_cloud, "la scheda non distingue i ruoli")
+    # La privacy la dice la descrizione, una volta: la scheda nomina solo il posto.
+    esigi("servizio remoto" not in scheda_cloud, "la scheda ripete la privacy della descrizione")
     with patch.object(config, "MAIN_MODEL", "qwen3:9b"), patch.object(config, "LEARNING_MODEL", "gpt-oss:120b-cloud"):
         estrazione = prompts.descrizione(config.leggi_impostazioni(), POLITICA)
     esigi("estrae le memorie dai vostri turni sta su ollama.com" in estrazione, "l'estrazione in cloud non e' detta")
 
     # La shell segue il sistema: `bash -lc` non esiste su Windows.
     with patch.object(os, "name", "nt"):
-        finestre = prompts.istruzioni_sull_ambiente(
-            impostazioni=IMPOSTAZIONI,
-            politica=POLITICA,
-            utente=Utente.da_grezzo(user_id),
-            session_id=session_id,
-        )[0]
+        finestre = prompts.istruzioni_sull_ambiente(impostazioni=IMPOSTAZIONI, politica=POLITICA)[0]
         strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro, politica=POLITICA))
     esigi("shell PowerShell" in finestre and "'powershell'" in strumenti_nt, "su Windows il prompt parla di bash")
     with patch.object(os, "name", "posix"):
         strumenti_posix = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro, politica=POLITICA))
     esigi("'bash', '-lc'" in strumenti_posix, "su POSIX il prompt non suggerisce bash")
-    return "modelli, contesto, sistema, utente e cartella nella scheda; descrizione e scheda seguono il cloud"
+    return "modelli e sistema nella scheda, utente e cartella nell'avvio; descrizione e scheda seguono il cloud"
 
 
 def strumenti(agent, user_id: str) -> str:
@@ -793,19 +781,21 @@ def strumenti(agent, user_id: str) -> str:
 # dicono inglese. I nomi degli strumenti non contano, `\b` non spezza `_`.
 _PAROLE_INGLESI = re.compile(r"\b(the|is|are|you|your|to|of|and|with|when|use|this|that)\b", re.IGNORECASE)
 
-# Le righe inglesi che Agno scrive ancora da se' e che Ares non ha ancora
-# sostituito. Ogni voce e' un debito da togliere, non una regola.
-_INGLESE_TOLLERATO = ("The current time is ",)
-
 
 def fuori_dai_dati(prompt: str) -> str:
     """Il system message senza i blocchi di dati, cioe' la parte scritta dal prompt.
 
-    I blocchi XML che non sono `istruzioni_*` o `additional_information` sono
-    dati (memorie, entita', profilo), come il testo fra i delimitatori di
-    `ARES.md`: lingua e impaginazione non dipendono dal prompt.
+    Sono dati i blocchi XML che non sono sezioni di Ares (`prompts.SEZIONI`),
+    guide degli store (`istruzioni_*`) o `additional_information`: memorie,
+    entita', profilo. Come il testo fra i delimitatori di `ARES.md` e l'inizio
+    delle conversazioni precedenti, lingua e impaginazione non dipendono dal
+    prompt.
     """
-    senza_dati = re.sub(r"<(?!istruzioni_|additional_information)(\w+)>.*?</\1>", "", prompt, flags=re.DOTALL)
+    from ares.agent.prompts import SEZIONI
+
+    nostri = "|".join([*SEZIONI, "istruzioni_", "additional_information"])
+    senza_dati = re.sub(r"<(?!(?:" + nostri + r"))(\w+)>.*?</\1>", "", prompt, flags=re.DOTALL)
+    senza_dati = re.sub(r"^- \S+ \(.*?\): .*$", "", senza_dati, flags=re.MULTILINE)
     return re.sub(r"--- inizio di .*? ---.*?--- fine di .*? ---", "", senza_dati, flags=re.DOTALL)
 
 
@@ -815,7 +805,6 @@ def righe_inglesi(prompt: str) -> list[str]:
         riga
         for riga in fuori_dai_dati(prompt).splitlines()
         if len({p.lower() for p in _PAROLE_INGLESI.findall(riga)}) >= 2
-        and not any(t in riga for t in _INGLESE_TOLLERATO)
     ]
 
 
@@ -823,7 +812,7 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     """Il system message intero e' in italiano, compresa la parte che scrive Agno.
 
     Ares sostituisce le guide inglesi di Agno (store, quaderno, Markdown, nome,
-    risultati lunghi): qui si cerca sul messaggio composto qualunque riga
+    ora, risultati lunghi): qui si cerca sul messaggio composto qualunque riga
     inglese, non un elenco di frasi note, e si verifica che gli strumenti
     restino nominati.
     """
@@ -834,7 +823,7 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     esigi(not inglesi, "il prompt contiene righe in inglese: " + repr(inglesi[:3]))
     doppio = re.search(r"\S {2,}\S", fuori_dai_dati(prompt))
     esigi(doppio is None, "il prompt contiene un doppio spazio: " + repr(doppio and doppio.group()))
-    attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive"]
+    attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive", "- Adesso: "]
     if config.LEARN_KNOWLEDGE:
         attesi += [
             "<istruzioni_intuizioni>",
@@ -852,6 +841,53 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     for atteso in attesi:
         esigi(atteso in prompt, "manca dal prompt: " + atteso)
     return str(len(attesi)) + " blocchi italiani presenti, nessuna riga inglese fuori dai dati"
+
+
+def struttura_del_prompt(agent, user_id: str, session_id: str) -> str:
+    """Il prompt e' fatto di sezioni note, in ordine, con cio' che cambia in fondo.
+
+    Due sessioni con la stessa configurazione devono avere le stesse sezioni
+    fisse: cio' che distingue una sessione (utente, id, cartella, ora) sta
+    tutto in `questo_avvio`, l'ultima.
+    """
+    from zoneinfo import ZoneInfo
+
+    from ares.agent import prompts
+
+    tag = [t[1 : t.index(">")] for t in agent.instructions]
+    esigi(all(t in prompts.SEZIONI for t in tag), "istruzioni fuori dalle sezioni note: " + repr(tag))
+    esigi(tag == sorted(tag, key=prompts.SEZIONI.index), "sezioni fuori ordine: " + repr(tag))
+    esigi(tag[-1] == "questo_avvio", "l'ultima sezione non e' quella dell'avvio")
+
+    prompt = prompts.messaggio_di_sistema(agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
+    posizioni = [prompt.index("<" + t + ">") for t in tag]
+    esigi(posizioni == sorted(posizioni), "nel system message le sezioni non seguono l'ordine")
+
+    def composte(utente: str, sessione: str):
+        return prompts.istruzioni(
+            impostazioni=IMPOSTAZIONI,
+            politica=POLITICA,
+            utente=Utente.da_grezzo(utente),
+            session_id=sessione,
+            radice_lavoro=PERCORSI.lavoro if POLITICA.workspace.attivo else None,
+        )
+
+    una, altra = composte("prova-a", "sessione-a"), composte("prova-b", "sessione-b")
+    esigi(una.fisse == altra.fisse, "due sessioni con la stessa configurazione hanno sezioni fisse diverse")
+    esigi(una.avvio != altra.avvio, "l'avvio non distingue le sessioni")
+    chiamate = una()
+    esigi(chiamate[:-1] == una.fisse, "chiamate, le istruzioni cambiano oltre l'avvio")
+    esigi("- Adesso: " in chiamate[-1] and "- Adesso: " not in una[-1], "l'ora non e' aggiunta solo a ogni turno")
+
+    ora = prompts.riga_dell_ora(datetime(2026, 9, 30, 22, 4, tzinfo=ZoneInfo(config.FUSO_ORARIO)))
+    esigi(ora == "- Adesso: mercoledi' 30 settembre 2026, 22:04 CEST.", "l'ora non e' in italiano: " + ora)
+
+    esigi(
+        "ARES.md" in prompts.istruzioni_sulla_fiducia(regole="ARES.md")[0]
+        and "regole del progetto" not in prompts.istruzioni_sulla_fiducia(regole=None)[0],
+        "la fiducia nomina le regole del progetto quando non ci sono, o le tace quando ci sono",
+    )
+    return str(len(tag)) + " sezioni in ordine, fisse uguali fra due sessioni, ora solo nell'avvio"
 
 
 def istruzioni_fuori_modalita() -> str:
@@ -903,12 +939,7 @@ def modalita() -> str:
             else:
                 esigi(strumento not in consegnati, nome + ": " + strumento + " arriva benche' escluso")
         scheda = prompts.istruzioni_sull_ambiente(
-            impostazioni=IMPOSTAZIONI,
-            politica=POLITICA,
-            utente=Utente.da_grezzo("u"),
-            session_id="s",
-            radice_lavoro=spazio.root,
-            modo=nome,
+            impostazioni=IMPOSTAZIONI, politica=POLITICA, radice_lavoro=spazio.root, modo=nome
         )[0]
         esigi("Modalita' " + nome in scheda, nome + ": la scheda non la nomina")
         paragrafo = " ".join(prompts.istruzioni_sugli_strumenti(spazio.root, nome, politica=POLITICA))
@@ -1252,28 +1283,33 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
 def tempo(agent, lm, user_id: str) -> str:
     """Ares sa che ora e', e da quando sa le cose che sa.
 
-    L'ora la mette Agno a ogni turno; le date delle memorie arrivano solo grazie
-    allo schema personalizzato. Si guarda il system message costruito davvero.
+    L'ora la mette `prompts.Istruzioni` a ogni turno; le date delle memorie
+    arrivano solo grazie allo schema personalizzato. Si guarda il system
+    message costruito davvero, due volte: l'ora dev'essere quella del turno.
     """
     from agno.agent import _messages
     from agno.run.base import RunContext
     from agno.session.agent import AgentSession
 
-    prompt = _messages.get_system_message(
-        agent=agent,
-        session=AgentSession(session_id="prova-tempo", user_id=user_id),
-        run_context=RunContext(run_id="prova", user_id=user_id, session_id="prova-tempo"),
-        tools=[],
-    ).content
+    from ares.agent import prompts
 
-    esigi("current time" in prompt.lower(), "l'ora corrente non arriva al modello: manca add_datetime_to_context")
-    # I microsecondi sono il segno che datetime_format non e' passato: Agno
-    # ripiega su str(datetime), che li porta con se'.
-    riga_ora = next(r for r in prompt.splitlines() if "current time" in r.lower())
-    esigi(
-        "." not in riga_ora.split("current time is")[-1].split(",")[0],
-        "l'ora corrente arriva grezza, con i microsecondi: " + riga_ora.strip(),
-    )
+    def costruisci() -> str:
+        return _messages.get_system_message(
+            agent=agent,
+            session=AgentSession(session_id="prova-tempo", user_id=user_id),
+            run_context=RunContext(run_id="prova", user_id=user_id, session_id="prova-tempo"),
+            tools=[],
+        ).content
+
+    esigi(not agent.add_datetime_to_context, "add_datetime_to_context e' acceso: l'ora arriva anche in inglese")
+    prima = datetime(2026, 1, 5, 9, 30, tzinfo=UTC)
+    with patch.object(prompts, "riga_dell_ora", lambda: "- Adesso: " + prima.isoformat() + "."):
+        vecchio = costruisci()
+    prompt = costruisci()
+    esigi(prima.isoformat() in vecchio, "l'ora non viene da riga_dell_ora")
+    riga_ora = next((r for r in prompt.splitlines() if r.startswith("- Adesso: ")), "")
+    esigi(bool(riga_ora) and prima.isoformat() not in riga_ora, "l'ora non e' ricalcolata a ogni system message")
+    esigi(re.search(r", \d\d:\d\d \S+\.$", riga_ora) is not None, "l'ora arriva senza minuti o fuso: " + riga_ora)
 
     if "user_memory" not in lm.stores:
         return NON_CONCLUSIVO + "user_memory e' spento: resta verificata solo l'ora corrente"
@@ -2442,6 +2478,7 @@ def main() -> int:
             ("ambiente nel prompt ", lambda: ambiente_nel_prompt(agent, args.user, args.session)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
             ("prompt in italiano  ", lambda: prompt_in_italiano(agent, args.user, args.session)),
+            ("struttura del prompt", lambda: struttura_del_prompt(agent, args.user, args.session)),
             ("istruzioni modalita'", istruzioni_fuori_modalita),
             ("modalita            ", modalita),
             ("colpo singolo       ", lambda: colpo_singolo(args.user, args.session)),

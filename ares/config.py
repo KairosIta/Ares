@@ -346,10 +346,8 @@ SESSIONI_PROTETTE = ("principale",)
 # Tempo
 # ---------------------------------------------------------------------------
 
-# L'ora corrente nel prompt: con il giorno della settimana, senza
-# microsecondi, con il fuso esplicito perche' le date delle memorie sono in
-# UTC. Giorni e mesi escono in inglese (locale del processo).
-DATETIME_FORMAT = "%A %d %B %Y, %H:%M %Z"
+# Il fuso dell'ora nel prompt (`prompts.riga_dell_ora`).
+FUSO_ORARIO = "Europe/Rome"
 
 # Mostra al modello la data di ogni memoria (`AresMemories` in schemas.py).
 # Cambia solo il rendering: spegnerlo non tocca l'archivio.
