@@ -18,14 +18,8 @@ from ares.agent.learning import (
 from ares.agent.prompts import (
     descrizione,
     istruzione_sui_risultati,
-    istruzioni_dalla_cartella,
-    istruzioni_di_collaborazione,
-    istruzioni_senza_terminale,
+    istruzioni,
     istruzioni_sugli_strumenti,
-    istruzioni_sul_quaderno,
-    istruzioni_sull_ambiente,
-    istruzioni_sulla_memoria,
-    istruzioni_sulle_conversazioni,
 )
 from ares.agent.runtime import (
     AresWorkspace,
@@ -122,32 +116,16 @@ def build_assistant(
         metadata=metadata,
         tools=[fs.tools()] + ([spazio] if spazio is not None else []),
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
-        instructions=[
-            *istruzioni_sull_ambiente(
-                impostazioni=impostazioni,
-                politica=politica,
-                utente=utente,
-                session_id=session_id,
-                radice_lavoro=spazio.root if spazio is not None else None,
-                modo=modo,
-                interattivo=interattivo,
-            ),
-            *(
-                []
-                if interattivo
-                else istruzioni_senza_terminale(spazio.root if spazio is not None else None, modo, politica=politica)
-            ),
-            *istruzioni_di_collaborazione(interattivo=interattivo),
-            *istruzioni_sulla_memoria(politica=politica, interattivo=interattivo),
-            *istruzioni_sugli_strumenti(
-                spazio.root if spazio is not None else None, modo, politica=politica, interattivo=interattivo
-            ),
-            *istruzioni_dalla_cartella(spazio.root if spazio is not None else None, politica),
-            *istruzioni_sulle_conversazioni(
-                precedenti, cartella=spazio.root if spazio is not None else None, politica=politica
-            ),
-            *istruzioni_sul_quaderno(),
-        ],
+        instructions=istruzioni(
+            impostazioni=impostazioni,
+            politica=politica,
+            utente=utente,
+            session_id=session_id,
+            radice_lavoro=spazio.root if spazio is not None else None,
+            modo=modo,
+            interattivo=interattivo,
+            precedenti=precedenti,
+        ),
         learning=build_learning_machine(db, knowledge, utente, impostazioni, politica, strumenti=interattivo),
         post_hooks=[apprendi_a_run_completato] if interattivo else [],
         add_learnings_to_context=True,
@@ -158,9 +136,9 @@ def build_assistant(
         num_past_sessions_to_search=politica.cronologia.sessioni_ricerca,
         num_past_session_runs_in_search=politica.cronologia.sessioni_anteprima,
         read_chat_history=politica.cronologia.cronologia_chat,
-        add_datetime_to_context=True,
-        datetime_format=config.DATETIME_FORMAT,
-        timezone_identifier="Europe/Rome",
+        # L'ora la scrive `Istruzioni`, in italiano: Agno la scriverebbe in
+        # inglese, prima delle guide degli store.
+        add_datetime_to_context=False,
         # Spento: l'unica cosa che accende e' la riga inglese "Use markdown to
         # format your answers", detta sopra in italiano. Il renderer della
         # CLI interpreta il Markdown comunque.

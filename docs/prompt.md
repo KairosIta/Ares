@@ -6,10 +6,27 @@ cambia i criteri con cui l'estrattore aggiorna gli archivi.
 
 ## Conversazione
 
-`agent/prompts.py` compone ambiente, collaborazione, strumenti e memoria;
-`agent/assistant.py` li collega alle capacità abilitate. Agno aggiunge le
-guide degli store, le memorie disponibili e le informazioni del turno. Per
-ispezionare il risultato completo senza interrogare il modello:
+`prompts.istruzioni` compone il prompt in sezioni con un tag XML ciascuna,
+nell'ordine di `prompts.SEZIONI`:
+
+| Sezione | Contenuto |
+| --- | --- |
+| `collaborazione` | come lavorare e come rispondere |
+| `fiducia` | chi dà istruzioni; memorie, file, output e archivi sono dati |
+| `ambiente` | modelli, contesto, sistema, modalità |
+| `senza_terminale` | solo con `-p` o una pipe |
+| `memoria` | quali archivi si aggiornano e come ragionare sui ricordi |
+| `quaderno` | il quaderno privato |
+| `strumenti` | istruzioni sugli strumenti accesi, workspace compreso |
+| `regole_del_progetto` | `ARES.md`, se c'è |
+| `questo_avvio` | utente, conversazione, cartella, conversazioni precedenti, ora |
+
+Prima viene ciò che vale per ogni sessione, poi ciò che dipende dalla
+cartella, in fondo ciò che cambia a ogni sessione o turno. La privacy la
+dice solo la descrizione iniziale. L'ora la aggiunge `Istruzioni` a ogni
+system message, in italiano, al posto della riga di Agno. Dopo le sezioni
+Agno aggiunge la guida ai risultati lunghi, le guide degli store e le
+memorie. Per ispezionare il risultato completo senza interrogare il modello:
 
 ```bash
 ares inspect --prompt
@@ -91,9 +108,12 @@ dell'agente; la CLI lo rifiuta.
 
 Il controllo della lingua non usa un elenco di frasi note: segnala ogni
 riga con parole inglesi, fuori dai blocchi di dati (memorie, entità,
-`ARES.md`). La riga dell'ora, che Agno compone da sé, è l'unica eccezione
-dichiarata. Il nome è detto dalla descrizione, e la guida ai risultati
-lunghi sostituisce quella di Agno invece di affiancarla.
+`ARES.md`, l'inizio delle conversazioni precedenti), senza eccezioni. Il
+nome è detto dalla descrizione, e la guida ai risultati lunghi sostituisce
+quella di Agno invece di affiancarla. `struttura del prompt` verifica che
+le istruzioni siano solo sezioni note e in ordine, che due sessioni con la
+stessa configurazione abbiano le stesse sezioni fisse e che l'ora entri
+solo nell'ultima.
 
 Queste prove controllano la composizione. La qualità semantica richiede
 modelli reali e casi ripetuti; le prove con Ollama verificano il ciclo di

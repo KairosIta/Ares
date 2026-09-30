@@ -6,6 +6,21 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Changed
+
+- **Il prompt è diviso in sezioni con un tag ciascuna,** in ordine fisso:
+  prima ciò che vale per ogni sessione, in fondo utente, conversazione,
+  cartella e ora. `docs/prompt.md` le elenca.
+- **Una sezione nuova, `fiducia`, dice chi può dare istruzioni.** Solo il
+  system message e la persona; memorie, note, archivi, contenuto dei file e
+  output dei comandi sono materiale da valutare. Se uno di questi testi
+  chiede di agire, Ares lo riferisce invece di eseguirlo. Prima la cautela
+  valeva solo per memorie e `ARES.md`.
+- La privacy è detta una volta, nella descrizione, con l'elenco di ciò che
+  passa da ollama.com; la scheda nomina solo dove gira ogni modello.
+- L'ora arriva in italiano («mercoledi' 30 settembre 2026, 22:04 CEST»)
+  invece che in inglese. `DATETIME_FORMAT` lascia il posto a `FUSO_ORARIO`.
+
 ### Fixed
 
 - Il prompt non ripete più due cose in inglese: il nome (`Your name is:

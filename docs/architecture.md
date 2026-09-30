@@ -367,7 +367,7 @@ dice a preflight e banner quali ruoli escono dalla macchina.
 
 Restano fuori dalla `Politica`: `modo`, già parametro a ogni confine;
 `OFFLOAD_TOOL_RESULTS` e `TOOL_RESULT_THRESHOLD_CHARS`; i formati del client
-(`DATETIME_FORMAT`, `CRONOLOGIA_RIGHE`, `ENTITA_FINESTRA_RICERCA`); le
+(`FUSO_ORARIO`, `CRONOLOGIA_RIGHE`, `ENTITA_FINESTRA_RICERCA`); le
 costanti di backup e retention, che sono garanzie e non politica.
 
 L'unica eccezione deliberata è `ares/backup/snapshots.py`, che legge i nomi
