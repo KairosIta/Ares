@@ -6,6 +6,7 @@ comporrebbe per un turno: e' cio' che stampa `ares inspect --prompt`.
 
 import os
 import platform
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from ares.agent.agno_interni import funzioni_per_modello
 from ares.config import Impostazioni, Politica
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
+from ares.state.sessioni import SessioneRiferimento, quando, tronca
 
 # Alias di `Workspace` -> (nome dello strumento senza prefisso, verbo per il
 # modello). Un alias assente da entrambe le liste della modalita' non viene
@@ -405,7 +407,9 @@ def istruzioni_senza_terminale(radice_lavoro=None, modo: str | None = None, *, p
     return [testo]
 
 
-def istruzioni_sulle_conversazioni(sessioni, *, cartella, politica: Politica) -> list[str]:
+def istruzioni_sulle_conversazioni(
+    sessioni: Sequence[SessioneRiferimento], *, cartella, politica: Politica
+) -> list[str]:
     """Le conversazioni precedenti nate nella stessa cartella, per id.
 
     `search_past_sessions` non sa dove una sessione e' nata: qui il modello
@@ -414,16 +418,12 @@ def istruzioni_sulle_conversazioni(sessioni, *, cartella, politica: Politica) ->
     """
     if not politica.cronologia.sessioni_passate or not sessioni:
         return []
-    from ares.state.stores import prima_domanda, quando_sessione
-
     righe = []
     for sessione in sessioni:
-        scambi = len(getattr(sessione, "runs", None) or [])
-        riga = "- " + str(getattr(sessione, "session_id", "?")) + " (" + quando_sessione(sessione)
-        riga += ", " + str(scambi) + (" scambio" if scambi == 1 else " scambi") + ")"
-        inizio = prima_domanda(sessione, larghezza=120)
-        if inizio:
-            riga += ": " + inizio
+        riga = "- " + (sessione.id or "?") + " (" + quando(sessione)
+        riga += ", " + str(sessione.scambi) + (" scambio" if sessione.scambi == 1 else " scambi") + ")"
+        if sessione.inizio:
+            riga += ": " + tronca(sessione.inizio, 120)
         righe.append(riga)
     return [
         "In questa cartella, " + str(cartella) + ", ci sono state altre conversazioni. "

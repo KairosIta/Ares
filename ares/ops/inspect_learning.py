@@ -86,10 +86,11 @@ def _ispeziona(
     if not session:
         # Senza `--session` si guarda l'ultima conversazione toccata, di
         # qualunque cartella: e' quella di cui si vuole sapere cosa e' rimasto.
-        from ares.state.stores import leggi_sessioni
+        from ares.state.sessioni import elenca
 
-        recenti = leggi_sessioni(agent, utente=utente)
-        session = str(recenti[0].session_id) if recenti else "principale"
+        # Serve solo il nome: nessuna voce, quindi nessun run letto.
+        recenti = elenca(agent.db, utente, ambito="tutte", limite=0).nomi
+        session = recenti[0] if recenti else "principale"
     lm = agent.learning_machine
     # La macchina c'e' sempre; i singoli store spenti sono None e li
     # segnala `stampa_store`.

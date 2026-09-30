@@ -13,13 +13,12 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 from ares import config
 from ares.cli.conferma import conferma_scritta, domanda
 from ares.cli.ui import UI
 from ares.config import Percorsi
-from ares.state.stores import prima_domanda, quando_sessione
+from ares.state.sessioni import SessioneRiferimento, quando, tronca
 
 # Directory di sistema: su Windows si leggono dall'ambiente.
 _SISTEMA_POSIX = ("/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/var", "/opt", "/boot", "/root")
@@ -139,22 +138,15 @@ def file_modificati(percorso: Path) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-def scegli_sessione(sessioni: Sequence[Any]) -> str | None:
+def scegli_sessione(sessioni: Sequence[SessioneRiferimento]) -> str | None:
     """Un elenco numerato delle conversazioni, e il numero scelto. None se si rinuncia.
 
     Riga vuota, Ctrl-C e un numero inesistente valgono rinuncia.
     """
     righe = []
     for indice, sessione in enumerate(sessioni, start=1):
-        scambi = len(getattr(sessione, "runs", None) or [])
         righe.append(
-            (
-                str(indice),
-                str(getattr(sessione, "session_id", "?")),
-                quando_sessione(sessione),
-                str(scambi),
-                prima_domanda(sessione, larghezza=60),
-            )
+            (str(indice), sessione.id or "?", quando(sessione), str(sessione.scambi), tronca(sessione.inizio, 60))
         )
     UI.table(
         (("n", "ares.cyan", "right"), "sessione", "ultima modifica", ("scambi", "ares.text", "right"), "inizio"),
@@ -166,7 +158,7 @@ def scegli_sessione(sessioni: Sequence[Any]) -> str | None:
         if risposta:
             UI.line("Nessuna conversazione con quel numero.", style="ares.muted")
         return None
-    return str(getattr(sessioni[int(risposta) - 1], "session_id", ""))
+    return sessioni[int(risposta) - 1].id
 
 
 # ---------------------------------------------------------------------------

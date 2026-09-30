@@ -84,6 +84,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **Le sessioni arrivano ai client come riferimenti.** `state/sessioni.py`
+  legge le conversazioni e restituisce `SessioneRiferimento` (id, cartella,
+  ultima modifica, scambi, prima domanda) e `Conversazione`. Gli oggetti di
+  Agno non escono da lì.
+  - `Sessioni.elenco(ambito=...)` serve `/sessioni`, il TAB di `/sessione`,
+    `ares resume` e `--scegli`; `Sessioni.conversazione` serve `/esporta`.
+  - La CLI non legge più le sessioni di Agno, e `/esporta` non passa più dal
+    database dell'agente.
+  - Prompt ed esportazione restano identici byte per byte.
+- **`/sessioni` e il TAB non leggono più tutta la storia.** Prima caricavano
+  i run di ogni sessione dell'utente: 0,40 s con 200 sessioni da 30 scambi,
+  a ogni TAB. Ora filtrano e tagliano senza i run, e rileggono solo le
+  sessioni mostrate. `ares inspect` legge solo il nome dell'ultima.
 - **README e SECURITY dicono cosa può fare un comando.** La cartella
   delimita gli strumenti sui file, non la shell. Un comando parte dalla
   cartella, ma può:

@@ -24,7 +24,9 @@ from _comune import chiudi, esegui, esigi, prepara_ambiente
 
 RADICE_PROVA = prepara_ambiente("nucleo-test")
 
+from agno.models.message import Message  # noqa: E402
 from agno.models.response import ToolExecution  # noqa: E402
+from agno.run.agent import RunOutput  # noqa: E402
 from agno.session.agent import AgentSession  # noqa: E402
 
 from ares import config  # noqa: E402
@@ -274,25 +276,107 @@ def sessione_altrui() -> str:
     return "rifiutata prima di costruire l'agente"
 
 
-def sessioni_della_cartella() -> str:
-    """Solo quelle di questa cartella e di questo utente, dalla piu' recente."""
+def elenco_delle_sessioni() -> str:
+    """Ambito, filtro, taglio e riferimenti, sull'archivio vero; mai sessioni di altri."""
     servizio = _servizio()
     qui = str(PERCORSI.lavoro)
-    for nome, utente, dove, quando in (
-        ("qui-vecchia", UTENTE, qui, 1_000),
-        ("qui-nuova", UTENTE, qui, 2_000),
-        ("altrove", UTENTE, "/altrove", 3_000),
-        ("qui-di-altri", ALTRO, qui, 4_000),
+
+    def messaggio(ruolo: str, testo: str, storia: bool = False) -> Message:
+        return Message(role=ruolo, content=testo, from_history=storia)
+
+    for nome, utente, dove, quando, runs in (
+        (
+            "qui-vecchia",
+            UTENTE,
+            qui,
+            1_000,
+            [
+                [
+                    messaggio("system", "istruzioni"),
+                    messaggio("user", " domanda\n uno "),
+                    messaggio("assistant", "uno"),
+                ],
+                [messaggio("user", "domanda uno", storia=True), messaggio("user", "due")],
+            ],
+        ),
+        ("qui-nuova", UTENTE, qui, 2_000, []),
+        ("orfana", UTENTE, None, 2_500, []),
+        ("altrove", UTENTE, "/altrove", 3_000, []),
+        ("qui-di-altri", ALTRO, qui, 4_000, [[messaggio("user", "segreto")]]),
     ):
         servizio.db.upsert_session(
             AgentSession(
-                session_id=nome, user_id=utente.id, metadata={"cartella": dove}, created_at=quando, updated_at=quando
+                session_id=nome,
+                user_id=utente.id,
+                # Senza `agent_id` Agno non riaggancia i run alla sessione.
+                agent_id="ares",
+                metadata={"cartella": dove} if dove else None,
+                created_at=quando,
+                updated_at=quando,
             )
         )
-    nomi = [s.session_id for s in servizio.della_cartella()]
-    esigi(nomi == ["qui-nuova", "qui-vecchia"], "sessioni della cartella sbagliate: " + str(nomi))
-    esigi(_servizio(cartella=False).della_cartella() == [], "senza cartella compare un elenco")
-    return "filtro per cartella e utente, ordine per recenza"
+        for indice, messaggi in enumerate(runs):
+            run = RunOutput(
+                run_id=nome + "-" + str(indice), session_id=nome, user_id=utente.id, agent_id="ares", messages=messaggi
+            )
+            servizio.db.upsert_run(run, session_id=nome, user_id=utente.id, run_index=indice)
+
+    def nomi(**argomenti) -> list[str]:
+        return list(servizio.elenco(**argomenti).nomi)
+
+    esigi(nomi(ambito="nate_qui") == ["qui-nuova", "qui-vecchia"], "nate qui: " + str(nomi(ambito="nate_qui")))
+    esigi(nomi(ambito="qui") == ["orfana", "qui-nuova", "qui-vecchia"], "qui: " + str(nomi(ambito="qui")))
+    esigi(
+        nomi(ambito="tutte") == ["altrove", "orfana", "qui-nuova", "qui-vecchia"],
+        "tutte: " + str(nomi(ambito="tutte")),
+    )
+    esigi(nomi(ambito="tutte", testo="VECCHIA") == ["qui-vecchia"], "il filtro sul nome non vale")
+
+    tagliato = servizio.elenco(ambito="nate_qui", limite=1)
+    esigi(
+        tagliato.totale == 2 and [v.id for v in tagliato.voci] == ["qui-nuova"],
+        "taglio sbagliato: " + repr(tagliato),
+    )
+    vecchia = servizio.elenco(ambito="nate_qui", testo="vecchia").voci[0]
+    esigi(
+        (vecchia.scambi, vecchia.inizio, vecchia.cartella, vecchia.aggiornata) == (2, "domanda uno", qui, 1_000),
+        "riferimento sbagliato: " + repr(vecchia),
+    )
+    esigi(
+        len(servizio.elenco(ambito="tutte").voci) == min(4, POLITICA.mostra.sessioni),
+        "senza limite non vale quello della politica",
+    )
+
+    conversazione = servizio.conversazione("qui-vecchia")
+    esigi(conversazione is not None, "la conversazione dell'utente non si legge")
+    assert conversazione is not None
+    esigi(
+        [[(m.ruolo, m.testo) for m in s.messaggi] for s in conversazione.scambi]
+        == [[("user", "domanda\n uno"), ("assistant", "uno")], [("user", "due")]],
+        "scambi sbagliati: " + repr(conversazione.scambi),
+    )
+    esigi(servizio.conversazione("qui-di-altri") is None, "si legge la conversazione di un altro utente")
+    esigi(servizio.conversazione("inesistente") is None, "una conversazione inesistente non e' None")
+
+    senza = _servizio(cartella=False)
+    esigi(senza.elenco(ambito="tutte").totale == 4, "senza cartella `tutte` non elenca")
+    for ambito in ("qui", "nate_qui"):
+        try:
+            senza.elenco(ambito=ambito)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("senza cartella l'ambito " + ambito + " non e' rifiutato")
+
+    # Il prompt di una sessione elenca le altre nate qui, non se stessa.
+    agente = _servizio().apri("qui-nuova").agente
+    istruzioni = "\n".join(str(i) for i in agente.instructions or [])
+    esigi("- qui-vecchia (" in istruzioni, "il prompt non elenca le conversazioni precedenti di qui")
+    esigi(
+        all("- " + nome + " (" not in istruzioni for nome in ("qui-nuova", "orfana", "altrove", "qui-di-altri")),
+        "il prompt elenca la sessione corrente, o una non nata qui o di un altro",
+    )
+    return "tre ambiti, filtro, taglio dopo il filtro, riferimenti, conversazione e prompt solo dell'utente"
 
 
 def agente_vero() -> str:
@@ -418,7 +502,7 @@ PROVE = (
     ("autorizzazioni", autorizzazioni),
     ("stato in uso", stato_in_uso_dal_client),
     ("sessione altrui", sessione_altrui),
-    ("della cartella", sessioni_della_cartella),
+    ("elenco", elenco_delle_sessioni),
     ("agente vero", agente_vero),
     ("turno", turno_senza_terminale),
 )

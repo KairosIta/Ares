@@ -40,7 +40,7 @@ Il totale del package `ares/` è **10.966 righe**.
 | Apprendimento | `agent/learning.py` | nucleo applicativo |
 | Fotografia e ripristino memoria | `agent/echo.py` + `cli/chat.py` | nucleo applicativo |
 | Lock | primitive in `state/lock.py`; durata in `core/stato.py` e `core/turn.py` | nucleo / servizio (fatto per chat e turno) |
-| Sessioni | `cli/commands.py`, `cli/cartella.py`, `state/stores.py` | nucleo applicativo |
+| Sessioni | `core/session.py` (`elenco`, `conversazione`); lettura in `state/sessioni.py`; resa in `cli/conversazioni.py` | nucleo applicativo (fatto) |
 | Backup | `backup/` | infrastruttura |
 | Entità | `entities/` | manutenzione |
 | Retention sessioni | `sessions/` | manutenzione |
@@ -55,7 +55,8 @@ dell'estrazione è in [core-refactor-plan.md](core-refactor-plan.md).
 ### 1. Gestione della sessione
 Il ciclo di vita della sessione è oggi speso fra la CLI e lo stato:
 `cli/commands.py` ricostruisce l’agente, `cli/cartella.py` genera gli ID,
-`state/stores.py` legge e filtra. Le regole di apertura, ripresa, cambio
+`state/stores.py` legge e filtra (ora `core/session.py` e
+`state/sessioni.py`). Le regole di apertura, ripresa, cambio
 sessione e appartenenza alla cartella devono diventare operazioni condivise
 usabili dalla CLI e da un client senza terminale.
 

@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 from agno.agent import Agent
-from agno.db.base import SessionType
 
 from ares import config
 from ares.agent.prompts import percorso_istruzioni
 from ares.cli import cartella
+from ares.cli.conversazioni import conto_scambi, righe_sessione, testo_markdown
 from ares.cli.log import configura_log_agno
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.config import Impostazioni, Percorsi, Politica
@@ -20,15 +20,8 @@ from ares.core.session import SessioneAttiva, SessioneDiAltri, Sessioni
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
-from ares.state.stores import (
-    leggi_entita,
-    leggi_sessioni,
-    prima_domanda,
-    quando_sessione,
-    righe_entita,
-    righe_sessione,
-    testo_conversazione,
-)
+from ares.state.sessioni import quando, tronca
+from ares.state.stores import leggi_entita, righe_entita
 
 
 @dataclass
@@ -121,25 +114,24 @@ def _comando_sessioni(stato: StatoChat, argomento: str) -> None:
     if tutte:
         parole = parole[1:]
     argomento = " ".join(parole)
-    qui = stato.percorsi.lavoro if stato.politica.workspace.attivo and not tutte else None
-    UI.heading("Sessioni" if qui is None else "Sessioni di questa cartella")
-    sessioni = leggi_sessioni(stato.agent, stato.utente, query=argomento, cartella=qui)
-    mostrate = sessioni[: stato.politica.mostra.sessioni]
+    qui = stato.politica.workspace.attivo and not tutte
+    UI.heading("Sessioni di questa cartella" if qui else "Sessioni")
+    elenco = _sessioni(stato).elenco(ambito="qui" if qui else "tutte", testo=argomento)
+    mostrate = elenco.voci
     for s in mostrate:
-        corrente = getattr(s, "session_id", None) == stato.session_id
-        for riga in righe_sessione(s, corrente=corrente, con_cartella=tutte):
+        for riga in righe_sessione(s, corrente=s.id == stato.session_id, con_cartella=tutte):
             UI.line(riga)
     if not mostrate:
         if argomento:
             UI.line("Nessuna sessione il cui nome contenga '" + argomento + "'.", style="ares.muted")
         else:
             UI.line("Nessuna sessione in archivio.", style="ares.muted")
-    nascoste = len(sessioni) - len(mostrate)
+    nascoste = elenco.totale - len(mostrate)
     if nascoste:
         UI.line("(altre " + str(nascoste) + ": /sessioni <testo> filtra per nome)", style="ares.muted")
-    if qui is not None:
+    if qui:
         UI.line("(/sessioni tutte mostra anche quelle nate in altre cartelle)", style="ares.muted")
-    if not argomento and all(getattr(s, "session_id", None) != stato.session_id for s in sessioni):
+    if not argomento and stato.session_id not in elenco.nomi:
         # La sessione entra in archivio col primo turno salvato: lo si spiega.
         # Solo senza filtro e sull'elenco intero, altrimenti la frase sarebbe
         # falsa per una sessione filtrata o oltre il tetto.
@@ -325,12 +317,9 @@ def _comando_esporta(stato: StatoChat, argomento: str) -> None:
     Senza argomento il file prende il nome della sessione nella cartella di
     lavoro, e non sovrascrive. Con un percorso esplicito sovrascrive, e lo dice.
     """
-    db = getattr(stato.agent, "db", None)
-    sessione = None
-    if db is not None:
-        sessione = db.get_session(session_id=stato.session_id, session_type=SessionType.AGENT, user_id=stato.utente.id)
-    scambi = len(getattr(sessione, "runs", None) or [])
-    if not scambi:
+    conversazione = _sessioni(stato).conversazione(stato.session_id)
+    scambi = len(conversazione.scambi) if conversazione is not None else 0
+    if conversazione is None or not scambi:
         UI.line("Niente da esportare: la sessione non ha ancora turni salvati.", style="ares.muted")
         return
     # Un percorso relativo parte dalla cartella di lavoro, non da quella del processo.
@@ -345,13 +334,13 @@ def _comando_esporta(stato: StatoChat, argomento: str) -> None:
         return
     esisteva = destinazione.exists()
     try:
-        destinazione.write_text(testo_conversazione(sessione, modello=stato.impostazioni.principale), encoding="utf-8")
+        destinazione.write_text(testo_markdown(conversazione, modello=stato.impostazioni.principale), encoding="utf-8")
     except OSError as errore:
         UI.line("Impossibile scrivere " + str(destinazione) + ": " + str(errore), style="ares.error")
         return
     UI.pair("Esportata" if not esisteva else "Sovrascritta", str(destinazione), style="ares.title")
     UI.line(
-        str(scambi) + (" scambio" if scambi == 1 else " scambi") + " in Markdown: Tu e Ares, a turni.",
+        conto_scambi(scambi) + " in Markdown: Tu e Ares, a turni.",
         style="ares.muted",
     )
 
@@ -408,16 +397,14 @@ def _candidati_modo() -> list[tuple[str, str]]:
 def _candidati_sessione(stato: StatoChat) -> list[tuple[str, str]]:
     """`nuova` e le conversazioni di questa cartella, la corrente esclusa."""
     voci = [("nuova", "una conversazione nuova in questa cartella")]
-    qui = stato.percorsi.lavoro if stato.politica.workspace.attivo else None
-    for s in leggi_sessioni(stato.agent, stato.utente, cartella=qui)[: stato.politica.mostra.sessioni]:
-        nome = str(getattr(s, "session_id", "") or "")
-        if not nome or nome == stato.session_id:
+    elenco = _sessioni(stato).elenco(ambito="qui" if stato.politica.workspace.attivo else "tutte")
+    for s in elenco.voci:
+        if not s.id or s.id == stato.session_id:
             continue
-        descrizione = quando_sessione(s)
-        inizio = prima_domanda(s, larghezza=50)
-        if inizio:
-            descrizione += "  " + inizio
-        voci.append((nome, descrizione))
+        descrizione = quando(s)
+        if s.inizio:
+            descrizione += "  " + tronca(s.inizio, 50)
+        voci.append((s.id, descrizione))
     return voci
 
 
