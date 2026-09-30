@@ -1,4 +1,4 @@
-# Ares
+# <img src="docs/assets/ares-mark.png" alt="" width="40"> Ares
 
 ![Ares — Local-first AI agent](docs/assets/ares-social-preview.png)
 
@@ -32,6 +32,12 @@ modelli Ollama**, senza chiavi API e senza cambiare una riga di codice.
 > - **Tools you control.** Four permission modes over a private workspace,
 >   step-by-step confirmation of anything that leaves a trace on disk,
 >   verified local snapshots and explicit maintenance workflows.
+
+![Una conversazione con Ares nel terminale: legge la cartella, risponde e chiede se tenere ciò che ha imparato](docs/assets/ares-chat.svg)
+
+*Una conversazione vera, registrata dal terminale su uno stato nuovo con
+`glm-5.3-flash:cloud`: Ares legge la cartella con gli strumenti sui file,
+risponde, mostra cosa ha imparato su profilo e memorie e chiede se tenerlo.*
 
 ## Indice
 

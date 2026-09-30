@@ -406,6 +406,21 @@ class QualitaMemoriaTest(unittest.TestCase):
             self.assertEqual(json.loads(percorso.read_text(encoding="utf-8")), rapporto)
             self.assertIn("non_conclusivo", mq.markdown(rapporto))
 
+    def test_aiuto_descrive_opzioni_casi_e_uscite(self):
+        # Il `--worker` interno resta fuori; ogni opzione pubblica ha una riga sua.
+        aiuto = " ".join(mq.parser().format_help().split())
+        for caso in mq.CASI:
+            self.assertIn(caso, aiuto)
+        for frammento in (
+            "quante volte",
+            "secondi massimi",
+            "artifacts/memory-quality",
+            "0 tutte le fasi",
+            "2 fallimenti",
+        ):
+            self.assertIn(frammento, aiuto)
+        self.assertNotIn("--worker", aiuto)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

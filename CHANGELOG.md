@@ -13,6 +13,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - `ares preflight` avvisa se un modello locale caricato con il contesto di
   Ares non sta tutto in VRAM, e di quanto (anche in `--json`, sotto
   `memoria`).
+- Il README mostra una conversazione vera registrata dal terminale
+  (`docs/assets/ares-chat.svg`) e il logo di Ares accanto al titolo.
+- `python -m evals.memory_quality --help` descrive ogni opzione, elenca i
+  casi e spiega i codici di uscita.
 
 ### Changed
 
