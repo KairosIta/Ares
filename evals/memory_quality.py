@@ -693,11 +693,35 @@ def esegui_caso(caso: str, ripetizione: int, timeout: int) -> dict:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--ripetizioni", type=int, default=3)
-    p.add_argument("--casi", nargs="+", choices=tuple(CASI), default=list(CASI))
+    p = argparse.ArgumentParser(
+        prog="python -m evals.memory_quality",
+        description=__doc__,
+        epilog=(
+            "Codice d'uscita: 0 tutte le fasi superate, 2 fallimenti o ambiguita',\n"
+            "1 guasto o esecuzione incompleta, anche dopo Ctrl+C.\n"
+            "Protocollo e casi: docs/memory-quality.md."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
+    )
+    p.add_argument("-h", "--help", action="help", help="mostra questo aiuto ed esce")
+    p.add_argument(
+        "--ripetizioni", type=int, default=3, help="quante volte eseguire ogni caso, ciascuna su un archivio nuovo"
+    )
+    p.add_argument(
+        "--casi",
+        nargs="+",
+        choices=tuple(CASI),
+        default=list(CASI),
+        metavar="CASO",
+        help="i casi da eseguire, tutti se omesso: " + ", ".join(CASI),
+    )
     p.add_argument("--timeout", type=int, default=180, help="secondi massimi per caso e ripetizione")
-    p.add_argument("--report", type=Path, help="nuovo file JSON; accanto viene scritto un Markdown")
+    p.add_argument(
+        "--report",
+        type=Path,
+        help="nuovo file .json, accanto il .md; di serie in artifacts/memory-quality/ con data e ora",
+    )
     p.add_argument("--worker", choices=tuple(CASI), help=argparse.SUPPRESS)
     return p
 
