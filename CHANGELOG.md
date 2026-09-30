@@ -84,6 +84,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Changed
 
+- **README e SECURITY dicono cosa può fare un comando.** La cartella
+  delimita gli strumenti sui file, non la shell. Un comando parte dalla
+  cartella, ma può:
+  - leggere e scrivere ovunque arrivi l'utente, compresi `.env`, `.git` e lo
+    stato di Ares;
+  - leggere l'ambiente della shell;
+  - usare la rete;
+  - lasciare processi attivi dopo il limite di tempo e dopo la chiusura di
+    Ares.
+
+  In `auto` nessuna conferma lo precede: i documenti lo dicono e consigliano
+  `auto` solo su progetti fidati o in un container. Il banner di `auto`
+  aggiunge «I comandi non restano nella cartella.»
 - **Gli interni di Agno passano da un modulo solo.** I nomi privati di Agno
   che Ares usa (`_build_functions_for_model`, `_should_expose_tools`,
   `determine_tools_for_model`) stanno ora in `ares/agent/agno_interni.py`,

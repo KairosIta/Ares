@@ -276,6 +276,14 @@ sessione, `/modo piano` cambia a metà conversazione, e il modello sa in
 quale modalità si trova. `auto` si sceglie solo con `ares --modo auto`, e il
 banner lo dice in rosso.
 
+I comandi non restano nella cartella. Partono da lì, ma possono leggere e
+scrivere ovunque tu possa, compreso lo stato di Ares, e usare la rete: la
+cartella delimita gli strumenti sui file, non la shell. Per questo in
+`manuale` e `modifiche` ogni comando chiede conferma, mentre in `auto` un
+comando suggerito da un file letto gira subito. `auto` va bene su un
+progetto di cui ti fidi, o dentro un container; il dettaglio è in
+[`SECURITY.md`](SECURITY.md#ares-non-è-una-sandbox).
+
 Con `-p`, e in generale quando stdin non è un terminale, valgono solo
 `manuale` e `piano`, e gli store di apprendimento non vengono aggiornati:
 nessuno guarda, e una conferma letta dalla stessa pipe che porta
@@ -507,10 +515,10 @@ Meglio dirlo prima, per non deludere nessuno:
 - **non è multi-utente né distribuito.** È pensato per un host e una persona:
   gli archivi sono locali, i turni dello stesso utente si serializzano, e non
   c'è un server da esporre;
-- **non è una sandbox.** Gli strumenti del workspace restano nella cartella
-  scelta, ma i comandi che autorizzi possono usare la rete e leggere ciò che
-  il processo può leggere: non è il modo di dare un modello a dati che non
-  vuoi far leggere;
+- **non è una sandbox.** Gli strumenti sui file restano nella cartella
+  scelta, ma i comandi — quelli che autorizzi, o tutti in `auto` — possono
+  usare la rete e leggere e scrivere ciò che il tuo utente può: non è il
+  modo di dare un modello a dati che non vuoi far leggere;
 - **non è una libreria né un prodotto.** Non c'è packaging per l'import, non
   c'è una UI oltre al terminale, e le API interne cambiano senza preavviso;
 - **non è il più adatto se** cerchi un agente integrato nell'editor, un
