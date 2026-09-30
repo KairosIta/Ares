@@ -85,7 +85,7 @@ Sono undici. Nessuna genera risposte con il modello.
 | `backup` | snapshot, checksum, restore e prune, rifiutati con lo stato ancora da migrare; il protocollo della sonda LanceDB, simulato e vero |
 | `entita` | audit e fusione delle entità |
 | `valutazione` | il benchmark della memoria senza modello (vedi sotto) |
-| `cli` | i comandi reali: preflight contro un Ollama finto nei tre esiti, ispezione degli archivi, sottocomandi di backup con annullamenti, la REPL intera in un processo con stdin da pipe, l'avvio senza `--session` (sessione nuova, `resume` a vuoto e sull'ultima, `--scegli`, `-p` con stdin in pipe) |
+| `cli` | i comandi reali: preflight contro un Ollama finto nei tre esiti e con i modelli caricati in VRAM, in parte o per niente, ispezione degli archivi, sottocomandi di backup con annullamenti, la REPL intera in un processo con stdin da pipe, l'avvio senza `--session` (sessione nuova, `resume` a vuoto e sull'ultima, `--scegli`, `-p` con stdin in pipe) |
 | `rilascio` | la versione di Ares concorda fra `pyproject.toml`, lock, `CHANGELOG` e `SECURITY.md` (procedura in [CONTRIBUTING](../CONTRIBUTING.md#come-si-rilascia)) |
 
 ### `contratto`
@@ -142,7 +142,14 @@ dei quali istruzioni. Spegnere uno store toglie esattamente una chiamata; un
 modello che non chiama lo strumento costa i tentativi del contesto, quindi
 più di uno che scrive. Un quarto controllo verifica che profilo e memorie
 vengano comunque scritti: `stop_after_tool_call` toglie la chiamata di
-chiusura, non la scrittura. Numeri e opzioni in
+chiusura, non la scrittura. La modalità è fissata dalla prova, non dal
+`.env`: in serie per i controlli di costo, in parallelo per gli altri
+quattro. In parallelo le chiamate e le scritture sono quelle della serie e
+le tre estrazioni girano davvero insieme (un modello finto risponde solo a
+tre chiamate contemporanee); un guasto di uno store diventa un avviso; dopo
+un Ctrl-C l'interruzione arriva subito, e nessuno store scrive né ritenta
+quando il modello risponde; il `Cancello` aspetta la scrittura cominciata.
+Numeri e opzioni in
 [qualità della memoria](memory-quality.md#costo-delle-estrazioni-22-settembre-2026);
 la misura con i modelli veri la stampa `e2e`.
 

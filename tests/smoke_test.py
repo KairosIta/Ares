@@ -2038,13 +2038,19 @@ def impostazioni_a_runtime() -> str:
         "build_learning_model non usa le impostazioni ricevute",
     )
     # Due modelli diversi: l'estrazione scende al contesto dell'estrazione, e
-    # la regola sta sul tipo perche' dipende dalla coppia.
+    # la regola sta sul tipo perche' dipende dalla coppia. Mai sopra quello
+    # della conversazione: qui 4096 resta 4096.
     esigi(
-        mia.num_ctx_apprendimento == NUM_CTX_ESTRAZIONE,
+        mia.num_ctx_apprendimento == mia.num_ctx,
+        "l'estrazione chiede piu' contesto della conversazione: " + str(mia.num_ctx_apprendimento),
+    )
+    ampia = replace(mia, num_ctx=262144)
+    esigi(
+        ampia.num_ctx_apprendimento == NUM_CTX_ESTRAZIONE,
         "con due modelli diversi l'estrazione non usa il contesto suo",
     )
     esigi(
-        estrazione.options == {"num_ctx": NUM_CTX_ESTRAZIONE, "temperature": 0.05},
+        runtime.build_learning_model(ampia).options == {"num_ctx": NUM_CTX_ESTRAZIONE, "temperature": 0.05},
         "build_learning_model non usa il contesto dell'estrazione: " + repr(estrazione.options),
     )
     esigi(estrazione.request_params == {"think": False}, "il pensiero dell'estrazione non viene dalle impostazioni")
@@ -2095,7 +2101,54 @@ def impostazioni_a_runtime() -> str:
         esigi(not hasattr(config, nome), "config espone ancora " + nome + ": e' un canale invisibile")
     esigi(isinstance(leggi_impostazioni(), Impostazioni), "leggi_impostazioni non restituisce un Impostazioni")
 
-    return "modelli dall'oggetto, contesto derivato dalla coppia, nessun default fotografato all'import"
+    # In parallelo solo con l'estrazione cloud: in locale Ollama serve una
+    # richiesta alla volta.
+    esigi(mia.estrazione_in_parallelo is False, "l'estrazione locale va in parallelo")
+    esigi(entrambi.estrazione_in_parallelo is True, "l'estrazione cloud resta in serie")
+    esigi(
+        replace(mia, principale="prova:cloud", apprendimento="prova:9b").estrazione_in_parallelo is False,
+        "la conversazione cloud decide per l'estrazione",
+    )
+
+    # Il contesto dal `.env`: un intero da NUM_CTX_MINIMO in su, il default
+    # se manca, un rifiuto per tutto il resto.
+    esigi(config.leggi_num_ctx(None) == 131072 and config.leggi_num_ctx("  ") == 131072, "il default non e' 128k")
+    esigi(config.leggi_num_ctx(" 65536 ") == 65536, "ARES_NUM_CTX non viene letto")
+    esigi(config.leggi_num_ctx(str(config.NUM_CTX_MINIMO)) == config.NUM_CTX_MINIMO, "il minimo e' rifiutato")
+    for valore in ("abc", "4096", str(config.NUM_CTX_MINIMO - 1), "-1", "1e5"):
+        try:
+            config.leggi_num_ctx(valore)
+        except ValueError as errore:
+            esigi("ARES_NUM_CTX" in str(errore), "il rifiuto non nomina la variabile: " + str(errore))
+        else:
+            raise AssertionError("ARES_NUM_CTX=" + valore + " accettato")
+    # All'avvio un valore sbagliato e' una riga e un'uscita 1, non un traceback.
+    rifiutato = subprocess.run(
+        [sys.executable, "-c", "import ares.config"],
+        env={**os.environ, "ARES_NUM_CTX": "abc"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    esigi(
+        rifiutato.returncode == 1 and "ARES_NUM_CTX" in rifiutato.stderr and "Traceback" not in rifiutato.stderr,
+        "un ARES_NUM_CTX sbagliato non ferma l'avvio con una riga: " + rifiutato.stderr,
+    )
+    letto = subprocess.run(
+        [sys.executable, "-c", "from ares import config; print(config.leggi_impostazioni().num_ctx)"],
+        env={**os.environ, "ARES_NUM_CTX": "65536"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    esigi(letto.stdout.strip() == "65536", "ARES_NUM_CTX non arriva alle impostazioni: " + letto.stdout + letto.stderr)
+
+    return (
+        "modelli dall'oggetto, contesto derivato dalla coppia e dal .env, parallelo solo in cloud,"
+        " nessun default fotografato all'import"
+    )
 
 
 def politica_a_runtime() -> str:

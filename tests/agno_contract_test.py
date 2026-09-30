@@ -79,7 +79,7 @@ IMPOSTAZIONI = config.leggi_impostazioni()
 from ares.agent import learning  # noqa: E402
 from ares.agent.agno_interni import INTERNI, FunzioniRitoccate  # noqa: E402
 from ares.agent.assistant import build_assistant  # noqa: E402
-from ares.agent.learning import build_session_context_store  # noqa: E402
+from ares.agent.learning import AresLearningMachine, build_session_context_store  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
 from ares.agent.turn_core import TurnEventKind, run_turn_cycle  # noqa: E402
 from ares.core import turn as nucleo_turno  # noqa: E402
@@ -166,10 +166,10 @@ class ClienteFinto:
 class ContatoreEstrazioni:
     """Conta le estrazioni vere e quelle anticipate, e conserva i messaggi.
 
-    Quella vera si intercetta sulla classe base (`LearningMachine.process`), che
-    Ares chiama solo da `process_completed_run`; quella anticipata si conta
-    sull'istanza, dove Agno la cerca. Il gemello asincrono si conta allo stesso
-    modo, su `vere_async`.
+    Quella vera si intercetta su `AresLearningMachine.process_completed_run`,
+    l'unica porta del post-hook, in serie o in parallelo; quella anticipata si
+    conta sull'istanza, dove Agno la cerca. Il gemello asincrono si conta sulla
+    classe base (`LearningMachine.aprocess`), su `vere_async`.
     """
 
     def __init__(self, macchina) -> None:
@@ -177,7 +177,7 @@ class ContatoreEstrazioni:
         self.vere_async: list[list[Any]] = []
         self.anticipate = 0
         self.macchina = macchina
-        self._originale = LearningMachine.process
+        self._originale = AresLearningMachine.process_completed_run
         self._originale_async = LearningMachine.aprocess
 
     def __enter__(self):
@@ -195,7 +195,7 @@ class ContatoreEstrazioni:
             contatore.anticipate += 1
             return None
 
-        self._patch = patch.object(LearningMachine, "process", process_vero)
+        self._patch = patch.object(AresLearningMachine, "process_completed_run", process_vero)
         self._patch_async = patch.object(LearningMachine, "aprocess", aprocess_vero)
         self._patch.__enter__()
         self._patch_async.__enter__()

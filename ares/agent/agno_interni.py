@@ -17,6 +17,7 @@ INTERNI: tuple[tuple[str, str, str], ...] = (
     ("agno.learn.stores.user_memory", "UserMemoryStore", "_should_expose_tools"),
     ("agno.learn.stores.entity_memory", "EntityMemoryStore", "_should_expose_tools"),
     ("agno.agent._tools", "determine_tools_for_model", ""),
+    ("agno.learn.machine", "_filter_store_kwargs", ""),
 )
 
 
@@ -39,6 +40,13 @@ class FunzioniRitoccate:
 def strumenti_esposti(store: Any) -> bool:
     """Vero se lo store da' strumenti all'agente, secondo la propria configurazione."""
     return bool(store._should_expose_tools)
+
+
+def elabora(store: Any, contesto: dict[str, Any]) -> None:
+    """Un passo di `LearningMachine.process`: `store.process` con gli argomenti che accetta."""
+    from agno.learn.machine import _filter_store_kwargs
+
+    store.process(**_filter_store_kwargs(store.process, contesto))
 
 
 def funzioni_per_modello(agent: Any, **kwargs: Any) -> Any:

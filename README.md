@@ -111,13 +111,20 @@ possono funzionare, ma non sono ancora nella matrice CI.
 ### Quanta memoria serve
 
 La configurazione di riferimento è pensata per circa **16 GiB di VRAM**. Il
-modello locale Qwen3.8-9B Q8_0 richiede circa 14 GB con 262k token di
-contesto quando è lui a conversare, e circa **9 GB quando fa solo
-l'estrazione delle memorie accanto a un modello cloud**: in quel caso il
+modello locale Qwen3.8-9B Q8_0 occupa circa **12,4 GB con 128k token di
+contesto**, il default, quando è lui a conversare, e circa **9 GB quando fa
+solo l'estrazione delle memorie accanto a un modello cloud**: in quel caso il
 contesto dell'estrazione scende a `NUM_CTX_ESTRAZIONE` (32k), perché
-un'estrazione riceve solo il testo del turno. Su hardware diverso è possibile
-scegliere un modello più piccolo e ridurre `NUM_CTX` in
-[`ares/config.py`](ares/config.py).
+un'estrazione riceve solo il testo del turno.
+
+Il contesto si cambia con `ARES_NUM_CTX` nel `.env`. Conta che il modello
+stia tutto in scheda: a 256k lo stesso modello occupa 19,5 GB, un quarto
+gira sulla CPU, e risposta ed estrazione diventano due volte e mezzo più
+lente (le misure sono in [qualità della
+memoria](docs/memory-quality.md#latenza-dellestrazione-30-settembre-2026)).
+`ares preflight`, dopo un turno di chat, dice se il modello non sta in VRAM e
+di quanto. Con meno VRAM si abbassa `ARES_NUM_CTX` o si sceglie un modello
+più piccolo.
 
 I modelli sono artefatti esterni, non inclusi nel repository: consulta la
 [model card di Qwen3.8-9B-Distill](https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF)

@@ -103,6 +103,12 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   sono in [memory-quality.md](memory-quality.md);
   `tests/learning_cost_test.py` verifica le tre chiamate per turno e che la
   scrittura arrivi negli store.
+- **Estrazione in parallelo con il modello cloud:** `LearningMachine.process`
+  chiama gli store uno dopo l'altro. Con l'estrazione cloud
+  `AresLearningMachine` li lancia insieme, con lo stesso filtro degli
+  argomenti di Agno (`_filter_store_kwargs`, privato, in
+  `agent/agno_interni.py`); in locale resta il ciclo di Agno. I numeri
+  sono in [memory-quality.md](memory-quality.md).
 - **HITL v3:** la ripresa passa la lista `requirements` del `RunOutput`; le
   operazioni workspace sensibili continuano quindi sullo stesso run dopo la
   conferma.

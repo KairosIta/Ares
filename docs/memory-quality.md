@@ -621,6 +621,55 @@ questo, stampa `5274 in / 529 out` e un apprendimento di 2,2 s su un turno di
 scrivevano non è sotto controllo e i suoi token non sono un confronto: il
 numero da guardare è la tabella qui sopra.
 
+## Latenza dell'estrazione, 30 settembre 2026
+
+Dopo ogni risposta l'utente aspetta le tre estrazioni. Stessi sei turni su un
+archivio nuovo (presentazione, preferenze, un piano in tre passi, due
+avanzamenti, un vincolo da ricordare), Agno 3.0.11, media per turno:
+
+| Configurazione | Estrazione | Risposta | Modello in VRAM |
+| --- | ---: | ---: | --- |
+| locale Qwen3.8-9B Q8_0, contesto 256k | 33,8 s | 22,9 s | 14,4 GB di 19,5 |
+| locale Q8_0, 128k | 14,0 s | 12,3 s | tutto (12,4 GB) |
+| locale Q8_0, 64k | 12,7 s | 11,3 s | tutto (10,3 GB) |
+| locale Q8_0, 32k | 13,2 s | 9,3 s | tutto (9,2 GB) |
+| locale Qwen3.8-9B-heretic Q6_K, 32k | 13,1 s | 8,9 s | tutto (7,5 GB) |
+| cloud `glm-5.3-flash`, in serie | 15,8 s | 2,7 s | — |
+| cloud `glm-5.3-flash`, in parallelo | 11,6 s | 4,9 s | — |
+| cloud `deepseek-v4.1-flash` in estrazione, in serie | 5,1 s | 4,2 s | — |
+| cloud `deepseek-v4.1-flash` in estrazione, in parallelo | 3,0 s | 5,0 s | — |
+
+Su una Radeon RX 7800 XT da 16 GB. La risposta in cloud varia molto fra un
+turno e l'altro (da 1,5 a 16,8 s), quindi la sua colonna non è un confronto.
+
+**In locale conta il contesto.** A 262.144 token il modello di serie non
+entra in scheda e un quarto gira sulla CPU: risposta ed estrazione
+rallentano entrambe di circa due volte e mezzo. Da 128k in giù sta tutto in
+VRAM, e fra 128k e 32k la differenza è rumore: `NUM_CTX` di serie è ora
+131.072, `ARES_NUM_CTX` lo cambia dal `.env` e `ares preflight` avvisa
+quando il modello caricato non sta in VRAM. Un modello più piccolo a parità
+di contesto non guadagna: la Q6_K impiega quanto la Q8_0.
+
+**In cloud contano i token in uscita.** `glm-5.3-flash` ragiona anche con
+`think: false`: il ragionamento finisce nel contenuto della risposta, che Ares
+scarta. Il contesto di sessione arriva a 4.600 token in uscita, con 13.000
+caratteri di ragionamento e 2.900 di argomenti. `deepseek-v4.1-flash`, con
+`think: false`, non ragiona ed esce con 250–1.100 token. Quale modello
+consigliare per l'estrazione è una questione di qualità, da decidere con
+questo benchmark.
+
+**In parallelo solo in cloud.** I tre store sono indipendenti. Con
+l'estrazione cloud ora girano insieme (`AresLearningMachine.in_parallelo`) e
+il turno aspetta il più lento invece della somma: -27% con glm, -41% con
+deepseek. In locale Ollama serve una richiesta alla volta e in parallelo si
+perde qualcosa (33,8 → 36,4 s), quindi resta in serie. Con il codice
+definitivo, due coppie di esecuzioni una dopo l'altra, in serie e in
+parallelo, su un servizio cloud più lento del solito: 47,1 → 27,4 s e
+45,7 → 30,1 s, con profilo, memorie e contesto scritti in tutte. Dopo un Ctrl-C un
+cancello ferma le scritture dei thread ancora in attesa del modello: il turno
+fotografa la memoria subito dopo, e una scrittura tardiva sfuggirebbe a eco e
+conferma.
+
 ## Limiti del protocollo
 
 La misura attuale isola estrazione e recupero su dialoghi brevi. Non copre

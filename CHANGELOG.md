@@ -6,7 +6,27 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- `ARES_NUM_CTX` nel `.env` cambia il contesto chiesto a Ollama; un valore
+  non valido ferma l'avvio con una riga.
+- `ares preflight` avvisa se un modello locale caricato con il contesto di
+  Ares non sta tutto in VRAM, e di quanto (anche in `--json`, sotto
+  `memoria`).
+
 ### Changed
+
+- Il contesto di serie scende da 262.144 a 131.072 token. A 256k il modello
+  locale di serie non entrava in 16 GB di VRAM e un quarto girava sulla CPU:
+  con 128k l'estrazione dopo ogni risposta passa da 33,8 a 14,0 s e la
+  risposta da 22,9 a 12,3 s (medie su sei turni, in
+  `docs/memory-quality.md`). Il contesto dell'estrazione non supera più
+  quello della conversazione.
+- Con il modello di estrazione cloud, profilo, memorie e contesto di sessione
+  estraggono in parallelo: il turno aspetta il più lento invece della somma
+  (-27% con `glm-5.3-flash`, -41% con `deepseek-v4.1-flash`). In locale
+  restano in serie, perché Ollama serve una richiesta alla volta. Dopo un
+  Ctrl-C nessuna estrazione ancora in corso scrive in memoria, come prima.
 
 - Backup, restore e manutenzione aprono lo stato dal nucleo
   (`core/stato.stato_esclusivo`), come la chat con `stato_in_uso`: le regole
