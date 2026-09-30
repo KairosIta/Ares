@@ -19,6 +19,8 @@ numero si misura il peso: ogni estrazione rimanda la conversazione intera.
 from __future__ import annotations
 
 import json
+import threading
+import time
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import replace
 from typing import Any
@@ -184,14 +186,46 @@ def senza(quale: str) -> Any:
     return replace(POLITICA, apprendimento=replace(POLITICA.apprendimento, **{quale: False}))
 
 
-def estrai(finto: ModelloConta, politica: Any = None) -> Any:
+# Il nome del modello di estrazione decide la modalita' (vedi
+# `Impostazioni.estrazione_in_parallelo`): la prova la fissa, invece di
+# ereditarla dal `.env` di chi la lancia.
+IN_SERIE = replace(IMPOSTAZIONI, apprendimento="conta-costo:9b")
+IN_PARALLELO = replace(IMPOSTAZIONI, apprendimento="conta-costo:cloud")
+
+
+def macchina_con(
+    finto: ModelloConta, politica: Any = None, impostazioni: Any = IN_SERIE, utente: Utente = UTENTE
+) -> Any:
+    with patch.object(learning, "build_learning_model", lambda impostazioni: finto):
+        return build_learning_machine(build_db(PERCORSI), None, utente, impostazioni, politica or POLITICA)
+
+
+def turno_completato(macchina: Any, utente: Utente = UTENTE) -> None:
+    macchina.process_completed_run(
+        messages=conversazione(),
+        user_id=utente.id,
+        session_id="costo-" + utente.id,
+        agent_id="costo-agente",
+    )
+
+
+def scritto(macchina: Any, utente: Utente) -> dict[str, bool]:
+    """Quali store hanno qualcosa per l'utente, riletti dall'archivio."""
+    memorie = macchina.user_memory_store.get(user_id=utente.id)
+    return {
+        "update_profile": macchina.user_profile_store.get(user_id=utente.id) is not None,
+        "add_memory": bool(getattr(memorie, "memories", None)),
+        "save_session_context": macchina.session_context_store.get(session_id="costo-" + utente.id) is not None,
+    }
+
+
+def estrai(finto: ModelloConta, politica: Any = None, impostazioni: Any = IN_SERIE) -> Any:
     """Un turno completato, e la macchina di apprendimento che l'ha estratto.
 
     Le chiamate si leggono da `finto.chiamate`; la macchina serve ai controlli
     su cio' che e' finito negli store.
     """
-    with patch.object(learning, "build_learning_model", lambda impostazioni: finto):
-        macchina = build_learning_machine(build_db(PERCORSI), None, UTENTE, IMPOSTAZIONI, politica or POLITICA)
+    macchina = macchina_con(finto, politica, impostazioni)
     macchina.process_completed_run(
         messages=conversazione(),
         user_id=UTENTE.id,
@@ -360,6 +394,161 @@ def la_scrittura_arriva_negli_store() -> str:
     return "profilo e memorie scritti nonostante il flag sulla tool call"
 
 
+class ModelloInsieme(ModelloConta):
+    """Risponde solo quando tutte e tre le estrazioni lo stanno chiamando insieme.
+
+    In serie la barriera scade e ogni store fallisce: e' la prova che il
+    parallelo e' vero, non un ciclo in un altro ordine.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.barriera = threading.Barrier(CHIAMATE_PER_TURNO, timeout=10)
+        self.fili: set[str] = set()
+
+    def _misura(self, messages: Any, tools: Any) -> ModelResponse:
+        if self._salvataggio(tools) not in self.scritti:
+            self.fili.add(threading.current_thread().name)
+            self.barriera.wait()
+        return super()._misura(messages, tools)
+
+
+class ModelloTrattenuto(ModelloConta):
+    """Non risponde finche' la prova non apre `via`: un modello cloud lento."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.via = threading.Event()
+        self.partiti = threading.Semaphore(0)
+
+    def _misura(self, messages: Any, tools: Any) -> ModelResponse:
+        self.partiti.release()
+        self.via.wait(10)
+        return super()._misura(messages, tools)
+
+
+def in_parallelo_come_in_serie() -> str:
+    """In parallelo le chiamate e le scritture sono quelle della serie, e gli store estraggono insieme."""
+    utente = Utente.da_grezzo("costo-parallelo")
+    finto = ModelloInsieme()
+    macchina = macchina_con(finto, impostazioni=IN_PARALLELO, utente=utente)
+    esigi(macchina.in_parallelo, "con l'estrazione cloud la macchina resta in serie")
+    esigi(not macchina_con(ModelloConta()).in_parallelo, "con l'estrazione locale la macchina va in parallelo")
+    avvisi: list[str] = []
+    with patch.object(learning, "log_warning", lambda testo, *a, **k: avvisi.append(testo)):
+        turno_completato(macchina, utente)
+    esigi(not avvisi, "l'estrazione in parallelo ha prodotto avvisi: " + repr(avvisi))
+    esigi(
+        per_store(finto.chiamate) == dict.fromkeys(STORE_ALWAYS, 1),
+        "in parallelo le chiamate per store cambiano: " + repr(per_store(finto.chiamate)),
+    )
+    esigi(
+        all(scritto(macchina, utente).values()),
+        "in parallelo uno store non ha scritto: " + repr(scritto(macchina, utente)),
+    )
+    esigi(
+        len(finto.fili) == CHIAMATE_PER_TURNO and all(f.startswith("ares-estrazione") for f in finto.fili),
+        "le estrazioni non girano in thread propri: " + repr(finto.fili),
+    )
+    return str(CHIAMATE_PER_TURNO) + " estrazioni insieme, una chiamata per store, tutto scritto"
+
+
+def un_errore_non_ferma_gli_altri() -> str:
+    """Uno store che fallisce diventa un avviso, come in Agno, e gli altri scrivono."""
+
+    class ModelloGuasto(ModelloConta):
+        def _misura(self, messages: Any, tools: Any) -> ModelResponse:
+            if "update_profile" in [nome_strumento(f) for f in tools or []]:
+                raise RuntimeError("profilo guasto")
+            return super()._misura(messages, tools)
+
+    utente = Utente.da_grezzo("costo-guasto")
+    macchina = macchina_con(ModelloGuasto(), impostazioni=IN_PARALLELO, utente=utente)
+    avvisi: list[str] = []
+    with patch.object(learning, "log_warning", lambda testo, *a, **k: avvisi.append(testo)):
+        turno_completato(macchina, utente)
+    stato = scritto(macchina, utente)
+    esigi(not stato["update_profile"], "il profilo guasto ha scritto")
+    esigi(stato["add_memory"] and stato["save_session_context"], "un guasto ha fermato gli altri store: " + repr(stato))
+    esigi(
+        any("user_profile" in a and "profilo guasto" in a for a in avvisi),
+        "il guasto non diventa un avviso: " + repr(avvisi),
+    )
+    return "profilo guasto in un avviso, memorie e contesto scritti"
+
+
+def ctrl_c_non_lascia_scritture() -> str:
+    """Dopo un Ctrl-C nessuna estrazione scrive: il turno fotografa la memoria subito dopo."""
+    utente = Utente.da_grezzo("costo-interrotto")
+    finto = ModelloTrattenuto()
+    macchina = macchina_con(finto, impostazioni=IN_PARALLELO, utente=utente)
+
+    def interrotto(futuri: Any) -> None:
+        # L'interruzione arriva quando tutte le estrazioni aspettano il modello.
+        for _ in range(CHIAMATE_PER_TURNO):
+            esigi(finto.partiti.acquire(timeout=10), "le estrazioni non sono partite")
+        raise KeyboardInterrupt
+
+    inizio = time.monotonic()
+    try:
+        with patch.object(learning, "wait", interrotto):
+            turno_completato(macchina, utente)
+    except KeyboardInterrupt:
+        pass
+    else:
+        raise AssertionError("il Ctrl-C non arriva al turno")
+    esigi(time.monotonic() - inizio < 5, "il Ctrl-C aspetta il modello")
+
+    # Il modello risponde adesso: le tool call arrivano, le scritture no.
+    finto.via.set()
+    for filo in [f for f in threading.enumerate() if f.name.startswith("ares-estrazione")]:
+        filo.join(10)
+    esigi(len(finto.scritti) == CHIAMATE_PER_TURNO, "il modello non ha chiesto di scrivere: " + repr(finto.scritti))
+    esigi(
+        not any(scritto(macchina, utente).values()),
+        "un'estrazione ha scritto dopo il Ctrl-C: " + repr(scritto(macchina, utente)),
+    )
+
+    # Il cancello vale solo per quei thread: la chat e il turno dopo scrivono.
+    esigi(
+        per_store(finto.chiamate) == dict.fromkeys(STORE_ALWAYS, 1),
+        "dopo il Ctrl-C il contesto ha ritentato: " + repr(per_store(finto.chiamate)),
+    )
+    seguente = macchina_con(ModelloConta(), impostazioni=IN_PARALLELO, utente=utente)
+    turno_completato(seguente, utente)
+    esigi(all(scritto(seguente, utente).values()), "dopo un Ctrl-C il turno seguente non scrive")
+    return "interruzione subito, nessuna scrittura tardiva, nessun nuovo tentativo, turno seguente intatto"
+
+
+def il_cancello_aspetta_chi_scrive() -> str:
+    """`chiudi` aspetta la scrittura cominciata e rifiuta quelle dopo."""
+    cancello = learning.Cancello()
+    dentro, esci = threading.Event(), threading.Event()
+    esiti: list[bool] = []
+
+    def scrivi() -> None:
+        with cancello.scrittura() as aperto:
+            esiti.append(aperto)
+            dentro.set()
+            esci.wait(10)
+
+    filo = threading.Thread(target=scrivi)
+    filo.start()
+    esigi(dentro.wait(10), "la scrittura non e' cominciata")
+    chiusura = threading.Thread(target=cancello.chiudi)
+    chiusura.start()
+    chiusura.join(0.2)
+    esigi(chiusura.is_alive(), "il cancello si chiude durante una scrittura")
+    esci.set()
+    chiusura.join(10)
+    filo.join(10)
+    esigi(not chiusura.is_alive() and cancello.chiuso, "il cancello non si chiude a scrittura finita")
+    with cancello.scrittura() as aperto:
+        esiti.append(aperto)
+    esigi(esiti == [True, False], "il cancello chiuso lascia scrivere: " + repr(esiti))
+    return "chiusura dopo la scrittura in corso, rifiuto dopo"
+
+
 def main() -> int:
     falliti, _ = esegui(
         (
@@ -367,6 +556,10 @@ def main() -> int:
             ("politica spegne il costo", la_politica_spegne_il_costo),
             ("modello che non ubbidisce", il_modello_che_non_ubbidisce),
             ("scrittura negli store", la_scrittura_arriva_negli_store),
+            ("in parallelo", in_parallelo_come_in_serie),
+            ("errore in parallelo", un_errore_non_ferma_gli_altri),
+            ("ctrl-c in parallelo", ctrl_c_non_lascia_scritture),
+            ("cancello", il_cancello_aspetta_chi_scrive),
         )
     )
     return chiudi(falliti, RADICE_PROVA)

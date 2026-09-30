@@ -4,7 +4,11 @@ import functools
 import inspect
 import json
 import re
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any
 
 from agno.db.sqlite import SqliteDb
@@ -29,7 +33,7 @@ from agno.learn.utils import to_dict_safe
 from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
 
-from ares.agent.agno_interni import FunzioniRitoccate, strumenti_esposti
+from ares.agent.agno_interni import FunzioniRitoccate, elabora, strumenti_esposti
 from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
 from ares.config import Impostazioni, Politica
@@ -58,6 +62,93 @@ CRITERI_ESTRAZIONE = (
 )
 
 
+class Cancello:
+    """Le scritture di un'estrazione in parallelo, fermate tutte insieme.
+
+    Dopo un Ctrl-C il turno fotografa la memoria per l'eco e la conferma,
+    mentre gli altri thread aspettano ancora il modello: una loro scrittura
+    arriverebbe dopo, senza eco e senza conferma. `chiudi` aspetta le
+    scritture gia' cominciate, che durano millisecondi, e rifiuta le altre.
+    """
+
+    def __init__(self) -> None:
+        self._stato = threading.Condition()
+        self._chiuso = False
+        self._in_corso = 0
+
+    @property
+    def chiuso(self) -> bool:
+        with self._stato:
+            return self._chiuso
+
+    @contextmanager
+    def scrittura(self) -> Iterator[bool]:
+        """Vero se si puo' scrivere; la chiusura aspetta che il blocco finisca."""
+        with self._stato:
+            aperto = not self._chiuso
+            if aperto:
+                self._in_corso += 1
+        try:
+            yield aperto
+        finally:
+            if aperto:
+                with self._stato:
+                    self._in_corso -= 1
+                    self._stato.notify_all()
+
+    def chiudi(self) -> None:
+        with self._stato:
+            self._chiuso = True
+            self._stato.wait_for(lambda: self._in_corso == 0)
+
+
+# Il cancello dell'estrazione che questo thread sta eseguendo. Solo i thread
+# di `AresLearningMachine` lo impostano: la chat e gli strumenti di memoria
+# del turno scrivono sempre.
+_estrazione = threading.local()
+
+
+def _cancello() -> Cancello | None:
+    return getattr(_estrazione, "cancello", None)
+
+
+class ScrittureSorvegliate:
+    """Mixin per uno store di `agno.learn`: `save` passa dal cancello dell'estrazione.
+
+    `save` e' il punto da cui passa ogni scrittura dello store. Va prima
+    della classe di Agno nelle basi.
+    """
+
+    def save(self, *args: Any, **kwargs: Any) -> Any:
+        cancello = _cancello()
+        if cancello is None:
+            return super().save(*args, **kwargs)  # type: ignore[misc]
+        with cancello.scrittura() as aperto:
+            return super().save(*args, **kwargs) if aperto else None  # type: ignore[misc]
+
+    async def asave(self, *args: Any, **kwargs: Any) -> Any:
+        cancello = _cancello()
+        if cancello is None:
+            return await super().asave(*args, **kwargs)  # type: ignore[misc]
+        with cancello.scrittura() as aperto:
+            return await super().asave(*args, **kwargs) if aperto else None  # type: ignore[misc]
+
+
+def _interrotta() -> bool:
+    """Vero se l'estrazione di questo thread e' stata fermata: ritentare non serve."""
+    cancello = _cancello()
+    return cancello is not None and cancello.chiuso
+
+
+def _estrai(store: Any, contesto: dict[str, Any], cancello: Cancello) -> None:
+    _estrazione.cancello = cancello
+    try:
+        elabora(store, contesto)
+    finally:
+        _estrazione.cancello = None
+
+
+@dataclass
 class AresLearningMachine(LearningMachine):
     """Estrae apprendimenti soltanto quando il run e' davvero concluso.
 
@@ -67,7 +158,14 @@ class AresLearningMachine(LearningMachine):
     completo; ``learning=`` resta collegato per contesto, istruzioni e
     strumenti. Il comportamento di Agno e' verificato da
     `tests/agno_contract_test.py`.
+
+    Con `in_parallelo` gli store con `ScrittureSorvegliate` estraggono
+    insieme, ciascuno in un thread, e il turno aspetta il piu' lento invece
+    della somma; gli altri restano in serie. Un errore di uno store non
+    ferma gli altri, come in Agno.
     """
+
+    in_parallelo: bool = False
 
     def process(self, *args, **kwargs) -> None:
         return None
@@ -75,8 +173,40 @@ class AresLearningMachine(LearningMachine):
     async def aprocess(self, *args, **kwargs) -> None:
         return None
 
-    def process_completed_run(self, *args, **kwargs) -> None:
-        super().process(*args, **kwargs)
+    def process_completed_run(self, **kwargs: Any) -> None:
+        if not self.in_parallelo:
+            super().process(**kwargs)
+            return
+        # Le chiavi che `LearningMachine.process` mette sempre nel contesto.
+        contesto = {"namespace": None, **kwargs}
+        insieme = {nome: s for nome, s in self.stores.items() if isinstance(s, ScrittureSorvegliate)}
+        for nome, store in self.stores.items():
+            if nome not in insieme:
+                _elabora_o_avvisa(nome, functools.partial(elabora, store, contesto))
+        if not insieme:
+            return
+        cancello = Cancello()
+        esecutore = ThreadPoolExecutor(max_workers=len(insieme), thread_name_prefix="ares-estrazione")
+        futuri = {nome: esecutore.submit(_estrai, store, contesto, cancello) for nome, store in insieme.items()}
+        try:
+            wait(futuri.values())
+        except BaseException:
+            # Non si aspettano le chiamate al modello: il cancello ferma cio'
+            # che scriverebbero, e l'interruzione arriva subito al turno.
+            cancello.chiudi()
+            esecutore.shutdown(wait=False, cancel_futures=True)
+            raise
+        esecutore.shutdown()
+        for nome, futuro in futuri.items():
+            _elabora_o_avvisa(nome, futuro.result)
+
+
+def _elabora_o_avvisa(nome: str, passo: Callable[[], Any]) -> None:
+    """Il passo di uno store; un errore diventa un avviso, come in `LearningMachine.process`."""
+    try:
+        passo()
+    except Exception as errore:
+        log_warning("Error processing through " + nome + ": " + str(errore))
 
 
 # Il segno di una voce d'elenco scritta a mano: trattino, asterisco, pallino
@@ -134,7 +264,7 @@ def liste_dal_testo(entrypoint: Callable[..., Any]) -> Callable[..., Any]:
     return sincrono
 
 
-class AresSessionContextStore(FunzioniRitoccate, SessionContextStore):
+class AresSessionContextStore(ScrittureSorvegliate, FunzioniRitoccate, SessionContextStore):
     """Riprova soltanto un'estrazione che non ha scritto nulla.
 
     `tentativi_contesto` sono i tentativi oltre il primo. `__init__` passa il
@@ -196,7 +326,7 @@ class AresSessionContextStore(FunzioniRitoccate, SessionContextStore):
         for tentativo in range(1, massimo + 1):
             risultato = self._extract_once(*args, **kwargs)
             self.last_extraction_attempts = tentativo
-            if self.context_updated:
+            if self.context_updated or _interrotta():
                 return risultato
             if tentativo < massimo:
                 log_warning(
@@ -215,7 +345,7 @@ class AresSessionContextStore(FunzioniRitoccate, SessionContextStore):
         for tentativo in range(1, massimo + 1):
             risultato = await self._aextract_once(*args, **kwargs)
             self.last_extraction_attempts = tentativo
-            if self.context_updated:
+            if self.context_updated or _interrotta():
                 return risultato
             if tentativo < massimo:
                 log_warning(
@@ -243,14 +373,14 @@ def senza_conferma(funzioni: list[Any], nome: str) -> list[Any]:
     return funzioni
 
 
-class AresUserProfileStore(FunzioniRitoccate, UserProfileStore):
+class AresUserProfileStore(ScrittureSorvegliate, FunzioniRitoccate, UserProfileStore):
     """Il profilo, con una sola chiamata al modello per turno (vedi `senza_conferma`)."""
 
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
         return senza_conferma(funzioni, "update_profile")
 
 
-class AresUserMemoryStore(FunzioniRitoccate, UserMemoryStore):
+class AresUserMemoryStore(ScrittureSorvegliate, FunzioniRitoccate, UserMemoryStore):
     """Le memorie, con una sola chiamata per turno e la guida in italiano.
 
     La guida di Agno e' inglese e pensata per un agente di squadra; questa
@@ -473,4 +603,5 @@ def build_learning_machine(
         learned_knowledge=learned_knowledge,
         namespace=namespace_utente(utente),
         max_updates_per_run=apprendimento.max_aggiornamenti,
+        in_parallelo=impostazioni.estrazione_in_parallelo,
     )

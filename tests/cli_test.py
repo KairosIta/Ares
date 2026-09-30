@@ -86,21 +86,27 @@ POLITICA = config.leggi_politica()
 
 
 class OllamaFinto(BaseHTTPRequestHandler):
-    """Risponde a /api/tags con l'elenco deciso dalla prova.
+    """Risponde a /api/tags e /api/ps con gli elenchi decisi dalla prova.
 
-    L'elenco sta sulla classe perche' HTTPServer crea un handler per richiesta.
+    Gli elenchi stanno sulla classe perche' HTTPServer crea un handler per
+    richiesta. `caricati` a None: un Ollama che non conosce /api/ps.
     """
 
     modelli: ClassVar[list[str]] = []
+    caricati: ClassVar[list[dict] | None] = None
 
     # Il nome in CamelCase non e' una scelta: BaseHTTPRequestHandler cerca
     # `do_` piu' il metodo HTTP.
     def do_GET(self) -> None:
-        if not self.path.startswith("/api/tags"):
+        if self.path.startswith("/api/tags"):
+            dati: dict = {"models": [{"name": nome} for nome in type(self).modelli]}
+        elif self.path.startswith("/api/ps") and type(self).caricati is not None:
+            dati = {"models": type(self).caricati}
+        else:
             self.send_response(404)
             self.end_headers()
             return
-        corpo = json.dumps({"models": [{"name": nome} for nome in type(self).modelli]}).encode()
+        corpo = json.dumps(dati).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(corpo)))
@@ -118,11 +124,15 @@ def porta_libera() -> int:
         return int(presa.getsockname()[1])
 
 
-def esegui_preflight(modelli: list[str] | None, argomenti: list[str] | None = None) -> tuple[int, str]:
+def esegui_preflight(
+    modelli: list[str] | None, argomenti: list[str] | None = None, caricati: list[dict] | None = None
+) -> tuple[int, str]:
     """Lancia il preflight contro un server finto, o contro nessun server.
 
     Con `modelli=None` punta a una porta chiusa: il caso "Ollama non gira".
+    `caricati` e' la risposta di /api/ps; None, un Ollama che non la conosce.
     """
+    OllamaFinto.caricati = caricati
     porta = porta_libera()
     host = "http://127.0.0.1:" + str(porta)
     servitore = None
@@ -417,6 +427,60 @@ def preflight_cloud_mancante() -> str:
     esigi(stessa_riga(testo, "MANCANTE", "glm-5.3-flash:cloud"), "il modello cloud mancante non e' segnalato")
     esigi(testo.index("ollama signin") < testo.index("ollama pull"), "signin non precede il pull")
     return "signin suggerito prima del pull"
+
+
+def preflight_vram() -> str:
+    """Un modello locale caricato con il contesto di Ares che non sta in VRAM e' un avviso, non un guasto."""
+    contesto = 131072
+
+    def caricato(nome: str, byte: int, in_vram: int, ctx: int = contesto) -> dict:
+        return {"name": nome, "size": byte, "size_vram": in_vram, "context_length": ctx}
+
+    def preflight_con(caricati, *argomenti: str) -> tuple[int, str]:
+        with (
+            patch.object(config, "MAIN_MODEL", LOCALE),
+            patch.object(config, "LEARNING_MODEL", LOCALE),
+            patch.object(config, "NUM_CTX", contesto),
+        ):
+            esito, testo = esegui_preflight([LOCALE, config.EMBEDDER_MODEL], list(argomenti), caricati=caricati)
+        return esito, _piatto(testo)
+
+    esito, testo = preflight_con([caricato(LOCALE, 20_000, 15_000)])
+    esigi(esito == 0 and "Ambiente pronto" in testo, "un modello in parte sulla CPU ferma il preflight: " + testo)
+    esigi("il 25% gira sulla CPU con 131072 token" in testo, "la parte sulla CPU non e' detta: " + testo)
+    esigi("ARES_NUM_CTX" in testo, "l'avviso non dice come rimediare: " + testo)
+
+    esito, testo = preflight_con([caricato(LOCALE, 20_000, 0)])
+    esigi(
+        "gira tutto sulla CPU" in testo and "ARES_NUM_CTX" not in testo,
+        "senza scheda il rimedio e' sbagliato: " + testo,
+    )
+
+    esito, testo = preflight_con([caricato(LOCALE, 20_000, 20_000)])
+    esigi("CPU" not in testo and "VRAM" not in testo, "un modello tutto in VRAM produce un avviso: " + testo)
+
+    # Caricato con un altro contesto: i suoi numeri non dicono niente su Ares.
+    esito, testo = preflight_con([caricato(LOCALE, 20_000, 15_000, ctx=4096)])
+    esigi("CPU" not in testo and "dopo un turno di chat" in testo, "un altro contesto viene misurato: " + testo)
+
+    esito, testo = preflight_con(None)
+    esigi(esito == 0 and "VRAM" not in testo and "CPU" not in testo, "senza /api/ps il preflight inventa: " + testo)
+
+    esito, testo = preflight_con([caricato(LOCALE, 20_000, 15_000)], "--json")
+    memoria = json.loads(testo)["memoria"]
+    esigi(
+        memoria["caricati"][0]["tutto_in_vram"] is False and memoria["spenti"] == [],
+        "la memoria JSON non concorda: " + testo,
+    )
+
+    # Un modello cloud non occupa VRAM locale: non si misura e non si aspetta.
+    with (
+        patch.object(config, "MAIN_MODEL", "glm-5.3-flash:cloud"),
+        patch.object(config, "LEARNING_MODEL", "glm-5.3-flash:cloud"),
+    ):
+        esito, testo = esegui_preflight(["glm-5.3-flash:cloud", config.EMBEDDER_MODEL], caricati=[])
+    esigi("dopo un turno di chat" not in testo, "il preflight aspetta un modello cloud in VRAM: " + testo)
+    return "parte sulla CPU, tutto sulla CPU, tutto in VRAM, altro contesto, senza /api/ps, JSON, cloud"
 
 
 def preflight_json() -> str:
@@ -1892,6 +1956,7 @@ def main() -> int:
             ("preflight cloud mancante", preflight_cloud_mancante),
             ("preflight estrazione cloud", preflight_estrazione_cloud),
             ("preflight json", preflight_json),
+            ("preflight vram", preflight_vram),
             ("preflight spento", preflight_server_spento),
         ):
             ok(nome, prova())

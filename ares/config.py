@@ -109,10 +109,39 @@ EMBEDDER_DIMENSIONS = 768
 OLLAMA_HOST = "http://localhost:11434"
 
 # Il default di Ollama (4096 token) si satura in pochi turni, e il
-# troncamento silenzioso sembra "l'agente ha dimenticato". Con meno VRAM va
-# ridotto insieme alla taglia del modello. Per un modello cloud non costa
-# VRAM locale e il tetto vero lo decide il servizio.
-NUM_CTX = 262144
+# troncamento silenzioso sembra "l'agente ha dimenticato". 128k tiene il
+# modello locale di serie tutto in VRAM su 16 GiB: a 256k un quarto finiva
+# sulla CPU, e risposta ed estrazione andavano due volte e mezzo piu' lente
+# (docs/memory-quality.md). Dipende dalla scheda, quindi `ARES_NUM_CTX` lo
+# cambia dal `.env`; `ares preflight` avvisa se il modello non sta in VRAM.
+# Per un modello cloud non costa VRAM locale e il tetto vero lo decide il
+# servizio.
+NUM_CTX_MINIMO = 8192
+
+
+def leggi_num_ctx(valore: str | None, predefinito: int = 131072) -> int:
+    """Il contesto dal `.env`, o `predefinito` se non c'e'.
+
+    Solleva `ValueError` se non e' un intero di almeno `NUM_CTX_MINIMO`:
+    un contesto sbagliato si scopre solo quando il modello comincia a
+    dimenticare.
+    """
+    if valore is None or not valore.strip():
+        return predefinito
+    try:
+        numero = int(valore.strip())
+    except ValueError:
+        numero = 0
+    if numero < NUM_CTX_MINIMO:
+        raise ValueError("ARES_NUM_CTX deve essere un intero di almeno " + str(NUM_CTX_MINIMO) + ": " + repr(valore))
+    return numero
+
+
+try:
+    NUM_CTX = leggi_num_ctx(AMBIENTE.get("ARES_NUM_CTX"))
+except ValueError as errore:
+    # All'import, prima di ogni comando: una riga e non un traceback.
+    raise SystemExit("Configurazione di Ares non valida: " + str(errore)) from None
 
 # Tiene i pesi in VRAM fra un turno e l'altro (il default di Ollama e' 5
 # minuti). Innocuo per un modello cloud.
@@ -166,9 +195,21 @@ class Impostazioni:
         """Il contesto dell'estrazione: stretto solo se i due modelli sono diversi.
 
         Con lo stesso modello, un `num_ctx` diverso farebbe riavviare il
-        runner di Ollama a ogni passaggio, perdendo la cache del prompt.
+        runner di Ollama a ogni passaggio, perdendo la cache del prompt. Non
+        supera mai quello della conversazione, anche se `ARES_NUM_CTX` e'
+        sotto `NUM_CTX_ESTRAZIONE`.
         """
-        return NUM_CTX_ESTRAZIONE if self.apprendimento != self.principale else self.num_ctx
+        return min(NUM_CTX_ESTRAZIONE, self.num_ctx) if self.apprendimento != self.principale else self.num_ctx
+
+    @property
+    def estrazione_in_parallelo(self) -> bool:
+        """Vero se gli store estraggono insieme invece che uno dopo l'altro.
+
+        Solo con l'estrazione cloud: le chiamate si sovrappongono e il turno
+        aspetta la piu' lenta. In locale Ollama le serve comunque una alla
+        volta, e in parallelo non si guadagna niente (docs/memory-quality.md).
+        """
+        return e_modello_cloud(self.apprendimento)
 
     @property
     def opzioni(self) -> dict[str, Any]:

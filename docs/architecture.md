@@ -114,10 +114,13 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   strumenti.
 - `learning.py` configura gli store e il post-hook sul run completo, e
   riscrive in italiano, per una persona sola, la guida che Agno mette nel
-  prompt in inglese per memorie, entità e intuizioni.
+  prompt in inglese per memorie, entità e intuizioni. Con l'estrazione cloud
+  profilo, memorie e contesto estraggono insieme, ciascuno in un thread;
+  dopo un Ctrl-C un `Cancello` ferma le loro scritture, perché nessuna
+  arrivi dopo la fotografia del turno.
 - `agno_interni.py` è l'unico posto che tocca nomi privati di Agno
   (`_build_functions_for_model`, `_should_expose_tools`,
-  `determine_tools_for_model`); `INTERNI` li elenca e la prova `contratto`
+  `determine_tools_for_model`, `_filter_store_kwargs`); `INTERNI` li elenca e la prova `contratto`
   verifica che esistano nella versione installata.
 - `prompts.py` compone il prompt solo con ciò che è davvero abilitato:
   - una scheda dell'avvio: modelli (e se sono locali o cloud), embedder,
@@ -182,7 +185,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 
 - `ops/preflight.py` verifica che Ollama risponda e che i modelli
   configurati siano scaricati, senza accendere niente e senza scrivere su
-  disco.
+  disco. Avvisa se un modello locale già caricato con il contesto di Ares
+  non sta tutto in VRAM (`/api/ps`).
 - `ops/inspect_learning.py` rilegge gli archivi a modello spento; con
   `--prompt` stampa il system message intero che la chat manderebbe al
   modello da questa cartella, comprese istruzioni e memorie aggiunte da Agno.
