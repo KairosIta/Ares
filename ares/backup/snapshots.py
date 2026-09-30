@@ -33,7 +33,7 @@ import ares
 from ares import config
 from ares.backup import cli, files, integrity, restore
 from ares.config import Percorsi
-from ares.state.lock import lock_stato
+from ares.core.stato import stato_esclusivo
 from ares.state.platform_files import rendi_privato
 
 # Riesportati da qui per chi li importa dal modulo pubblico; vivono in `integrity`.
@@ -271,7 +271,7 @@ def _crea_snapshot_senza_lock(percorsi: Percorsi, tipo: str = "manuale") -> Path
 
 def crea_snapshot(percorsi: Percorsi, tipo: str = "manuale", acquisisci_lock: bool = True) -> Path:
     """Crea uno snapshot atomico. Ritorna la directory definitiva."""
-    contesto = lock_stato(percorsi.lock_file, esclusivo=True) if acquisisci_lock else nullcontext()
+    contesto = stato_esclusivo(percorsi) if acquisisci_lock else nullcontext()
     with contesto:
         return _crea_snapshot_senza_lock(percorsi, tipo=tipo)
 
@@ -503,7 +503,7 @@ def ripristina_snapshot(percorsi: Percorsi, nome: str, snapshot_sicurezza: bool 
 def pota_snapshot(percorsi: Percorsi, da_tenere: int, acquisisci_lock: bool = True) -> list[Path]:
     if da_tenere < 1:
         raise ErroreBackup("--keep deve essere almeno 1")
-    contesto = lock_stato(percorsi.lock_file, esclusivo=True) if acquisisci_lock else nullcontext()
+    contesto = stato_esclusivo(percorsi) if acquisisci_lock else nullcontext()
     with contesto:
         snapshot = elenco_snapshot(percorsi)
         candidati = snapshot[:-da_tenere] if len(snapshot) > da_tenere else []

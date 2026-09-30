@@ -20,10 +20,11 @@ from cyclopts import Parameter
 
 from ares import config
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
-from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_RIFIUTO, esegui_protetto, nuova_app
+from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_RIFIUTO, avvisa_da_migrare, esegui_protetto, nuova_app
 from ares.cli.conferma import conferma_scritta
 from ares.cli.ui import UI, byte_leggibili
 from ares.config import Percorsi
+from ares.core.stato import StatoDaMigrare, verifica_posto
 from ares.sessions.retention import (
     ErroreRetention,
     SessioneRetention,
@@ -210,6 +211,12 @@ def _esegui(
         UI.err("ERRORE: --yes richiede --apply")
         return ESITO_RIFIUTO
     if not Path(percorsi.db_file).is_file():
+        # Senza lock, per non creare niente dove Ares non c'e' ancora: basta
+        # a dire perche' l'archivio manca.
+        try:
+            verifica_posto(percorsi)
+        except StatoDaMigrare as errore:
+            return avvisa_da_migrare(errore)
         if senza_archivio is not None:
             return senza_archivio()
         UI.line("Nessun archivio di Ares trovato in " + str(percorsi.db_file), style="ares.muted")

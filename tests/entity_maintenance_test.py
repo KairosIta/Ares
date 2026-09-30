@@ -399,7 +399,18 @@ def main() -> int:
                 timeout=20,
                 check=False,
             )
+            # L'anteprima legge soltanto: convive con la chat.
+            anteprima_con_chat = subprocess.run(
+                base_merge,
+                cwd=config.BASE_DIR,
+                env=ambiente,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
         esigi(merge_bloccato.returncode == 3, "la fusione non pretende il lock esclusivo, o non esce con 3")
+        esigi(anteprima_con_chat.returncode == 0, "l'anteprima fermata da una chat aperta")
         esigi(
             not elenco_snapshot(
                 PERCORSI,

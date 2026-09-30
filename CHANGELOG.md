@@ -6,6 +6,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Changed
+
+- Backup, restore e manutenzione aprono lo stato dal nucleo
+  (`core/stato.stato_esclusivo`), come la chat con `stato_in_uso`: le regole
+  di lock e del posto vecchio stanno in un punto solo.
+
+### Fixed
+
+- Con lo stato ancora nel posto delle versioni vecchie, `backup restore`
+  installava uno snapshot nel posto nuovo e sdoppiava l'archivio, e `backup
+  create`, `sessions` ed `entities` dicevano di non trovare niente. Ora si
+  fermano con l'avviso di `ares migrate` ed escono con 1, come la chat.
+
 ## [0.9.0] - 2026-09-30
 
 Ares ha un nucleo applicativo indipendente dall'interfaccia. Sessioni,

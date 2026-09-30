@@ -1361,7 +1361,8 @@ def migrazione_stato() -> str:
     """`ares migrate`: lo stato di un clone precedente passa in ~/.ares, e la chat aspetta.
 
     Si provano spostamento, idempotenza, rifiuto di una destinazione piena, e
-    che la chat non parta finche' lo stato e' ancora nel vecchio posto.
+    che chat e manutenzione non partano finche' lo stato e' ancora nel
+    vecchio posto.
     """
     from ares.ops import migrazione
 
@@ -1413,6 +1414,35 @@ def migrazione_stato() -> str:
             esito = inspect_learning.ispeziona(user=UTENTE)
         esigi(esito == 1 and "migrate" in errori.getvalue(), "inspect legge lo stato rimasto nel posto di prima")
         esigi(not nuovo.stato.exists(), "chat o inspect hanno creato lo stato nuovo accanto a quello vecchio")
+
+        # La manutenzione apre lo stato dal nucleo come la chat: si ferma, dice
+        # come migrare e non scrive niente nel posto nuovo.
+        from ares.entities import maintenance as entita
+
+        def manutenzione(principale, *argomenti: str) -> tuple[int, str]:
+            uscita = io.StringIO()
+            with redirect_stdout(uscita), redirect_stderr(uscita):
+                esito = principale(list(argomenti))
+            return esito, _piatto(uscita.getvalue())
+
+        def backup(argomenti: list[str]) -> int:
+            return snapshots.cli.main(snapshots.OPERAZIONI, argomenti)
+
+        for principale, argomenti in (
+            (backup, ("create",)),
+            (maintenance.main, ("status",)),
+            (maintenance.main, ("prune", "--older-than", "1", "--apply", "--yes")),
+            (entita.main, ("audit",)),
+            (entita.main, ("merge", "--source", "project/a", "--into", "project/b", "--apply")),
+        ):
+            esito, testo = manutenzione(principale, *argomenti)
+            nome = " ".join(argomenti[:1])
+            esigi(esito == 1 and "migrate" in testo, nome + " non si ferma sullo stato da migrare: " + testo)
+        # Resta solo il file del lock, come dopo la chat: `migrate` lo riusa.
+        esigi(
+            not nuovo.stato.exists() and not nuovo.backup.exists(),
+            "la manutenzione ha scritto nel posto nuovo con lo stato da migrare",
+        )
 
         # Il vecchio lock si toglie mentre e' ancora tenuto: fra `close` e
         # `unlink` un altro processo potrebbe prenderlo. La sonda guarda se il
@@ -1505,7 +1535,10 @@ def migrazione_stato() -> str:
         esigi(not (casa_rotta / "stato").exists(), "un guasto a meta' copia ha lasciato uno stato incompleto")
         esigi((vecchio_rotto / "kairos.db").read_text(encoding="utf-8") == "rotto", "il vecchio e' stato perso")
         esigi(migrazione.avviso(rotti) != [], "dopo il guasto la chat non si ferma")
-    return "spostamento sotto lock, idempotenza, conflitto non toccato, chat ferma finche' serve, copia fra filesystem"
+    return (
+        "spostamento sotto lock, idempotenza, conflitto non toccato, chat e manutenzione ferme finche' serve,"
+        " copia fra filesystem"
+    )
 
 
 def chat_residui() -> str:
