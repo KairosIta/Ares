@@ -57,6 +57,26 @@ Un comando shell autorizzato opera con i permessi dell’utente che ha avviato
 il processo e può accedere alla rete. Modello, prompt e conferme riducono il
 rischio operativo ma non sono un confine di sicurezza.
 
+Il confine della cartella vale per gli strumenti sui file — leggere, scrivere,
+modificare, spostare, cancellare — non per i comandi. Un comando parte nella
+cartella di lavoro, ma poi può:
+
+- leggere e scrivere qualunque file che l’utente può toccare, compresi quelli
+  che gli strumenti sui file escludono (`.env`, `.git`, le credenziali) e lo
+  stato di Ares in `~/.ares`, memoria compresa;
+- leggere le variabili d’ambiente della shell da cui è partito Ares (il
+  `.env` di Ares no: non entra nell’ambiente);
+- usare la rete;
+- avviare processi che restano attivi dopo il limite di tempo del comando e
+  dopo la chiusura di Ares.
+
+Per questo in `manuale` e in `modifiche` ogni comando chiede conferma, e la
+conferma mostra il comando per intero. In `auto` quella conferma non c’è: un
+testo letto in un file o nell’output di un comando può far eseguire
+qualunque cosa, con i tuoi permessi, senza che tu lo veda prima. Usa `auto`
+solo su un progetto di cui ti fidi, o dentro un container o una macchina
+virtuale.
+
 ### Conferme e modalità
 
 Tutto ciò che il modello legge — un file del progetto, l'output di un

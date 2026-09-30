@@ -338,7 +338,10 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
         modo=stato.modo if radice is not None else None,
     )
     if stato.modo == "auto":
-        UI.line("Modalita' auto: nessuna conferma, ogni strumento gira subito.", style="ares.warning")
+        UI.line(
+            "Modalita' auto: nessuna conferma, ogni strumento gira subito. I comandi non restano nella cartella.",
+            style="ares.warning",
+        )
 
     # Le stesse righe del preflight.
     avviso_cloud = stato.impostazioni.avviso_cloud()
