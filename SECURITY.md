@@ -7,8 +7,8 @@ di rilascio corrente.
 
 | Versione | Supportata |
 | --- | --- |
-| 0.8.x | Sì |
-| < 0.8 | No |
+| 0.9.x | Sì |
+| < 0.9 | No |
 
 ## Segnalare una vulnerabilità
 
