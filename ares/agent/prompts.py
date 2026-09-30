@@ -332,9 +332,9 @@ def istruzioni_sulla_memoria(*, politica: Politica, interattivo: bool = True) ->
         righe.append(
             "Cio' che entra in profilo e memorie compare sotto la risposta, per intero, e la persona "
             + (
-                "puo' rifiutarlo: un no riporta i due archivi a prima del turno. "
+                "puo' rifiutarlo: un no riporta i due archivi a prima del turno."
                 if politica.mostra.conferma_apprendimenti
-                else "lo legge. "
+                else "lo legge."
             )
         )
     righe.append(
@@ -347,14 +347,21 @@ def istruzioni_sulla_memoria(*, politica: Politica, interattivo: bool = True) ->
         "prova che il lavoro non sia iniziato; il passare del tempo non dimostra l'esecuzione. "
         "Ribadire un obiettivo non annulla un avvio gia' noto, salvo una rettifica esplicita."
     )
-    if config.OFFLOAD_TOOL_RESULTS:
-        righe.append(
-            "Un risultato di uno strumento oltre "
-            + str(config.TOOL_RESULT_THRESHOLD_CHARS)
-            + " caratteri non entra intero: ne vedi un'anteprima con un id, e read_result e "
-            "search_result lo rileggono a pagine. Un'anteprima troncata non e' la risposta."
-        )
     return [" ".join(righe)]
+
+
+def istruzione_sui_risultati() -> str:
+    """Come si rileggono i risultati troppo lunghi, al posto della riga inglese di Agno.
+
+    Agno la aggiunge da solo quando c'e' un archivio dei risultati: scriverla
+    anche fra le istruzioni la ripeterebbe in due lingue.
+    """
+    return (
+        "Un risultato di uno strumento oltre "
+        + str(config.TOOL_RESULT_THRESHOLD_CHARS)
+        + " caratteri non entra intero: ne vedi un'anteprima con un id, e read_result e "
+        "search_result lo rileggono a pagine. Un'anteprima troncata non e' la risposta."
+    )
 
 
 def istruzioni_sul_quaderno() -> list[str]:

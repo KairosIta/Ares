@@ -18,6 +18,7 @@ INTERNI: tuple[tuple[str, str, str], ...] = (
     ("agno.learn.stores.entity_memory", "EntityMemoryStore", "_should_expose_tools"),
     ("agno.agent._tools", "determine_tools_for_model", ""),
     ("agno.learn.machine", "_filter_store_kwargs", ""),
+    ("agno.offload.tools", "OFFLOAD_INSTRUCTION", ""),
 )
 
 
@@ -54,3 +55,15 @@ def funzioni_per_modello(agent: Any, **kwargs: Any) -> Any:
     from agno.agent._tools import determine_tools_for_model
 
     return determine_tools_for_model(agent, **kwargs)
+
+
+def sostituisci_istruzione_risultati(testo: str) -> None:
+    """Mette `testo` al posto della riga che Agno aggiunge quando c'e' l'offload.
+
+    Agno non ha un'opzione per toglierla: la legge dal modulo a ogni system
+    message, quindi basta cambiarla li'. Vale per tutto il processo, ed e'
+    idempotente.
+    """
+    import agno.offload.tools
+
+    agno.offload.tools.OFFLOAD_INSTRUCTION = testo

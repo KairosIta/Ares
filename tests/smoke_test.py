@@ -30,6 +30,7 @@ import contextlib
 import importlib
 import io
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -610,10 +611,11 @@ class _MacchinaSenzaStore:
 
 
 def identita(agent) -> str:
-    """L'agente ha un nome e il modello lo sa.
+    """L'agente ha un nome e il modello lo sa, detto una volta sola.
 
-    `name` resta un'etichetta finche' `add_name_to_context` e' spento (lo e' di
-    default). Si guarda il system message costruito davvero, non gli attributi.
+    Il nome arriva nella descrizione, in italiano. `add_name_to_context` resta
+    spento: acceso, Agno lo ripeterebbe in inglese in coda. Si guarda il
+    system message costruito davvero, non gli attributi.
     """
     from agno.agent import _messages
     from agno.run.base import RunContext
@@ -628,14 +630,8 @@ def identita(agent) -> str:
         tools=[],
     ).content
     esigi(agent.description[:40] in prompt, "la descrizione non arriva al modello")
-    # Il nome va cercato fuori dalla descrizione: li' dentro c'e' comunque,
-    # perche' la descrizione lo pronuncia, e il controllo passerebbe anche con
-    # add_name_to_context spento. E' successo alla prima stesura.
-    senza_descrizione = prompt.replace(agent.description, "")
-    esigi(
-        agent.name in senza_descrizione,
-        "il nome " + repr(agent.name) + " arriva al modello solo dentro la descrizione: manca add_name_to_context",
-    )
+    esigi("Sei " + agent.name + "," in agent.description, "la descrizione non dice il nome " + repr(agent.name))
+    esigi("Your name is" not in prompt, "il nome e' ripetuto in inglese: add_name_to_context e' acceso")
     return agent.name + " si presenta in " + str(len(prompt)) + " caratteri di system message"
 
 
@@ -793,24 +789,51 @@ def strumenti(agent, user_id: str) -> str:
     return str(len(attesi)) + " strumenti su " + str(len(nomi)) + " consegnati: " + ", ".join(sorted(attesi))
 
 
+# Parole che in italiano non esistono: due diverse sulla stessa riga la
+# dicono inglese. I nomi degli strumenti non contano, `\b` non spezza `_`.
+_PAROLE_INGLESI = re.compile(r"\b(the|is|are|you|your|to|of|and|with|when|use|this|that)\b", re.IGNORECASE)
+
+# Le righe inglesi che Agno scrive ancora da se' e che Ares non ha ancora
+# sostituito. Ogni voce e' un debito da togliere, non una regola.
+_INGLESE_TOLLERATO = ("The current time is ",)
+
+
+def fuori_dai_dati(prompt: str) -> str:
+    """Il system message senza i blocchi di dati, cioe' la parte scritta dal prompt.
+
+    I blocchi XML che non sono `istruzioni_*` o `additional_information` sono
+    dati (memorie, entita', profilo), come il testo fra i delimitatori di
+    `ARES.md`: lingua e impaginazione non dipendono dal prompt.
+    """
+    senza_dati = re.sub(r"<(?!istruzioni_|additional_information)(\w+)>.*?</\1>", "", prompt, flags=re.DOTALL)
+    return re.sub(r"--- inizio di .*? ---.*?--- fine di .*? ---", "", senza_dati, flags=re.DOTALL)
+
+
+def righe_inglesi(prompt: str) -> list[str]:
+    """Le righe del system message scritte in inglese, fuori dai blocchi di dati."""
+    return [
+        riga
+        for riga in fuori_dai_dati(prompt).splitlines()
+        if len({p.lower() for p in _PAROLE_INGLESI.findall(riga)}) >= 2
+        and not any(t in riga for t in _INGLESE_TOLLERATO)
+    ]
+
+
 def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     """Il system message intero e' in italiano, compresa la parte che scrive Agno.
 
-    Ares sostituisce le guide inglesi di Agno (store, quaderno, Markdown): qui
-    si verifica sul messaggio composto che le frasi inglesi manchino e gli
-    strumenti restino nominati.
+    Ares sostituisce le guide inglesi di Agno (store, quaderno, Markdown, nome,
+    risultati lunghi): qui si cerca sul messaggio composto qualunque riga
+    inglese, non un elenco di frasi note, e si verifica che gli strumenti
+    restino nominati.
     """
     from ares.agent.prompts import messaggio_di_sistema
 
     prompt = messaggio_di_sistema(agent, session_id=session_id, utente=Utente.da_grezzo(user_id))
-    for inglese in (
-        "CRITICAL RULES",
-        "You have entity memory",
-        "Use `update_user_memory`",
-        "You have your own private, durable filesystem",
-        "Use markdown to format",
-    ):
-        esigi(inglese not in prompt, "il prompt contiene ancora la guida inglese di Agno: " + inglese)
+    inglesi = righe_inglesi(prompt)
+    esigi(not inglesi, "il prompt contiene righe in inglese: " + repr(inglesi[:3]))
+    doppio = re.search(r"\S {2,}\S", fuori_dai_dati(prompt))
+    esigi(doppio is None, "il prompt contiene un doppio spazio: " + repr(doppio and doppio.group()))
     attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive"]
     if config.LEARN_KNOWLEDGE:
         attesi += [
@@ -825,9 +848,10 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
         attesi += ["<istruzioni_memorie>", "update_user_memory"]
     if config.OFFLOAD_TOOL_RESULTS:
         attesi += ["read_result", str(config.TOOL_RESULT_THRESHOLD_CHARS)]
+        esigi(prompt.count("read_result") == 1, "la guida ai risultati lunghi e' ripetuta")
     for atteso in attesi:
         esigi(atteso in prompt, "manca dal prompt: " + atteso)
-    return str(len(attesi)) + " blocchi italiani presenti, 5 frasi inglesi di Agno assenti"
+    return str(len(attesi)) + " blocchi italiani presenti, nessuna riga inglese fuori dai dati"
 
 
 def istruzioni_fuori_modalita() -> str:

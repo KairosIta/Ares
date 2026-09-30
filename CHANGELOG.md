@@ -6,6 +6,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Fixed
+
+- Il prompt non ripete più due cose in inglese: il nome (`Your name is:
+  Ares.`) e la guida ai risultati lunghi, che ora compare una volta sola e
+  in italiano. Sparisce anche un doppio spazio nel paragrafo sulla memoria.
+
 ## [0.10.0] - 2026-09-30
 
 Ares risponde e impara più in fretta. Il contesto di serie scende a 128k
