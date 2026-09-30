@@ -18,7 +18,14 @@ Il comando ``ares`` (``cli/app.py``) li riunisce: da solo apre la chat, e
 ``__main__.py`` rispondono anche a ``python -m``.
 """
 
+import os
 from importlib.metadata import PackageNotFoundError, version
+
+# Il logger in Rust di LanceDB legge LANCEDB_LOG una volta, all'import del
+# modulo nativo, e di default stampa in chat i WARN interni (per esempio alla
+# creazione dell'indice). Va quindi fissato prima di qualsiasi sottomodulo;
+# un valore gia' nell'ambiente vince, per chi vuole quei log.
+os.environ.setdefault("LANCEDB_LOG", "error")
 
 try:
     __version__ = version("ares")

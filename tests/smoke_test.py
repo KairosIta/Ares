@@ -2316,6 +2316,45 @@ def import_senza_effetti() -> str:
     return "nessuna directory creata all'import, creata da prepara_archivio()"
 
 
+def lancedb_silenzioso() -> str:
+    """LanceDB non stampa i propri WARN in chat, salvo richiesta.
+
+    Il primo indice creato su uno stato nuovo faceva comparire una riga
+    `WARN lance::dataset::write::insert` sopra la chat. Processo separato: il
+    logger nativo legge LANCEDB_LOG una volta sola, all'import.
+    """
+    prova = Path(tempfile.mkdtemp(prefix="ares-lancedb-"))
+    codice = (
+        "import sys, ares, lancedb, pyarrow as pa;"
+        "lancedb.connect(sys.argv[1]).create_table("
+        "'t', schema=pa.schema([('a', pa.int64())]), mode='overwrite', exist_ok=True)"
+    )
+
+    def crea(indice: str, **variabili: str) -> subprocess.CompletedProcess:
+        ambiente = {k: v for k, v in os.environ.items() if k != "LANCEDB_LOG"} | variabili
+        return subprocess.run(
+            [sys.executable, "-c", codice, str(prova / indice)],
+            cwd=config.BASE_DIR,
+            env=ambiente,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    try:
+        zitto = crea("predefinito")
+        esigi(zitto.returncode == 0, "la creazione dell'indice e' fallita: " + zitto.stderr[-400:])
+        esigi("WARN" not in zitto.stderr, "LanceDB stampa i propri avvisi: " + zitto.stderr[-400:])
+        # Il controllo e' che ci sia davvero un avviso da zittire, e che chi
+        # lo chiede lo riceva.
+        chiesto = crea("richiesto", LANCEDB_LOG="warn")
+        esigi("No existing dataset" in chiesto.stderr, "LANCEDB_LOG=warn non vince: " + chiesto.stderr[-400:])
+    finally:
+        shutil.rmtree(prova, ignore_errors=True)
+    return "nessun WARN di LanceDB per default, LANCEDB_LOG dell'utente rispettato"
+
+
 def archivio_vero_intatto(prima: list) -> str:
     """La prova non ha letto ne' scritto l'archivio vero."""
     esigi(
@@ -2402,6 +2441,7 @@ def main() -> int:
             ("impostazioni a runtime", impostazioni_a_runtime),
             ("politica a runtime  ", politica_a_runtime),
             ("import senza effetti", lambda: import_senza_effetti()),
+            ("lancedb silenzioso  ", lancedb_silenzioso),
             ("archivio vero intatto", lambda: archivio_vero_intatto(reale_prima)),
         )
     )
