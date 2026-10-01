@@ -244,6 +244,11 @@ architettura e modalità di distribuzione non sono ancora state scelte.
 
 ## Altri miglioramenti da rivalutare
 
+Approfondimento disponibile: [migliorie agentiche con il modello locale al
+centro](agentic-improvements.md), del 1 ottobre 2026: dieci interventi con
+evidenze nel codice, fonti 2025-2026, prove di accettazione e un protocollo
+per confrontare i modelli locali. Non è un'implementazione.
+
 Restano dalla roadmap precedente, subordinati alle priorità sopra:
 
 - Sonda del benchmark robusta alla prosa attorno al JSON, senza classificare
