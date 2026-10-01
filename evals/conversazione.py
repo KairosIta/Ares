@@ -282,6 +282,8 @@ def worker(caso: str, risultato: Path) -> None:
 
 
 def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
+    from agno.tools.toolkit import Toolkit
+
     from ares import config
     from ares.agent.assistant import build_assistant
     from ares.agent.turn_core import TurnEventKind, run_turn_cycle
@@ -304,7 +306,11 @@ def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
     # Il prompt resta quello di una chat vera; solo l'estrazione dopo il turno
     # e' spenta, perche' qui non si misura e raddoppierebbe il tempo.
     agente.post_hooks = []
-    esito = Esito(quaderno=frozenset(agente.tools[0].functions), workspace=politica.workspace.prefisso)
+    # Il quaderno e' il primo toolkit, come lo monta `build_assistant`.
+    quaderno = agente.tools[0] if isinstance(agente.tools, list) and agente.tools else None
+    if not isinstance(quaderno, Toolkit):
+        raise RuntimeError("il primo strumento dell'agente non e' il toolkit del quaderno: " + repr(quaderno))
+    esito = Esito(quaderno=frozenset(quaderno.functions), workspace=politica.workspace.prefisso)
 
     def evento(e) -> None:
         if e.kind is TurnEventKind.TOOL_STARTED and e.tool is not None:
