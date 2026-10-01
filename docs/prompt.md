@@ -141,4 +141,5 @@ La formulazione del prompt orienta il modello; autorizzazioni, persistenza
 e disponibilità degli strumenti restano responsabilità del codice. Cambiare
 le regole non riscrive i ricordi già salvati: correggerne uno richiede una
 fonte o una rettifica. Il [benchmark della memoria](memory-quality.md)
-confronta le revisioni del prompt su archivi sintetici nuovi.
+confronta le revisioni del prompt su archivi sintetici nuovi; l'[eval degli
+strumenti](conversation-eval.md) le confronta sull'uso degli strumenti.
