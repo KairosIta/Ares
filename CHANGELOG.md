@@ -6,6 +6,47 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-01
+
+Il prompt di conversazione è riscritto e misurato. È diviso in sezioni, dice
+una volta sola chi può dare istruzioni e chiama gli strumenti del quaderno
+`quaderno_`, distinti da quelli della cartella. Con il ragionamento acceso,
+il modello locale non lascia più vuota la risposta dopo uno strumento. Una
+nuova eval misura l'uso degli strumenti: il 9B locale passa da 19 a 27
+controlli su 33, mentre il modello cloud resta a 33.
+
+Il resto:
+
+- un testo letto da un file, da un comando o dalla memoria che chiede di
+  agire viene riferito, non eseguito;
+- `workspace_run_command` è descritto in italiano, con la shell del sistema;
+- `ares preflight` dice quando un modello locale ha bisogno di una copia con
+  renderer, e il README spiega come crearla;
+- `python -m evals.memory_quality` torna a girare.
+
+Compatibilità: nessuna migrazione e nessun formato su disco cambia. Gli
+strumenti del quaderno cambiano nome (`read_file` diventa
+`quaderno_read_file` e così via). Le conversazioni salvate prima conservano
+i nomi vecchi nella cronologia: il modello li legge come storia, e se ne
+richiamasse uno riceverebbe un errore di strumento sconosciuto. Per il 9B
+di serie con il ragionamento acceso serve la copia descritta in «Modello
+locale» nel README; senza, la correzione delle risposte vuote non arriva al
+modello.
+
+Verifica locale del 2026-10-01 su Linux/Python 3.12.14 e Agno 3.0.11:
+
+- sedici prove verdi in 204,0 s, comprese quelle con Ollama (`--tutte`),
+  con copertura al 92% (4.989 istruzioni, 308 non eseguite, 1.452 rami, 178
+  parziali);
+- `ruff check`, `ruff format --check` (101 file) e `mypy` (67 file) puliti;
+- modelli: `glm-5.3-flash:cloud` per la conversazione,
+  `deepseek-v4.1-flash:cloud` per l'estrazione ed embedder locale
+  `nomic-embed-text-v2-moe`. Nel turno di `e2e` l'apprendimento ha scritto
+  profilo, memoria e contesto di sessione al primo tentativo, in 2,9 s;
+- eval degli strumenti con 3 ripetizioni, sul cloud e sulla copia locale
+  `ares-qwen3.8-9b`, e benchmark della memoria sul cloud, in
+  `docs/conversation-eval.md` e `docs/memory-quality.md`.
+
 ### Added
 
 - **`python -m evals.conversazione` misura l'uso degli strumenti con il
@@ -1915,7 +1956,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/KairosIta/Ares/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/KairosIta/Ares/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/KairosIta/Ares/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/KairosIta/Ares/compare/v0.8.1...v0.8.2
