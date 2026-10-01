@@ -343,7 +343,7 @@ da lì: li riceve in tre oggetti, costruiti una volta al confine del processo.
 | Oggetto | Costruito da | Contiene |
 | --- | --- | --- |
 | `Percorsi` | `leggi_percorsi()` | home, stato, backup, cartella di lavoro; i nomi derivati (SQLite, indice, lock, cronologia) sono proprietà |
-| `Impostazioni` | `leggi_impostazioni()` | modelli di conversazione, estrazione ed embedding, host e `keep_alive` di Ollama, contesto, temperature, `think` |
+| `Impostazioni` | `leggi_impostazioni()` | modelli di conversazione, estrazione ed embedding, host e `keep_alive` di Ollama, contesto, temperature, `think`, campionamento (`top_p`, `top_k`, `min_p`, `repeat_penalty`, `presence_penalty`) |
 | `Politica` | `leggi_politica()` | cosa si impara (`Apprendimento`), quanta cronologia (`Cronologia`), come si usa la cartella (`Workspace`), cosa si mostra (`Mostra`) |
 
 L'identità viaggia a parte, come `Utente`.

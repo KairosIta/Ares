@@ -137,8 +137,68 @@ def leggi_num_ctx(valore: str | None, predefinito: int = 131072) -> int:
     return numero
 
 
+# Il campionamento: variabile del `.env` -> (default, tipo, minimo, massimo).
+# I default sono quelli che Ollama applica a cio' che non riceve: scritti
+# qui, Ares li manda espliciti e i rapporti degli eval li registrano. Le
+# schede dei modelli ne consigliano spesso altri (Qwen3.5 e derivati:
+# temperatura 1.0, top_p 0.95, top_k 20, presence_penalty 1.5,
+# repeat_penalty 1.0 per l'uso generale), e un `repeat_penalty` sopra 1 pesa
+# su una tool call JSON, dove parentesi e nomi di campo si ripetono per
+# forza: si provano con gli eval prima di cambiare i default. Gli intervalli
+# sono quelli dell'API di Ollama; `None` vuol dire nessun tetto.
+CAMPIONAMENTO: dict[str, tuple[float | int, type, float, float | None]] = {
+    "ARES_TEMPERATURE": (0.7, float, 0.0, 2.0),
+    "ARES_TOP_P": (0.9, float, 0.0, 1.0),
+    "ARES_TOP_K": (40, int, 0, None),
+    "ARES_MIN_P": (0.0, float, 0.0, 1.0),
+    "ARES_REPEAT_PENALTY": (1.1, float, 0.0, None),
+    "ARES_PRESENCE_PENALTY": (0.0, float, -2.0, 2.0),
+}
+
+
+def leggi_campionamento(ambiente: Mapping[str, str]) -> dict[str, float | int]:
+    """Le opzioni di campionamento dall'ambiente, con il nome che Ollama vuole.
+
+    Una variabile assente o vuota vale il default di `CAMPIONAMENTO`. Solleva
+    `ValueError`, nominando la variabile, per un valore che non e' del tipo
+    atteso o esce dall'intervallo: `ARES_TOP_K=2.5` e' un errore, non 2.
+    `repeat_penalty` deve essere positivo, perche' zero azzera i logit.
+    """
+    opzioni: dict[str, float | int] = {}
+    for variabile, (predefinito, tipo, minimo, massimo) in CAMPIONAMENTO.items():
+        nome = variabile.removeprefix("ARES_").lower()
+        valore = ambiente.get(variabile)
+        if valore is None or not valore.strip():
+            opzioni[nome] = predefinito
+            continue
+        try:
+            numero = tipo(valore.strip())
+        except ValueError:
+            numero = None
+        fuori = (
+            numero is None
+            or numero < minimo
+            or (massimo is not None and numero > massimo)
+            or (variabile == "ARES_REPEAT_PENALTY" and numero <= 0)
+        )
+        if fuori:
+            intervallo = str(minimo) + (" e " + str(massimo) if massimo is not None else " in su")
+            raise ValueError(
+                variabile
+                + " deve essere "
+                + ("un intero" if tipo is int else "un numero")
+                + " fra "
+                + intervallo
+                + ": "
+                + repr(valore)
+            )
+        opzioni[nome] = numero
+    return opzioni
+
+
 try:
     NUM_CTX = leggi_num_ctx(AMBIENTE.get("ARES_NUM_CTX"))
+    _CAMPIONAMENTO = leggi_campionamento(AMBIENTE)
 except ValueError as errore:
     # All'import, prima di ogni comando: una riga e non un traceback.
     raise SystemExit("Configurazione di Ares non valida: " + str(errore)) from None
@@ -147,7 +207,12 @@ except ValueError as errore:
 # minuti). Innocuo per un modello cloud.
 KEEP_ALIVE = "30m"
 
-TEMPERATURE = 0.7
+TEMPERATURE = float(_CAMPIONAMENTO["temperature"])
+TOP_P = float(_CAMPIONAMENTO["top_p"])
+TOP_K = int(_CAMPIONAMENTO["top_k"])
+MIN_P = float(_CAMPIONAMENTO["min_p"])
+REPEAT_PENALTY = float(_CAMPIONAMENTO["repeat_penalty"])
+PRESENCE_PENALTY = float(_CAMPIONAMENTO["presence_penalty"])
 
 # Ragionamento prima di rispondere: acceso per la conversazione, spento per
 # le estrazioni strutturate, dove aggiungerebbe solo latenza.
@@ -189,6 +254,14 @@ class Impostazioni:
     temperatura_apprendimento: float
     think: bool
     think_apprendimento: bool
+    # Il resto del campionamento, uguale per i due ruoli; i default sono
+    # quelli di Ollama (`CAMPIONAMENTO`), cosi' una prova che costruisce
+    # l'oggetto a mano non deve nominarli.
+    top_p: float = 0.9
+    top_k: int = 40
+    min_p: float = 0.0
+    repeat_penalty: float = 1.1
+    presence_penalty: float = 0.0
 
     @property
     def num_ctx_apprendimento(self) -> int:
@@ -212,12 +285,28 @@ class Impostazioni:
         return e_modello_cloud(self.apprendimento)
 
     @property
+    def _campionamento(self) -> dict[str, Any]:
+        return {
+            "top_p": self.top_p,
+            "top_k": self.top_k,
+            "min_p": self.min_p,
+            "repeat_penalty": self.repeat_penalty,
+            "presence_penalty": self.presence_penalty,
+        }
+
+    @property
     def opzioni(self) -> dict[str, Any]:
-        return {"num_ctx": self.num_ctx, "temperature": self.temperatura}
+        """Le `options` di Ollama per la conversazione: contesto, temperatura e campionamento."""
+        return {"num_ctx": self.num_ctx, "temperature": self.temperatura, **self._campionamento}
 
     @property
     def opzioni_apprendimento(self) -> dict[str, Any]:
-        return {"num_ctx": self.num_ctx_apprendimento, "temperature": self.temperatura_apprendimento}
+        """Quelle dell'estrazione: il suo contesto e la sua temperatura, lo stesso campionamento."""
+        return {
+            "num_ctx": self.num_ctx_apprendimento,
+            "temperature": self.temperatura_apprendimento,
+            **self._campionamento,
+        }
 
     def avviso_cloud(self) -> list[str]:
         """Righe che dicono cosa esce dalla macchina; vuoto se niente esce.
@@ -261,6 +350,11 @@ def leggi_impostazioni() -> Impostazioni:
         temperatura_apprendimento=TEMPERATURE_ESTRAZIONE,
         think=MAIN_THINK,
         think_apprendimento=LEARNING_THINK,
+        top_p=TOP_P,
+        top_k=TOP_K,
+        min_p=MIN_P,
+        repeat_penalty=REPEAT_PENALTY,
+        presence_penalty=PRESENCE_PENALTY,
     )
 
 
