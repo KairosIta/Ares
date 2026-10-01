@@ -406,6 +406,26 @@ class QualitaMemoriaTest(unittest.TestCase):
             self.assertEqual(json.loads(percorso.read_text(encoding="utf-8")), rapporto)
             self.assertIn("non_conclusivo", mq.markdown(rapporto))
 
+    def test_il_worker_parte_senza_ares_importato(self):
+        # Il worker isola home e stato prima di importare `ares.config`: un
+        # import anticipato in `main` lo fermerebbe a ogni caso.
+        codice = (
+            "import sys\n"
+            "from evals import memory_quality as mq\n"
+            "mq.worker = lambda caso, rapporto: print('ares.config' in sys.modules)\n"
+            "sys.argv = ['mq', '--worker', 'avvio', '--report', 'x.json']\n"
+            "mq.main()\n"
+        )
+        esito = subprocess.run(
+            [sys.executable, "-c", codice],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(esito.returncode, 0, esito.stderr)
+        self.assertEqual(esito.stdout.strip(), "False")
+
     def test_aiuto_descrive_opzioni_casi_e_uscite(self):
         # Il `--worker` interno resta fuori; ogni opzione pubblica ha una riga sua.
         aiuto = " ".join(mq.parser().format_help().split())
