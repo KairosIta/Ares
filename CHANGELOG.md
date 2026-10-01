@@ -8,6 +8,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **`python -m evals.latenza` misura quanto aspetta la persona, turno per
+  turno.** Sei turni fissi in una conversazione sola su uno stato nuovo, con
+  l'apprendimento acceso: per ogni turno i secondi della risposta e
+  dell'estrazione letti da Ollama, i token, la finestra occupata, gli
+  strumenti usati e le righe apprese; le medie separano i turni con e senza
+  strumenti, perché un turno che scrive nel quaderno costa dieci volte una
+  risposta. Nessun verdetto. I calcoli sono provati offline in
+  `tests/run.py --solo latenza`. La prima misura, sul 27B locale, è in
+  `docs/memory-quality.md`.
+- **Il README propone il 27B di ISTA-DASLab come seconda configurazione
+  locale,** a 64k di contesto con la KV cache a 8 bit del daemon: sugli
+  eval di Ares pareggia il modello cloud e non inventa nel profilo, al
+  prezzo di turni più lenti.
 - **I parametri di campionamento si leggono dal `.env`.** `ARES_TEMPERATURE`,
   `ARES_TOP_P`, `ARES_TOP_K`, `ARES_MIN_P`, `ARES_REPEAT_PENALTY` e
   `ARES_PRESENCE_PENALTY`; un valore fuori intervallo ferma l'avvio con una

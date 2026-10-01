@@ -189,6 +189,54 @@ dichiara un renderer. Lo stesso vale per altri GGUF importati: renderer e
 parser giusti sono quelli del modello corrispondente nella libreria di
 Ollama.
 
+### Un secondo modello locale: il 27B
+
+Sulla stessa scheda da 16 GiB sta anche
+[Qwen3.8-27B-GSQ-RCO-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF)
+di ISTA-DASLab nella variante IQ3_S (3,5 bit per peso, 12,7 GB), a due
+condizioni: il contesto scende a **64k** e il daemon Ollama tiene la KV
+cache a 8 bit. Sugli eval di Ares il 27B pareggia il modello cloud (33
+controlli su 33 sugli strumenti, la memoria senza contenuti inventati nel
+profilo) dove il 9B di serie fa 27 su 33 e inventa; in cambio un turno di
+sola conversazione costa 25-40 secondi, uno in cui lavora con gli strumenti
+quattro o cinque minuti, e l'attesa dopo ogni risposta è di tre quarti di
+minuto. Le misure sono in [qualità della memoria](docs/memory-quality.md) e
+[strumenti in conversazione](docs/conversation-eval.md).
+
+Le due variabili del servizio Ollama, da mettere nel suo drop-in di
+systemd (`/etc/systemd/system/ollama.service.d/override.conf`) o
+nell'ambiente del daemon, e poi riavviarlo:
+
+```ini
+Environment="OLLAMA_FLASH_ATTENTION=1"
+Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
+```
+
+Senza, il 27B a 64k esce di 2 GiB dalla scheda e un ottavo gira sulla CPU;
+con, occupa 13,5 GiB. La stessa cache dimezza anche quella del 9B di serie
+a 128k (da 12,4 a 10,7 GiB). Poi la copia con renderer e il `.env`:
+
+```text
+FROM hf.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:IQ3_S
+RENDERER qwen3.8
+PARSER qwen3.5
+```
+
+```bash
+ollama pull hf.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:IQ3_S
+ollama create ares-qwen3.8-27b -f Modelfile
+```
+
+```dotenv
+ARES_MAIN_MODEL=ares-qwen3.8-27b
+ARES_LEARNING_MODEL=ares-qwen3.8-27b
+ARES_NUM_CTX=65536
+```
+
+A 64k la finestra si riempie in una quindicina di turni di lavoro:
+`ares --metriche` mostra quanto ne è occupata, e `ares preflight` dopo un
+turno conferma che il modello sta in scheda.
+
 Solo se scegli la conversazione in cloud servono anche l'accesso e il
 manifesto del modello remoto — il pull scarica il solo manifesto, l'accesso
 serve alla prima richiesta:

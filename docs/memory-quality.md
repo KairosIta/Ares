@@ -839,3 +839,56 @@ cloud, con un formato meno disciplinato nelle sonde. Il prezzo è il
 contesto, 64k invece di 128k, e un'estrazione quasi doppia. Il confronto
 regge perché codice, dialoghi e criteri sono gli stessi della misura cloud
 del 1 ottobre.
+
+
+### Latenza del 27B locale, 2 ottobre 2026
+
+Stessi sei turni della misura del 30 settembre, su `ares-qwen3.8-27b` in
+entrambi i ruoli a 64k di contesto con la KV cache a 8 bit del daemon,
+apprendimento acceso, campionamento di Ares. La misura è fatta con il
+nucleo (`Sessioni` e `esegui_turno`, un client che non stampa e rifiuta
+ogni azione), ed è quella che `python -m evals.latenza` ripete; i tempi sono
+`total_duration` di Ollama per ciascun modello, il turno intero comprende
+anche Agno e gli strumenti.
+
+| Turno | Risposta | Estrazione | Turno intero | Finestra | Token in uscita | Appreso |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| presentazione | 42,0 s | 26,6 s | 69,8 s | 8.462 | 321 | 8 righe |
+| preferenze | 25,1 s | 31,9 s | 68,0 s | 9.510 | 164 | 5 |
+| piano | 225,3 s | 45,4 s | 283,8 s | 13.803 | 4.144 | 5 |
+| avanzamento 1 | 218,7 s | 42,1 s | 284,1 s | 18.278 | 3.893 | 3 |
+| avanzamento 2 | 165,5 s | 54,5 s | 280,4 s | 21.112 | 2.599 | 2 |
+| vincolo | 268,7 s | 62,3 s | 347,5 s | 25.784 | 4.252 | 2 |
+| **media** | **157,5 s** | **43,8 s** | **222,3 s** | | | |
+
+Il modello è rimasto tutto in scheda (13,48 GiB) per l'intera misura, 22
+minuti. Tre letture:
+
+- **la risposta è di due specie.** I turni di sola conversazione costano
+  25-42 secondi; quelli in cui il modello decide di lavorare - dal terzo in
+  poi apre il quaderno, scrive il piano in `progetti/backup-studio.md`, lo
+  aggiorna, prova `remember_about` - costano da 165 a 269 secondi, con
+  2.600-4.250 token in uscita fra ragionamento e strumenti. La velocità di
+  generazione che se ne ricava è di 15-20 token al secondo. La media del 30
+  settembre sul 9B (12,3 s) non dice quanti strumenti usò, quindi non è
+  confrontabile: da questa misura l'eval separa le medie dei turni con e
+  senza strumenti;
+- **l'estrazione cresce con la finestra**, da 27 a 62 secondi mentre il
+  contesto passa da 8,5k a 26k token, perché il contesto di sessione rimanda
+  la conversazione dentro le proprie istruzioni. In media 44 secondi, oltre
+  il triplo del 9B a 128k (14,0 s);
+- **la finestra si riempie come stimato** in
+  [agentic-improvements.md](agentic-improvements.md#23-quanto-contesto-sta-in-scheda):
+  25,8k su 64k dopo sei turni. A questo ritmo il 27B satura intorno al
+  quindicesimo turno, e Ollama tronca oltre `num_ctx` senza avvisare.
+
+Un errore di forma: una chiamata a `remember_about` è arrivata senza
+`entity_type` ed è stata rifiutata dalla validazione di Agno; il modello ha
+riprovato. È il secondo del 27B in una tool call, dopo l'XML malformato del
+benchmark.
+
+Letto insieme ai due eval, il 27B a 3,5 bit ha la qualità del cloud su
+strumenti e memoria e nessuna invenzione nel profilo, ma un turno operativo
+da quattro o cinque minuti e tre quarti di minuto di attesa dopo ogni
+risposta. È il modello per chi accetta di aspettare in cambio della
+privacy, non un sostituto del 9B per la chat veloce.
