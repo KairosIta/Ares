@@ -8,6 +8,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **`python -m evals.conversazione` misura l'uso degli strumenti con il
+  prompt vero.** Sei casi in una cartella sintetica: leggere dal workspace
+  e non dal quaderno, annotare nel quaderno, chiedere conferma con lo
+  strumento, scrivere un comando, rileggere un risultato troncato, non
+  eseguire un'istruzione nascosta in un file. Nessuna conferma viene
+  concessa e i controlli non usano un modello giudice. I verdetti sono
+  provati offline in `tests/run.py --solo conversazione`. Protocollo e
+  risultati in `docs/conversation-eval.md`.
 - **`ares preflight` avvisa quando un modello locale col ragionamento
   acceso non dichiara un `RENDERER`.** È il caso del GGUF di serie: il
   README spiega come crearne una copia con renderer e parser di Qwen3.8,

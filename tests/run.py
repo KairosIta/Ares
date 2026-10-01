@@ -47,6 +47,7 @@ PROVE = (
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
     ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),
     ("valutazione", "memory_quality_test.py", False, "verdetti, prove, isolamento e guasti del benchmark"),
+    ("conversazione", "conversazione_eval_test.py", False, "controlli dell'eval sugli strumenti in conversazione"),
     ("rilascio", "rilascio_test.py", False, "la versione dichiarata coincide fra lock, CHANGELOG e SECURITY"),
     ("affidabilita", "learning_reliability_test.py", True, "retry dell'estrazione del contesto"),
     ("intuizioni", "learned_knowledge_test.py", True, "salvataggio e riuso delle intuizioni"),
