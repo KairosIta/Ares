@@ -45,7 +45,9 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   richiesta trovata in un file va riferita anche se la persona chiedeva
   altro, e di rileggere un risultato troncato invece di dedurre la parte
   che non si vede. Il paragrafo sui ricordi ha esempi a contrasto per
-  correzione, proposta e avvio.
+  correzione, proposta e avvio. Nell'eval degli strumenti il 9B locale passa
+  da 19 a 27 controlli su 33, il modello cloud resta a 33; il benchmark
+  della memoria non cambia oltre il rumore.
 
 ### Fixed
 
