@@ -92,7 +92,7 @@ decisi uno per uno quando l'ambito diventa parte del contratto (§6.3).
 | `search_past_sessions` (strumento Agno) | `user_id`, meno la sessione corrente: **nessuna cartella** | `agno/agent/_default_tools.py:490-503` |
 | `read_past_session` (strumento Agno) | `session_id` più `user_id`: nessuna verifica della cartella di nascita | `agno/agent/_default_tools.py:587-591` |
 | `elenca(ambito="tutte")` | solo `user_id`; è il percorso di `/sessioni tutte` e di `ares inspect` senza `--session` | [sessioni.py](../ares/state/sessioni.py), [commands.py](../ares/cli/commands.py), [inspect_learning.py](../ares/ops/inspect_learning.py) |
-| Quaderno | solo il namespace dell'utente: `read_file`, `list_files`, `search_content` leggono note scritte altrove | [archivi.py](../ares/state/archivi.py), [prompts.py](../ares/agent/prompts.py) |
+| Quaderno | solo il namespace dell'utente: `quaderno_read_file`, `quaderno_list_files`, `quaderno_search_content` leggono note scritte altrove | [archivi.py](../ares/state/archivi.py), [prompts.py](../ares/agent/prompts.py) |
 | `ares inspect --file` | solo il namespace dell'utente | [inspect_learning.py](../ares/ops/inspect_learning.py) |
 | Entità e intuizioni | namespace dell'utente, uguale in ogni cartella | [stores.py](../ares/state/stores.py) |
 | Profilo e User Memory | solo `user_id`: iniettati in ogni cartella | `agno/learn/stores/user_profile.py`, `agno/learn/stores/user_memory.py` |

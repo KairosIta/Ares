@@ -523,6 +523,10 @@ WORKSPACE_ISTRUZIONI_MAX_BYTE = 32_000
 # e senza prefisso Agno scarterebbe gli strumenti omonimi del Workspace.
 WORKSPACE_PREFIX = "workspace_"
 
+# Anche il quaderno ha il suo: con un `read_file` nudo un modello piccolo
+# legge dal quaderno un file della cartella (docs/conversation-eval.md).
+QUADERNO_PREFIX = "quaderno_"
+
 # Le modalita': per ognuna, gli strumenti che girano in silenzio e quelli
 # che chiedono conferma; gli altri il modello non li vede. Anche il prompt
 # che le descrive si genera da qui.

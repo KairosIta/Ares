@@ -74,10 +74,11 @@ from ares.agent.assistant import (  # noqa: E402
     build_assistant,
     build_db,
     build_filesystem,
+    build_quaderno,
     build_workspace,
 )
 from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
-from ares.agent.prompts import strumenti_spazio  # noqa: E402
+from ares.agent.prompts import descrizione_del_comando, strumenti_spazio  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.cli.commands import StatoChat, gestisci_comando  # noqa: E402
 from ares.cli.conversazioni import righe_sessione  # noqa: E402
@@ -688,14 +689,18 @@ def ambiente_nel_prompt(agent, user_id: str, session_id: str) -> str:
         estrazione = prompts.descrizione(config.leggi_impostazioni(), POLITICA)
     esigi("estrae le memorie dai vostri turni sta su ollama.com" in estrazione, "l'estrazione in cloud non e' detta")
 
-    # La shell segue il sistema: `bash -lc` non esiste su Windows.
+    # La shell segue il sistema: `bash -lc` non esiste su Windows. La dicono
+    # la scheda e la descrizione di `run_command`, non la docstring di Agno.
     with patch.object(os, "name", "nt"):
         finestre = prompts.istruzioni_sull_ambiente(impostazioni=IMPOSTAZIONI, politica=POLITICA)[0]
-        strumenti_nt = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro, politica=POLITICA))
-    esigi("shell PowerShell" in finestre and "'powershell'" in strumenti_nt, "su Windows il prompt parla di bash")
+        comando_nt = prompts.descrizione_del_comando()
+    esigi(
+        "shell PowerShell" in finestre and "'powershell', '-Command'" in comando_nt and "bash" not in comando_nt,
+        "su Windows il prompt parla di bash",
+    )
     with patch.object(os, "name", "posix"):
-        strumenti_posix = " ".join(prompts.istruzioni_sugli_strumenti(PERCORSI.lavoro, politica=POLITICA))
-    esigi("'bash', '-lc'" in strumenti_posix, "su POSIX il prompt non suggerisce bash")
+        comando_posix = prompts.descrizione_del_comando()
+    esigi("'bash', '-lc'" in comando_posix, "su POSIX la descrizione del comando non suggerisce bash")
     return "modelli e sistema nella scheda, utente e cartella nell'avvio; descrizione e scheda seguono il cloud"
 
 
@@ -1020,7 +1025,10 @@ def colpo_singolo(user_id: str, session_id: str) -> str:
         esigi(nome not in prompt, "in -p il prompt ordina di usare uno strumento assente: " + nome)
     esigi("CRITICAL RULES" not in prompt, "in -p riappare la guida inglese delle intuizioni")
     esigi("Si aggiornano da soli" not in prompt, "in -p il prompt promette estrazione automatica")
-    esigi("write_file" in nomi and "quaderno resta persistente" in prompt, "in -p il quaderno e' descritto male")
+    esigi(
+        config.QUADERNO_PREFIX + "write_file" in nomi and "quaderno resta persistente" in prompt,
+        "in -p il quaderno e' descritto male",
+    )
     return (
         "senza post-hook e senza "
         + str(len(scrittori))
@@ -1255,9 +1263,20 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
 
     # La collisione e' silenziosa per costruzione: Agno tiene il primo nome
     # arrivato e scrive un WARNING. Qui si guarda l'intersezione, non i log.
-    del_quaderno = set(build_filesystem(PERCORSI, Utente.da_grezzo(user_id)).tools().functions)
+    del_quaderno = set(build_quaderno(build_filesystem(PERCORSI, Utente.da_grezzo(user_id))).functions)
     comuni = del_quaderno & set(attesi)
     esigi(not comuni, "lo spazio di lavoro e il quaderno privato si contendono: " + ", ".join(sorted(comuni)))
+    # Ogni strumento del quaderno arriva col suo prefisso: un `read_file` nudo
+    # farebbe leggere al modello il quaderno al posto della cartella.
+    for nome in del_quaderno:
+        esigi(nome.startswith(config.QUADERNO_PREFIX), nome + " del quaderno arriva senza prefisso")
+        esigi(nome in consegnati, nome + " non arriva al modello")
+    comando = consegnati.get(config.WORKSPACE_PREFIX + "run_command")
+    if comando is not None:
+        esigi(
+            comando.description == descrizione_del_comando(),
+            "run_command arriva al modello con la descrizione di Agno",
+        )
 
     # La cartella e' quella dell'utente e non si crea: una che non esiste e'
     # un refuso, e costruirci sopra un workspace vuoto lo nasconderebbe.

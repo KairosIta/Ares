@@ -28,6 +28,7 @@ from ares.agent.runtime import (
     build_filesystem,
     build_knowledge,
     build_learning_model,
+    build_quaderno,
     build_result_store,
     build_workspace,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "build_knowledge",
     "build_learning_machine",
     "build_learning_model",
+    "build_quaderno",
     "build_result_store",
     "build_session_context_store",
     "build_workspace",
@@ -114,7 +116,7 @@ def build_assistant(
         user_id=utente.id,
         session_id=session_id,
         metadata=metadata,
-        tools=[fs.tools()] + ([spazio] if spazio is not None else []),
+        tools=[build_quaderno(fs)] + ([spazio] if spazio is not None else []),
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
         instructions=istruzioni(
             impostazioni=impostazioni,

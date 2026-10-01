@@ -2,14 +2,17 @@
 
 from pathlib import Path
 
+from agno.fs import FileSystem
 from agno.knowledge.embedder.ollama import OllamaEmbedder
 from agno.knowledge.knowledge import Knowledge
+from agno.tools.toolkit import Toolkit
 from agno.tools.workspace import Workspace
 from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 
 from ares import config
 from ares.agent.agno_interni import OllamaConRagionamento
+from ares.agent.prompts import descrizione_del_comando
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
@@ -24,6 +27,7 @@ __all__ = [
     "build_filesystem",
     "build_knowledge",
     "build_learning_model",
+    "build_quaderno",
     "build_result_store",
     "build_workspace",
 ]
@@ -92,18 +96,36 @@ def build_knowledge(percorsi: Percorsi, impostazioni: Impostazioni) -> Knowledge
     )
 
 
+def _con_prefisso(strumenti: Toolkit, prefisso: str) -> None:
+    """Rinomina sul posto ogni strumento del toolkit, e le liste che li nominano."""
+    for elenco in (strumenti.functions, strumenti.async_functions):
+        for nome in list(elenco):
+            funzione = elenco.pop(nome)
+            funzione.name = prefisso + nome
+            elenco[funzione.name] = funzione
+    strumenti.requires_confirmation_tools = [prefisso + nome for nome in strumenti.requires_confirmation_tools]
+
+
+def build_quaderno(fs: FileSystem) -> Toolkit:
+    """Gli strumenti del quaderno, con `config.QUADERNO_PREFIX` davanti al nome.
+
+    Il prefisso rende ogni nome esplicito quanto `workspace_`: il modello non
+    deve dedurre dall'assenza di un prefisso che `read_file` e' il quaderno.
+    """
+    strumenti = fs.tools()
+    _con_prefisso(strumenti, config.QUADERNO_PREFIX)
+    return strumenti
+
+
 class AresWorkspace(Workspace):
-    """Workspace Agno con nomi distinti dagli strumenti del quaderno."""
+    """Workspace Agno con nomi distinti dagli strumenti del quaderno, e la shell del sistema."""
 
     def __init__(self, root, prefisso: str, **kwargs):
         super().__init__(root, **kwargs)
-
+        _con_prefisso(self, prefisso)
         for elenco in (self.functions, self.async_functions):
-            for nome in list(elenco):
-                funzione = elenco.pop(nome)
-                funzione.name = prefisso + nome
-                elenco[funzione.name] = funzione
-        self.requires_confirmation_tools = [prefisso + nome for nome in self.requires_confirmation_tools]
+            if prefisso + "run_command" in elenco:
+                elenco[prefisso + "run_command"].description = descrizione_del_comando()
 
         # L'istruzione predefinita nomina gli strumenti prima della rinomina.
         # Il prompt italiano e coerente viene composto da assistant_prompts.

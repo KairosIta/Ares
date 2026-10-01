@@ -111,7 +111,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   senza dipendere dall'interfaccia.
 - `assistant.py` assembla l'agente in un punto solo e riesporta i
   costruttori; `runtime.py` costruisce modelli, indice vettoriale e
-  strumenti.
+  strumenti, con un prefisso che dice dove agiscono (`quaderno_`,
+  `workspace_`).
 - `learning.py` configura gli store e il post-hook sul run completo, e
   riscrive in italiano, per una persona sola, la guida che Agno mette nel
   prompt in inglese per memorie, entità e intuizioni. Con l'estrazione cloud
@@ -369,7 +370,8 @@ Ollama riavvierebbe il runner fra risposta ed estrazione; `avviso_cloud()`
 dice a preflight e banner quali ruoli escono dalla macchina.
 
 Restano fuori dalla `Politica`: `modo`, già parametro a ogni confine;
-`OFFLOAD_TOOL_RESULTS` e `TOOL_RESULT_THRESHOLD_CHARS`; i formati del client
+`OFFLOAD_TOOL_RESULTS` e `TOOL_RESULT_THRESHOLD_CHARS`; `QUADERNO_PREFIX`,
+perché il quaderno c'è sempre; i formati del client
 (`FUSO_ORARIO`, `CRONOLOGIA_RIGHE`, `ENTITA_FINESTRA_RICERCA`); le
 costanti di backup e retention, che sono garanzie e non politica.
 

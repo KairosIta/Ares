@@ -45,6 +45,13 @@ Gli strumenti sui file rispettano la radice; l'esecuzione di comandi non è
 una sandbox. Le conferme operative sono raccolte dall'interfaccia quando
 lo strumento sospende il turno, senza una domanda preliminare duplicata.
 
+Il nome di ogni strumento sui file dice dove agisce: `workspace_*` nella
+cartella, `quaderno_*` nel quaderno. La descrizione di
+`workspace_run_command` è di Ares, in italiano, con la shell del sistema
+(`bash -lc` o `powershell -Command`) al posto della docstring di Agno. Gli
+esempi del prompt e di quella descrizione non ricalcano i casi degli eval,
+che altrimenti misurerebbero una frase copiata.
+
 Con `ares -p` non ci sono aggiornamenti automatici né strumenti degli store
 di apprendimento, e il prompt omette le relative guide (compresa quella
 delle intuizioni, che Agno altrimenti reintroduce in inglese). Le memorie

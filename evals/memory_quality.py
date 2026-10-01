@@ -727,8 +727,6 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    from ares import config
-
     p = parser()
     args = p.parse_args()
     if args.ripetizioni < 1 or args.timeout < 1:
@@ -738,6 +736,10 @@ def main() -> int:
             p.error("--worker richiede --report")
         worker(args.worker, args.report)
         return 0
+
+    # Dopo il worker, che deve isolare lo stato prima di importare Ares.
+    from ares import config
+
     percorso = (
         args.report
         or RADICE / "artifacts" / "memory-quality" / (datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + ".json")

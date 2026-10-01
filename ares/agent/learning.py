@@ -36,7 +36,7 @@ from agno.utils.log import log_warning
 from ares.agent.agno_interni import FunzioniRitoccate, elabora, strumenti_esposti
 from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
-from ares.config import Impostazioni, Politica
+from ares.config import QUADERNO_PREFIX, Impostazioni, Politica
 from ares.state.identita import Utente
 from ares.state.stores import namespace_entita, namespace_utente
 
@@ -417,7 +417,8 @@ class AresEntityMemoryStore(EntityMemoryStore):
             "remember_about registra un fatto, un evento, una descrizione o una nota su "
             "un'entita', per nome: una correzione e' il fatto nuovo, quello contraddetto viene "
             "ritirato da solo. link_entities registra una relazione fra due entita'. "
-            "search_entities le cerca, e senza query le elenca dalla piu' recente. forget ritira "
+            "search_entities le cerca, e senza query le elenca dalla piu' recente; la nota "
+            "che un risultato indica, se c'e', si legge con " + QUADERNO_PREFIX + "read_file. forget ritira "
             "un fatto o archivia un'entita' intera. Registra quando impari qualcosa di sostanziale "
             "su una persona, un progetto o un sistema che servira' in una conversazione futura, "
             "e scrivilo in italiano.\n"

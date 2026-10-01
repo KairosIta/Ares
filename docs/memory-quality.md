@@ -754,3 +754,26 @@ locale con il codice precedente e non consente di attribuire tutti i limiti
 alle modifiche della v0.6.1. Dimostra però che i risultati cloud non possono
 essere estesi al modello locale senza una verifica specifica. Il rilascio
 resta da rivalutare alla luce di questi risultati.
+
+### Esempi a contrasto nel prompt, 1 ottobre 2026
+
+Il paragrafo sui ricordi del prompt di conversazione ha ricevuto tre esempi
+a contrasto (correzione, proposta, avvio), lontani dai casi del benchmark.
+Tutti i casi, 3 ripetizioni, `glm-5.3-flash:cloud` per la conversazione e
+`deepseek-v4.1-flash:cloud` per l'estrazione, Agno 3.0.11. Fasi su 57:
+
+| Prompt | Superate | Fallite | Da revisionare | Non conclusive | Errori |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `main` dopo #144 | 23 | 1 | 31 | 2 | 0 |
+| con gli esempi | 25 | 1 | 28 | 3 | 0 |
+
+La differenza sta dentro il rumore di tre ripetizioni: gli esempi non
+peggiorano il recupero, e non si può dire che lo migliorino. L'unico
+fallimento del ramo è di formato: alla correzione la sonda risponde
+«risposte dettagliate» invece dell'aggettivo, con il dato giusto. Quello di
+`main` è una proposta non accettata data per confermata. Le fasi da
+revisionare sono quasi tutte risposte giuste con il valore conteso ancora
+nello store, come previsto dal protocollo.
+
+Prima di questa misura il benchmark non girava: dal 21 settembre il
+processo importava la configurazione prima del worker, che la rifiuta.

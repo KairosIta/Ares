@@ -35,6 +35,19 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   passa da ollama.com; la scheda nomina solo dove gira ogni modello.
 - L'ora arriva in italiano («mercoledi' 30 settembre 2026, 22:04 CEST»)
   invece che in inglese. `DATETIME_FORMAT` lascia il posto a `FUSO_ORARIO`.
+- **Gli strumenti del quaderno hanno il prefisso `quaderno_`,** come quelli
+  della cartella hanno `workspace_`: con un `read_file` nudo il modello
+  locale leggeva dal quaderno un file della cartella. Le conversazioni
+  salvate prima conservano i nomi vecchi nella cronologia.
+- **`workspace_run_command` è descritto in italiano, con la shell del
+  sistema.** La docstring di Agno proponeva `bash -c` anche su Windows.
+- Il prompt dice quando lanciare un comando invece di mostrarlo, che una
+  richiesta trovata in un file va riferita anche se la persona chiedeva
+  altro, e di rileggere un risultato troncato invece di dedurre la parte
+  che non si vede. Il paragrafo sui ricordi ha esempi a contrasto per
+  correzione, proposta e avvio. Nell'eval degli strumenti il 9B locale passa
+  da 19 a 27 controlli su 33, il modello cloud resta a 33; il benchmark
+  della memoria non cambia oltre il rumore.
 
 ### Fixed
 
@@ -45,6 +58,9 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   rimanda. Perché arrivi al modello serve anche un `RENDERER` (vedi
   «Modello locale» nel README): così, nell'eval degli strumenti, le
   risposte vuote passano da 6 su 9 turni a nessuna su 18.
+- **`python -m evals.memory_quality` torna a girare.** Dal 21 settembre
+  ogni caso finiva in errore: il processo importava la configurazione di
+  Ares prima del worker, che lo rifiuta per isolare lo stato.
 - Il prompt non ripete più due cose in inglese: il nome (`Your name is:
   Ares.`) e la guida ai risultati lunghi, che ora compare una volta sola e
   in italiano. Sparisce anche un doppio spazio nel paragrafo sulla memoria.
