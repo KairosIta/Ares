@@ -170,12 +170,12 @@ comporta diversamente su Linux e Windows.
 
 ### `valutazione`
 
-Ventinove controlli sui verdetti del benchmark: una citazione negativa,
+Trentuno controlli sui verdetti del benchmark: una citazione negativa,
 ritagliata o contraddetta non passa; un recupero pretende un'evidenza
 durevole e non il contesto della sessione; un dato inventato fallisce invece
-di restare non conclusivo. In più l'isolamento degli archivi del worker e i
-guasti (timeout, Ctrl+C, processo senza rapporto), che devono conservare le
-fasi già scritte. Gira in due decimi di secondo perché i dialoghi sono già
+di restare non conclusivo. In più l'isolamento degli archivi del worker, un
+worker che parte senza Ares già importato, e i guasti (timeout, Ctrl+C,
+processo senza rapporto), che devono conservare le fasi già scritte. Gira in due decimi di secondo perché i dialoghi sono già
 scritti.
 
 ### Garanzie trasversali
