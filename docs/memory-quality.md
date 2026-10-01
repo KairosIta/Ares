@@ -777,3 +777,65 @@ nello store, come previsto dal protocollo.
 
 Prima di questa misura il benchmark non girava: dal 21 settembre il
 processo importava la configurazione prima del worker, che la rifiuta.
+
+
+### Il 27B locale, 1 ottobre 2026
+
+Primo giro del benchmark su un modello locale diverso dal 9B di serie:
+`ares-qwen3.8-27b`, copia con renderer di
+`hf.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:IQ3_S` (26,9B a 3,5 bit per
+peso), in entrambi i ruoli, contesto 64k con la KV cache a 8 bit del daemon
+(`OLLAMA_KV_CACHE_TYPE=q8_0`): 13,48 GiB in VRAM su 16, tutto in scheda. Il
+campionamento è quello di Ares (temperatura 0,7 e 0,2, ragionamento acceso
+solo in conversazione, default di Ollama per il resto). Tutti i casi, 3
+ripetizioni, Agno 3.0.11, prompt di `main` dopo #148. Fasi su 57:
+
+| Modello | Superate | Fallite | Da revisionare | Non conclusive | Errori |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| cloud, con gli esempi (sezione precedente) | 25 | 1 | 28 | 3 | 0 |
+| 27B IQ3_S, 64k, locale | 18 | 3 | 32 | 3 | 1 |
+| 9B di serie, 10 settembre, soli casi `avvio` e `correzione` | 0 su 6 | 2 | — | 4 | 0 |
+
+Rapporto: `artifacts/memory-quality/qwen3.8-27b-iq3s-20261001.json`, con
+le fotografie di profilo e memorie per ogni fase. Letto fase per fase:
+
+- **le tre fallite sono di formato**, lo stesso dell'unico fallimento cloud:
+  alla domanda sull'aggettivo la sonda risponde «risposte dettagliate» o
+  «risposte sintetiche» invece del solo aggettivo, e il valutatore confronta
+  alla lettera. Nelle tre fasi lo store ha il dato giusto, e nella
+  ripetizione 2 di `correzione` la memoria porta un refuso del modello
+  («Prefere»), senza conseguenze sul recupero;
+- **le 32 da revisionare sono risposte giuste**: 18 con il valore conteso
+  ancora nello store (Milano come possibilità, ORIONE-42 come scartato), 14
+  con negazioni o incertezze nel testo della memoria. Lette una per una,
+  sono le sfumature corrette - «sta valutando», «non ha deciso», «avvio non
+  confermato» - che il controllo lessicale segnala di proposito;
+- **le tre non conclusive** (`abbandono_piano`) hanno la risposta giusta,
+  VEGA-19, con una citazione che non è sottostringa letterale della memoria
+  perché il modello salta una parentesi;
+- **l'errore è del parser di Ollama**: una volta su 57 il modello emette
+  una tool call con XML malformato e il daemon risponde con un HTTP 500
+  (`XML syntax error on line 2: unexpected end element </function>`). Con
+  il 9B non era mai successo; va tenuto d'occhio sulle misure successive;
+- **nessun contenuto inventato nel profilo**, a differenza del 9B di serie
+  del 10 settembre. I campi scritti sono `current_focus` (42 fasi),
+  `language` «italiano» (29, dedotto dalla lingua dei dialoghi),
+  `communication_style` (12, dai dialoghi sulle preferenze) e
+  `tools_and_stack` «file Markdown per gli appunti» (6, detto nel dialogo
+  sugli appunti). Niente professioni o tecnologie mai nominate;
+- **le fasi dove il 9B perdeva passano**: `avvio/iniziato` e
+  `decisione_ribadita` superate in tutte e tre le ripetizioni; `decisione` e
+  `avvio_futuro` rispondono con valore nullo, come atteso, e sono da
+  revisionare solo per i termini «non confermato» nello store.
+
+Tempi medi per fase: estrazione 23,7 s, sonda 17,9 s; il giro intero dura
+40 minuti. In chat sono circa 24 secondi di attesa dopo ogni risposta,
+contro 14 del 9B a 128k e 11,6 del cloud in parallelo.
+
+La conclusione dell'8 e del 10 settembre non cambia per il 9B di serie, ma
+smette di valere per il locale in generale: con il 27B a 3,5 bit la memoria
+di Ares ha, su questo protocollo, la stessa qualità misurata con i modelli
+cloud, con un formato meno disciplinato nelle sonde. Il prezzo è il
+contesto, 64k invece di 128k, e un'estrazione quasi doppia. Il confronto
+regge perché codice, dialoghi e criteri sono gli stessi della misura cloud
+del 1 ottobre.
