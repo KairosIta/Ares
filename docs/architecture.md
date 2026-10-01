@@ -120,8 +120,11 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   arrivi dopo la fotografia del turno.
 - `agno_interni.py` è l'unico posto che tocca nomi privati di Agno
   (`_build_functions_for_model`, `_should_expose_tools`,
-  `determine_tools_for_model`, `_filter_store_kwargs`); `INTERNI` li elenca e la prova `contratto`
-  verifica che esistano nella versione installata.
+  `determine_tools_for_model`, `_filter_store_kwargs`, i metodi di
+  `Ollama` che formattano e leggono i messaggi); `INTERNI` li elenca e la
+  prova `contratto` verifica che esistano nella versione installata.
+  `OllamaConRagionamento`, il modello di conversazione ed estrazione,
+  conserva il `thinking` di Ollama e lo rimanda al passo successivo.
 - `prompts.py` compone il prompt solo con ciò che è davvero abilitato:
   - una scheda dell'avvio: modelli (e se sono locali o cloud), embedder,
     finestra di contesto, sistema e shell, utente, conversazione, cartella e

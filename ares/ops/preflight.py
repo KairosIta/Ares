@@ -15,6 +15,12 @@ gia' caricato con il contesto di Ares che non sta tutto in VRAM e' un
 avviso: gira in parte sulla CPU, e risposta ed estrazione rallentano di
 molto. Non accende modelli e non scrive su disco, quindi un modello spento
 non si puo' misurare.
+
+Un modello locale col ragionamento acceso che non dichiara un `RENDERER`, e
+il cui template non legge `.Thinking`, e' un altro avviso: Ollama non gli
+rimanda il ragionamento dei passi precedenti, e dopo uno strumento il 9B di
+serie risponde dentro il ragionamento lasciando vuota la risposta. Capita ai
+GGUF importati da Hugging Face, che arrivano senza renderer.
 """
 
 import json
@@ -48,6 +54,28 @@ def modelli_caricati(host: str, timeout: int = 10) -> list:
     """I modelli che Ollama tiene in memoria adesso, con quanto ne sta in VRAM (`/api/ps`)."""
     with urllib.request.urlopen(host.rstrip("/") + "/api/ps", timeout=timeout) as r:
         return json.load(r).get("models", [])
+
+
+def scheda_modello(host: str, modello: str, timeout: int = 10) -> dict:
+    """Modelfile, template e capacita' di un modello scaricato (`/api/show`)."""
+    richiesta = urllib.request.Request(
+        host.rstrip("/") + "/api/show",
+        data=json.dumps({"model": modello}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(richiesta, timeout=timeout) as r:
+        return json.load(r)
+
+
+def rimanda_il_ragionamento(scheda: dict) -> bool:
+    """Vero se Ollama da' al modello il ragionamento dei passi precedenti.
+
+    Lo fa un renderer di Ollama, o un template Go che legge `.Thinking`; il
+    template jinja di un GGUF importato cerca invece `reasoning_content`, che
+    Ollama non gli passa.
+    """
+    righe = str(scheda.get("modelfile") or "").splitlines()
+    return any(riga.startswith("RENDERER ") for riga in righe) or ".Thinking" in str(scheda.get("template") or "")
 
 
 def stessa_etichetta(richiesto: str, presente: str) -> bool:
@@ -104,7 +132,48 @@ def esamina(impostazioni: Impostazioni) -> dict[str, Any]:
             esito["mancanti"].append(modello)
     esito["pronto"] = not esito["mancanti"]
     esito["memoria"] = _memoria(impostazioni)
+    esito["senza_renderer"] = _senza_renderer(impostazioni, esito["mancanti"])
     return esito
+
+
+def _senza_renderer(impostazioni: Impostazioni, mancanti: list[str]) -> list[str]:
+    """I modelli locali col ragionamento acceso a cui Ollama non lo rimanda.
+
+    Un modello mancante o una scheda illeggibile non aggiungono niente: il
+    preflight non afferma cio' che non ha visto.
+    """
+    accesi: list[str] = []
+    for modello, acceso in (
+        (impostazioni.principale, impostazioni.think),
+        (impostazioni.apprendimento, impostazioni.think_apprendimento),
+    ):
+        if acceso and not config.e_modello_cloud(modello) and modello not in mancanti and modello not in accesi:
+            accesi.append(modello)
+    senza: list[str] = []
+    for modello in accesi:
+        try:
+            scheda = scheda_modello(impostazioni.host, modello)
+        except (urllib.error.URLError, OSError, ValueError):
+            continue
+        if not rimanda_il_ragionamento(scheda):
+            senza.append(modello)
+    return senza
+
+
+def righe_ragionamento(senza_renderer: list[str]) -> list[tuple[str, str]]:
+    """L'avviso sui modelli senza renderer, con il suo stile; vuoto se non ce ne sono."""
+    righe: list[tuple[str, str]] = []
+    for modello in senza_renderer:
+        righe.append(
+            (
+                modello + " non dichiara un RENDERER: Ollama non gli rimanda il ragionamento, "
+                "e dopo uno strumento la risposta puo' restare vuota.",
+                "ares.warning",
+            )
+        )
+    if senza_renderer:
+        righe.append(('Crea una copia con RENDERER e PARSER: vedi "Modello locale" nel README.', "ares.muted"))
+    return righe
 
 
 def _memoria(impostazioni: Impostazioni) -> dict[str, Any]:
@@ -222,10 +291,10 @@ def controlla(*, come_json: Annotated[bool, Parameter(name="--json")] = False) -
         return ESITO_GUASTO
 
     UI.blank()
-    memoria = righe_memoria(esito["memoria"])
-    for riga, stile in memoria:
+    avvisi = righe_memoria(esito["memoria"]) + righe_ragionamento(esito["senza_renderer"])
+    for riga, stile in avvisi:
         UI.line(riga, style=stile)
-    if memoria:
+    if avvisi:
         UI.blank()
     if esito["avviso_cloud"]:
         for riga in esito["avviso_cloud"]:

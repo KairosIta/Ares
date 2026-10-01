@@ -8,6 +8,10 @@ questi nomi.
 
 from typing import Any
 
+from agno.models.message import Message
+from agno.models.ollama import Ollama
+from agno.models.response import ModelResponse
+
 # (modulo, oggetto, attributo): cio' che deve esistere nella versione di Agno
 # installata. Attributo vuoto: basta l'oggetto.
 INTERNI: tuple[tuple[str, str, str], ...] = (
@@ -19,6 +23,9 @@ INTERNI: tuple[tuple[str, str, str], ...] = (
     ("agno.agent._tools", "determine_tools_for_model", ""),
     ("agno.learn.machine", "_filter_store_kwargs", ""),
     ("agno.offload.tools", "OFFLOAD_INSTRUCTION", ""),
+    ("agno.models.ollama", "Ollama", "_format_message"),
+    ("agno.models.ollama", "Ollama", "_parse_provider_response"),
+    ("agno.models.ollama", "Ollama", "_parse_provider_response_delta"),
 )
 
 
@@ -67,3 +74,37 @@ def sostituisci_istruzione_risultati(testo: str) -> None:
     import agno.offload.tools
 
     agno.offload.tools.OFFLOAD_INSTRUCTION = testo
+
+
+def _pensiero(risposta: Any) -> str | None:
+    messaggio = risposta.get("message") if risposta is not None else None
+    return (messaggio.get("thinking") if messaggio is not None else None) or None
+
+
+class OllamaConRagionamento(Ollama):
+    """`Ollama` che conserva il ragionamento del modello e glielo rimanda.
+
+    Agno legge da Ollama solo testo e tool call: il campo `thinking` va perso
+    e, quando il turno prosegue dopo uno strumento, il renderer del modello
+    mostra un ragionamento vuoto. Qwen3.8 9B lo imita e risponde dentro il
+    ragionamento, lasciando vuota la risposta. Qui il ragionamento diventa
+    `reasoning_content` del messaggio e torna nel campo `thinking`
+    dell'API; se usarlo lo decide il renderer di ciascun modello.
+    """
+
+    def _format_message(self, message: Message, compress_tool_results: bool = False) -> dict[str, Any]:
+        formattato = super()._format_message(message, compress_tool_results)
+        if message.role == "assistant" and message.reasoning_content:
+            formattato["thinking"] = message.reasoning_content
+        return formattato
+
+    def _parse_provider_response(self, response: Any, **kwargs: Any) -> ModelResponse:
+        risposta = super()._parse_provider_response(response, **kwargs)
+        if risposta.reasoning_content is None:
+            risposta.reasoning_content = _pensiero(response)
+        return risposta
+
+    def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
+        risposta = super()._parse_provider_response_delta(response)
+        risposta.reasoning_content = _pensiero(response)
+        return risposta

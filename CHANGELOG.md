@@ -6,6 +6,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **`ares preflight` avvisa quando un modello locale col ragionamento
+  acceso non dichiara un `RENDERER`.** È il caso del GGUF di serie: il
+  README spiega come crearne una copia con renderer e parser di Qwen3.8,
+  con gli stessi pesi.
+
 ### Changed
 
 - **Il prompt è diviso in sezioni con un tag ciascuna,** in ordine fisso:
@@ -23,6 +30,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Fixed
 
+- **Con il ragionamento acceso, il modello locale non lascia più vuota la
+  risposta dopo uno strumento.** Agno scartava il `thinking` di Ollama, e al
+  passo successivo il modello vedeva un ragionamento vuoto; il 9B di serie
+  allora rispondeva dentro il ragionamento. Ares ora lo conserva e lo
+  rimanda. Perché arrivi al modello serve anche un `RENDERER` (vedi
+  «Modello locale» nel README): così, nell'eval degli strumenti, le
+  risposte vuote passano da 6 su 9 turni a nessuna su 18.
 - Il prompt non ripete più due cose in inglese: il nome (`Your name is:
   Ares.`) e la guida ai risultati lunghi, che ora compare una volta sola e
   in italiano. Sparisce anche un doppio spazio nel paragrafo sulla memoria.
