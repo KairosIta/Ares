@@ -2104,7 +2104,7 @@ def impostazioni_a_runtime() -> str:
         "build_chat_model non usa le impostazioni ricevute",
     )
     esigi(
-        conversazione.options == {"num_ctx": 4096, "temperature": 0.1},
+        conversazione.options == mia.opzioni and conversazione.options["num_ctx"] == 4096,
         "build_chat_model non usa il contesto ricevuto: " + repr(conversazione.options),
     )
     esigi(
@@ -2129,7 +2129,8 @@ def impostazioni_a_runtime() -> str:
         "con due modelli diversi l'estrazione non usa il contesto suo",
     )
     esigi(
-        runtime.build_learning_model(ampia).options == {"num_ctx": NUM_CTX_ESTRAZIONE, "temperature": 0.05},
+        runtime.build_learning_model(ampia).options == {**ampia.opzioni_apprendimento, "num_ctx": NUM_CTX_ESTRAZIONE}
+        and ampia.opzioni_apprendimento["temperature"] == 0.05,
         "build_learning_model non usa il contesto dell'estrazione: " + repr(estrazione.options),
     )
     esigi(estrazione.request_params == {"think": False}, "il pensiero dell'estrazione non viene dalle impostazioni")
@@ -2224,8 +2225,79 @@ def impostazioni_a_runtime() -> str:
     )
     esigi(letto.stdout.strip() == "65536", "ARES_NUM_CTX non arriva alle impostazioni: " + letto.stdout + letto.stderr)
 
+    # Il campionamento dal `.env`: i default di Ollama se manca, il valore se
+    # c'e', un rifiuto che nomina la variabile per cio' che e' fuori intervallo.
+    predefiniti = {
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "top_k": 40,
+        "min_p": 0.0,
+        "repeat_penalty": 1.1,
+        "presence_penalty": 0.0,
+    }
+    esigi(config.leggi_campionamento({}) == predefiniti, "i default del campionamento non sono quelli di Ollama")
+    scheda = config.leggi_campionamento({"ARES_TEMPERATURE": "1", "ARES_TOP_K": " 20 ", "ARES_PRESENCE_PENALTY": "1.5"})
+    esigi(
+        scheda["temperature"] == 1.0
+        and scheda["top_k"] == 20
+        and isinstance(scheda["top_k"], int)
+        and scheda["presence_penalty"] == 1.5
+        and scheda["top_p"] == 0.9,
+        "il campionamento dal .env non viene letto: " + str(scheda),
+    )
+    for variabile, valore in (
+        ("ARES_TEMPERATURE", "abc"),
+        ("ARES_TEMPERATURE", "2.5"),
+        ("ARES_TOP_P", "1.5"),
+        ("ARES_TOP_K", "2.5"),
+        ("ARES_TOP_K", "-1"),
+        ("ARES_MIN_P", "-0.1"),
+        ("ARES_REPEAT_PENALTY", "0"),
+        ("ARES_PRESENCE_PENALTY", "3"),
+    ):
+        try:
+            config.leggi_campionamento({variabile: valore})
+        except ValueError as errore:
+            esigi(variabile in str(errore), "il rifiuto non nomina la variabile: " + str(errore))
+        else:
+            raise AssertionError(variabile + "=" + valore + " accettato")
+    rifiutato = subprocess.run(
+        [sys.executable, "-c", "import ares.config"],
+        env={**os.environ, "ARES_TOP_K": "abc"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    esigi(
+        rifiutato.returncode == 1 and "ARES_TOP_K" in rifiutato.stderr and "Traceback" not in rifiutato.stderr,
+        "un ARES_TOP_K sbagliato non ferma l'avvio con una riga: " + rifiutato.stderr,
+    )
+    # Le opzioni mandate a Ollama portano tutto il campionamento, e
+    # l'estrazione condivide tutto tranne la temperatura, che ha sua.
+    esigi(
+        set(mia.opzioni) == {"num_ctx", *predefiniti},
+        "le opzioni della conversazione non portano il campionamento: " + str(mia.opzioni),
+    )
+    comuni = lambda opzioni: {k: v for k, v in opzioni.items() if k not in ("num_ctx", "temperature")}  # noqa: E731
+    esigi(
+        comuni(mia.opzioni) == comuni(mia.opzioni_apprendimento)
+        and mia.opzioni_apprendimento["temperature"] == mia.temperatura_apprendimento
+        and mia.opzioni["temperature"] == mia.temperatura,
+        "l'estrazione non condivide il campionamento, o ha perso la sua temperatura",
+    )
+    letto = subprocess.run(
+        [sys.executable, "-c", "from ares import config; print(config.leggi_impostazioni().opzioni['top_k'])"],
+        env={**os.environ, "ARES_TOP_K": "20"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    esigi(letto.stdout.strip() == "20", "ARES_TOP_K non arriva alle opzioni: " + letto.stdout + letto.stderr)
+
     return (
-        "modelli dall'oggetto, contesto derivato dalla coppia e dal .env, parallelo solo in cloud,"
+        "modelli dall'oggetto, contesto e campionamento dal .env, parallelo solo in cloud,"
         " nessun default fotografato all'import"
     )
 

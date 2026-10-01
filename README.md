@@ -133,6 +133,13 @@ memoria](docs/memory-quality.md#latenza-dellestrazione-30-settembre-2026)).
 di quanto. Con meno VRAM si abbassa `ARES_NUM_CTX` o si sceglie un modello
 più piccolo.
 
+Anche il campionamento si regola dal `.env` (`ARES_TEMPERATURE`,
+`ARES_TOP_P`, `ARES_TOP_K`, `ARES_MIN_P`, `ARES_REPEAT_PENALTY`,
+`ARES_PRESENCE_PENALTY`): omessi valgono i default di Ollama, che Ares manda
+espliciti. Le schede dei modelli ne consigliano spesso altri, e con un
+modello diverso da quello di serie conviene provarli con gli eval prima di
+adottarli; i valori sono commentati in [`.env.example`](.env.example).
+
 I modelli sono artefatti esterni, non inclusi nel repository: consulta la
 [model card di Qwen3.8-9B-Distill](https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF)
 e la [scheda di glm-5.3-flash](https://ollama.com/library/glm-5.3-flash) per

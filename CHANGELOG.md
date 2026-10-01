@@ -6,6 +6,18 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **I parametri di campionamento si leggono dal `.env`.** `ARES_TEMPERATURE`,
+  `ARES_TOP_P`, `ARES_TOP_K`, `ARES_MIN_P`, `ARES_REPEAT_PENALTY` e
+  `ARES_PRESENCE_PENALTY`; un valore fuori intervallo ferma l'avvio con una
+  riga, come `ARES_NUM_CTX`. Omessi valgono i default che Ollama applicava
+  già in silenzio (0,7, 0,9, 40, 0, 1,1, 0), che Ares ora manda espliciti:
+  il comportamento non cambia, ma i rapporti degli eval registrano tutte le
+  opzioni e le schede dei modelli, che consigliano altri valori, si possono
+  provare senza toccare `config.py`. Tutti tranne la temperatura valgono
+  anche per l'estrazione delle memorie.
+
 ## [0.11.0] - 2026-10-01
 
 Il prompt di conversazione è riscritto e misurato. È diviso in sezioni, dice
