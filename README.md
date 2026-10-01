@@ -593,6 +593,7 @@ Meglio dirlo prima, per non deludere nessuno:
 - [Strategia di test](docs/testing.md)
 - [Ambiti di progetto](docs/project-scopes.md)
 - [Contratto del core](docs/core-contract.md)
+- [Migliorie agentiche con il modello locale al centro](docs/agentic-improvements.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Istruzioni per contribuire](CONTRIBUTING.md)
 

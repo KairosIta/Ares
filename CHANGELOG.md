@@ -17,6 +17,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   opzioni e le schede dei modelli, che consigliano altri valori, si possono
   provare senza toccare `config.py`. Tutti tranne la temperatura valgono
   anche per l'estrazione delle memorie.
+- `docs/agentic-improvements.md`, lo studio delle migliorie applicabili ad
+  Ares alla luce dei lavori 2025-2026 sugli agenti, con il modello locale al
+  centro: misure di partenza fatte sul codice (27 strumenti e 20.700
+  caratteri di schemi per turno), i modelli locali candidati con la stima
+  della KV cache per contesto, un protocollo per confrontarli con gli eval di
+  Ares, dieci interventi con evidenze, fonti, prove di accettazione e costo,
+  cosa non fare e perché, l'ordine proposto e le decisioni da chiudere. Non
+  introduce codice. `ROADMAP.md` e il README lo collegano.
 
 ## [0.11.0] - 2026-10-01
 
