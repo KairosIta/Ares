@@ -149,8 +149,9 @@ consigliato nel README, solo dopo questo giro, con i rapporti conservati:
 3. **benchmark della memoria**, `python -m evals.memory_quality
    --ripetizioni 3`, con il modello in entrambi i ruoli e con la lettura
    manuale del profilo per i contenuti inventati, che i conteggi non vedono;
-4. **latenza** sui sei turni del protocollo del 30 settembre, risposta ed
-   estrazione separate;
+4. **latenza**, `python -m evals.latenza`: i sei turni del protocollo del 30
+   settembre, risposta ed estrazione separate, e separate anche le medie dei
+   turni con e senza strumenti;
 5. **tre regimi di campionamento**: quello di Ares (temperatura 0,7,
    ragionamento acceso), quello della scheda Qwen per il ragionamento e
    quello per la risposta diretta, perché una scheda che chiede temperatura 1

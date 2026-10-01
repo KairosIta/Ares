@@ -11,6 +11,9 @@ come `valutazione`; la misura con Ollama si avvia esplicitamente con
 `python -m evals.memory_quality`, anche quando si usa `tests/run.py --tutte`.
 Lo stesso vale per l'[eval degli strumenti in conversazione](conversation-eval.md):
 controlli offline come `conversazione`, misura con `python -m evals.conversazione`.
+Il terzo eval, `python -m evals.latenza`, misura quanto aspetta la persona
+turno per turno con i modelli configurati, senza verdetti; i suoi calcoli
+sono provati offline come `latenza`.
 
 ## Runner
 
@@ -73,7 +76,7 @@ a copione, la tool call nella forma in cui Agno la mette nei messaggi. Come
 .venv/bin/python tests/run.py
 ```
 
-Sono undici. Nessuna genera risposte con il modello.
+Sono quattordici. Nessuna genera risposte con il modello.
 
 | Prova | Cosa verifica |
 | --- | --- |
@@ -88,6 +91,7 @@ Sono undici. Nessuna genera risposte con il modello.
 | `entita` | audit e fusione delle entità |
 | `valutazione` | il benchmark della memoria senza modello (vedi sotto) |
 | `conversazione` | i verdetti dell'eval degli strumenti su esiti scritti a mano: una lettura dal quaderno, una domanda a parole, un comando malformato o un'iniezione eseguita non passano |
+| `latenza` | le misure dell'eval della latenza su metriche scritte a mano: somma delle chiamate per ruolo, ultima finestra, turno senza risposta, medie separate fra turni con e senza strumenti, Markdown con l'errore; l'import dell'eval non importa `ares.config` |
 | `cli` | i comandi reali: preflight contro un Ollama finto nei tre esiti, con i modelli caricati in VRAM, in parte o per niente, e con un modello senza renderer, ispezione degli archivi, sottocomandi di backup con annullamenti, la REPL intera in un processo con stdin da pipe, l'avvio senza `--session` (sessione nuova, `resume` a vuoto e sull'ultima, `--scegli`, `-p` con stdin in pipe) |
 | `rilascio` | la versione di Ares concorda fra `pyproject.toml`, lock, `CHANGELOG` e `SECURITY.md` (procedura in [CONTRIBUTING](../CONTRIBUTING.md#come-si-rilascia)) |
 
