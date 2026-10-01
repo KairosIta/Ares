@@ -86,14 +86,17 @@ POLITICA = config.leggi_politica()
 
 
 class OllamaFinto(BaseHTTPRequestHandler):
-    """Risponde a /api/tags e /api/ps con gli elenchi decisi dalla prova.
+    """Risponde a /api/tags, /api/ps e /api/show con i dati decisi dalla prova.
 
-    Gli elenchi stanno sulla classe perche' HTTPServer crea un handler per
-    richiesta. `caricati` a None: un Ollama che non conosce /api/ps.
+    I dati stanno sulla classe perche' HTTPServer crea un handler per
+    richiesta. `caricati` a None: un Ollama che non conosce /api/ps. Un
+    modello assente da `schede` risponde 404 a /api/show.
     """
 
     modelli: ClassVar[list[str]] = []
     caricati: ClassVar[list[dict] | None] = None
+    schede: ClassVar[dict[str, dict]] = {}
+    chiesti: ClassVar[list[str]] = []
 
     # Il nome in CamelCase non e' una scelta: BaseHTTPRequestHandler cerca
     # `do_` piu' il metodo HTTP.
@@ -106,6 +109,19 @@ class OllamaFinto(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
+        self._rispondi(dati)
+
+    def do_POST(self) -> None:
+        richiesta = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        modello = str(richiesta.get("model", ""))
+        type(self).chiesti.append(modello)
+        if not self.path.startswith("/api/show") or modello not in type(self).schede:
+            self.send_response(404)
+            self.end_headers()
+            return
+        self._rispondi(type(self).schede[modello])
+
+    def _rispondi(self, dati: dict) -> None:
         corpo = json.dumps(dati).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -125,14 +141,20 @@ def porta_libera() -> int:
 
 
 def esegui_preflight(
-    modelli: list[str] | None, argomenti: list[str] | None = None, caricati: list[dict] | None = None
+    modelli: list[str] | None,
+    argomenti: list[str] | None = None,
+    caricati: list[dict] | None = None,
+    schede: dict[str, dict] | None = None,
 ) -> tuple[int, str]:
     """Lancia il preflight contro un server finto, o contro nessun server.
 
     Con `modelli=None` punta a una porta chiusa: il caso "Ollama non gira".
     `caricati` e' la risposta di /api/ps; None, un Ollama che non la conosce.
+    `schede` sono le risposte di /api/show per modello.
     """
     OllamaFinto.caricati = caricati
+    OllamaFinto.schede = schede or {}
+    OllamaFinto.chiesti = []
     porta = porta_libera()
     host = "http://127.0.0.1:" + str(porta)
     servitore = None
@@ -481,6 +503,48 @@ def preflight_vram() -> str:
         esito, testo = esegui_preflight(["glm-5.3-flash:cloud", config.EMBEDDER_MODEL], caricati=[])
     esigi("dopo un turno di chat" not in testo, "il preflight aspetta un modello cloud in VRAM: " + testo)
     return "parte sulla CPU, tutto sulla CPU, tutto in VRAM, altro contesto, senza /api/ps, JSON, cloud"
+
+
+def preflight_renderer() -> str:
+    """Un modello locale col ragionamento acceso, senza renderer, e' un avviso, non un guasto."""
+    gguf = {"modelfile": "FROM /blobs/sha256-x\nTEMPLATE {{ .Prompt }}\n", "template": "{%- if reasoning_content %}"}
+    nativo = {"modelfile": gguf["modelfile"] + "RENDERER qwen3.8\nPARSER qwen3.5\n", "template": "{{ .Prompt }}"}
+    go = {"modelfile": "FROM /blobs/sha256-x\n", "template": "{{ if .Thinking }}{{ .Thinking }}{{ end }}"}
+    presenti = [LOCALE, config.EMBEDDER_MODEL]
+
+    def preflight_con(scheda: dict | None, *argomenti: str, pensa: bool = True, principale: str = LOCALE):
+        with (
+            patch.object(config, "MAIN_MODEL", principale),
+            patch.object(config, "LEARNING_MODEL", LOCALE),
+            patch.object(config, "MAIN_THINK", pensa),
+            patch.object(config, "LEARNING_THINK", False),
+        ):
+            schede = {LOCALE: scheda} if scheda is not None else {}
+            esito, testo = esegui_preflight([*presenti, principale], list(argomenti), schede=schede)
+        return esito, _piatto(testo)
+
+    esito, testo = preflight_con(gguf)
+    esigi(esito == 0 and "Ambiente pronto" in testo, "un modello senza renderer ferma il preflight: " + testo)
+    esigi(LOCALE + " non dichiara un RENDERER" in testo, "il modello senza renderer non e' segnalato: " + testo)
+    esigi('"Modello locale" nel README' in testo, "l'avviso non dice dove sta il rimedio: " + testo)
+    esigi(OllamaFinto.chiesti == [LOCALE], "schede chieste: " + str(OllamaFinto.chiesti) + ", attesa una")
+
+    for nome, scheda in (("renderer", nativo), ("template Go", go)):
+        esito, testo = preflight_con(scheda)
+        esigi("RENDERER" not in testo, "un modello con " + nome + " produce l'avviso: " + testo)
+
+    esito, testo = preflight_con(gguf, pensa=False)
+    esigi("RENDERER" not in testo and OllamaFinto.chiesti == [], "col ragionamento spento si guarda la scheda")
+
+    esito, testo = preflight_con(None)
+    esigi("RENDERER" not in testo and esito == 0, "senza /api/show il preflight inventa: " + testo)
+
+    esito, testo = preflight_con(gguf, principale="glm-5.3-flash:cloud")
+    esigi("glm-5.3-flash:cloud" not in OllamaFinto.chiesti, "il preflight chiede la scheda di un modello cloud")
+
+    esito, testo = preflight_con(gguf, "--json")
+    esigi(json.loads(testo)["senza_renderer"] == [LOCALE], "il JSON non elenca il modello: " + testo)
+    return "segnalato senza renderer; zitto con renderer, template Go, ragionamento spento, cloud, senza /api/show"
 
 
 def preflight_json() -> str:
@@ -1957,6 +2021,7 @@ def main() -> int:
             ("preflight estrazione cloud", preflight_estrazione_cloud),
             ("preflight json", preflight_json),
             ("preflight vram", preflight_vram),
+            ("preflight renderer", preflight_renderer),
             ("preflight spento", preflight_server_spento),
         ):
             ok(nome, prova())

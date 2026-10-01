@@ -109,6 +109,15 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   argomenti di Agno (`_filter_store_kwargs`, privato, in
   `agent/agno_interni.py`); in locale resta il ciclo di Agno. I numeri
   sono in [memory-quality.md](memory-quality.md).
+- **Ragionamento rimandato al modello:** il client Ollama di Agno legge
+  solo testo e tool call, quindi il `thinking` va perso; dopo uno strumento
+  il modello rivede il proprio passo con un ragionamento vuoto, e Qwen3.8 9B
+  allora risponde dentro il ragionamento lasciando vuota la risposta.
+  `OllamaConRagionamento` (`agent/agno_interni.py`) sovrascrive
+  `_format_message` e i due `_parse_provider_response*` per conservarlo come
+  `reasoning_content` e rimandarlo nel campo `thinking` dell'API. Serve
+  anche che il modello dichiari un `RENDERER`: il template jinja di un GGUF
+  importato ignora quel campo (vedi «Modello locale» nel README).
 - **HITL v3:** la ripresa passa la lista `requirements` del `RunOutput`; le
   operazioni workspace sensibili continuano quindi sullo stesso run dopo la
   conferma.

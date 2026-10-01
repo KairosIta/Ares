@@ -3,7 +3,7 @@
 Uso:
     .venv/bin/python tests/agno_contract_test.py
 
-Sette cose che Ares da' per vere di Agno, verificate contro Agno installato.
+Otto cose che Ares da' per vere di Agno, verificate contro Agno installato.
 
 1. **L'apprendimento avviene una volta per turno, sul run completo.** Agno
    avvia `LearningMachine.process` prima di chiamare il modello; Ares lo
@@ -35,6 +35,11 @@ Sette cose che Ares da' per vere di Agno, verificate contro Agno installato.
 7. **Gli interni di Agno che Ares usa esistono ancora.** Sono elencati in
    `ares/agent/agno_interni.py`; il mixin degli store ritoccati precede la
    classe di Agno.
+8. **Il ragionamento torna al modello.** In un turno vero con uno strumento,
+   il `thinking` che Ollama manda in streaming finisce sul messaggio
+   dell'assistente e torna nella richiesta successiva, senza entrare nella
+   risposta. Se Agno smettesse di accumulare `reasoning_content` dai delta,
+   il 9B di serie tornerebbe a rispondere dentro il ragionamento.
 
 Niente modello e niente rete: il modello e' un copione di tool call. Nei
 primi due controlli gli store di apprendimento sono spenti (si conta il
@@ -69,6 +74,7 @@ from agno.learn import (  # noqa: E402
 from agno.learn.stores import UserMemoryStore, UserProfileStore  # noqa: E402
 from agno.models.message import Message, MessageMetrics  # noqa: E402
 from agno.models.response import ModelResponse  # noqa: E402
+from ollama import ChatResponse  # noqa: E402
 
 from ares import config  # noqa: E402
 
@@ -698,6 +704,67 @@ def interni_presenti() -> str:
     return str(len(INTERNI)) + " interni presenti, " + str(len(ritoccati)) + " store ritoccati"
 
 
+class OllamaFinto:
+    """Il client `ollama` di `OllamaConRagionamento`: risponde in streaming e tiene le richieste.
+
+    Ogni risposta e' una lista di messaggi parziali, come i chunk di
+    `/api/chat`; l'ultimo chunk chiude con `done`.
+    """
+
+    def __init__(self, risposte: list[list[dict[str, Any]]]) -> None:
+        self.risposte = list(risposte)
+        self.richieste: list[dict[str, Any]] = []
+
+    def chat(self, **kwargs: Any):
+        self.richieste.append(kwargs)
+        parti = self.risposte.pop(0)
+        for indice, parte in enumerate(parti):
+            ultima = indice == len(parti) - 1
+            yield ChatResponse(model="finto", message={"role": "assistant", "content": "", **parte}, done=ultima)
+
+
+def ragionamento_rimandato() -> str:
+    """Il `thinking` di un turno con strumento torna al modello e resta fuori dalla risposta."""
+    agent = build_assistant(PERCORSI, IMPOSTAZIONI, POLITICA, utente=Utente.da_grezzo(UTENTE), session_id="pensiero")
+    (PERCORSI.lavoro / NOME_FILE).write_text("da leggere\n")
+    lettura = {"function": {"name": config.WORKSPACE_PREFIX + "read_file", "arguments": {"path": NOME_FILE}}}
+    client = OllamaFinto(
+        [
+            [{"thinking": "Leggo "}, {"thinking": "il file."}, {"tool_calls": [lettura]}],
+            [{"thinking": "Dice: da leggere."}, {"content": "Il file dice: "}, {"content": "da leggere."}],
+        ]
+    )
+    agent.model.client = client
+    testi: list[str] = []
+
+    def evento(e) -> None:
+        if e.kind is TurnEventKind.CONTENT and isinstance(e.content, str):
+            testi.append(e.content)
+
+    risposta = run_turn_cycle(agent, "che cosa dice " + NOME_FILE + "?", on_event=evento, resolve_pause=lambda _: 0)
+    esigi(len(client.richieste) == 2, "chiamate al modello: " + str(len(client.richieste)) + ", attese 2")
+    seconda = client.richieste[1]["messages"]
+    chiamanti = [m for m in seconda if m["role"] == "assistant" and m.get("tool_calls")]
+    esigi(len(chiamanti) == 1, "la seconda richiesta non ha il messaggio con la tool call")
+    esigi(
+        chiamanti[0].get("thinking") == "Leggo il file.",
+        "il ragionamento non torna al modello: " + repr(chiamanti[0].get("thinking")),
+    )
+    esigi(
+        not any(m.get("thinking") for m in client.richieste[0]["messages"]),
+        "la prima richiesta ha un ragionamento che nessuno ha scritto",
+    )
+    esigi(
+        risposta is not None and risposta.content == "Il file dice: da leggere.",
+        "risposta: " + repr(getattr(risposta, "content", None)),
+    )
+    esigi(
+        "".join(testi) == "Il file dice: da leggere.",
+        "il ragionamento e' entrato nel testo mostrato: " + repr(testi),
+    )
+    return "thinking rimandato col messaggio dello strumento, fuori dalla risposta"
+
+
 def limite_utente() -> str:
     """Il tetto di `Utente` e' quello che Agno usa per i segmenti del namespace.
 
@@ -747,6 +814,7 @@ def main() -> int:
             ("retry contesto", contesto_riprova),
             ("memoria non confermabile", memoria_non_confermabile),
             ("interni di Agno", interni_presenti),
+            ("ragionamento rimandato", ragionamento_rimandato),
             ("limite utente", limite_utente),
             ("versione dichiarata", versione_dichiarata),
         )

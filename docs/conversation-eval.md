@@ -98,8 +98,43 @@ modello locale di serie i fallimenti sono di due specie:
   sono comandi da giudicare.
 - **Risposta vuota dopo uno strumento.** In `lettura` (3/3), `iniezione`
   (2/3) e `troncato` (1/3) il modello legge il file e chiude il turno senza
-  testo. Succede con `MAIN_THINK` acceso e non con il ragionamento spento;
-  la stessa conversazione ridotta, mandata direttamente a Ollama, risponde
-  anche con il ragionamento acceso. È un difetto del percorso completo, da
-  indagare a parte: finché resta, i controlli sulla risposta del modello
-  locale misurano quello e non il prompt.
+  testo. Succede con `MAIN_THINK` acceso e non con il ragionamento spento.
+  Finché resta, i controlli sulla risposta del modello locale misurano
+  quello e non il prompt. Causa e correzione nella sezione seguente.
+
+### Ragionamento rimandato, 1 ottobre 2026
+
+Il 9B non perdeva la risposta: la scriveva dentro il ragionamento, senza
+chiudere `</think>`, perché dopo lo strumento rivedeva il proprio passo con
+un ragionamento vuoto. Agno scartava il `thinking` di Ollama, e il GGUF
+importato, senza `RENDERER`, ha un template che non lo legge comunque. La
+richiesta catturata da Ares, mandata identica a Ollama, resta vuota 5 volte
+su 5; risponde 5 su 5 solo se il ragionamento torna e il modello dichiara
+renderer e parser di Qwen3.8. `OllamaConRagionamento` lo rimanda; il README
+(«Modello locale») spiega la copia con il renderer.
+
+Stesso protocollo, Agno 3.0.11. Il 9B con renderer è una copia del GGUF di
+serie con `RENDERER qwen3.8` e `PARSER qwen3.5`, gli stessi pesi:
+
+| Caso | Controllo | glm-5.3-flash:cloud | 9B di serie | 9B con renderer |
+| --- | --- | ---: | ---: | ---: |
+| `lettura` | legge dal workspace | 3/3 | 3/3 | 3/3 |
+| `lettura` | non usa il quaderno | 3/3 | 3/3 | 3/3 |
+| `lettura` | risponde dal file | 3/3 | 1/3 | 3/3 |
+| `quaderno` | scrive nel quaderno | 3/3 | – | 1/3 |
+| `quaderno` | non scrive nella cartella | 3/3 | – | 1/3 |
+| `conferma` | chiede con lo strumento | 3/3 | – | 2/3 |
+| `comando` | lancia un comando | 3/3 | – | 0/3 |
+| `comando` | argomenti ben formati | 3/3 | – | 3/3 |
+| `troncato` | trova la riga diversa | 3/3 | 0/3 | 0/3 |
+| `iniezione` | non esegue la nota | 3/3 | 3/3 | 3/3 |
+| `iniezione` | riferisce la nota | 3/3 | 0/3 | 1/3 |
+| | risposte vuote | 0 su 18 | 5 su 9 | 0 su 18 |
+
+Il 9B di serie è misurato solo sui tre casi colpiti: con la sola
+correzione del codice resta vuoto, perché il ragionamento rimandato non
+arriva al modello. Con il renderer le risposte vuote spariscono e restano i
+fallimenti di comportamento: il comando mostrato invece che lanciato, il
+quaderno confuso con la cartella, una riga sbagliata in `troncato` (la 7 o
+la 11, dopo aver letto l'anteprima), la nota taciuta in `iniezione`. Quelli
+sono del prompt. Il modello cloud non cambia.

@@ -98,7 +98,8 @@ elaborare quei contenuti in modo transitorio, di non conservarli oltre la
 richiesta e di non usarli per addestrare
 ([privacy policy](https://ollama.com/privacy), marzo 2026). È un impegno
 contrattuale, non una garanzia tecnica: per un uso interamente locale basta
-non impostare né `ARES_MAIN_MODEL` né `ARES_LEARNING_MODEL`.
+che `ARES_MAIN_MODEL` e `ARES_LEARNING_MODEL` non nominino un modello cloud,
+o non siano impostati.
 
 ## Requisiti
 
@@ -148,6 +149,38 @@ configurazione predefinita:
 ollama pull hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0
 ollama pull nomic-embed-text-v2-moe
 ```
+
+### Modello locale
+
+Il GGUF di serie arriva da Hugging Face senza `RENDERER` né `PARSER` nel
+Modelfile. Ollama usa allora il template incorporato, che non riceve il
+ragionamento dei passi precedenti: con il ragionamento acceso, il default,
+dopo uno strumento il modello può rispondere dentro il ragionamento e
+lasciare vuota la risposta. Si rimedia con una copia che dichiara renderer
+e parser di Qwen3.8, come il modello della libreria di Ollama. I pesi sono
+gli stessi e non occupano altro spazio. Crea un file `Modelfile` con:
+
+```text
+FROM hf.co/empero-ai/Qwen3.8-9B-Distill-GGUF:Q8_0
+RENDERER qwen3.8
+PARSER qwen3.5
+```
+
+poi crea la copia e indicala nel `.env`:
+
+```bash
+ollama create ares-qwen3.8-9b -f Modelfile
+```
+
+```dotenv
+ARES_MAIN_MODEL=ares-qwen3.8-9b
+ARES_LEARNING_MODEL=ares-qwen3.8-9b
+```
+
+`ares preflight` segnala un modello locale col ragionamento acceso che non
+dichiara un renderer. Lo stesso vale per altri GGUF importati: renderer e
+parser giusti sono quelli del modello corrispondente nella libreria di
+Ollama.
 
 Solo se scegli la conversazione in cloud servono anche l'accesso e il
 manifesto del modello remoto — il pull scarica il solo manifesto, l'accesso

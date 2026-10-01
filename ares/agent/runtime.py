@@ -4,12 +4,12 @@ from pathlib import Path
 
 from agno.knowledge.embedder.ollama import OllamaEmbedder
 from agno.knowledge.knowledge import Knowledge
-from agno.models.ollama import Ollama
 from agno.tools.workspace import Workspace
 from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 
 from ares import config
+from ares.agent.agno_interni import OllamaConRagionamento
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
@@ -40,12 +40,12 @@ def _esigi_locale(nome: str, ruolo: str) -> str:
     return nome
 
 
-def build_chat_model(impostazioni: Impostazioni) -> Ollama:
+def build_chat_model(impostazioni: Impostazioni) -> OllamaConRagionamento:
     """Modello conversazionale, locale o cloud secondo `impostazioni.principale`.
 
     L'host resta quello locale anche per il cloud: e' il daemon a inoltrare.
     """
-    return Ollama(
+    return OllamaConRagionamento(
         id=impostazioni.principale,
         host=impostazioni.host,
         options=impostazioni.opzioni,
@@ -57,13 +57,13 @@ def build_chat_model(impostazioni: Impostazioni) -> Ollama:
     )
 
 
-def build_learning_model(impostazioni: Impostazioni) -> Ollama:
+def build_learning_model(impostazioni: Impostazioni) -> OllamaConRagionamento:
     """Modello a bassa temperatura per l'estrazione strutturata.
 
     Locale o cloud secondo `impostazioni.apprendimento`. Il contesto ridotto,
     quando i due modelli differiscono, lo decide `Impostazioni`.
     """
-    return Ollama(
+    return OllamaConRagionamento(
         id=impostazioni.apprendimento,
         host=impostazioni.host,
         options=impostazioni.opzioni_apprendimento,
