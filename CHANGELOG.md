@@ -8,6 +8,24 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Con un estrattore locale il contesto di sessione è un JSON vincolato
+  dallo schema** (proposta 3.6 di `docs/agentic-improvements.md`, passo 2).
+  Al posto della tool call, una richiesta senza strumenti con `format` pari
+  allo schema degli argomenti e temperatura 0; il JSON si applica con la
+  stessa funzione, quindi conversione delle liste, cancello e retry valgono
+  come prima. Il MiMo-V2.6 9B salva il contesto al primo tentativo in 72
+  fasi su 72 (erano 66), nessuna fase finisce più in errore per «contesto
+  non salvato», e l'estrazione scende da 10,9 a 6,9 s; sul 9B di serie da
+  6,4 a 5,1 s. Con il cloud di Ollama, che non applica lo schema, resta la
+  tool call; `ARES_ESTRAZIONE_VINCOLATA=0` spegne il vincolo. Il profilo
+  resta sulla tool call: misurato anche lui vincolato, il modello piccolo
+  si astiene (`current_focus` scritto in 9 fasi invece di 32) e i dati non
+  arrivano più fra una sessione e l'altra. I metodi di Agno che servono
+  passano da `agno_interni.py`, sorvegliati da `contratto`. Prove offline
+  in `costo` (`estrazione vincolata`: tre chiamate, il contesto con lo
+  schema in `format`, salvato al primo tentativo) e `smoke`
+  (l'interruttore). Misure in `docs/memory-quality.md`.
+
 - **Profilo e memorie salvano solo ciò che ha un appiglio nel testo**
   (proposta 3.6 di `docs/agentic-improvements.md`, passo 1). Prima di
   scrivere, ogni valore estratto si confronta con la conversazione che

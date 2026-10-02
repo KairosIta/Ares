@@ -196,9 +196,25 @@ def leggi_campionamento(ambiente: Mapping[str, str]) -> dict[str, float | int]:
     return opzioni
 
 
+def leggi_interruttore(variabile: str, valore: str | None) -> bool | None:
+    """`1` o `0` da una variabile d'ambiente; `None` se assente o vuota.
+
+    Solleva `ValueError`, nominando la variabile, per qualunque altro valore.
+    """
+    if valore is None or not valore.strip():
+        return None
+    if valore.strip() in ("0", "1"):
+        return valore.strip() == "1"
+    raise ValueError(variabile + " deve essere 0 o 1: " + repr(valore))
+
+
 try:
     NUM_CTX = leggi_num_ctx(AMBIENTE.get("ARES_NUM_CTX"))
     _CAMPIONAMENTO = leggi_campionamento(AMBIENTE)
+    # Il contesto di sessione estratto come JSON vincolato dallo schema invece
+    # che con una tool call; vale solo con un estrattore locale (vedi
+    # `Impostazioni.estrazione_vincolata`). Assente: acceso.
+    ESTRAZIONE_VINCOLATA = leggi_interruttore("ARES_ESTRAZIONE_VINCOLATA", AMBIENTE.get("ARES_ESTRAZIONE_VINCOLATA"))
 except ValueError as errore:
     # All'import, prima di ogni comando: una riga e non un traceback.
     raise SystemExit("Configurazione di Ares non valida: " + str(errore)) from None
@@ -262,6 +278,19 @@ class Impostazioni:
     min_p: float = 0.0
     repeat_penalty: float = 1.1
     presence_penalty: float = 0.0
+    # `ARES_ESTRAZIONE_VINCOLATA`: `None` vuol dire il default, acceso.
+    vincolo_estrazione: bool | None = None
+
+    @property
+    def estrazione_vincolata(self) -> bool:
+        """Vero se il contesto di sessione si estrae come JSON vincolato dallo schema.
+
+        Solo con un estrattore locale: il cloud di Ollama non applica `format`
+        con uno schema. Con la tool call, un modello piccolo spesso non chiama
+        lo strumento o lo chiama con argomenti non validi; con lo schema la
+        forma la garantisce Ollama (docs/memory-quality.md).
+        """
+        return self.vincolo_estrazione is not False and not e_modello_cloud(self.apprendimento)
 
     @property
     def num_ctx_apprendimento(self) -> int:
@@ -355,6 +384,7 @@ def leggi_impostazioni() -> Impostazioni:
         min_p=MIN_P,
         repeat_penalty=REPEAT_PENALTY,
         presence_penalty=PRESENCE_PENALTY,
+        vincolo_estrazione=ESTRAZIONE_VINCOLATA,
     )
 
 

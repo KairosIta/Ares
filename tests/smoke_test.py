@@ -2291,6 +2291,27 @@ def impostazioni_a_runtime() -> str:
         "la conversazione cloud decide per l'estrazione",
     )
 
+    # Estrazione vincolata dallo schema: di serie con l'estrattore locale,
+    # mai con il cloud, che non applica `format`; `ARES_ESTRAZIONE_VINCOLATA=0`
+    # la spegne.
+    esigi(mia.estrazione_vincolata is True, "l'estrazione locale non e' vincolata di serie")
+    esigi(entrambi.estrazione_vincolata is False, "l'estrazione cloud e' vincolata")
+    esigi(replace(mia, vincolo_estrazione=False).estrazione_vincolata is False, "lo 0 non spegne il vincolo")
+    esigi(replace(entrambi, vincolo_estrazione=True).estrazione_vincolata is False, "l'1 vincola anche il cloud")
+    esigi(
+        config.leggi_interruttore("X", None) is None
+        and config.leggi_interruttore("X", " ") is None
+        and config.leggi_interruttore("X", " 1 ") is True
+        and config.leggi_interruttore("X", "0") is False,
+        "gli interruttori dal .env non vengono letti",
+    )
+    try:
+        config.leggi_interruttore("ARES_ESTRAZIONE_VINCOLATA", "si")
+    except ValueError as errore:
+        esigi("ARES_ESTRAZIONE_VINCOLATA" in str(errore), "il rifiuto non nomina la variabile: " + str(errore))
+    else:
+        raise AssertionError("ARES_ESTRAZIONE_VINCOLATA=si accettato")
+
     # Il contesto dal `.env`: un intero da NUM_CTX_MINIMO in su, il default
     # se manca, un rifiuto per tutto il resto.
     esigi(config.leggi_num_ctx(None) == 131072 and config.leggi_num_ctx("  ") == 131072, "il default non e' 128k")

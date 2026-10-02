@@ -8,6 +8,7 @@ import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,10 +31,20 @@ from agno.learn.stores import (
     UserProfileStore,
 )
 from agno.learn.utils import to_dict_safe
+from agno.models.message import Message
 from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
+from agno.utils.message import get_conversation_text
 
-from ares.agent.agno_interni import FunzioniRitoccate, elabora, strumenti_esposti
+from ares.agent.agno_interni import (
+    FunzioniRitoccate,
+    astrumenti_di_estrazione,
+    elabora,
+    funzioni_di_estrazione,
+    prompt_di_estrazione,
+    strumenti_di_estrazione,
+    strumenti_esposti,
+)
 from ares.agent.echo import CAMPI_DI_SERVIZIO
 from ares.agent.radicamento import Fonte, radica_campo, radica_memoria
 from ares.agent.runtime import build_learning_model
@@ -266,7 +277,136 @@ def liste_dal_testo(entrypoint: Callable[..., Any]) -> Callable[..., Any]:
     return sincrono
 
 
-class AresSessionContextStore(ScrittureSorvegliate, FunzioniRitoccate, SessionContextStore):
+# Il prompt di Agno chiede di chiamare uno strumento; con lo schema la
+# grammatica di Ollama permette solo il JSON, e il modello deve saperlo.
+ISTRUZIONE_JSON = (
+    "\n\n## Risposta\n\n"
+    "In questa estrazione non ci sono strumenti da chiamare: rispondi solo con un oggetto JSON con i "
+    "campi dello schema, che sono gli argomenti che avresti passato allo strumento. Scrivi in italiano."
+)
+
+# Cosa restituisce un'estrazione che non salva niente, come in Agno.
+NIENTE_DA_AGGIORNARE = "No updates needed"
+
+
+def oggetto_json(testo: str | None) -> dict[str, Any] | None:
+    """L'oggetto JSON della risposta, o `None` se non lo e'.
+
+    Con `format` Ollama restituisce solo JSON; un recinto di codice resta
+    tollerato perche' un modello senza grammatica (una prova, un daemon
+    vecchio) potrebbe aggiungerlo.
+    """
+    pulito = (testo or "").strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        valore = json.loads(pulito)
+    except ValueError:
+        return None
+    return valore if isinstance(valore, dict) else None
+
+
+class EstrazioneVincolata:
+    """Mixin: con `vincolata`, l'estrazione risponde con un JSON vincolato dallo schema.
+
+    Al posto della tool call, una richiesta senza strumenti con `format`
+    pari allo schema degli argomenti e temperatura 0: un modello piccolo
+    non puo' piu' dimenticare la chiamata o sbagliarne la forma. Strumenti
+    e `format` non stanno mai nella stessa richiesta, perche' la grammatica
+    renderebbe irraggiungibile la tool call. Il JSON si applica chiamando la
+    funzione che il modello avrebbe chiamato, ritoccata come per la tool
+    call: liste dal testo, cancello e retry valgono uguali. Lo usa solo il
+    contesto di sessione: sul profilo il vincolo fa astenere i modelli
+    piccoli (vedi `AresUserProfileStore`).
+
+    La sottoclasse dice cosa rileggere (`_esistente`), cosa chiedere
+    (`_richiesta`), quale funzione chiamare (`_funzione`) e con quali
+    argomenti (`_argomenti`). Va prima della classe di Agno nelle basi.
+    """
+
+    vincolata = False
+
+    def _esistente(self, kwargs: dict[str, Any]) -> Any:
+        raise NotImplementedError
+
+    async def _aesistente(self, kwargs: dict[str, Any]) -> Any:
+        raise NotImplementedError
+
+    def _richiesta(self, kwargs: dict[str, Any], esistente: Any) -> tuple[list[Any], dict[str, Any]] | None:
+        """I messaggi e lo schema JSON, o `None` se non c'e' niente da estrarre."""
+        raise NotImplementedError
+
+    def _argomenti(self, dati: dict[str, Any], esistente: Any) -> dict[str, Any] | None:
+        """Gli argomenti della funzione dal JSON, o `None` se non c'e' niente da salvare."""
+        raise NotImplementedError
+
+    def _funzione(self, strumenti: list[Callable[..., Any]]) -> Any:
+        raise NotImplementedError
+
+    def _strumenti(self, kwargs: dict[str, Any], esistente: Any) -> list[Callable[..., Any]]:
+        raise NotImplementedError
+
+    def _applicata(self) -> None:
+        """Dopo la chiamata alla funzione: la sottoclasse aggiorna i propri flag."""
+
+    async def _astrumenti(self, kwargs: dict[str, Any], esistente: Any) -> list[Callable[..., Any]]:
+        raise NotImplementedError
+
+    def _modello(self, schema: dict[str, Any]) -> Any:
+        modello = deepcopy(self.model)  # type: ignore[attr-defined]
+        modello.format = schema
+        modello.options = {**(getattr(modello, "options", None) or {}), "temperature": 0}
+        return modello
+
+    def _dati(self, risposta: Any, modello: Any, run_metrics: Any) -> dict[str, Any] | None:
+        if run_metrics is not None and risposta.response_usage is not None:
+            from agno.metrics import ModelType, accumulate_model_metrics
+
+            accumulate_model_metrics(risposta, modello, ModelType.LEARNING_MODEL, run_metrics)
+        dati = oggetto_json(risposta.content)
+        if dati is None:
+            log_warning("Estrazione vincolata: la risposta non e' un oggetto JSON")
+        return dati
+
+    def extract_and_save(self, *args: Any, **kwargs: Any) -> Any:
+        if not self.vincolata:
+            return super().extract_and_save(*args, **kwargs)  # type: ignore[misc]
+        esistente = self._esistente(kwargs)
+        richiesta = self._richiesta(kwargs, esistente)
+        if richiesta is None:
+            return NIENTE_DA_AGGIORNARE
+        messaggi, schema = richiesta
+        modello = self._modello(schema)
+        dati = self._dati(modello.response(messages=messaggi), modello, kwargs.get("run_metrics"))
+        argomenti = self._argomenti(dati, esistente) if dati is not None else None
+        if argomenti is None:
+            return NIENTE_DA_AGGIORNARE
+        strumenti = self._strumenti(kwargs, esistente)
+        funzione = self._funzione(funzioni_di_estrazione(self, strumenti))
+        esito = str(funzione.entrypoint(**argomenti))
+        self._applicata()
+        return esito
+
+    async def aextract_and_save(self, *args: Any, **kwargs: Any) -> Any:
+        if not self.vincolata:
+            return await super().aextract_and_save(*args, **kwargs)  # type: ignore[misc]
+        esistente = await self._aesistente(kwargs)
+        richiesta = self._richiesta(kwargs, esistente)
+        if richiesta is None:
+            return NIENTE_DA_AGGIORNARE
+        messaggi, schema = richiesta
+        modello = self._modello(schema)
+        dati = self._dati(await modello.aresponse(messages=messaggi), modello, kwargs.get("run_metrics"))
+        argomenti = self._argomenti(dati, esistente) if dati is not None else None
+        if argomenti is None:
+            return NIENTE_DA_AGGIORNARE
+        strumenti = await self._astrumenti(kwargs, esistente)
+        funzione = self._funzione(funzioni_di_estrazione(self, strumenti))
+        esito = funzione.entrypoint(**argomenti)
+        esito = await esito if inspect.isawaitable(esito) else esito
+        self._applicata()
+        return str(esito)
+
+
+class AresSessionContextStore(ScrittureSorvegliate, FunzioniRitoccate, EstrazioneVincolata, SessionContextStore):
     """Riprova soltanto un'estrazione che non ha scritto nulla.
 
     `tentativi_contesto` sono i tentativi oltre il primo. `__init__` passa il
@@ -298,6 +438,70 @@ class AresSessionContextStore(ScrittureSorvegliate, FunzioniRitoccate, SessionCo
     async def asave(self, session_id: str, context: Any, *args: Any, **kwargs: Any) -> None:
         await super().asave(session_id, context, *args, **kwargs)
         self._salvato = self._salvato or self._riletto(await self.aget(session_id=session_id), context)
+
+    def _esistente(self, kwargs: dict[str, Any]) -> Any:
+        return self.get(session_id=kwargs["session_id"])
+
+    async def _aesistente(self, kwargs: dict[str, Any]) -> Any:
+        return await self.aget(session_id=kwargs["session_id"])
+
+    def _richiesta(self, kwargs: dict[str, Any], esistente: Any) -> tuple[list[Any], dict[str, Any]]:
+        testo = get_conversation_text(kwargs.get("messages") or [])
+        sistema = prompt_di_estrazione(self, conversation_text=testo, existing_context=esistente)
+        proprieta: dict[str, Any] = {
+            "summary": {"type": "string", "description": "Lo stato della sessione, leggibile senza i messaggi"}
+        }
+        if self.config.enable_planning:
+            proprieta["goal"] = {
+                "type": ["string", "null"],
+                "description": "L'obiettivo dell'utente in questa sessione, null se non e' chiaro",
+            }
+            proprieta["plan"] = {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "I passi del piano, uno per voce; vuoto se un piano non c'e'",
+            }
+            proprieta["progress"] = {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "I passi completati e sostenuti dal turno, uno per voce",
+            }
+        schema = {"type": "object", "properties": proprieta, "required": list(proprieta)}
+        messaggi = [
+            Message(role="system", content=str(sistema.content) + ISTRUZIONE_JSON),
+            Message(role="user", content="Analizza la conversazione e restituisci il contesto di sessione aggiornato."),
+        ]
+        return messaggi, schema
+
+    def _argomenti(self, dati: dict[str, Any], esistente: Any) -> dict[str, Any] | None:
+        riepilogo = dati.get("summary")
+        if not isinstance(riepilogo, str) or not riepilogo.strip():
+            return None
+        nomi = ("summary", "goal", "plan", "progress") if self.config.enable_planning else ("summary",)
+        return {nome: dati[nome] for nome in nomi if nome in dati}
+
+    def _funzione(self, funzioni: list[Any]) -> Any:
+        return next(f for f in funzioni if f.name == "save_session_context")
+
+    def _strumenti(self, kwargs: dict[str, Any], esistente: Any) -> list[Callable[..., Any]]:
+        return strumenti_di_estrazione(
+            self,
+            session_id=kwargs["session_id"],
+            user_id=kwargs.get("user_id"),
+            agent_id=kwargs.get("agent_id"),
+            team_id=kwargs.get("team_id"),
+            existing_context=esistente,
+        )
+
+    async def _astrumenti(self, kwargs: dict[str, Any], esistente: Any) -> list[Callable[..., Any]]:
+        return await astrumenti_di_estrazione(
+            self,
+            session_id=kwargs["session_id"],
+            user_id=kwargs.get("user_id"),
+            agent_id=kwargs.get("agent_id"),
+            team_id=kwargs.get("team_id"),
+            existing_context=esistente,
+        )
 
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
         for funzione in funzioni:
@@ -462,7 +666,13 @@ class EstrazioneRadicata:
 
 
 class AresUserProfileStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRitoccate, UserProfileStore):
-    """Il profilo, con una sola chiamata al modello per turno (vedi `senza_conferma`) e radicato."""
+    """Il profilo, con una sola chiamata al modello per turno (vedi `senza_conferma`), radicato.
+
+    Resta sulla tool call anche con un estrattore locale: con lo schema
+    vincolato i 9B mettono null nei campi che con lo strumento scrivevano, e
+    `current_focus` non arriva piu' fra una sessione e l'altra
+    (docs/memory-quality.md).
+    """
 
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
         for funzione in senza_conferma(funzioni, "update_profile"):
@@ -688,6 +898,7 @@ def build_learning_machine(
     session_context: AresSessionContextStore | bool = False
     if apprendimento.contesto:
         session_context = build_session_context_store(db, learning_model, politica)
+        session_context.vincolata = impostazioni.estrazione_vincolata
 
     entity_memory: AresEntityMemoryStore | bool = False
     if apprendimento.entita:

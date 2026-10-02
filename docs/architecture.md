@@ -122,11 +122,18 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   arrivi dopo la fotografia del turno. Profilo e memorie salvano solo ciò
   che ha un appiglio nella conversazione o in ciò che lo store conteneva
   già: i criteri sono in `radicamento.py`, e ciò che viene scartato resta
-  allo store finché l'eco del turno non lo legge.
+  allo store finché l'eco del turno non lo legge. Con un estrattore locale
+  il contesto di sessione non usa la tool call: `EstrazioneVincolata`
+  chiede un JSON vincolato dallo schema (`format` di Ollama, temperatura 0,
+  nessuno strumento nella stessa richiesta) e lo applica con la stessa
+  funzione che il modello avrebbe chiamato, così retry e cancello valgono
+  uguali. Il profilo resta sulla tool call: col vincolo i modelli piccoli si
+  astengono.
 - `agno_interni.py` è l'unico posto che tocca nomi privati di Agno
   (`_build_functions_for_model`, `_should_expose_tools`,
   `determine_tools_for_model`, `_filter_store_kwargs`, i metodi di
-  `Ollama` che formattano e leggono i messaggi); `INTERNI` li elenca e la
+  `Ollama` che formattano e leggono i messaggi, e quelli con cui il
+  contesto di sessione costruisce prompt e funzioni dell'estrazione); `INTERNI` li elenca e la
   prova `contratto` verifica che esistano nella versione installata.
   `OllamaConRagionamento`, il modello di conversazione ed estrazione,
   conserva il `thinking` di Ollama e lo rimanda al passo successivo.
