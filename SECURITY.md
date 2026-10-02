@@ -51,7 +51,7 @@ Sono particolarmente rilevanti vulnerabilità che permettono:
 
 ## Limiti dichiarati
 
-### Ares non è una sandbox
+### Senza sandbox, di serie
 
 Un comando shell autorizzato opera con i permessi dell’utente che ha avviato
 il processo e può accedere alla rete. Modello, prompt e conferme riducono il
@@ -73,9 +73,45 @@ cartella di lavoro, ma poi può:
 Per questo in `manuale` e in `modifiche` ogni comando chiede conferma, e la
 conferma mostra il comando per intero. In `auto` quella conferma non c’è: un
 testo letto in un file o nell’output di un comando può far eseguire
-qualunque cosa, con i tuoi permessi, senza che tu lo veda prima. Usa `auto`
-solo su un progetto di cui ti fidi, o dentro un container o una macchina
-virtuale.
+qualunque cosa, con i tuoi permessi, senza che tu lo veda prima. Senza
+sandbox, usa `auto` solo su un progetto di cui ti fidi, o dentro un
+container o una macchina virtuale.
+
+### La sandbox opzionale, su Linux
+
+Con `ARES_SANDBOX=bwrap` nel `.env` ogni comando parte dentro
+[bubblewrap](https://github.com/containers/bubblewrap):
+
+- il filesystem è in sola lettura, tranne la cartella di lavoro e una `/tmp`
+  privata che sparisce con il comando;
+- lo stato di Ares (`~/.ares` o `ARES_HOME`, con stato e backup), il `.env`
+  del clone, la directory di runtime della sessione (agente SSH, D-Bus) e un
+  elenco di credenziali note della home (`.ssh`, `.gnupg`, `.aws`, `.azure`,
+  `.kube`, `.docker`, `.config/gh`, `.config/gcloud`, `.netrc`,
+  `.git-credentials`, `.pypirc`, `.npmrc`) sono coperti: il comando non li
+  vede;
+- la rete non c’è, salvo `ARES_SANDBOX_RETE=1`;
+- i processi lasciati in background muoiono quando il comando finisce o
+  scade.
+
+Se la sandbox è chiesta ma non si può applicare — un sistema diverso da
+Linux, `bwrap` assente, namespace utente negati — la chat non parte e lo
+dice in una riga, e `ares preflight` dà l’ambiente come non pronto: Ares non
+ripiega in silenzio sui comandi senza sandbox. Su Ubuntu 24.04 i namespace
+utente richiedono un profilo AppArmor per `bwrap`.
+
+I suoi limiti:
+
+- dentro la cartella di lavoro un comando fa ciò che vuole: cancella,
+  riscrive, legge `.env` e `.git` del progetto. La sandbox protegge il resto
+  della macchina, non il progetto, che resta affidato alle conferme e a git;
+- legge tutto ciò che sul disco è leggibile e non è nell’elenco: un segreto
+  in un percorso diverso resta visibile;
+- con `ARES_SANDBOX_RETE=1` la rete è intera, senza filtro per dominio: un
+  comando può mandare fuori ciò che legge;
+- conferme e modalità non cambiano: `auto` diventa più difendibile, non
+  innocuo;
+- su Windows e macOS l’opzione non esiste.
 
 ### Conferme e modalità
 

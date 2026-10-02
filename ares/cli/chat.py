@@ -33,6 +33,7 @@ from agno.run.agent import RunOutput
 
 from ares import config
 from ares.agent.prompts import percorso_istruzioni
+from ares.agent.sandbox import SandboxNonDisponibile, prepara_sandbox
 from ares.agent.turn_core import TurnEvent
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
@@ -48,6 +49,7 @@ from ares.cli.render import (
     quota_finestra,
     riga_concessione,
     riga_regole,
+    riga_sandbox,
     righe_metriche,
     righe_richiesta,
 )
@@ -348,13 +350,19 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
         ramo=ramo_git(radice) if radice is not None else None,
         istruzioni=istruzioni,
         regole=riga_regole(regole) if regole.fonti else None,
+        sandbox=riga_sandbox(politica) if radice is not None and politica.workspace.sandbox else None,
         modo=stato.modo if radice is not None else None,
     )
     for avviso in regole.avvisi:
         UI.line("Regole di autorizzazione: " + avviso, style="ares.warning")
     if stato.modo == "auto":
         UI.line(
-            "Modalita' auto: nessuna conferma, ogni strumento gira subito. I comandi non restano nella cartella.",
+            "Modalita' auto: nessuna conferma, ogni strumento gira subito. "
+            + (
+                "I comandi scrivono solo nella cartella e in /tmp."
+                if politica.workspace.sandbox
+                else "I comandi non restano nella cartella."
+            ),
             style="ares.warning",
         )
 
@@ -454,6 +462,13 @@ def _apri_chat(
             return ESITO_RIFIUTO
         # Il `replace` e' locale: chi ha bisogno della cartella la riceve per parametro.
         percorsi = replace(percorsi, lavoro=radice)
+        # Una sandbox chiesta e non applicabile ferma l'avvio: senza, i comandi
+        # girerebbero con permessi che la persona ha scelto di non dare.
+        try:
+            prepara_sandbox(percorsi, politica)
+        except SandboxNonDisponibile as errore:
+            UI.line(str(errore), style="ares.error")
+            return ESITO_GUASTO
 
     # Il servizio prepara la directory dello stato, dove vive anche la
     # cronologia della REPL. La presenza passa anche alle ricostruzioni

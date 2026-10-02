@@ -401,7 +401,17 @@ cartella delimita gli strumenti sui file, non la shell. Per questo in
 `manuale` e `modifiche` ogni comando chiede conferma, mentre in `auto` un
 comando suggerito da un file letto gira subito. `auto` va bene su un
 progetto di cui ti fidi, o dentro un container; il dettaglio è in
-[`SECURITY.md`](SECURITY.md#ares-non-è-una-sandbox).
+[`SECURITY.md`](SECURITY.md#senza-sandbox-di-serie).
+
+Su Linux puoi chiudere i comandi in una sandbox con `ARES_SANDBOX=bwrap`
+nel `.env` (serve il pacchetto `bubblewrap`). Un comando scrive allora solo
+nella cartella e in una `/tmp` privata, non vede lo stato di Ares né le
+credenziali note della home, non ha la rete (`ARES_SANDBOX_RETE=1` la
+ridà) e i processi che lascia in background muoiono con lui. Se la sandbox
+non si può applicare la chat non parte, invece di girare senza; banner,
+`/cartella` e `ares preflight` dicono se è accesa. Dentro la cartella un
+comando resta libero: i limiti sono in
+[`SECURITY.md`](SECURITY.md#la-sandbox-opzionale-su-linux).
 
 Con `-p`, e in generale quando stdin non è un terminale, valgono solo
 `manuale` e `piano`, e gli store di apprendimento non vengono aggiornati:
@@ -452,7 +462,7 @@ banner dice quante regole ha letto e da dove, `/cartella` pure, e ogni
 comando deciso da una regola compare nel terminale con la regola che l'ha
 deciso. Il prefisso è una convenzione, non una sandbox: uno script nella
 cartella che si chiama `git` resta un rischio, come dice
-[`SECURITY.md`](SECURITY.md#ares-non-è-una-sandbox).
+[`SECURITY.md`](SECURITY.md#senza-sandbox-di-serie).
 
 ### Le conversazioni
 
@@ -672,7 +682,9 @@ ordini, ogni file, output o archivio che gli strumenti riportano arriva al
 modello delimitato come dati con la fonte dichiarata, e `ares -p` non scrive
 in memoria. Installazione e download dei
 modelli richiedono la rete, e i comandi shell autorizzati possono usarla:
-Ares è un agente locale controllato, non una sandbox di sicurezza. Il
+Ares è un agente locale controllato, non una sandbox di sicurezza, anche
+con la sandbox opzionale dei comandi, che protegge la macchina e non il
+progetto. Il
 modello di sicurezza completo è in [`SECURITY.md`](SECURITY.md), che dice
 anche come segnalare un problema.
 
@@ -687,8 +699,9 @@ Meglio dirlo prima, per non deludere nessuno:
   c'è un server da esporre;
 - **non è una sandbox.** Gli strumenti sui file restano nella cartella
   scelta, ma i comandi — quelli che autorizzi, o tutti in `auto` — possono
-  usare la rete e leggere e scrivere ciò che il tuo utente può: non è il
-  modo di dare un modello a dati che non vuoi far leggere;
+  usare la rete e leggere e scrivere ciò che il tuo utente può. La sandbox
+  opzionale su Linux ne restringe il raggio, ma non è il modo di dare un
+  modello a dati che non vuoi far leggere;
 - **non è una libreria né un prodotto.** Non c'è packaging per l'import, non
   c'è una UI oltre al terminale, e le API interne cambiano senza preavviso;
 - **non è il più adatto se** cerchi un agente integrato nell'editor, un

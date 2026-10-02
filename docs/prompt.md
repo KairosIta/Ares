@@ -49,7 +49,12 @@ predefinita; traduzioni e testi richiesti in altre lingue restano possibili.
 Le modalità regolano gli strumenti del workspace. `piano` non espone
 scritture o comandi sul workspace, ma lascia attive memoria e quaderno.
 Gli strumenti sui file rispettano la radice; l'esecuzione di comandi non è
-una sandbox. Le conferme operative sono raccolte dall'interfaccia quando
+una sandbox, salvo con `ARES_SANDBOX=bwrap`. Allora la descrizione di
+`workspace_run_command` e la scheda dell'ambiente lo dicono in una frase
+(«scrive solo nella cartella di lavoro e in /tmp, senza rete»), e l'errore
+di un comando fallito aggiunge i limiti e di non riprovare né aggirarli
+scrivendo altrove: con i fallimenti descritti in anticipo il 9B non lancia
+più comandi, e nella descrizione costano token a ogni richiesta. Le conferme operative sono raccolte dall'interfaccia quando
 lo strumento sospende il turno, senza una domanda preliminare duplicata.
 
 Il nome di ogni strumento sui file dice dove agisce: `workspace_*` nella
