@@ -15,6 +15,7 @@ from ares.agent.learning import (
     build_learning_machine,
     build_session_context_store,
 )
+from ares.agent.marcatura import marca_risultati
 from ares.agent.prompts import (
     descrizione,
     istruzione_sui_risultati,
@@ -119,6 +120,9 @@ def build_assistant(
         session_id=session_id,
         metadata=metadata,
         tools=[build_quaderno(fs), build_orologio()] + ([spazio] if spazio is not None else []),
+        # Cio' che gli strumenti leggono dal mondo arriva al modello fra due
+        # righe che dicono la fonte e che sono dati (`agent/marcatura.py`).
+        tool_hooks=[marca_risultati(politica.workspace.prefisso)],
         offload_tool_results=build_result_store(fs) if config.OFFLOAD_TOOL_RESULTS else None,
         instructions=istruzioni(
             impostazioni=impostazioni,

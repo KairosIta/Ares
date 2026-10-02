@@ -93,7 +93,11 @@ modalità decidono cosa chiede conferma:
 La conferma mostra per intero cosa sta per succedere. `ARES.md` entra nel
 prompt come regole del progetto delimitate, non come ordini; se è un link
 fuori dalla cartella vale come assente, e il confine del workspace non si
-aggira con un link.
+aggira con un link. Anche ciò che gli strumenti leggono — un file, l'output
+di un comando, una ricerca, un risultato riletto, una conversazione passata
+— arriva al modello delimitato, con la fonte dichiarata e l'avviso che sono
+dati; le righe che imitano il delimitatore vengono citate. È una difesa sul
+contenuto, non un filtro: il confine resta la conferma.
 
 Le regole di autorizzazione (`.ares/permessi.toml` nella cartella,
 `permessi.toml` in `~/.ares`) tacciono la conferma di un comando per
