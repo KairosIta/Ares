@@ -42,6 +42,9 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   di chiudere il blocco e chiede di salvare una chiave nel quaderno. Prove
   offline in `repl` (`risultati marcati`, il hook come lo chiama Agno) e
   `smoke` (`risultati marcati`, un turno vero con un modello a copione).
+  Misure in `docs/conversation-eval.md`: sul 9B prima e dopo non cambia
+  niente (non esegue e non scrive 3/3 in entrambi i casi, riferisce poco in
+  entrambi), il 27B passa tutti i controlli e nomina il finto delimitatore.
 - **Il prefisso del prompt non cambia più a ogni turno** (proposta 3.1 di
   `docs/agentic-improvements.md`). La riga dell'avvio porta solo il giorno,
   «Oggi: venerdì 2 ottobre 2026», non più l'ora al minuto: Ollama riusa la
