@@ -154,10 +154,19 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
     `read_past_session`, perché `search_past_sessions` non sa dove una
     sessione è nata.
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
-  store usano nel prompt.
+  store usano nel prompt. `AresMemories` non perde una memoria corretta o
+  tolta: la copia in `superate`, con `invalidata_il` e `sostituita_da`, e
+  tiene in `memories` solo le valide, che sono le sole a raggiungere prompt,
+  estrattore ed eco. Una cancellazione di Agno riassegna la lista filtrata:
+  `__setattr__` la intercetta, qualunque strada l'abbia chiesta.
 - `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
   restituisce la differenza, senza agganciarsi a funzioni private di Agno;
-  raccoglie anche ciò che il radicamento ha scartato.
+  raccoglie anche ciò che il radicamento ha scartato, e dopo ogni turno
+  scrive sulle memorie toccate da quale sessione, turno e cartella vengono
+  (`annota_provenienza`), riconoscendole dall'`updated_at` che Agno
+  aggiorna. Nel prompt ogni memoria porta, accanto alla data, l'id della
+  conversazione da cui viene, che `read_past_session` rilegge; cartella e
+  turno restano per `/memorie origine`.
 - `ares/config.py` raccoglie le impostazioni versionate e decide i percorsi
   dello stato (vedi [Configurazione](#configurazione)). Importarlo non tocca
   il disco: la directory dello stato la crea `prepara_archivio()`, chiamata
@@ -369,6 +378,11 @@ separato `filesystem.db`, altrimenti il payload resterebbe orfano: è
 un'invariante verificata dalla prova dedicata. La cancellazione di più
 sessioni non è atomica: un guasto a metà esce come stato parziale, con
 l'elenco di ciò che è sparito e lo snapshot pre-manutenzione da cui tornare.
+
+La retention non tocca le memorie: una memoria che viene da una sessione
+cancellata conserva il suo id di sessione come riferimento pendente, e
+`/memorie origine` lo mostra uguale. È dichiarato, non un guasto: la
+memoria resta vera anche se la conversazione da cui è nata non c'è più.
 
 ## Configurazione
 

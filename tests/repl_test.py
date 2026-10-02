@@ -395,6 +395,29 @@ def comando_igienico() -> str:
     return "stdin chiuso, ambiente filtrato, 300 righe in testa, coda e conto, errori spiegati, variante asincrona"
 
 
+def memorie_a_schermo() -> str:
+    """`/memorie origine` e `/memorie superate`: da dove viene una memoria, e come e' stata superata."""
+    voce = {
+        "content": "Le  migrazioni\nsi scrivono a mano.",
+        "sessione": "ares-a1b2",
+        "cartella": "/progetti/alfa",
+        "valida_dal": "2026-10-02T13:00:00+00:00",
+    }
+    esigi(
+        render.riga_origine(voce) == "  da sessione ares-a1b2, cartella /progetti/alfa, dal 2026-10-02",
+        "origine: " + repr(render.riga_origine(voce)),
+    )
+    esigi(render.riga_origine({"content": "x"}) == "  provenienza non registrata", "origine assente taciuta")
+    sostituita = render.righe_superata({**voce, "invalidata_il": "2026-10-03T08:00:00Z", "sostituita_da": "a1"})
+    esigi(
+        sostituita[:2] == ["- Le migrazioni si scrivono a mano.", "  sostituita il 2026-10-03"],
+        "superata: " + repr(sostituita),
+    )
+    tolta = render.righe_superata({"content": "x", "invalidata_il": "2026-10-03T08:00:00Z"})
+    esigi(tolta[1:] == ["  tolta il 2026-10-03", "  provenienza non registrata"], "tolta: " + repr(tolta))
+    return "origine con sessione, cartella e data; superata sostituita o tolta, testo su una riga"
+
+
 def regole_a_schermo() -> str:
     """Cio' che la persona vede delle sue regole: la richiesta decisa da una regola, la concessione, il banner."""
     from ares.core.regole import Regola, Regole
@@ -2048,6 +2071,7 @@ def main() -> int:
             ("avvertenze comando  ", avvertenze_del_comando),
             ("comando igienico    ", comando_igienico),
             ("regole a schermo    ", regole_a_schermo),
+            ("memorie a schermo   ", memorie_a_schermo),
             ("risultati marcati   ", risultati_marcati),
             ("conferme applicate  ", conferme_applicate),
             ("metriche del turno  ", metriche_del_turno),

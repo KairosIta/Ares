@@ -323,7 +323,10 @@ l'archivio.
   cambiato niente. Un valore estratto che non ha appiglio nella
   conversazione, come una professione o una tecnologia mai nominate o un
   «Non specificato» in un campo vuoto, non entra: l'eco lo elenca come non
-  appreso.
+  appreso. Una memoria corretta o tolta non sparisce: `/memorie superate`
+  la mostra con la data, e `/memorie origine` dice da quale conversazione e
+  cartella viene ciascuna memoria. Lo sa anche Ares: a «da dove lo sai?»
+  risponde con la conversazione in cui gliel'hai detto.
 - **Il contesto non si satura, e lo stato si può riprendere.** Entro la quota
   Agno i risultati molto grandi restano lossless negli archivi locali e
   vengono riletti a pagine; snapshot verificati, restore protetto, fusione

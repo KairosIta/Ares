@@ -48,7 +48,7 @@ from ares.agent.agno_interni import (
 from ares.agent.echo import CAMPI_DI_SERVIZIO
 from ares.agent.radicamento import Fonte, radica_campo, radica_memoria
 from ares.agent.runtime import build_learning_model
-from ares.agent.schemas import AresMemories, AresProfile
+from ares.agent.schemas import AresMemories, AresMemorieSenzaData, AresProfile
 from ares.config import QUADERNO_PREFIX, Impostazioni, Politica
 from ares.state.identita import Utente
 from ares.state.stores import namespace_entita, namespace_utente
@@ -883,7 +883,7 @@ def build_learning_machine(
             db=db,
             mode=LearningMode.ALWAYS,
             model=learning_model,
-            schema=AresMemories if apprendimento.memorie_datate else None,
+            schema=AresMemories if apprendimento.memorie_datate else AresMemorieSenzaData,
             max_updates_per_run=apprendimento.max_aggiornamenti,
             enable_agent_tools=apprendimento.strumenti_memoria and strumenti,
             instructions=(

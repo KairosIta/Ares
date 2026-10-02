@@ -9,11 +9,12 @@ from typing import NamedTuple
 from agno.agent import Agent
 
 from ares import config
+from ares.agent.echo import superate, valide
 from ares.agent.prompts import percorso_istruzioni
 from ares.cli import cartella
 from ares.cli.conversazioni import conto_scambi, righe_sessione, testo_markdown
 from ares.cli.log import configura_log_agno
-from ares.cli.render import riga_regole
+from ares.cli.render import riga_origine, riga_regole, righe_superata
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.core.autorizzazioni import ModoNonAmmesso
@@ -99,7 +100,30 @@ def _comando_profilo(stato: StatoChat, argomento: str) -> None:
 
 
 def _comando_memorie(stato: StatoChat, argomento: str) -> None:
+    """Le memorie valide; `origine` dice da dove vengono, `superate` mostra quelle corrette o tolte."""
+    scelta = argomento.strip().casefold()
+    if scelta == "origine":
+        voci = valide(stato.agent)
+        UI.heading("Memorie e loro origine")
+        for voce in voci:
+            UI.line("- " + " ".join(str(voce.get("content") or "").split()))
+            UI.line(riga_origine(voce), style="ares.muted")
+        if not voci:
+            UI.line("Nessuna memoria.", style="ares.muted")
+        return
+    if scelta == "superate":
+        voci = superate(stato.agent)
+        UI.heading("Memorie superate")
+        for voce in voci:
+            for indice, riga in enumerate(righe_superata(voce)):
+                UI.line(riga, style=None if indice == 0 else "ares.muted")
+        if not voci:
+            UI.line("Nessuna memoria superata.", style="ares.muted")
+        return
     stampa_store(_store(stato, "user_memory_store"), "Memorie", user_id=stato.utente.id)
+    quante = len(superate(stato.agent))
+    if quante:
+        UI.line("(" + str(quante) + " superate: /memorie superate)", style="ares.muted")
 
 
 def _comando_contesto(stato: StatoChat, argomento: str) -> None:
@@ -368,7 +392,12 @@ def _comando_esci(stato: StatoChat, argomento: str) -> bool:
 COMANDI: tuple[Comando, ...] = (
     Comando("/aiuto", ("/?",), "questo elenco", _comando_aiuto),
     Comando("/profilo", (), "il profilo utente accumulato", _comando_profilo),
-    Comando("/memorie", (), "le memorie non strutturate", _comando_memorie),
+    Comando(
+        "/memorie",
+        (),
+        "le memorie non strutturate; `origine` da dove vengono, `superate` quelle corrette o tolte",
+        _comando_memorie,
+    ),
     Comando("/contesto", (), "obiettivo e avanzamento della sessione", _comando_contesto),
     Comando("/sessioni", (), "le conversazioni di questa cartella; <testo> filtra, `tutte` allarga", _comando_sessioni),
     Comando(
@@ -427,7 +456,14 @@ def candidati_argomento(stato: StatoChat) -> dict[str, Callable[[], list[tuple[s
     Le chiusure leggono `stato` al momento della chiamata, non ora: dopo
     `/sessione x` la corrente e' un'altra, e l'elenco deve saperlo.
     """
-    return {"/modo": _candidati_modo, "/sessione": lambda: _candidati_sessione(stato)}
+    return {
+        "/modo": _candidati_modo,
+        "/sessione": lambda: _candidati_sessione(stato),
+        "/memorie": lambda: [
+            ("origine", "da quale sessione e cartella viene ogni memoria"),
+            ("superate", "le memorie corrette o tolte, con la loro provenienza"),
+        ],
+    }
 
 
 def stampa_aiuto() -> None:
