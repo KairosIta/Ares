@@ -160,7 +160,12 @@ le tre estrazioni girano davvero insieme (un modello finto risponde solo a
 tre chiamate contemporanee); un guasto di uno store diventa un avviso; dopo
 un Ctrl-C l'interruzione arriva subito, e nessuno store scrive né ritenta
 quando il modello risponde; il `Cancello` aspetta la scrittura cominciata.
-Numeri e opzioni in
+Con l'estrazione vincolata, di serie con un estrattore locale, le chiamate
+restano tre: il contesto non porta strumenti ma lo schema in `format`, e il
+JSON arriva nello store come la tool call, al primo tentativo; profilo e
+memorie restano sulla tool call. Lo schema in `format` è grammatica, non
+prompt. Numeri e
+opzioni in
 [qualità della memoria](memory-quality.md#costo-delle-estrazioni-22-settembre-2026);
 la misura con i modelli veri la stampa `e2e`.
 

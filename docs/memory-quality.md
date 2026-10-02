@@ -1063,3 +1063,52 @@ senza scartare contenuti detti, e non costa inferenze. Non migliora il
 giudizio dell'estrattore né il recupero, che restano i limiti dei 9B in
 questo benchmark; il passo 2 della proposta, l'uscita vincolata, mira alla
 forma delle estrazioni.
+
+### Contesto di sessione vincolato dallo schema, 2 ottobre 2026
+
+Secondo passo della proposta 3.6: con un estrattore locale l'estrazione
+chiede un oggetto JSON vincolato dallo schema (`format` di Ollama,
+temperatura 0, nessuno strumento nella stessa richiesta) invece della tool
+call, e lo applica con la stessa funzione. `ARES_ESTRAZIONE_VINCOLATA=0` lo
+spegne; con il cloud resta la tool call. Tre giri sul MiMo-V2.6 9B, tutti
+i casi, tre ripetizioni, dopo il radicamento: senza vincolo (la sezione
+precedente), con il vincolo su profilo e contesto, con il vincolo sul solo
+contesto. Rapporti `radicamento-`, `vincolata-` e
+`contesto-vincolato-mimo-2.6-9b-20261002.json`.
+
+| MiMo 9B | Superate | Fallite | Da revisionare | Non conclusive | Errori | Contesto al 1° tentativo | Estrazione | `current_focus` scritto |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| tool call | 11 | 18 | 13 | 26 | 5 | 66 su 72 | 10,9 s | 32 fasi |
+| profilo e contesto vincolati | 9 | 29 | 2 | 32 | 0 | 72 su 72 | 6,8 s | 9 fasi |
+| solo il contesto vincolato | 13 | 16 | 15 | 27 | 1 | 72 su 72 | 6,9 s | 31 fasi |
+
+- **Sul contesto il vincolo toglie il guasto più frequente del MiMo.** Il
+  contesto si salva sempre al primo tentativo, nessuna fase finisce in
+  errore per «contesto non salvato» (erano tre, più un timeout e una fase
+  interrotta), e l'estrazione costa un terzo in meno perché non ripete il
+  tentativo. L'unico errore rimasto è della sonda.
+- **Sul profilo il vincolo fa astenere il modello.** Con la grammatica il
+  MiMo mette null nei campi che con lo strumento scriveva: `current_focus`
+  passa da 32 fasi a 9, e ciò che serviva fra una sessione e l'altra resta
+  solo nel contesto della sessione. `recupero` passa da 2 superate su 3 a
+  0, e le fallite da 18 a 29, quasi tutte con la sonda che risponde null
+  mentre il dato è negli store, ma non nel profilo che lei legge. È il costo del vincolo sul giudizio «c'è qualcosa da
+  salvare?» descritto in [agentic-improvements](agentic-improvements.md).
+  Il profilo resta quindi sulla tool call, ripulito dal radicamento.
+- **Con il solo contesto vincolato** i benefici restano e il profilo torna
+  com'era: 13 superate e 16 fallite, il miglior giro del MiMo di oggi,
+  dentro il rumore di tre ripetizioni ma senza la perdita di prima.
+
+**9B di serie**, `avvio` e `correzione` per tre ripetizioni (`recupero`
+aggiunto solo nell'ultimo giro):
+
+| 9B di serie | Superate | Fallite | Da revisionare | Non conclusive | Estrazione | `current_focus` scritto |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| tool call | 4 | 7 | 2 | 5 | 6,4 s | 12 fasi su 18 |
+| profilo e contesto vincolati | 5 | 4 | 3 | 6 | 5,2 s | 0 |
+| solo il contesto vincolato | 6 | 6 | 1 | 5 | 5,1 s | 12 |
+
+Il 9B salvava già il contesto al primo tentativo: qui il vincolo porta
+solo un'estrazione più rapida. Anche il 9B, col profilo vincolato, non
+scrive mai `current_focus`; `recupero`, con il solo contesto vincolato, è
+superato in tre ripetizioni su tre.

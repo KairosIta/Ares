@@ -15,6 +15,7 @@ per intero conserva le voci che lo store conteneva gia'.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import replace
 from typing import Any
 from unittest.mock import patch
 
@@ -40,6 +41,9 @@ from ares.state.identita import Utente  # noqa: E402
 
 PERCORSI = config.leggi_percorsi()
 IMPOSTAZIONI = config.leggi_impostazioni()
+# Il contesto di sessione con la tool call invece che dal `.env`: l'estrattore
+# finto risponde solo con tool call.
+CON_STRUMENTI = replace(IMPOSTAZIONI, apprendimento="estrattore-finto:9b", vincolo_estrazione=False)
 POLITICA = config.leggi_politica()
 
 # Campo, valore proposto, testo della conversazione, valore atteso (None se
@@ -185,12 +189,12 @@ class AgenteFinto:
         self.user_id = utente.id
 
 
-def estrai(utente: Utente, argomenti: dict[str, dict[str, Any]], testo: str) -> Any:
+def estrai(utente: Utente, argomenti: dict[str, dict[str, Any]], testo: str, impostazioni: Any = CON_STRUMENTI) -> Any:
     """La macchina di apprendimento dopo un turno estratto dall'estrattore finto."""
     # Il contesto di sessione non si radica: scrive sempre, e il retry tace.
     finto = EstrattoreFinto({"save_session_context": {"summary": "Un turno di prova."}, **argomenti})
     with patch.object(learning, "build_learning_model", lambda impostazioni: finto):
-        macchina = build_learning_machine(build_db(PERCORSI), None, utente, IMPOSTAZIONI, POLITICA)
+        macchina = build_learning_machine(build_db(PERCORSI), None, utente, CON_STRUMENTI, POLITICA)
     macchina.process_completed_run(
         messages=[Message(role="user", content=testo), Message(role="assistant", content="Va bene.")],
         user_id=utente.id,

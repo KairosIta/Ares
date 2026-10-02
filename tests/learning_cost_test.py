@@ -159,6 +159,7 @@ class ModelloConta(Model):
                 "strumenti": [nome_strumento(funzione) for funzione in tools or []],
                 "schemi": sum(len(schema_strumento(funzione)) for funzione in tools or []),
                 "messaggi": [str(getattr(m, "content", "") or "") for m in messages],
+                "formato": getattr(self, "format", None),
             }
         )
         return self._risposta(tools)
@@ -188,10 +189,12 @@ def senza(quale: str) -> Any:
 
 
 # Il nome del modello di estrazione decide la modalita' (vedi
-# `Impostazioni.estrazione_in_parallelo`): la prova la fissa, invece di
-# ereditarla dal `.env` di chi la lancia.
-IN_SERIE = replace(IMPOSTAZIONI, apprendimento="conta-costo:9b")
+# `Impostazioni.estrazione_in_parallelo` ed `estrazione_vincolata`): la prova
+# la fissa, invece di ereditarla dal `.env` di chi la lancia. Le prove sulla
+# tool call la vogliono anche in locale, quindi senza vincolo.
+IN_SERIE = replace(IMPOSTAZIONI, apprendimento="conta-costo:9b", vincolo_estrazione=False)
 IN_PARALLELO = replace(IMPOSTAZIONI, apprendimento="conta-costo:cloud")
+VINCOLATA = replace(IMPOSTAZIONI, apprendimento="conta-costo:9b", vincolo_estrazione=None)
 
 
 def macchina_con(
@@ -428,6 +431,85 @@ class ModelloTrattenuto(ModelloConta):
         return super()._misura(messages, tools)
 
 
+class ModelloVincolato(ModelloConta):
+    """Come `ModelloConta`, ma a una richiesta senza strumenti con uno schema risponde in JSON.
+
+    L'estrazione vincolata imposta `format` sulla copia del modello, che qui
+    e' il modello stesso.
+    """
+
+    def _risposta(self, tools: Any) -> ModelResponse:
+        if tools or not isinstance(getattr(self, "format", None), dict):
+            return super()._risposta(tools)
+        dati = {**ARGOMENTI_DI_SALVATAGGIO["save_session_context"], "goal": None, "plan": [], "progress": []}
+        return ModelResponse(role="assistant", content=json.dumps(dati), response_usage=MessageMetrics())
+
+
+def costo_dell_estrazione_vincolata() -> str:
+    """In locale il contesto chiede un JSON con lo schema, senza strumenti.
+
+    Le chiamate restano una per store; il contesto non porta strumenti ma lo
+    schema in `format`, profilo e memorie restano con la tool call. Cio' che
+    il JSON dice arriva nello store come con la tool call. Le due
+    vie si misurano su utenti nuovi, perche' uno store gia' pieno allunga
+    il prompt.
+    """
+
+    def turno_nuovo(finto: ModelloConta, impostazioni: Any, nome: str) -> Any:
+        utente = Utente.da_grezzo(nome)
+        macchina = macchina_con(finto, None, impostazioni, utente)
+        turno_completato(macchina, utente)
+        return macchina, utente
+
+    finto = ModelloVincolato()
+    macchina, utente = turno_nuovo(finto, VINCOLATA, "costo-vincolato")
+    chiamate = finto.chiamate
+    esigi(len(chiamate) == CHIAMATE_PER_TURNO, "l'estrazione vincolata costa " + str(len(chiamate)) + " chiamate")
+    vincolate = [c for c in chiamate if not c["strumenti"]]
+    esigi(len(vincolate) == 1, "non e' solo il contesto a chiedere un JSON: " + str(len(vincolate)))
+    esigi(
+        all(isinstance(c["formato"], dict) and c["formato"].get("type") == "object" for c in vincolate),
+        "una richiesta senza strumenti non porta lo schema in format",
+    )
+    esigi(
+        per_store(chiamate) == {"add_memory": 1, "update_profile": 1},
+        "profilo e memorie non usano piu' la tool call: " + str(per_store(chiamate)),
+    )
+    esigi(
+        all(any(APERTURA in m for m in c["messaggi"]) for c in chiamate),
+        "un'estrazione vincolata non rimanda la conversazione",
+    )
+    profilo = macchina.user_profile_store.get(user_id=utente.id)
+    attuale = ARGOMENTI_DI_SALVATAGGIO["update_profile"]["current_focus"]
+    esigi(
+        profilo is not None and profilo.current_focus == attuale,
+        "il profilo con la tool call non e' salvato: " + str(profilo),
+    )
+    contesto = macchina.session_context_store.get(session_id="costo-" + utente.id)
+    esigi(
+        contesto is not None and contesto.summary == ARGOMENTI_DI_SALVATAGGIO["save_session_context"]["summary"],
+        "il contesto dal JSON non e' salvato: " + str(contesto),
+    )
+    esigi(macchina.session_context_store.last_extraction_attempts == 1, "il contesto dal JSON ha richiesto un retry")
+
+    con_strumenti = ModelloConta()
+    turno_nuovo(con_strumenti, IN_SERIE, "costo-con-strumenti")
+    *_, schemi, totale = pesi(chiamate)
+    *_, schemi_prima, totale_prima = pesi(con_strumenti.chiamate)
+    esigi(schemi < schemi_prima, "lo schema degli strumenti non si alleggerisce")
+    return (
+        str(len(chiamate))
+        + " chiamate, quella del contesto con lo schema in format: "
+        + str(totale)
+        + " caratteri contro "
+        + str(totale_prima)
+        + " con le tool call; schemi di strumenti "
+        + str(schemi)
+        + " contro "
+        + str(schemi_prima)
+    )
+
+
 def in_parallelo_come_in_serie() -> str:
     """In parallelo le chiamate e le scritture sono quelle della serie, e gli store estraggono insieme."""
     utente = Utente.da_grezzo("costo-parallelo")
@@ -557,6 +639,7 @@ def main() -> int:
             ("politica spegne il costo", la_politica_spegne_il_costo),
             ("modello che non ubbidisce", il_modello_che_non_ubbidisce),
             ("scrittura negli store", la_scrittura_arriva_negli_store),
+            ("estrazione vincolata", costo_dell_estrazione_vincolata),
             ("in parallelo", in_parallelo_come_in_serie),
             ("errore in parallelo", un_errore_non_ferma_gli_altri),
             ("ctrl-c in parallelo", ctrl_c_non_lascia_scritture),

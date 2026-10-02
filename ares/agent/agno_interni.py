@@ -19,6 +19,9 @@ INTERNI: tuple[tuple[str, str, str], ...] = (
     ("agno.learn.stores.user_profile", "UserProfileStore", "_build_functions_for_model"),
     ("agno.learn.stores.user_memory", "UserMemoryStore", "_build_functions_for_model"),
     ("agno.learn.stores.user_memory", "UserMemoryStore", "_should_expose_tools"),
+    ("agno.learn.stores.session_context", "SessionContextStore", "_get_system_message"),
+    ("agno.learn.stores.session_context", "SessionContextStore", "_get_extraction_tools"),
+    ("agno.learn.stores.session_context", "SessionContextStore", "_aget_extraction_tools"),
     ("agno.learn.stores.entity_memory", "EntityMemoryStore", "_should_expose_tools"),
     ("agno.agent._tools", "determine_tools_for_model", ""),
     ("agno.learn.machine", "_filter_store_kwargs", ""),
@@ -43,6 +46,26 @@ class FunzioniRitoccate:
 
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
         return funzioni
+
+
+def prompt_di_estrazione(store: Any, **kwargs: Any) -> Message:
+    """Il system message con cui uno store di Agno estrae: `_get_system_message`."""
+    return store._get_system_message(**kwargs)
+
+
+def strumenti_di_estrazione(store: Any, **kwargs: Any) -> list[Any]:
+    """Le funzioni con cui uno store di Agno salva cio' che estrae: `_get_extraction_tools`."""
+    return store._get_extraction_tools(**kwargs)
+
+
+async def astrumenti_di_estrazione(store: Any, **kwargs: Any) -> list[Any]:
+    """Come `strumenti_di_estrazione`, nella versione asincrona dello store."""
+    return await store._aget_extraction_tools(**kwargs)
+
+
+def funzioni_di_estrazione(store: Any, strumenti: list[Any]) -> list[Any]:
+    """Le `Function` date al modello, ritoccate se lo store usa `FunzioniRitoccate`."""
+    return store._build_functions_for_model(tools=strumenti)
 
 
 def strumenti_esposti(store: Any) -> bool:

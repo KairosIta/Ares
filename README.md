@@ -140,6 +140,14 @@ espliciti. Le schede dei modelli ne consigliano spesso altri, e con un
 modello diverso da quello di serie conviene provarli con gli eval prima di
 adottarli; i valori sono commentati in [`.env.example`](.env.example).
 
+Con un modello di estrazione locale, il contesto di sessione non passa da
+una tool call: Ares chiede un oggetto JSON vincolato dallo schema (il
+`format` di Ollama), così un modello piccolo non dimentica la chiamata e non
+ne sbaglia la forma. Profilo e memorie restano sulla tool call, dove i
+modelli piccoli scrivono di più. Con un modello cloud resta la tool call, perché il
+cloud di Ollama non applica lo schema. `ARES_ESTRAZIONE_VINCOLATA=0` lo
+spegne.
+
 I modelli sono artefatti esterni, non inclusi nel repository: consulta la
 [model card di Qwen3.8-9B-Distill](https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF)
 e la [scheda di glm-5.3-flash](https://ollama.com/library/glm-5.3-flash) per
