@@ -1170,7 +1170,8 @@ Tre ripetizioni delle 13 coppie, 39 giudizi:
 | `deepseek-v4.1-flash:cloud` | — | 39/39 (21 s) |
 
 Gli errori di MiMo senza vincolo sono tutti «superata» al posto di
-«doppione», che portano allo stesso esito: la più vecchia si ritira. In
+«doppione», che portano allo stesso esito quando la più recente è anche
+la più completa: la più vecchia si ritira. In
 locale la richiesta è vincolata dallo schema; il cloud, che non applica lo
 schema, risponde con una parola. Una risposta illeggibile vale «distinte»,
 l'unica che non tocca niente.

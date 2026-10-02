@@ -19,7 +19,12 @@ from agno.learn.config import UserMemoryConfig  # noqa: E402
 from agno.learn.stores.user_memory import UserMemoryStore  # noqa: E402
 
 from ares import config  # noqa: E402
-from ares.agent.schemas import AresMemories, chiave_memoria  # noqa: E402
+from ares.agent.schemas import (  # noqa: E402
+    SUPERATE_PER_MEMORIA,
+    AresMemories,
+    AresMemorieSenzaData,
+    chiave_memoria,
+)
 from ares.backup.snapshots import elenco_snapshot, ripristina_snapshot, verifica_snapshot  # noqa: E402
 from ares.cli.app import esegui as esegui_ares  # noqa: E402
 from ares.memories import maintenance  # noqa: E402
@@ -107,6 +112,44 @@ def candidate_ordinate() -> str:
     return str(len(coppie)) + " coppie, identiche in testa; una voce senza id non si tocca"
 
 
+def resta_il_doppione_completo() -> str:
+    """Di un doppione resta la memoria che dice di piu', anche se e' la piu' vecchia; di una superata la recente."""
+    coppia = [
+        {"id": "a", "content": "Ha un labrador di nome Fido.", "updated_at": "2026-09-01T10:00:00Z"},
+        {"id": "b", "content": "Ha un cane.", "updated_at": "2026-09-02T10:00:00Z"},
+    ]
+    vicine = lambda testi: [[1.0, 0.0]] * len(testi)  # noqa: E731
+    doppione = pianifica(coppia, vicine, lambda vecchia, recente: "doppione")
+    esigi(doppione.sostituzioni == {"b": "a"}, "doppione: " + repr(doppione.sostituzioni))
+    superata = pianifica(coppia, vicine, lambda vecchia, recente: "superata")
+    esigi(superata.sostituzioni == {"a": "b"}, "superata: " + repr(superata.sostituzioni))
+    pari = [coppia[0], {**coppia[1], "content": "Ha un labrador di nome Lucy."}]
+    esigi(
+        pianifica(pari, vicine, lambda vecchia, recente: "doppione").sostituzioni == {"a": "b"},
+        "a pari lunghezza non resta la piu' recente",
+    )
+    return "doppione: resta il labrador piu' vecchio; superata e pari lunghezza: resta la recente"
+
+
+class StoreFinto:
+    def __init__(self, contenitore: AresMemories) -> None:
+        self.contenitore = contenitore
+
+    def get(self, user_id: str) -> AresMemories:
+        return self.contenitore
+
+
+def verifica_senza_id() -> str:
+    """Memorie senza id o con id ripetuto contano una per una nella verifica finale."""
+    memorie = AresMemories(user_id=UTENTE, memories=voci())
+    memorie.memories += [{"content": "Senza id."}, {"content": "Senza id, un'altra."}]
+    piano = pianifica(memorie.memories, incorpora, GiudiceFinto())
+    prima = len(memorie.memories)
+    memorie.ritira(piano.sostituzioni)
+    maintenance.verifica(StoreFinto(memorie), UTENTE, piano, valide_prima=prima)
+    return str(prima) + " memorie, due senza id: la verifica torna"
+
+
 def risposte_del_modello() -> str:
     esigi(leggi_relazione('{"relazione": "superata"}', vincolato=True) == "superata", "JSON vincolato")
     esigi(leggi_relazione("Doppione.", vincolato=False) == "doppione", "parola con punto")
@@ -125,6 +168,35 @@ def ritira_sposta_fra_le_superate() -> str:
     esigi(superate == {"m0": "m2", "m3": "m4"}, "superate: " + repr(superate))
     esigi(all(v.get("invalidata_il") for v in memorie.superate), "manca invalidata_il")
     return "ritirate con sostituita_da, registrate una volta sola"
+
+
+def superate_contenute() -> str:
+    """Una superata non porta il `source` di Agno, e di una memoria restano le ultime versioni."""
+    memorie = AresMemories(user_id=UTENTE)
+    voce = memorie.add_memory("Versione 0.", source="un pezzo di conversazione")
+    altra = memorie.add_memory("Un'altra memoria.")
+    memorie.delete_memory(altra)
+    for numero in range(1, SUPERATE_PER_MEMORIA + 5):
+        memorie.update_memory(voce, "Versione " + str(numero) + ".", source="conversazione " + str(numero))
+    esigi(all("source" not in v for v in memorie.superate), "una superata porta il source")
+    versioni = [v["content"] for v in memorie.superate if v["id"] == voce]
+    attese = ["Versione " + str(n) + "." for n in range(4, SUPERATE_PER_MEMORIA + 4)]
+    esigi(versioni == attese, "versioni superate: " + repr(versioni))
+    esigi([v["id"] for v in memorie.superate].count(altra) == 1, "il tetto ha tolto la superata di un'altra memoria")
+    return str(SUPERATE_PER_MEMORIA) + " versioni per memoria, le piu' recenti, senza source"
+
+
+def prompt_senza_data() -> str:
+    """Con `DATE_MEMORIE` spento il prompt perde la data, non la conversazione."""
+    voce = {"id": "m1", "content": "Usa Helix.", "updated_at": "2026-09-01T10:00:00Z", "sessione": "s-prova"}
+    senza = AresMemorieSenzaData(user_id=UTENTE, memories=[voce, {"id": "m2", "content": "Usa Debian."}])
+    testo = senza.get_memories_text()
+    esigi("- Usa Helix. [conversazione s-prova]" in testo, "la conversazione non e' citata: " + testo)
+    esigi("- Usa Debian.\n" not in testo and testo.endswith("- Usa Debian."), "la memoria senza note: " + testo)
+    esigi("2026-09-01" not in testo, "la data e' nel prompt: " + testo)
+    con = AresMemories(user_id=UTENTE, memories=[voce]).get_memories_text()
+    esigi("- Usa Helix. [2026-09-01, conversazione s-prova]" in con, "con le date: " + con)
+    return "senza date resta [conversazione ...]; con le date [giorno, conversazione ...]"
 
 
 def _store() -> UserMemoryStore:
@@ -176,8 +248,12 @@ def main() -> int:
             ("chiavi", chiavi),
             ("candidate", candidate_ordinate),
             ("piano", piano_sintetico),
+            ("doppione completo", resta_il_doppione_completo),
+            ("verifica senza id", verifica_senza_id),
             ("risposte", risposte_del_modello),
             ("ritiro", ritira_sposta_fra_le_superate),
+            ("superate contenute", superate_contenute),
+            ("prompt senza data", prompt_senza_data),
             ("comando", comando_completo),
         )
     )

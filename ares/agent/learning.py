@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from agno.db.sqlite import SqliteDb
@@ -45,7 +45,6 @@ from ares.agent.agno_interni import (
     strumenti_di_estrazione,
     strumenti_esposti,
 )
-from ares.agent.echo import CAMPI_DI_SERVIZIO
 from ares.agent.radicamento import Fonte, radica_campo, radica_memoria
 from ares.agent.runtime import build_learning_model
 from ares.agent.scaffale import ENTITA, INTUIZIONI, Scaffale
@@ -331,8 +330,8 @@ class EstrazioneVincolata:
     async def _aesistente(self, kwargs: dict[str, Any]) -> Any:
         raise NotImplementedError
 
-    def _richiesta(self, kwargs: dict[str, Any], esistente: Any) -> tuple[list[Any], dict[str, Any]] | None:
-        """I messaggi e lo schema JSON, o `None` se non c'e' niente da estrarre."""
+    def _richiesta(self, kwargs: dict[str, Any], esistente: Any) -> tuple[list[Any], dict[str, Any]]:
+        """I messaggi e lo schema JSON."""
         raise NotImplementedError
 
     def _argomenti(self, dati: dict[str, Any], esistente: Any) -> dict[str, Any] | None:
@@ -344,9 +343,6 @@ class EstrazioneVincolata:
 
     def _strumenti(self, kwargs: dict[str, Any], esistente: Any) -> list[Callable[..., Any]]:
         raise NotImplementedError
-
-    def _applicata(self) -> None:
-        """Dopo la chiamata alla funzione: la sottoclasse aggiorna i propri flag."""
 
     async def _astrumenti(self, kwargs: dict[str, Any], esistente: Any) -> list[Callable[..., Any]]:
         raise NotImplementedError
@@ -371,10 +367,7 @@ class EstrazioneVincolata:
         if not self.vincolata:
             return super().extract_and_save(*args, **kwargs)  # type: ignore[misc]
         esistente = self._esistente(kwargs)
-        richiesta = self._richiesta(kwargs, esistente)
-        if richiesta is None:
-            return NIENTE_DA_AGGIORNARE
-        messaggi, schema = richiesta
+        messaggi, schema = self._richiesta(kwargs, esistente)
         modello = self._modello(schema)
         dati = self._dati(modello.response(messages=messaggi), modello, kwargs.get("run_metrics"))
         argomenti = self._argomenti(dati, esistente) if dati is not None else None
@@ -382,18 +375,13 @@ class EstrazioneVincolata:
             return NIENTE_DA_AGGIORNARE
         strumenti = self._strumenti(kwargs, esistente)
         funzione = self._funzione(funzioni_di_estrazione(self, strumenti))
-        esito = str(funzione.entrypoint(**argomenti))
-        self._applicata()
-        return esito
+        return str(funzione.entrypoint(**argomenti))
 
     async def aextract_and_save(self, *args: Any, **kwargs: Any) -> Any:
         if not self.vincolata:
             return await super().aextract_and_save(*args, **kwargs)  # type: ignore[misc]
         esistente = await self._aesistente(kwargs)
-        richiesta = self._richiesta(kwargs, esistente)
-        if richiesta is None:
-            return NIENTE_DA_AGGIORNARE
-        messaggi, schema = richiesta
+        messaggi, schema = self._richiesta(kwargs, esistente)
         modello = self._modello(schema)
         dati = self._dati(await modello.aresponse(messages=messaggi), modello, kwargs.get("run_metrics"))
         argomenti = self._argomenti(dati, esistente) if dati is not None else None
@@ -403,7 +391,6 @@ class EstrazioneVincolata:
         funzione = self._funzione(funzioni_di_estrazione(self, strumenti))
         esito = funzione.entrypoint(**argomenti)
         esito = await esito if inspect.isawaitable(esito) else esito
-        self._applicata()
         return str(esito)
 
 
@@ -460,12 +447,13 @@ class AresSessionContextStore(ScrittureSorvegliate, FunzioniRitoccate, Estrazion
             proprieta["plan"] = {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "I passi del piano, uno per voce; vuoto se un piano non c'e'",
+                "description": "Tutti i passi del piano, anche quelli gia' nel contesto, uno per voce; "
+                "vuoto se un piano non c'e'",
             }
             proprieta["progress"] = {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "I passi completati e sostenuti dal turno, uno per voce",
+                "description": "Tutti i passi completati finora, anche quelli gia' nel contesto, uno per voce",
             }
         schema = {"type": "object", "properties": proprieta, "required": list(proprieta)}
         messaggi = [
@@ -475,11 +463,21 @@ class AresSessionContextStore(ScrittureSorvegliate, FunzioniRitoccate, Estrazion
         return messaggi, schema
 
     def _argomenti(self, dati: dict[str, Any], esistente: Any) -> dict[str, Any] | None:
+        """Gli argomenti di `save_session_context`; una lista vuota non cancella quella che c'e'.
+
+        Lo schema rende obbligatori piano e avanzamento, e un modello piccolo
+        risponde spesso `[]` o i soli passi del turno: Agno sostituirebbe la
+        lista accumulata. Senza l'argomento, Agno conserva quella di prima.
+        """
         riepilogo = dati.get("summary")
         if not isinstance(riepilogo, str) or not riepilogo.strip():
             return None
         nomi = ("summary", "goal", "plan", "progress") if self.config.enable_planning else ("summary",)
-        return {nome: dati[nome] for nome in nomi if nome in dati}
+        argomenti = {nome: dati[nome] for nome in nomi if nome in dati}
+        for nome in _ARGOMENTI_LISTA:
+            if argomenti.get(nome) == [] and getattr(esistente, nome, None):
+                del argomenti[nome]
+        return argomenti
 
     def _funzione(self, funzioni: list[Any]) -> Any:
         return next(f for f in funzioni if f.name == "save_session_context")
@@ -580,19 +578,6 @@ def senza_conferma(funzioni: list[Any], nome: str) -> list[Any]:
     return funzioni
 
 
-def _testi(valore: Any) -> Iterator[str]:
-    """I testi contenuti in un valore dello store, dizionari e liste compresi."""
-    if isinstance(valore, str):
-        yield valore
-    elif isinstance(valore, dict):
-        for chiave, interno in valore.items():
-            if chiave not in CAMPI_DI_SERVIZIO or chiave == "memories":
-                yield from _testi(interno)
-    elif isinstance(valore, (list, tuple)):
-        for interno in valore:
-            yield from _testi(interno)
-
-
 def argomenti_filtrati(
     entrypoint: Callable[..., Any], filtro: Callable[[dict[str, Any]], dict[str, Any] | str]
 ) -> Callable[..., Any]:
@@ -619,51 +604,89 @@ def argomenti_filtrati(
     return sincrono
 
 
+@dataclass
+class Estrazione:
+    """Cio' che vale per una sola estrazione: la fonte e le memorie note.
+
+    `richiesta` e' vero quando l'estrazione viene da `update_user_memory`:
+    allora la conversazione e' il testo della richiesta.
+    """
+
+    fonte: Fonte | None = None
+    richiesta: bool = False
+    note: set[str] = field(default_factory=set)
+
+
 class EstrazioneRadicata:
     """Mixin per profilo e memorie: l'estrazione salva solo cio' che ha un appiglio nel testo.
 
-    La fonte e' la conversazione passata all'estrazione piu' cio' che lo
-    store conteneva gia', cosi' un valore riscritto per intero non perde le
-    voci note. I criteri sono in `radicamento`. Cio' che viene scartato si
-    accumula finche' `prendi_scarti` non lo legge, una riga per valore:
-    l'eco del turno lo mostra. Gli strumenti agentici dati alla
-    conversazione non passano di qui. Va prima della classe di Agno nelle basi.
+    La fonte e' la conversazione passata all'estrazione piu' i valori che lo
+    store conteneva gia' (`_noti`), cosi' un valore riscritto per intero non
+    perde le voci note. Ci passano l'estrazione dopo il turno e
+    `update_user_memory`, la cui conversazione e' il testo della richiesta.
+    I criteri sono in `radicamento`. Va prima della classe di Agno nelle basi.
+
+    Ogni estrazione ha la sua `Estrazione`, legata al thread che la esegue e
+    passata alle funzioni quando vengono costruite: un'estrazione rimasta
+    appesa dopo un Ctrl-C non tocca quella del turno dopo. Gli scarti si
+    accumulano finche' `prendi_scarti` non li legge, una riga per valore;
+    quelli decisi dopo l'interruzione no, perche' il turno e' gia' chiuso.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._fonte: Fonte | None = None
+        self._corrente = threading.local()
         self._scarti: list[str] = []
+        self._scarti_lock = threading.Lock()
 
     def prendi_scarti(self) -> list[str]:
         """Gli scarti dall'ultima lettura, svuotati."""
-        scarti, self._scarti = self._scarti, []
+        with self._scarti_lock:
+            scarti, self._scarti = self._scarti, []
         return scarti
 
-    def _con_fonte(self, kwargs: dict[str, Any], esistente: Any) -> None:
+    def _scarta(self, righe: list[str]) -> None:
+        if righe and not _interrotta():
+            with self._scarti_lock:
+                self._scarti += righe
+
+    def _estrazione(self) -> Estrazione:
+        """L'estrazione in corso in questo thread; fuori da un'estrazione, una senza fonte."""
+        return getattr(self._corrente, "estrazione", None) or Estrazione()
+
+    def _noti(self, esistente: Any) -> list[str]:
+        """I testi che lo store conteneva gia' e che radicano un valore."""
+        raise NotImplementedError
+
+    def _nuova_estrazione(self, kwargs: dict[str, Any], esistente: Any) -> Estrazione:
         # Agno passa sempre `messages` per nome; senza, non si sa contro cosa radicare.
         if "messages" not in kwargs:
-            self._fonte = None
-            return
+            return Estrazione()
         # I ruoli che `get_conversation_text` mostra all'estrattore.
         conversazione = (
             m.get_content_string() for m in kwargs["messages"] or [] if m.role in ("user", "assistant", "model")
         )
-        self._fonte = Fonte.da_testi([*conversazione, *_testi(to_dict_safe(esistente))])
+        fonte = Fonte.da_testi([*conversazione, *self._noti(esistente)])
+        return Estrazione(fonte=fonte, richiesta=bool(kwargs.get("instructed")))
+
+    @contextmanager
+    def _in_estrazione(self, estrazione: Estrazione) -> Iterator[None]:
+        precedente = getattr(self._corrente, "estrazione", None)
+        self._corrente.estrazione = estrazione
+        try:
+            yield
+        finally:
+            self._corrente.estrazione = precedente
 
     def extract_and_save(self, *args: Any, **kwargs: Any) -> Any:
-        self._con_fonte(kwargs, self.get(user_id=kwargs.get("user_id")))  # type: ignore[attr-defined]
-        try:
+        esistente = self.get(user_id=kwargs.get("user_id"))  # type: ignore[attr-defined]
+        with self._in_estrazione(self._nuova_estrazione(kwargs, esistente)):
             return super().extract_and_save(*args, **kwargs)  # type: ignore[misc]
-        finally:
-            self._fonte = None
 
     async def aextract_and_save(self, *args: Any, **kwargs: Any) -> Any:
-        self._con_fonte(kwargs, await self.aget(user_id=kwargs.get("user_id")))  # type: ignore[attr-defined]
-        try:
+        esistente = await self.aget(user_id=kwargs.get("user_id"))  # type: ignore[attr-defined]
+        with self._in_estrazione(self._nuova_estrazione(kwargs, esistente)):
             return await super().aextract_and_save(*args, **kwargs)  # type: ignore[misc]
-        finally:
-            self._fonte = None
 
 
 class AresUserProfileStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRitoccate, UserProfileStore):
@@ -675,28 +698,33 @@ class AresUserProfileStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRit
     (docs/memory-quality.md).
     """
 
+    def _noti(self, esistente: Any) -> list[str]:
+        """I campi del profilo che l'estrattore puo' scrivere: identita' e date non radicano niente."""
+        if esistente is None:
+            return []
+        valori = (getattr(esistente, nome, None) for nome in type(esistente).get_updateable_fields())
+        return [valore for valore in valori if isinstance(valore, str)]
+
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
+        estrazione = self._estrazione()
         for funzione in senza_conferma(funzioni, "update_profile"):
             if funzione.name == "update_profile" and funzione.entrypoint is not None:
-                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, self._radica)
+                filtro = functools.partial(self._radica, estrazione)
+                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, filtro)
         return funzioni
 
-    def _radica(self, campi: dict[str, Any]) -> dict[str, Any]:
-        if self._fonte is None:
+    def _radica(self, estrazione: Estrazione, campi: dict[str, Any]) -> dict[str, Any]:
+        if estrazione.fonte is None:
             return campi
         radicati = {}
         for nome, valore in campi.items():
             if not isinstance(valore, str):
                 radicati[nome] = valore
                 continue
-            verdetto = radica_campo(nome, valore, self._fonte)
-            self._scarti += ["profilo " + nome + ": " + scarto for scarto in verdetto.scartato]
+            verdetto = radica_campo(nome, valore, estrazione.fonte)
+            self._scarta(["profilo " + nome + ": " + scarto for scarto in verdetto.scartato])
             radicati[nome] = verdetto.tenuto
         return radicati
-
-
-# Gli strumenti dell'estrazione che scrivono il testo di una memoria.
-_SCRIVONO_MEMORIE = ("add_memory", "update_memory")
 
 
 class AresUserMemoryStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRitoccate, UserMemoryStore):
@@ -706,50 +734,53 @@ class AresUserMemoryStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRito
     dice quando tocca al modello usare lo strumento.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._note: set[str] = set()
+    def _noti(self, esistente: Any) -> list[str]:
+        """Il testo delle memorie valide: superate, `source` e provenienza non radicano niente."""
+        voci = getattr(esistente, "memories", None) or []
+        return [str(voce.get("content") or "") for voce in voci if isinstance(voce, dict)]
+
+    def _nuova_estrazione(self, kwargs: dict[str, Any], esistente: Any) -> Estrazione:
+        estrazione = super()._nuova_estrazione(kwargs, esistente)
+        estrazione.note = {chiave_memoria(testo) for testo in self._noti(esistente)}
+        return estrazione
 
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
+        estrazione = self._estrazione()
+        filtri = {
+            "add_memory": functools.partial(self._nuova, estrazione),
+            "update_memory": functools.partial(self._radica, estrazione),
+        }
         for funzione in senza_conferma(funzioni, "add_memory"):
-            if funzione.entrypoint is None:
-                continue
-            if funzione.name == "add_memory":
-                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, self._nuova)
-            elif funzione.name in _SCRIVONO_MEMORIE:
-                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, self._radica)
+            if funzione.entrypoint is not None and funzione.name in filtri:
+                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, filtri[funzione.name])
         return funzioni
 
-    def _con_fonte(self, kwargs: dict[str, Any], esistente: Any) -> None:
-        super()._con_fonte(kwargs, esistente)
-        voci = getattr(esistente, "memories", None) or []
-        self._note = {chiave_memoria(str(v.get("content") or "")) for v in voci if isinstance(v, dict)}
-
-    def _nuova(self, argomenti: dict[str, Any]) -> dict[str, Any] | str:
+    def _nuova(self, estrazione: Estrazione, argomenti: dict[str, Any]) -> dict[str, Any] | str:
         """Una memoria nuova: radicata, e non identica a una che c'e' gia'.
 
         L'estrattore vede le memorie salvate, ma un modello piccolo a volte
         ne riscrive una tale e quale. Le quasi uguali restano: le fonde
         `ares memories consolidate`, con un giudizio e un'anteprima.
         """
-        filtrati = self._radica(argomenti)
+        filtrati = self._radica(estrazione, argomenti)
         testo = filtrati.get("memory") if isinstance(filtrati, dict) else None
         if not isinstance(testo, str):
             return filtrati
         # Non e' uno scarto per l'eco: la cosa e' gia' in memoria.
-        if chiave_memoria(testo) in self._note:
+        if chiave_memoria(testo) in estrazione.note:
             return "Memoria non salvata: e' gia' fra quelle che conosci."
-        self._note.add(chiave_memoria(testo))
+        estrazione.note.add(chiave_memoria(testo))
         return filtrati
 
-    def _radica(self, argomenti: dict[str, Any]) -> dict[str, Any] | str:
+    def _radica(self, estrazione: Estrazione, argomenti: dict[str, Any]) -> dict[str, Any] | str:
         testo = argomenti.get("memory")
-        if self._fonte is None or not isinstance(testo, str):
+        if estrazione.fonte is None or not isinstance(testo, str):
             return argomenti
-        verdetto = radica_memoria(testo, self._fonte)
+        verdetto = radica_memoria(testo, estrazione.fonte)
         if verdetto.tenuto is None:
-            self._scarti += ["memoria: " + scarto for scarto in verdetto.scartato]
-            return "Memoria non salvata: nessuna sua parola compare nella conversazione."
+            self._scarta(["memoria: " + scarto for scarto in verdetto.scartato])
+            dove = "nella richiesta" if estrazione.richiesta else "nella conversazione"
+            return "Memoria non salvata: nessuna sua parola compare " + dove + "."
         return {**argomenti, "memory": verdetto.tenuto}
 
     def instructions(self) -> str:

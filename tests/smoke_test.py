@@ -1504,17 +1504,29 @@ def tempo(agent, lm, user_id: str) -> str:
     righe_oggi = [r for r in prompt.splitlines() if r.startswith("- Oggi: ")]
     esigi(len(righe_oggi) == 1, "la data compare " + str(len(righe_oggi)) + " volte invece di una")
     esigi(prima.date().isoformat() not in righe_oggi[0], "la data non e' ricalcolata a ogni system message")
+    forma_riga = r"- Oggi: [a-z]+'? \d{1,2} [a-z]+ \d{4}\. Per l'ora precisa chiama che_ora_e\."
+    forma_ora = r"[a-z]+'? \d{1,2} [a-z]+ \d{4}, \d\d:\d\d \S+"
     esigi(
-        re.fullmatch(r"- Oggi: [a-z]+' \d{1,2} [a-z]+ \d{4}\. Per l'ora precisa chiama che_ora_e\.", righe_oggi[0])
-        is not None,
+        re.fullmatch(forma_riga, righe_oggi[0]) is not None,
         "la riga del giorno non e' il giorno piu' il rimando all'orologio: " + righe_oggi[0],
     )
+    # Ogni giorno della settimana, non solo quello in cui gira la prova.
+    for giorno in range(7):
+        istante = datetime(2026, 1, 5 + giorno, 9, 30, tzinfo=UTC)
+        esigi(
+            re.fullmatch(forma_riga, prompts.riga_della_data(istante)) is not None,
+            "la riga del giorno non torna di " + istante.strftime("%A") + ": " + prompts.riga_della_data(istante),
+        )
+        esigi(
+            re.fullmatch(forma_ora, prompts.data_e_ora(istante)) is not None,
+            "che_ora_e non torna di " + istante.strftime("%A") + ": " + prompts.data_e_ora(istante),
+        )
     avvio = prompt.split("<questo_avvio>", 1)[-1].split("</questo_avvio>", 1)[0]
     esigi(re.search(r"\d\d:\d\d", avvio) is None, "l'avvio porta un orario, che cambia a ogni turno: " + avvio)
     esigi(prompt == costruisci(), "due system message consecutivi della stessa sessione differiscono")
     adesso = che_ora_e()
     esigi(
-        re.fullmatch(r"[a-z]+' \d{1,2} [a-z]+ \d{4}, \d\d:\d\d \S+", adesso) is not None,
+        re.fullmatch(forma_ora, adesso) is not None,
         "che_ora_e non risponde con giorno, ora e fuso: " + adesso,
     )
 
@@ -1674,6 +1686,22 @@ def eco_apprendimenti(agent, lm, user_id: str) -> str:
     # Un agente senza macchina di apprendimento - `object()` nelle prove
     # della CLI - deve dare una fotografia vuota, non un AttributeError.
     esigi(fotografa(object()) == Fotografia(), "un agente senza apprendimento non da' una fotografia vuota")
+
+    # Date senza fuso, scritte a mano o importate: valgono UTC, senza
+    # TypeError nel confronto con l'inizio del turno.
+    from ares.agent.echo import annota_provenienza
+
+    nuovo.user_id = "eco-senza-fuso"
+    a_mano = AresMemories(user_id=nuovo.user_id)
+    for testo, quando in (("dopo", "2026-10-01T10:00:00"), ("prima", "2025-12-01"), ("giorno", "2026-10-01")):
+        a_mano.memories.append({"id": testo, "content": testo, "updated_at": quando})
+    lm.user_memory_store.save(nuovo.user_id, a_mano)
+    try:
+        toccate = annota_provenienza(nuovo, dal=datetime(2026, 1, 1, tzinfo=UTC), turno="t", cartella=None)
+        annotate = {m["id"] for m in lm.user_memory_store.get(user_id=nuovo.user_id).memories if m.get("turno")}
+    finally:
+        lm.user_memory_store.delete(user_id=nuovo.user_id)
+    esigi(toccate == 2 and annotate == {"dopo", "giorno"}, "date senza fuso: annotate " + repr(annotate))
 
     vecchia = Fotografia(
         profilo={"name": "Prova", "occupation": "collaudo", "timezone": "Europe/Rome"},
