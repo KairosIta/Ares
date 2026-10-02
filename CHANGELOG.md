@@ -35,7 +35,9 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `concedi` quali conferme ricevono, e il rapporto conserva i file lasciati
   nella cartella. Le prove `valutazione` e `conversazione` verificano i
   verdetti dei casi nuovi su esiti scritti a mano e pass^3 come funzione
-  pura.
+  pura. Prime misure sul 9B e sul 27B locali in `docs/memory-quality.md` e
+  `docs/conversation-eval.md`: astensione e dimenticanza 3/3 per entrambi,
+  conferma concessa 3/3 per entrambi.
 - **Igiene di `workspace_run_command` e due tetti ai cicli di tentativi**
   (proposta 3.3 di `docs/agentic-improvements.md`). Il comando gira con lo
   stdin chiuso, così uno che aspetta input termina subito invece di restare

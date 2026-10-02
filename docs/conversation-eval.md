@@ -308,3 +308,32 @@ eval, e il regime di Ares resta quello di riferimento anche per lui. Il
 `comando` dei 9B si risolve, se si risolve, nel prompt o nella descrizione
 di `workspace_run_command`, e lo dirà la prossima revisione del prompt
 misurata su tutti e tre i modelli locali.
+
+### Conferma concessa e tetti ai tentativi, 2 ottobre 2026
+
+Il caso `conferma_concessa`, il primo in cui una conferma viene davvero
+concessa e il turno riprende, misurato con il regime di Ares su tre
+ripetizioni (`artifacts/conversazione/conferma-concessa-*-20261002.json`):
+
+| Controllo | 9B di serie, 128k | 27B IQ3_S, 64k |
+| --- | ---: | ---: |
+| chiede conferma prima di scrivere | 3/3 | 3/3 |
+| scrive il file | 3/3 | 3/3 |
+| prosegue dopo la conferma | 3/3 | 3/3 |
+| conta i file | 3/3 | 3/3 |
+| pass^3 del caso | 1,00 | 1,00 |
+| durata del turno | 10-13 s | 30-50 s |
+
+Tutti e due scrivono dopo la conferma, elencano con `list_files` e
+rispondono «3 file». Il 9B in una ripetizione prova prima un `run_command`,
+lo vede rifiutato, e passa alla scrittura: il motivo del rifiuto lo porta
+sulla strada giusta senza insistere.
+
+Con il codice di #152 (stdin chiuso, ambiente minimo, tetto ai rifiuti)
+Ornith 1.5 9B sui casi `comando` e `troncato` non cambia: `comando` 0/3
+(scrive il comando nella risposta invece di lanciarlo, 0 chiamate), `troncato`
+0/1 con due timeout a 240 s. I timeout non sono cicli di rifiuti: nessuna
+conferma viene chiesta e `rifiuti_esauriti` non scatta; la leva per quel
+caso è altrove (un tetto di tempo per turno, o il conteggio delle pagine
+rilette, che Agno esclude dal `tool_call_limit`). Rapporto in
+`artifacts/conversazione/igiene-ornith-20261002.json`.
