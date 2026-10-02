@@ -25,6 +25,7 @@ ares/
 ├── state/          lettura degli archivi, lock, primitive di piattaforma
 ├── backup/         snapshot locali: creazione, verifica, restore      (ares backup)
 ├── entities/       audit e fusione delle entità                       (ares entities)
+├── memories/       consolidamento delle memorie doppie o superate     (ares memories)
 ├── sessions/       retention di sessioni e risultati tool             (ares sessions)
 └── ops/            preflight, ispezione e migrazione a modello spento (ares preflight, inspect, migrate)
 ```
@@ -246,6 +247,11 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   in sola lettura vive in `entities/audit.py`, piano e transazione di
   fusione in `entities/merge.py`, i contratti condivisi in
   `entities/models.py`.
+- `memories/maintenance.py` espone `ares memories consolidate` e coordina
+  lock, conferma, backup e verifica; `memories/consolida.py` decide il piano
+  senza scrivere: coppie candidate (testi identici, vicine per embedding),
+  un giudizio per coppia, la più vecchia ritirata a favore della più
+  recente, le catene risolte su una memoria valida.
 - `sessions/maintenance.py` coordina anteprima, conferma, lock e snapshot
   della retention; `sessions/retention.py` apre entrambi i backend, registra
   su Agno il filesystem dei payload e verifica la cancellazione congiunta di

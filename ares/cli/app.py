@@ -10,6 +10,7 @@
     ares backup list          gli snapshot
     ares sessions status      le sessioni in archivio
     ares entities audit       i duplicati fra le entita'
+    ares memories consolidate le memorie doppie o superate
     ares preflight            l'ambiente e' pronto?
     ares inspect              cosa Ares ha imparato
 
@@ -41,6 +42,7 @@ SOTTOCOMANDI = (
     ("backup", "ares.backup.snapshots:app", "Snapshot locali dello stato di Ares"),
     ("sessions", "ares.sessions.maintenance:app", "Retention delle sessioni e dei risultati tool"),
     ("entities", "ares.entities.maintenance:app", "Audit e fusione delle entita' duplicate"),
+    ("memories", "ares.memories.maintenance:app", "Ritira le memorie doppie o superate, con anteprima e backup"),
     ("preflight", "ares.ops.preflight:app", "Controlla che Ollama risponda e che i modelli ci siano"),
     ("inspect", "ares.ops.inspect_learning:app", "Ispeziona gli archivi di apprendimento senza toccarli"),
     ("migrate", "ares.ops.migrazione:app", "Sposta stato e backup di prima in ~/.ares"),

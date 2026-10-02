@@ -36,7 +36,7 @@ from ares.agent.echo import prendi_scarti  # noqa: E402
 from ares.agent.learning import build_learning_machine  # noqa: E402
 from ares.agent.radicamento import Fonte, radica_campo, radica_memoria  # noqa: E402
 from ares.agent.runtime import build_db  # noqa: E402
-from ares.agent.schemas import AresProfile  # noqa: E402
+from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
 
 PERCORSI = config.leggi_percorsi()
@@ -249,6 +249,22 @@ def il_gia_noto_resta() -> str:
     return "Python, gia' nel profilo e non nominato nel turno, resta accanto a Helix"
 
 
+def il_doppione_identico_non_entra() -> str:
+    """Una memoria che c'e' gia', a meno di maiuscole e punto finale, non si salva una seconda volta."""
+    utente = Utente.da_grezzo("radicamento-doppione")
+    store = estrai(utente, {}, "Ciao.").user_memory_store
+    gia = AresMemories(user_id=utente.id)
+    gia.add_memory("Usa Helix come editor.")
+    store.save(utente.id, gia)
+    testo = "Uso sempre Helix: usa helix come editor, ormai."
+    macchina = estrai(utente, {"add_memory": {"memory": "usa  Helix come editor"}}, testo)
+    memorie = macchina.user_memory_store.get(user_id=utente.id).memories
+    esigi([m["content"] for m in memorie] == ["Usa Helix come editor."], "memorie: " + repr(memorie))
+    scarti = macchina.user_memory_store.prendi_scarti()
+    esigi(scarti == [], "un doppione e' finito fra gli scarti dell'eco: " + repr(scarti))
+    return "la riscrittura identica resta fuori, senza figurare fra gli scarti"
+
+
 def main() -> int:
     falliti, _ = esegui(
         (
@@ -256,6 +272,7 @@ def main() -> int:
             ("tabella delle memorie", tabella_delle_memorie),
             ("archivio radicato", l_archivio_riceve_solo_il_radicato),
             ("gia' noto", il_gia_noto_resta),
+            ("doppione identico", il_doppione_identico_non_entra),
         )
     )
     return chiudi(falliti, RADICE_PROVA)

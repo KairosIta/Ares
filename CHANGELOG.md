@@ -8,6 +8,23 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Consolidamento delle memorie** (proposta 3.6, passo 3, di
+  `docs/agentic-improvements.md`). `ares memories consolidate` trova le
+  memorie doppie o superate e ne mostra il piano; con `--apply` chiede la
+  conferma scritta, crea un backup `pre-consolidate`, ritira e rilegge
+  l'archivio per verificare. Le candidate sono i testi identici a meno di
+  maiuscole e spazi, che non passano dal modello, e le vicine per embedding
+  sopra un coseno di 0,5; il modello di apprendimento giudica ciascuna
+  coppia (doppione, superata o distinte), con lo schema in locale e una
+  parola sul cloud. Di una coppia non distinta si ritira la più vecchia a
+  favore della più recente; una ritirata passa fra le superate con
+  `sostituita_da` (`AresMemories.ritira`), quindi niente si cancella e
+  `/memorie superate` la mostra. Sul percorso caldo, l'estrazione non
+  salva più una memoria identica a una valida. Su 13 coppie scritte a mano,
+  tre ripetizioni, il giudizio vincolato fa 39/39 con i tre 9B locali e il
+  cloud 39/39 (`docs/memory-quality.md`). Prova offline `consolidamento`.
+  La frequenza dell'estrazione non cambia.
+
 - **Strumenti su richiesta** (proposta 3.9 di `docs/agentic-improvements.md`).
   I sei strumenti di entità e intuizioni non arrivano al modello finché non
   li attiva: il prompt porta una riga per gruppo, con gli strumenti che

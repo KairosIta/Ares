@@ -180,7 +180,7 @@ def _versione_agno() -> str | None:
 
 
 def _id_snapshot(percorsi: Percorsi, tipo: str) -> str:
-    if tipo not in {"manuale", "pre-merge", "pre-restore", "pre-session-prune"}:
+    if tipo not in {"manuale", "pre-merge", "pre-consolidate", "pre-restore", "pre-session-prune"}:
         raise ErroreBackup("tipo di snapshot non valido: " + repr(tipo))
     base = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     suffisso = "" if tipo == "manuale" else "-" + tipo

@@ -95,12 +95,17 @@ def build_knowledge(percorsi: Percorsi, impostazioni: Impostazioni) -> Knowledge
             uri=percorsi.lancedb_uri,
             table_name="learned_knowledge",
             search_type=SearchType.hybrid,
-            embedder=OllamaEmbedder(
-                id=_esigi_locale(impostazioni.embedder, "EMBEDDER_MODEL"),
-                host=impostazioni.host,
-                dimensions=impostazioni.embedder_dimensioni,
-            ),
+            embedder=build_embedder(impostazioni),
         ),
+    )
+
+
+def build_embedder(impostazioni: Impostazioni) -> OllamaEmbedder:
+    """L'embedder locale: indicizza le intuizioni e confronta le memorie da consolidare."""
+    return OllamaEmbedder(
+        id=_esigi_locale(impostazioni.embedder, "EMBEDDER_MODEL"),
+        host=impostazioni.host,
+        dimensions=impostazioni.embedder_dimensioni,
     )
 
 

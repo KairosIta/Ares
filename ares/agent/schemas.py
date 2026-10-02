@@ -16,6 +16,8 @@ Vincoli di Agno da conoscere prima di cambiare qualcosa:
   firma fissa (summary, goal, plan, progress) che non deriva dallo schema.
 """
 
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -80,6 +82,16 @@ class AresProfile(UserProfile):
     )
 
 
+def chiave_memoria(testo: str) -> str:
+    """Il testo di una memoria ridotto per riconoscere un doppione identico.
+
+    Maiuscole, spazi e punteggiatura finale non contano; il resto si',
+    perche' «C++» e «C#» sono cose diverse.
+    """
+    ridotto = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", testo).casefold()).strip()
+    return ridotto.rstrip(" .;!")
+
+
 @dataclass
 class AresMemories(Memories):
     """Memorie che non si perdono quando vengono corrette, rese nel prompt con la loro data.
@@ -106,6 +118,29 @@ class AresMemories(Memories):
         if sostituita_da is not None:
             copia["sostituita_da"] = sostituita_da
         self.superate.append(copia)
+
+    def gia_presente(self, testo: str) -> str | None:
+        """L'id della memoria valida che dice gia' `testo`, a meno di maiuscole e spazi."""
+        chiave = chiave_memoria(testo)
+        for voce in self.memories or []:
+            if isinstance(voce, dict) and chiave_memoria(str(voce.get("content") or "")) == chiave:
+                return voce.get("id")
+        return None
+
+    def ritira(self, sostituzioni: dict[str, str]) -> None:
+        """Toglie dalle valide ogni memoria in `sostituzioni`, superata da quella indicata.
+
+        E' la fusione dei doppioni: la memoria ritirata passa in `superate`
+        con `sostituita_da`, come una riscrittura.
+        """
+        restano = []
+        for voce in self.memories or []:
+            if isinstance(voce, dict) and voce.get("id") in sostituzioni:
+                self._supera(voce, sostituita_da=sostituzioni[voce["id"]])
+            else:
+                restano.append(voce)
+        # Senza passare da `__setattr__`, che le registrerebbe una seconda volta come tolte.
+        self.__dict__["memories"] = restano
 
     def update_memory(self, memory_id: str, content: str, **kwargs: Any) -> bool:
         voce = self.get_memory(memory_id)
