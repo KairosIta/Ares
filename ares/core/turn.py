@@ -3,11 +3,11 @@
 La sequenza e' sempre la stessa, sotto il lock del turno dell'utente:
 fotografia di profilo e memorie, turno (con le pause per autorizzare gli
 strumenti, chiuse dall'`Arbitro` dopo troppi rifiuti di seguito),
-variazioni e scarti dell'estrazione, conferma degli apprendimenti e, se
-l'utente rifiuta, ripristino. Il client decide solo come mostrare e come
-chiedere, attraverso `ClienteTurno`; qui non si stampa niente. Senza
-presenza non si chiede niente: le conferme valgono no e gli apprendimenti
-restano (vedi `core/autorizzazioni.py`).
+provenienza delle memorie toccate, variazioni e scarti dell'estrazione,
+conferma degli apprendimenti e, se l'utente rifiuta, ripristino. Il client
+decide solo come mostrare e come chiedere, attraverso `ClienteTurno`; qui
+non si stampa niente. Senza presenza non si chiede niente: le conferme
+valgono no e gli apprendimenti restano (vedi `core/autorizzazioni.py`).
 
 Il ripristino e' a posteriori: vedi i limiti in `agent/echo.py`.
 """
@@ -15,17 +15,28 @@ Il ripristino e' a posteriori: vedi i limiti in `agent/echo.py`.
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from agno.run.agent import RunOutput
 
 from ares import config
-from ares.agent.echo import fotografa, istantanea, prendi_scarti, riduci, righe_scarti, ripristina, variazioni
+from ares.agent.echo import (
+    annota_provenienza,
+    fotografa,
+    istantanea,
+    prendi_scarti,
+    riduci,
+    righe_scarti,
+    ripristina,
+    variazioni,
+)
 from ares.agent.turn_core import TurnEvent, run_turn_cycle
 from ares.config import Percorsi, Politica
 from ares.core.autorizzazioni import Arbitro, Autorizzatore
 from ares.state.identita import Utente
 from ares.state.lock import lock_turno
+from ares.state.sessioni import CHIAVE_CARTELLA
 
 
 class ClienteTurno(Autorizzatore, Protocol):
@@ -100,6 +111,7 @@ def _turno_protetto(
     # Prima del turno, non del post-hook: `update_user_memory` scrive durante il run.
     prima = istantanea(agent) if politica.mostra.apprendimenti else None
     prendi_scarti(agent)
+    inizio = datetime.now(UTC)
     risposta = None
     arbitro = Arbitro(cliente, percorsi, politica)
     try:
@@ -115,7 +127,14 @@ def _turno_protetto(
     except Exception as errore:
         cliente.guasto(errore)
 
+    annota_provenienza(
+        agent,
+        dal=inizio,
+        turno=getattr(risposta, "run_id", None),
+        cartella=(getattr(agent, "metadata", None) or {}).get(CHIAVE_CARTELLA),
+    )
     if prima is None:
+        prendi_scarti(agent)
         return EsitoTurno(risposta)
     righe = variazioni(riduci(prima), fotografa(agent))
     scartate = righe_scarti(prendi_scarti(agent))

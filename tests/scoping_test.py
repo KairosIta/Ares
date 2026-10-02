@@ -18,6 +18,7 @@ fissi, e i documenti arrivano a LanceDB gia' vettorizzati.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 from _comune import chiudi, esegui, esigi, prepara_ambiente
@@ -36,6 +37,7 @@ from agno.models.message import Message  # noqa: E402
 from agno.vectordb.lancedb.lance_db import LanceDb  # noqa: E402
 from agno.vectordb.search import SearchType  # noqa: E402
 
+from ares.agent.echo import Istantanea, annota_provenienza, istantanea, ripristina  # noqa: E402
 from ares.agent.schemas import AresMemories  # noqa: E402
 from ares.cli.log import configura_log_agno  # noqa: E402
 
@@ -176,6 +178,117 @@ def provenienza_memorie() -> str:
     return "provenienza scritta, sopravvissuta alla riscrittura, riallineata e invisibile al modello"
 
 
+def _store_memorie(nome: str, copione: list[list[dict[str, Any]]]) -> tuple[UserMemoryStore, SqliteDb]:
+    db = SqliteDb(db_file=str(RADICE_PROVA / (nome + ".db")))
+    store = UserMemoryStore(
+        config=UserMemoryConfig(
+            db=db, model=ModelloCheRicorda(nome, copione), mode=LearningMode.ALWAYS, schema=AresMemories
+        )
+    )
+    return store, db
+
+
+def _estrai_con(store: UserMemoryStore, chiamata: dict[str, Any]) -> ModelloCheRicorda:
+    modello = ModelloCheRicorda("memoria", [[chiamata]])
+    store.config.model = modello
+    store.extract_and_save(messages=MESSAGGI_BETA, user_id=UTENTE, agent_id="ares")
+    return modello
+
+
+def memorie_superate() -> str:
+    """Una correzione o una cancellazione lascia la vecchia fra le superate, fuori dal prompt."""
+    store, _ = _store_memorie("superate", [[tool_call("add_memory", memory="Le migrazioni si scrivono a mano.")]])
+    store.extract_and_save(messages=MESSAGGI_ALFA, user_id=UTENTE, agent_id="ares")
+    identificativo = store.get(user_id=UTENTE).memories[0]["id"]
+
+    modello = _estrai_con(
+        store, tool_call("update_memory", memory_id=identificativo, memory="Le migrazioni sono automatiche.")
+    )
+    dati = store.get(user_id=UTENTE)
+    esigi([m["content"] for m in dati.memories] == ["Le migrazioni sono automatiche."], "valide: " + str(dati.memories))
+    esigi(len(dati.superate) == 1, "la correzione non lascia una superata: " + str(dati.superate))
+    vecchia = dati.superate[0]
+    esigi(
+        vecchia["content"] == "Le migrazioni si scrivono a mano."
+        and vecchia["sostituita_da"] == identificativo
+        and vecchia.get("invalidata_il"),
+        "la superata non dice quando e da chi: " + str(vecchia),
+    )
+    esigi("si scrivono a mano" not in dati.get_memories_text(), "la superata arriva nel prompt")
+
+    # La superata non arriva nemmeno all'estrattore: alla prossima estrazione
+    # vede solo la valida.
+    modello = _estrai_con(store, tool_call("delete_memory", memory_id=identificativo))
+    prompt = _testo_dei_messaggi(modello.messaggi)
+    esigi("si scrivono a mano" not in prompt, "l'estrattore vede la superata")
+    esigi("sono automatiche" in prompt, "l'estrattore non vede la valida")
+    dati = store.get(user_id=UTENTE)
+    esigi(dati.memories == [], "la cancellazione lascia una valida: " + str(dati.memories))
+    esigi(
+        len(dati.superate) == 2 and "sostituita_da" not in dati.superate[1],
+        "la cancellazione non diventa una superata senza sostituta: " + str(dati.superate),
+    )
+
+    # Riscrivere lo stesso testo non e' una correzione.
+    stesso = AresMemories(user_id=UTENTE)
+    voce = stesso.add_memory("Usa Debian.")
+    stesso.update_memory(voce, "Usa Debian.")
+    esigi(stesso.superate == [], "una riscrittura identica lascia una superata")
+    return "correzione e cancellazione lasciano due superate, fuori dal prompt e dall'estrattore"
+
+
+class AgenteDellaProva:
+    """Quanto `echo` legge di un agente: macchina, utente, sessione, id."""
+
+    def __init__(self, store: UserMemoryStore) -> None:
+        self.learning_machine = type("Macchina", (), {"user_profile_store": None, "user_memory_store": store})()
+        self.user_id = UTENTE
+        self.session_id = "sessione-prova"
+        self.id = "ares"
+
+
+def provenienza_del_turno() -> str:
+    """Il turno annota solo le memorie che ha scritto, e un ripristino toglie le annotazioni."""
+    store, _ = _store_memorie("turno", [[tool_call("add_memory", memory="Le migrazioni si scrivono a mano.")]])
+    store.extract_and_save(messages=MESSAGGI_ALFA, user_id=UTENTE, agent_id="ares")
+    agente = AgenteDellaProva(store)
+    prima = istantanea(agente)
+
+    dal = datetime.now(UTC)
+    _estrai_con(store, tool_call("add_memory", memory="Le migrazioni sono automatiche."))
+    toccate = annota_provenienza(agente, dal=dal, turno="run-7", cartella="/progetti/alfa")
+    voci = {m["content"]: m for m in store.get(user_id=UTENTE).memories}
+    nuova, vecchia = voci["Le migrazioni sono automatiche."], voci["Le migrazioni si scrivono a mano."]
+    esigi(toccate == 1, "annotate " + str(toccate) + " memorie invece di una")
+    esigi(
+        (nuova.get("sessione"), nuova.get("turno"), nuova.get("cartella"))
+        == ("sessione-prova", "run-7", "/progetti/alfa")
+        and nuova.get("valida_dal"),
+        "la nuova non porta la provenienza: " + str(nuova),
+    )
+    esigi("sessione" not in vecchia, "una memoria non toccata dal turno e' stata annotata: " + str(vecchia))
+    esigi(
+        "sessione-prova" not in store.get(user_id=UTENTE).get_memories_text(),
+        "la provenienza arriva nel prompt",
+    )
+
+    esigi(ripristina(agente, prima), "il ripristino non riporta le memorie a prima")
+    esigi(
+        [m["content"] for m in store.get(user_id=UTENTE).memories] == ["Le migrazioni si scrivono a mano."],
+        "dopo il ripristino resta la memoria del turno",
+    )
+
+    # Prima del turno c'erano solo superate: rifiutare il turno non le cancella.
+    _estrai_con(store, tool_call("delete_memory", memory_id=store.get(user_id=UTENTE).memories[0]["id"]))
+    solo_superate = istantanea(agente)
+    _estrai_con(store, tool_call("add_memory", memory="Le migrazioni sono automatiche."))
+    esigi(ripristina(agente, solo_superate), "il ripristino con sole superate fallisce")
+    dati = store.get(user_id=UTENTE)
+    esigi(dati is not None and len(dati.superate) == 1 and not dati.memories, "il ripristino perde le superate")
+    esigi(ripristina(agente, Istantanea()) and store.get(user_id=UTENTE) is None, "il ripristino a vuoto lascia dati")
+    return "annotata solo la memoria del turno, invisibile al prompt; il ripristino toglie tutto e tiene le superate"
+
+
 # ---------------------------------------------------------------------------
 # Intuizioni: il filtro del namespace e' dopo il limite, quello dell'owner no
 # ---------------------------------------------------------------------------
@@ -286,6 +399,8 @@ def main() -> int:
     falliti, _ = esegui(
         (
             ("provenienza memorie", provenienza_memorie),
+            ("memorie superate", memorie_superate),
+            ("provenienza del turno", provenienza_del_turno),
             ("filtro intuizioni", filtro_intuizioni),
         )
     )

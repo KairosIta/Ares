@@ -80,12 +80,12 @@ Sono quindici. Nessuna genera risposte con il modello.
 
 | Prova | Cosa verifica |
 | --- | --- |
-| `smoke` | costruzione dell'agente e semina degli store; isolamento, lock, propagazione del run completo alla macchina di apprendimento, eco di ciò che entra in memoria; le guardie del post-hook (run senza messaggi, post-hook senza agente); istruzioni delle intuizioni assenti fuori da `AGENTIC`; il prompt in 19 combinazioni (vedi [prompt](prompt.md#verifica-e-limiti)) |
-| `repl` | la chat senza agente: conferme, esito e metriche degli strumenti, rendering Rich su pipe e su terminale simulato con i controlli filtrati, core del turno con eventi fabbricati, log di Agno, cronologia, editor, Ctrl-C/D, comandi locali; cartella di lavoro (percorsi rischiosi, esiti dell'autorizzazione, ramo da `.git/HEAD`, `ARES.md`, `ares init`); conversazioni per cartella e `ares resume --scegli` |
+| `smoke` | costruzione dell'agente e semina degli store; isolamento, lock, propagazione del run completo alla macchina di apprendimento, eco di ciò che entra in memoria, `/memorie origine` e `/memorie superate` sul seme senza provenienza; le guardie del post-hook (run senza messaggi, post-hook senza agente); istruzioni delle intuizioni assenti fuori da `AGENTIC`; il prompt in 19 combinazioni (vedi [prompt](prompt.md#verifica-e-limiti)) |
+| `repl` | la chat senza agente: conferme, esito e metriche degli strumenti, rendering Rich su pipe e su terminale simulato con i controlli filtrati, core del turno con eventi fabbricati, log di Agno, cronologia, editor, Ctrl-C/D, comandi locali (`/memorie origine` e `superate` a schermo); cartella di lavoro (percorsi rischiosi, esiti dell'autorizzazione, ramo da `.git/HEAD`, `ARES.md`, `ares init`); conversazioni per cartella e `ares resume --scegli` |
 | `nucleo` | `ares/core/` usato come un client senza terminale: id dalla cartella o `principale`, apertura e cambio di modalità, modalità e nomi non validi, modalità ammesse senza presenza sulla tabella intera e `auto` solo all'apertura, stato in uso (lock condiviso finché serve, migrazione in sospeso rifiutata senza scrivere), manutenzione (lock esclusivo contro chat e altre manutenzioni, backup nel posto vecchio rifiutati, verifica senza lock che non scrive), sessione di un altro utente rifiutata prima di costruire l'agente, elenco delle sessioni su SQLite vero (tre ambiti, filtro, taglio dopo il filtro, riferimenti, conversazione solo dell'utente, prompt senza la sessione corrente), agente vero senza post-hook; autorizzazioni: sì, no con motivo, cartella e quaderno distinti, rifiuto senza presenza che non interroga il client; il turno di `core/turn.py` con un client che non stampa: eventi, eco, scarti del radicamento (mostrati senza chiedere, mai quelli di un turno precedente), rifiuto che ripristina, conferma spenta, senza presenza, guasto |
 | `sessioni` | un vero `Agent.run()` con modello deterministico: offload, quota, retention, cascata e restore dei due SQLite |
 | `contratto` | ciò che Ares dà per vero di Agno (vedi sotto) |
-| `ambiti` | le due premesse dello studio sugli ambiti (vedi sotto) |
+| `ambiti` | le due premesse dello studio sugli ambiti, e la provenienza delle memorie che ne è nata (vedi sotto) |
 | `costo` | il costo delle estrazioni `ALWAYS` (vedi sotto) |
 | `radicamento` | i verdetti di `agent/radicamento.py` su valori presi dai rapporti degli eval (elenchi per voce, nomi per parola, segnaposto, parafrasi che restano, lingua esente), e un estrattore finto attraverso gli store veri: ciò che non ha appiglio nel testo non arriva all'archivio, gli scarti si leggono una volta, le voci già nello store restano |
 | `backup` | snapshot, checksum, restore e prune, rifiutati con lo stato ancora da migrare; il protocollo della sonda LanceDB, simulato e vero |
@@ -129,8 +129,8 @@ prova, in modo deterministico, che funziona come scritto;
 ### `ambiti`
 
 Tiene ferme le due premesse dello
-[studio sugli ambiti](project-scopes.md#34-esito-delle-due-verifiche-preliminari).
-Non prova la proposta, che non esiste ancora: se Agno cambia una premessa, il
+[studio sugli ambiti](project-scopes.md#34-esito-delle-due-verifiche-preliminari),
+e la provenienza che ci si regge: se Agno cambia una premessa, il
 fallimento arriva qui e il messaggio nomina la pagina da aggiornare.
 
 - **Provenienza delle memorie.** Una chiave in più in una voce di memoria si
@@ -138,6 +138,15 @@ fallimento arriva qui e il messaggio nomina la pagina da aggiornare.
   riallinea con la stessa scrittura e **non** arriva al modello: il prompt di
   estrazione porta solo `{id, content}`, quindi la classificazione non può
   essere del modello.
+- **Memorie superate.** Attraverso lo store vero, un `update_memory` con un
+  testo diverso lascia la vecchia fra le superate con `invalidata_il` e
+  `sostituita_da`, un `delete_memory` la lascia senza sostituta; nessuna
+  delle due arriva al prompt né all'estrattore successivo; riscrivere lo
+  stesso testo non è una correzione.
+- **Provenienza del turno.** `annota_provenienza` scrive sessione, turno,
+  cartella e `valida_dal` solo sulla memoria scritta dal turno, non su
+  quella di prima, e niente arriva al prompt; il ripristino toglie memoria e
+  annotazioni, e con sole superate prima del turno non le cancella.
 - **Filtro per namespace delle intuizioni.** Con un embedder a vettori
   fissi, il filtro per namespace è applicato sui metadati *dopo* il limite:
   con trenta documenti fuori ambito più vicini di cinque in ambito, la

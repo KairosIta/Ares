@@ -383,6 +383,29 @@ def riga_regole(regole: Regole) -> str:
     return (", ".join(conti) if conti else "nessuna regola valida") + "  (" + ", ".join(regole.fonti) + ")"
 
 
+def riga_origine(voce: dict) -> str:
+    """Da dove viene una memoria: «da sessione s, cartella c, dal 2026-10-02».
+
+    Le memorie scritte prima che Ares registrasse la provenienza non ne
+    hanno: la riga lo dice invece di tacere.
+    """
+    pezzi = [
+        etichetta + " " + str(voce[chiave])
+        for chiave, etichetta in (("sessione", "sessione"), ("cartella", "cartella"))
+        if voce.get(chiave)
+    ]
+    if voce.get("valida_dal"):
+        pezzi.append("dal " + str(voce["valida_dal"])[:10])
+    return "  da " + ", ".join(pezzi) if pezzi else "  provenienza non registrata"
+
+
+def righe_superata(voce: dict) -> list:
+    """Una memoria superata: il testo, quando e come e' stata superata, da dove veniva."""
+    quando = str(voce.get("invalidata_il") or "")[:10] or "data ignota"
+    come = "sostituita il " + quando if voce.get("sostituita_da") else "tolta il " + quando
+    return ["- " + " ".join(str(voce.get("content") or "").split()), "  " + come, riga_origine(voce)]
+
+
 def riga_concessione(richiesta: Richiesta) -> str:
     """La riga per un comando che gira senza conferma per una regola della persona: il comando intero, e la regola."""
     args = richiesta.argomenti.get("args")

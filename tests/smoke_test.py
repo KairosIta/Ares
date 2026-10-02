@@ -1949,6 +1949,14 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     esigi(PROFILO_SEMINATO["occupation"] in uscita, "/profilo non mostra il seme: " + repr(uscita))
     uscita = esegui_comando("/memorie")
     esigi(all(m in uscita for m in MEMORIE_SEMINATE), "/memorie non mostra il seme: " + repr(uscita))
+    esigi("superate" not in uscita, "/memorie annuncia superate che non ci sono: " + repr(uscita))
+    uscita = esegui_comando("/memorie origine")
+    esigi(
+        all(m in uscita for m in MEMORIE_SEMINATE) and uscita.count("provenienza non registrata") == 2,
+        "/memorie origine non dice che il seme non ha provenienza: " + repr(uscita),
+    )
+    uscita = esegui_comando("/memorie superate")
+    esigi("Nessuna memoria superata." in uscita, "/memorie superate a vuoto non lo dice: " + repr(uscita))
     uscita = esegui_comando("/contesto")
     esigi("Sessione di collaudo" in uscita, "/contesto non mostra il riassunto del seme: " + repr(uscita))
 

@@ -8,6 +8,24 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Le memorie sanno da dove vengono, e una correzione non cancella**
+  (proposta 3.7 di `docs/agentic-improvements.md`). Dopo ogni turno Ares
+  scrive sulle memorie che il turno ha scritto la sessione, il turno, la
+  cartella e da quando valgono (`echo.annota_provenienza`), con le API
+  pubbliche e qualunque strada abbia scritto la memoria; un rifiuto
+  dell'eco le toglie con il resto. Una memoria corretta o tolta,
+  dall'estrazione o da `update_user_memory`, non sparisce: passa fra le superate
+  di `AresMemories`, con `invalidata_il` e, per una correzione,
+  `sostituita_da`. Prompt, estrattore, eco e benchmark vedono solo le
+  valide; il modello non vede la provenienza, che resta un dato per la
+  persona. `/memorie origine` dice da quale conversazione e cartella viene
+  ogni memoria, `/memorie superate` mostra quelle corrette o tolte, e
+  `/memorie` dice quante ce ne sono. Le memorie scritte prima restano senza
+  provenienza e lo dichiarano; la retention delle sessioni lascia la
+  provenienza come riferimento pendente. Prove offline in `ambiti` (memorie
+  superate attraverso lo store vero, provenienza del turno e ripristino),
+  `smoke` e `repl` (i comandi).
+
 - **Con un estrattore locale il contesto di sessione è un JSON vincolato
   dallo schema** (proposta 3.6 di `docs/agentic-improvements.md`, passo 2).
   Al posto della tool call, una richiesta senza strumenti con `format` pari

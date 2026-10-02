@@ -17,6 +17,8 @@ Vincoli di Agno da conoscere prima di cambiare qualcosa:
 """
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 from agno.learn.schemas import Memories, UserProfile
 
@@ -80,13 +82,44 @@ class AresProfile(UserProfile):
 
 @dataclass
 class AresMemories(Memories):
-    """Memorie rese nel prompt con la loro data.
+    """Memorie che non si perdono quando vengono corrette, rese nel prompt con la loro data.
+
+    Una memoria cancellata o riscritta con un contenuto diverso non sparisce:
+    una copia passa in `superate`, con `invalidata_il` e, per una
+    riscrittura, `sostituita_da` (l'id della voce valida, che resta lo
+    stesso). `memories` contiene solo le valide, quindi il prompt, l'estrattore
+    e l'eco non le vedono; `/memorie superate` le mostra.
 
     `Memories.get_memories_text` usa solo `content`: il modello non saprebbe
     se una preferenza e' di ieri o dell'anno scorso. La data e' `updated_at`
     (ripiego `created_at`), assoluta: l'ora corrente e' gia' nel prompt, e
     un calcolo relativo sarebbe aritmetica in piu' per un modello piccolo.
     """
+
+    superate: list[dict[str, Any]] = field(default_factory=list, metadata={"internal": True})
+
+    def _supera(self, voce: dict[str, Any], sostituita_da: str | None) -> None:
+        copia = {**voce, "invalidata_il": datetime.now(UTC).isoformat()}
+        if sostituita_da is not None:
+            copia["sostituita_da"] = sostituita_da
+        self.superate.append(copia)
+
+    def update_memory(self, memory_id: str, content: str, **kwargs: Any) -> bool:
+        voce = self.get_memory(memory_id)
+        if voce is not None and (voce.get("content") or "").strip() != content.strip():
+            self._supera(voce, sostituita_da=memory_id)
+        return super().update_memory(memory_id, content, **kwargs)
+
+    def __setattr__(self, nome: str, valore: Any) -> None:
+        # Agno cancella riassegnando `memories` filtrata, nello strumento di
+        # estrazione come in `delete_memory`: e' l'unico punto da cui passa
+        # ogni cancellazione. Il costruttore assegna prima che il campo esista.
+        if nome == "memories" and "memories" in self.__dict__ and isinstance(valore, list):
+            restano = {v.get("id") for v in valore if isinstance(v, dict)}
+            for voce in self.__dict__["memories"] or []:
+                if isinstance(voce, dict) and voce.get("id") not in restano:
+                    self._supera(voce, sostituita_da=None)
+        super().__setattr__(nome, valore)
 
     def get_memories_text(self) -> str:
         """Le memorie come testo per il prompt, ognuna con la sua data.
@@ -111,3 +144,11 @@ class AresMemories(Memories):
         if not righe:
             return ""
         return "\n".join(["(fra parentesi quadre, la data in cui hai saputo la cosa)", *righe])
+
+
+@dataclass
+class AresMemorieSenzaData(AresMemories):
+    """Come `AresMemories`, ma nel prompt senza la data: con `DATE_MEMORIE` spento."""
+
+    def get_memories_text(self) -> str:
+        return Memories.get_memories_text(self)

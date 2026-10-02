@@ -1112,3 +1112,22 @@ Il 9B salvava già il contesto al primo tentativo: qui il vincolo porta
 solo un'estrazione più rapida. Anche il 9B, col profilo vincolato, non
 scrive mai `current_focus`; `recupero`, con il solo contesto vincolato, è
 superato in tre ripetizioni su tre.
+
+### Memorie superate e provenienza, 2 ottobre 2026
+
+Con la proposta 3.7 una memoria corretta o tolta passa fra le superate di
+`AresMemories` invece di sparire, e il benchmark, come il prompt, legge solo
+le valide. Verifica di non regressione sui tre casi che correggono o tolgono
+una memoria, tre ripetizioni, `glm-5.3-flash:cloud` per la conversazione e
+`deepseek-v4.1-flash:cloud` per l'estrazione: 15 fasi superate su 18,
+nessuna fallita o in errore. Ogni fase `corretta` e `dimenticata` lascia
+esattamente una superata. Le tre da revisionare sono `aggiornamento_lungo`,
+come prima della modifica: la memoria valida dice che l'utente ha
+abbandonato Vim, e il valutatore segnala di proposito il valore conteso.
+Rapporto: `artifacts/memory-quality/provenienza-cloud-20261002.json`.
+
+Il benchmark chiama la macchina di apprendimento direttamente, senza il
+turno del nucleo: la provenienza la provano `ambiti` offline e un turno vero
+sul cloud («uso Helix», poi «sono passato a Zed»), dove la memoria valida e
+quella superata portano sessione, turno, cartella e data, e il prompt
+contiene solo la valida.
