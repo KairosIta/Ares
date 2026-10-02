@@ -218,7 +218,8 @@ def _runtime_dell_utente() -> list[Path]:
     Senza la variabile (su, sudo -u, cron, ssh senza pam_systemd) la directory
     c'e' lo stesso, con il bus della sessione: si copre comunque.
     """
-    runtime = [Path("/run/user") / str(os.getuid())]
+    # Solo POSIX ha `getuid`; la sandbox gira solo su Linux.
+    runtime = [Path("/run/user") / str(os.getuid())] if hasattr(os, "getuid") else []
     variabile = os.environ.get("XDG_RUNTIME_DIR")
     if variabile:
         runtime.append(Path(variabile))

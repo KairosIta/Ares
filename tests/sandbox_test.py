@@ -68,9 +68,10 @@ def configurazione() -> str:
 
 def riga_di_bwrap() -> str:
     cartella = Path("/progetto")
-    segreto_cartella = RADICE_PROVA / "segreto"
+    # Risolti come li risolve la sandbox: su Windows la temp ha nomi brevi (RUNNER~1).
+    segreto_cartella = RADICE_PROVA.resolve() / "segreto"
     segreto_cartella.mkdir()
-    segreto_file = RADICE_PROVA / "token"
+    segreto_file = RADICE_PROVA.resolve() / "token"
     segreto_file.write_text("x")
     riga = Sandbox("/usr/bin/bwrap", cartella, (segreto_cartella, segreto_file), rete=False).argv(["git", "status"])
     esigi(riga[0] == "/usr/bin/bwrap" and riga[-3:] == ["--", "git", "status"], "inizio o fine: " + repr(riga))
@@ -131,6 +132,8 @@ def percorsi_coperti() -> str:
         esigi((casa / ".aws").resolve() not in sandbox.nascosti(), "coperto prima di esistere")
         (casa / ".aws").mkdir()
         esigi((casa / ".aws").resolve() in sandbox.nascosti(), "un percorso nato dopo l'avvio non e' coperto")
+    if not hasattr(os, "getuid"):
+        return "credenziali, stato e runtime coperti una volta e se nascono dopo (niente /run/user qui)"
     # Senza XDG_RUNTIME_DIR (su, cron, ssh) la directory di runtime c'e' lo stesso.
     di_serie = Path("/run/user") / str(os.getuid())
     ambiente = {k: v for k, v in os.environ.items() if k != "XDG_RUNTIME_DIR"}
