@@ -440,7 +440,7 @@ SESSIONI_PROTETTE = ("principale",)
 # Tempo
 # ---------------------------------------------------------------------------
 
-# Il fuso dell'ora nel prompt (`prompts.riga_dell_ora`).
+# Il fuso della data nel prompt e dell'orologio (`prompts.riga_della_data`, `prompts.data_e_ora`).
 FUSO_ORARIO = "Europe/Rome"
 
 # Mostra al modello la data di ogni memoria (`AresMemories` in schemas.py).

@@ -10,10 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evals import latenza as lt
 
 
-def metrica(secondi: float, entrata: int, uscita: int) -> SimpleNamespace:
-    return SimpleNamespace(
-        provider_metrics={"total_duration": int(secondi * 1e9)}, input_tokens=entrata, output_tokens=uscita
-    )
+def metrica(secondi: float, entrata: int, uscita: int, prefill: float = 0.0) -> SimpleNamespace:
+    fornitore = {"total_duration": int(secondi * 1e9)}
+    if prefill:
+        fornitore["prompt_eval_duration"] = int(prefill * 1e9)
+    return SimpleNamespace(provider_metrics=fornitore, input_tokens=entrata, output_tokens=uscita)
 
 
 def risposta(*, modello: list, apprendimento: list, finestre: list[int], testo: str = "ok") -> SimpleNamespace:
@@ -29,13 +30,14 @@ def risposta(*, modello: list, apprendimento: list, finestre: list[int], testo: 
 class LatenzaEvalTest(unittest.TestCase):
     def test_misura_somma_le_chiamate_e_legge_l_ultima_finestra(self):
         r = risposta(
-            modello=[metrica(10.0, 8000, 300), metrica(5.5, 8500, 50)],
+            modello=[metrica(10.0, 8000, 300, prefill=3.25), metrica(5.5, 8500, 50, prefill=0.5)],
             apprendimento=[metrica(20.0, 5000, 400), metrica(6.0, 5100, 100), metrica(4.0, 5200, 50)],
             finestre=[8000, 8500],
             testo="Ciao\nMarco",
         )
         riga = lt.misura_turno("presentazione", r, strumenti=1, appreso=8, secondi_turno=52.26)
         self.assertEqual(riga["risposta_s"], 15.5)
+        self.assertEqual(riga["prefill_s"], 3.8)
         self.assertEqual(riga["estrazione_s"], 30.0)
         self.assertEqual(riga["turno_s"], 52.3)
         self.assertEqual(riga["finestra_tok"], 8500)
@@ -46,7 +48,8 @@ class LatenzaEvalTest(unittest.TestCase):
 
     def test_senza_risposta_restano_solo_i_secondi_del_turno(self):
         riga = lt.misura_turno("vincolo", None, strumenti=0, appreso=0, secondi_turno=3.0)
-        self.assertEqual((riga["risposta_s"], riga["estrazione_s"], riga["turno_s"]), (0.0, 0.0, 3.0))
+        tempi = (riga["risposta_s"], riga["prefill_s"], riga["estrazione_s"], riga["turno_s"])
+        self.assertEqual(tempi, (0.0, 0.0, 0.0, 3.0))
         self.assertEqual((riga["finestra_tok"], riga["testo"]), (0, ""))
 
     def test_metriche_senza_durata_del_fornitore_non_rompono(self):
@@ -56,7 +59,7 @@ class LatenzaEvalTest(unittest.TestCase):
             finestre=[],
         )
         riga = lt.misura_turno("preferenze", r, strumenti=0, appreso=0, secondi_turno=1.0)
-        self.assertEqual((riga["risposta_s"], riga["risposta_tok_out"], riga["finestra_tok"]), (0.0, 7, 0))
+        self.assertEqual((riga["risposta_s"], riga["prefill_s"], riga["risposta_tok_out"]), (0.0, 0.0, 7))
 
     def test_aggrega_separa_i_turni_con_strumenti(self):
         turni = [
@@ -98,6 +101,7 @@ class LatenzaEvalTest(unittest.TestCase):
             {
                 "turno": "a",
                 "risposta_s": 40.0,
+                "prefill_s": 2.5,
                 "estrazione_s": 20.0,
                 "turno_s": 60.0,
                 "finestra_tok": 8000,
@@ -117,7 +121,7 @@ class LatenzaEvalTest(unittest.TestCase):
             "errore": "Timeout dopo 10 secondi.",
         }
         testo = lt.markdown(rapporto)
-        self.assertIn("| a | 40.0 s | 20.0 s | 60.0 s | 8000 | 300 | 0 | 8 |", testo)
+        self.assertIn("| a | 40.0 s | 2.5 s | 20.0 s | 60.0 s | 8000 | 300 | 0 | 8 |", testo)
         self.assertIn("Contesto: 65536", testo)
         self.assertIn("Senza strumenti (1 turni): risposta 40.0 s. Con strumenti (0 turni): risposta —.", testo)
         self.assertIn("Errore: Timeout dopo 10 secondi.", testo)

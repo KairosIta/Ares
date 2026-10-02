@@ -828,7 +828,7 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     esigi(not inglesi, "il prompt contiene righe in inglese: " + repr(inglesi[:3]))
     doppio = re.search(r"\S {2,}\S", fuori_dai_dati(prompt))
     esigi(doppio is None, "il prompt contiene un doppio spazio: " + repr(doppio and doppio.group()))
-    attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive", "- Adesso: "]
+    attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive", "- Oggi: "]
     if config.LEARN_KNOWLEDGE:
         attesi += [
             "<istruzioni_intuizioni>",
@@ -852,7 +852,7 @@ def struttura_del_prompt(agent, user_id: str, session_id: str) -> str:
     """Il prompt e' fatto di sezioni note, in ordine, con cio' che cambia in fondo.
 
     Due sessioni con la stessa configurazione devono avere le stesse sezioni
-    fisse: cio' che distingue una sessione (utente, id, cartella, ora) sta
+    fisse: cio' che distingue una sessione (utente, id, cartella, data) sta
     tutto in `questo_avvio`, l'ultima.
     """
     from zoneinfo import ZoneInfo
@@ -882,17 +882,28 @@ def struttura_del_prompt(agent, user_id: str, session_id: str) -> str:
     esigi(una.avvio != altra.avvio, "l'avvio non distingue le sessioni")
     chiamate = una()
     esigi(chiamate[:-1] == una.fisse, "chiamate, le istruzioni cambiano oltre l'avvio")
-    esigi("- Adesso: " in chiamate[-1] and "- Adesso: " not in una[-1], "l'ora non e' aggiunta solo a ogni turno")
+    esigi("- Oggi: " in chiamate[-1] and "- Oggi: " not in una[-1], "la data non e' aggiunta solo a ogni turno")
+    # Il prefisso stabile: due chiamate nella stessa giornata danno le stesse
+    # istruzioni, byte per byte, e Ollama riusa la KV cache.
+    esigi(una() == chiamate, "due chiamate consecutive danno istruzioni diverse: il prefisso non e' stabile")
 
-    ora = prompts.riga_dell_ora(datetime(2026, 9, 30, 22, 4, tzinfo=ZoneInfo(config.FUSO_ORARIO)))
-    esigi(ora == "- Adesso: mercoledi' 30 settembre 2026, 22:04 CEST.", "l'ora non e' in italiano: " + ora)
+    sera = datetime(2026, 9, 30, 22, 4, tzinfo=ZoneInfo(config.FUSO_ORARIO))
+    giorno = prompts.riga_della_data(sera)
+    esigi(
+        giorno == "- Oggi: mercoledi' 30 settembre 2026. Per l'ora precisa chiama che_ora_e.",
+        "la data non e' in italiano, o porta l'ora: " + giorno,
+    )
+    esigi(
+        prompts.data_e_ora(sera) == "mercoledi' 30 settembre 2026, 22:04 CEST",
+        "l'orologio non e' in italiano: " + prompts.data_e_ora(sera),
+    )
 
     esigi(
         "ARES.md" in prompts.istruzioni_sulla_fiducia(regole="ARES.md")[0]
         and "regole del progetto" not in prompts.istruzioni_sulla_fiducia(regole=None)[0],
         "la fiducia nomina le regole del progetto quando non ci sono, o le tace quando ci sono",
     )
-    return str(len(tag)) + " sezioni in ordine, fisse uguali fra due sessioni, ora solo nell'avvio"
+    return str(len(tag)) + " sezioni in ordine, fisse uguali fra due sessioni, data solo nell'avvio"
 
 
 def istruzioni_fuori_modalita() -> str:
@@ -1260,6 +1271,12 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
             bool(consegnati[nome].requires_confirmation) == va_confermato,
             nome + (" gira senza chiedere niente" if va_confermato else " chiede il permesso e non dovrebbe"),
         )
+    orologio = consegnati.get("che_ora_e")
+    esigi(
+        orologio is not None and not orologio.requires_confirmation,
+        "che_ora_e non arriva al modello, o chiede il permesso",
+    )
+    esigi("che_ora_e" in istruzioni, "il prompt non dice di leggere l'ora con che_ora_e")
 
     # La collisione e' silenziosa per costruzione: Agno tiene il primo nome
     # arrivato e scrive un WARNING. Qui si guarda l'intersezione, non i log.
@@ -1300,11 +1317,13 @@ def spazio_di_lavoro(agent, user_id: str) -> str:
 
 
 def tempo(agent, lm, user_id: str) -> str:
-    """Ares sa che ora e', e da quando sa le cose che sa.
+    """Ares sa che giorno e', legge l'ora con uno strumento, e sa da quando sa le cose che sa.
 
-    L'ora la mette `prompts.Istruzioni` a ogni turno; le date delle memorie
-    arrivano solo grazie allo schema personalizzato. Si guarda il system
-    message costruito davvero, due volte: l'ora dev'essere quella del turno.
+    La data la mette `prompts.Istruzioni` a ogni turno, senza l'ora: cosi'
+    due system message consecutivi della stessa giornata sono identici e il
+    prefisso del prompt resta in cache. Le date delle memorie arrivano solo
+    grazie allo schema personalizzato. Si guarda il system message costruito
+    davvero, tre volte.
     """
     from agno.agent import _messages
     from agno.run.base import RunContext
@@ -1320,18 +1339,33 @@ def tempo(agent, lm, user_id: str) -> str:
             tools=[],
         ).content
 
+    from ares.agent.runtime import che_ora_e
+
     esigi(not agent.add_datetime_to_context, "add_datetime_to_context e' acceso: l'ora arriva anche in inglese")
     prima = datetime(2026, 1, 5, 9, 30, tzinfo=UTC)
-    with patch.object(prompts, "riga_dell_ora", lambda: "- Adesso: " + prima.isoformat() + "."):
+    with patch.object(prompts, "riga_della_data", lambda: "- Oggi: " + prima.date().isoformat() + "."):
         vecchio = costruisci()
     prompt = costruisci()
-    esigi(prima.isoformat() in vecchio, "l'ora non viene da riga_dell_ora")
-    riga_ora = next((r for r in prompt.splitlines() if r.startswith("- Adesso: ")), "")
-    esigi(bool(riga_ora) and prima.isoformat() not in riga_ora, "l'ora non e' ricalcolata a ogni system message")
-    esigi(re.search(r", \d\d:\d\d \S+\.$", riga_ora) is not None, "l'ora arriva senza minuti o fuso: " + riga_ora)
+    esigi(prima.date().isoformat() in vecchio, "la data non viene da riga_della_data")
+    righe_oggi = [r for r in prompt.splitlines() if r.startswith("- Oggi: ")]
+    esigi(len(righe_oggi) == 1, "la data compare " + str(len(righe_oggi)) + " volte invece di una")
+    esigi(prima.date().isoformat() not in righe_oggi[0], "la data non e' ricalcolata a ogni system message")
+    esigi(
+        re.fullmatch(r"- Oggi: [a-z]+' \d{1,2} [a-z]+ \d{4}\. Per l'ora precisa chiama che_ora_e\.", righe_oggi[0])
+        is not None,
+        "la riga del giorno non e' il giorno piu' il rimando all'orologio: " + righe_oggi[0],
+    )
+    avvio = prompt.split("<questo_avvio>", 1)[-1].split("</questo_avvio>", 1)[0]
+    esigi(re.search(r"\d\d:\d\d", avvio) is None, "l'avvio porta un orario, che cambia a ogni turno: " + avvio)
+    esigi(prompt == costruisci(), "due system message consecutivi della stessa sessione differiscono")
+    adesso = che_ora_e()
+    esigi(
+        re.fullmatch(r"[a-z]+' \d{1,2} [a-z]+ \d{4}, \d\d:\d\d \S+", adesso) is not None,
+        "che_ora_e non risponde con giorno, ora e fuso: " + adesso,
+    )
 
     if "user_memory" not in lm.stores:
-        return NON_CONCLUSIVO + "user_memory e' spento: resta verificata solo l'ora corrente"
+        return NON_CONCLUSIVO + "user_memory e' spento: restano verificati solo la data e l'orologio"
     if not config.DATE_MEMORIE:
         return NON_CONCLUSIVO + "DATE_MEMORIE e' spento: le memorie arrivano senza data, come di serie"
 
@@ -1341,7 +1375,7 @@ def tempo(agent, lm, user_id: str) -> str:
         blocco.count("[" + oggi + "]") == len(MEMORIE_SEMINATE),
         "le memorie arrivano senza la data di oggi: lo schema non e' quello di schemas.py",
     )
-    return "ora corrente formattata, " + str(len(MEMORIE_SEMINATE)) + " memorie datate nel prompt"
+    return "data nel prompt, ora dallo strumento, " + str(len(MEMORIE_SEMINATE)) + " memorie datate nel prompt"
 
 
 def lettori_tolleranti(user_id: str) -> str:
