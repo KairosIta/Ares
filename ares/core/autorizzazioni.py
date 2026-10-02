@@ -95,13 +95,22 @@ def richiesta_di(esecuzione: Any, percorsi: Percorsi, politica: Politica) -> Ric
     return Richiesta(strumento=nome, argomenti=dict(esecuzione.tool_args or {}), radice=radice)
 
 
-def risolvi_pausa(output: RunOutput, cliente: Autorizzatore, percorsi: Percorsi, politica: Politica) -> int:
-    """Conferma o rifiuta gli strumenti in pausa. Restituisce quanti ne ha risolti.
+def avviso_ultimo_rifiuto(tetto: int) -> str:
+    """La coda al motivo del rifiuto numero `tetto`: il modello deve rispondere, non riprovare."""
+    return (
+        "Sono " + str(tetto) + " rifiuti di seguito: non chiedere altri strumenti, rispondi alla persona "
+        "con cio' che hai e di' che cosa resta da fare."
+    )
 
-    Zero ferma il ciclo: una pausa che qui non si sa gestire farebbe fermare
-    `continue_run` allo stesso punto all'infinito.
-    """
-    risolti = 0
+
+MOTIVO_TURNO_CHIUSO = "Turno chiuso: troppe richieste rifiutate di seguito."
+
+
+def _risolvi(
+    output: RunOutput, cliente: Autorizzatore, percorsi: Percorsi, politica: Politica, coda: str | None
+) -> tuple[int, int]:
+    """Conferma o rifiuta gli strumenti in pausa: (risolti, rifiutati). `coda` si aggiunge al motivo dei rifiuti."""
+    risolti = rifiutati = 0
     for requisito in output.active_requirements or []:
         if not requisito.needs_confirmation:
             continue
@@ -116,6 +125,53 @@ def risolvi_pausa(output: RunOutput, cliente: Autorizzatore, percorsi: Percorsi,
         else:
             # Il motivo arriva al modello: senza, ritenterebbe una variante
             # dello stesso comando.
-            requisito.reject(decisione.motivo or None)
+            requisito.reject(" ".join(parte for parte in (decisione.motivo, coda) if parte) or None)
+            rifiutati += 1
         risolti += 1
-    return risolti
+    return risolti, rifiutati
+
+
+def risolvi_pausa(output: RunOutput, cliente: Autorizzatore, percorsi: Percorsi, politica: Politica) -> int:
+    """Conferma o rifiuta gli strumenti in pausa. Restituisce quanti ne ha risolti.
+
+    Zero ferma il ciclo: una pausa che qui non si sa gestire farebbe fermare
+    `continue_run` allo stesso punto all'infinito.
+    """
+    return _risolvi(output, cliente, percorsi, politica, coda=None)[0]
+
+
+class Arbitro:
+    """Risolve le pause di un turno con il client, e chiude il turno dopo `tetto` rifiuti di seguito.
+
+    Un modello che insiste - un comando rifiutato, poi una variante, poi
+    un'altra - farebbe durare il turno finche' la persona non cede o il tempo
+    scade. Al rifiuto numero `tetto` il motivo dice al modello di rispondere
+    con cio' che ha; se chiede ancora, `esauriti` diventa vero, le richieste
+    sono rifiutate senza chiedere niente al client e il turno non riprende
+    (zero ferma il ciclo, e Agno tiene il run in pausa fuori dalla
+    cronologia). Una pausa in cui almeno una richiesta e' concessa azzera il
+    conto. Senza presenza ogni pausa e' un rifiuto, e il tetto vale lo stesso.
+    """
+
+    def __init__(
+        self, cliente: Autorizzatore, percorsi: Percorsi, politica: Politica, *, tetto: int | None = None
+    ) -> None:
+        self.cliente = cliente
+        self.percorsi = percorsi
+        self.politica = politica
+        self.tetto = config.RIFIUTI_CONSECUTIVI if tetto is None else tetto
+        self.consecutivi = 0
+        self.esauriti = False
+
+    def __call__(self, output: RunOutput) -> int:
+        if self.consecutivi >= self.tetto:
+            for requisito in output.active_requirements or []:
+                if requisito.needs_confirmation:
+                    requisito.reject(MOTIVO_TURNO_CHIUSO)
+            self.esauriti = True
+            return 0
+        coda = avviso_ultimo_rifiuto(self.tetto) if self.consecutivi == self.tetto - 1 else None
+        risolti, rifiutati = _risolvi(output, self.cliente, self.percorsi, self.politica, coda=coda)
+        if risolti:
+            self.consecutivi = self.consecutivi + 1 if rifiutati == risolti else 0
+        return risolti

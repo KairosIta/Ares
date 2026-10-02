@@ -90,8 +90,9 @@ def descrizione_del_comando() -> str:
     """
     nome, lancia, riga = _shell()
     return (
-        "Esegue un comando nella cartella di lavoro e restituisce le ultime righe dell'output, o "
-        "l'errore. args e' il comando diviso in parole: ['git', 'status'], non ['git status']. "
+        "Esegue un comando nella cartella di lavoro e restituisce l'output, o l'errore; se e' lungo, "
+        "testa e coda con il conto delle righe omesse. Non ha input: un comando che lo aspetta "
+        "termina subito. args e' il comando diviso in parole: ['git', 'status'], non ['git status']. "
         "Il comando non passa da una shell: per pipe, redirezioni o piu' comandi insieme passa la "
         "riga intera a " + nome + ", come " + repr([*lancia, riga]) + ". Gira con i permessi "
         "dell'utente, senza sandbox."

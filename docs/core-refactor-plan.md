@@ -43,7 +43,7 @@ Il client offre il protocollo `ClienteTurno`:
 | --- | --- |
 | `flusso()` | apre la presentazione e restituisce chi riceve gli eventi |
 | `autorizza(richiesta)`, `negata(richiesta)` | vedi il terzo passaggio |
-| `pausa_irrisolta()`, `interrotto()`, `guasto(errore)` | avvisa |
+| `pausa_irrisolta()`, `rifiuti_esauriti(quanti)`, `interrotto()`, `guasto(errore)` | avvisa |
 | `apprendimenti(righe, chiedi=...)` | mostra cosa è entrato in memoria e, se richiesto, chiede se tenerlo |
 
 Il risultato è un `EsitoTurno` (risposta, righe apprese, esito del

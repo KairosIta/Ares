@@ -320,6 +320,80 @@ def avvertenze_del_comando() -> str:
     return "shell, percorsi, privilegi, rete e rm -r segnalati; comandi nella directory in silenzio"
 
 
+def comando_igienico() -> str:
+    """`run_command` di Ares: stdin chiuso, ambiente minimo, testa e coda dell'output.
+
+    Quello di Agno eredita lo stdin del terminale (un comando che aspetta
+    input resta appeso fino al timeout) e l'ambiente intero della shell, e
+    tiene solo la coda. Qui si prova il metodo direttamente, senza l'agente,
+    con l'interprete della prova come comando: e' l'unico programma che c'e'
+    su ogni sistema.
+    """
+    import asyncio
+    import subprocess
+
+    from ares.agent.runtime import AresWorkspace, ambiente_del_comando, testa_e_coda
+
+    silenziosi, confermati = config.liste_modalita("auto")
+    spazio = AresWorkspace(PERCORSI.lavoro, prefisso=config.WORKSPACE_PREFIX, allowed=silenziosi, confirm=confermati)
+    funzione = spazio.functions[config.WORKSPACE_PREFIX + "run_command"]
+    esigi(
+        getattr(funzione.entrypoint, "__func__", None) is AresWorkspace.run_command,
+        "lo strumento registrato e' il run_command di Agno, non quello di Ares",
+    )
+    python = sys.executable
+
+    # Stdin chiuso: la lettura finisce subito con zero byte, non al timeout.
+    inizio = time.monotonic()
+    letto = spazio.run_command([python, "-c", "import sys; print('letti', len(sys.stdin.read()))"], timeout=20)
+    esigi(letto == "letti 0", "lo stdin non e' chiuso: " + repr(letto))
+    esigi(time.monotonic() - inizio < 15, "un comando che legge lo stdin aspetta il timeout")
+
+    # Ambiente minimo: un segreto piantato nella shell non arriva al figlio,
+    # PATH e HOME si'.
+    with patch.dict(os.environ, {"ARES_SEGRETO_PROVA": "non deve passare"}):
+        visto = spazio.run_command(
+            [python, "-c", "import os; print('ARES_SEGRETO_PROVA' in os.environ, 'PATH' in os.environ)"]
+        )
+    esigi(visto == "False True", "l'ambiente del comando non e' quello minimo: " + repr(visto))
+    filtrato = ambiente_del_comando(
+        {"PATH": "p", "LC_ALL": "C", "AWS_SECRET_ACCESS_KEY": "s", "Path": "w", "ARES_X": "y"}
+    )
+    esigi(filtrato == {"PATH": "p", "LC_ALL": "C", "Path": "w"}, "il filtro dell'ambiente sbaglia: " + repr(filtrato))
+
+    # Testa e coda, con il conto in mezzo: la riga 0 e la 299 ci sono entrambe.
+    lungo = spazio.run_command([python, "-c", "for i in range(300): print('riga', i)"], tail=100)
+    righe = lungo.splitlines()
+    esigi(len(righe) == 101, "testa e coda non fanno cento righe piu' l'avviso: " + str(len(righe)))
+    esigi(righe[0] == "riga 0" and righe[-1] == "riga 299", "testa o coda mancano: " + righe[0] + " / " + righe[-1])
+    esigi(righe[50] == "[... 200 righe omesse: in tutto 300 ...]", "l'avviso non conta le righe tolte: " + righe[50])
+    esigi(testa_e_coda("a\nb\nc", 5) == "a\nb\nc", "un output corto viene toccato")
+    esigi(
+        testa_e_coda("\n".join(map(str, range(10))), 3) == "0\n1\n[... 7 righe omesse: in tutto 10 ...]\n9",
+        "il tetto impari",
+    )
+    esigi(
+        testa_e_coda("\x1b[31mrosso\x1b[0m e \x1b[1;32mverde\x1b[0m", 10) == "rosso e verde", "le sequenze ANSI restano"
+    )
+
+    # L'errore porta codice, stderr e stdout: molti programmi scrivono l'errore su stdout.
+    errore = spazio.run_command(
+        [python, "-c", "import sys; print('dettaglio'); print('guasto', file=sys.stderr); sys.exit(3)"]
+    )
+    esigi(errore.startswith("Errore (uscita 3)."), "il codice d'uscita non e' detto: " + errore)
+    esigi("guasto" in errore and "Output: dettaglio" in errore, "stderr o stdout mancano dall'errore: " + errore)
+    scaduto = spazio.run_command([python, "-c", "import time; time.sleep(30)"], timeout=1)
+    esigi("non e' finito entro 1 secondi" in scaduto, "il timeout non e' spiegato: " + scaduto)
+    assente = spazio.run_command(["programma-che-non-esiste-" + str(os.getpid())])
+    esigi(assente.startswith("Errore nell'avvio del comando: "), "un comando inesistente non e' spiegato: " + assente)
+
+    # La variante asincrona da' lo stesso risultato: e' lo stesso codice.
+    asincrono = asyncio.run(spazio.arun_command([python, "-c", "print('uno')"]))
+    esigi(asincrono == "uno", "arun_command non delega a run_command: " + repr(asincrono))
+    esigi(subprocess.DEVNULL is not None, "subprocess senza DEVNULL")
+    return "stdin chiuso, ambiente filtrato, 300 righe in testa, coda e conto, errori spiegati, variante asincrona"
+
+
 def conferme_applicate() -> str:
     """Il consenso e il rifiuto dati a riga di comando risolvono davvero i requirement in pausa.
 
@@ -1843,6 +1917,7 @@ def main() -> int:
             ("conferme leggibili  ", conferme_leggibili),
             ("conferma scrittura  ", conferma_scrittura),
             ("avvertenze comando  ", avvertenze_del_comando),
+            ("comando igienico    ", comando_igienico),
             ("conferme applicate  ", conferme_applicate),
             ("metriche del turno  ", metriche_del_turno),
             ("esito strumenti     ", esito_strumenti),

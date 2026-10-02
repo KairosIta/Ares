@@ -2,8 +2,9 @@
 
 La sequenza e' sempre la stessa, sotto il lock del turno dell'utente:
 fotografia di profilo e memorie, turno (con le pause per autorizzare gli
-strumenti), variazioni, conferma degli apprendimenti e, se l'utente
-rifiuta, ripristino. Il client decide solo come mostrare e come chiedere,
+strumenti, chiuse dall'`Arbitro` dopo troppi rifiuti di seguito),
+variazioni, conferma degli apprendimenti e, se l'utente rifiuta,
+ripristino. Il client decide solo come mostrare e come chiedere,
 attraverso `ClienteTurno`; qui non si stampa niente. Senza presenza non si
 chiede niente: le conferme valgono no e gli apprendimenti restano (vedi
 `core/autorizzazioni.py`).
@@ -22,7 +23,7 @@ from ares import config
 from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
 from ares.agent.turn_core import TurnEvent, run_turn_cycle
 from ares.config import Percorsi, Politica
-from ares.core.autorizzazioni import Autorizzatore, risolvi_pausa
+from ares.core.autorizzazioni import Arbitro, Autorizzatore
 from ares.state.identita import Utente
 from ares.state.lock import lock_turno
 
@@ -39,6 +40,10 @@ class ClienteTurno(Autorizzatore, Protocol):
 
     def pausa_irrisolta(self) -> None:
         """Il turno resta in pausa per qualcosa che il client non sa chiedere."""
+        ...
+
+    def rifiuti_esauriti(self, quanti: int) -> None:
+        """Il turno e' chiuso: dopo `quanti` rifiuti di seguito il modello chiedeva ancora uno strumento."""
         ...
 
     def interrotto(self) -> None:
@@ -95,16 +100,15 @@ def _turno_protetto(
     # Prima del turno, non del post-hook: `update_user_memory` scrive durante il run.
     prima = istantanea(agent) if politica.mostra.apprendimenti else None
     risposta = None
+    arbitro = Arbitro(cliente, percorsi, politica)
     try:
         with cliente.flusso() as su_evento:
-            risposta = run_turn_cycle(
-                agent,
-                testo,
-                on_event=su_evento,
-                resolve_pause=lambda output: risolvi_pausa(output, cliente, percorsi, politica),
-            )
+            risposta = run_turn_cycle(agent, testo, on_event=su_evento, resolve_pause=arbitro)
         if risposta is not None and risposta.is_paused:
-            cliente.pausa_irrisolta()
+            if arbitro.esauriti:
+                cliente.rifiuti_esauriti(arbitro.tetto)
+            else:
+                cliente.pausa_irrisolta()
     except KeyboardInterrupt:
         cliente.interrotto()
     except Exception as errore:

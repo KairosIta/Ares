@@ -1,5 +1,9 @@
 """Componenti runtime dell'assistente: modelli, indice vettoriale e strumenti locali."""
 
+import os
+import re
+import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 from agno.fs import FileSystem
@@ -22,6 +26,7 @@ from ares.state.platform_files import rendi_privato
 # importabili da questo modulo perche' le prove e i comandi lo fanno da sempre.
 __all__ = [
     "AresWorkspace",
+    "ambiente_del_comando",
     "build_chat_model",
     "build_db",
     "build_filesystem",
@@ -31,6 +36,7 @@ __all__ = [
     "build_quaderno",
     "build_result_store",
     "build_workspace",
+    "testa_e_coda",
 ]
 
 
@@ -136,8 +142,133 @@ def build_orologio() -> Toolkit:
     return Toolkit(name="orologio", tools=[che_ora_e])
 
 
+# Le variabili che un comando eredita dalla shell di Ares. Tutto il resto
+# resta fuori: un token esportato nella shell della persona non deve arrivare
+# ne' al comando ne', attraverso il suo output, al modello. PATH e HOME
+# bastano a trovare i programmi e le loro configurazioni; lingua e terminale
+# decidono come scrivono; i proxy servono a chi usa la rete; su Windows le
+# variabili di sistema sono necessarie anche a `dir`. `LC_*` entra per
+# prefisso.
+VARIABILI_DEL_COMANDO = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "LANG",
+        "LANGUAGE",
+        "TERM",
+        "TZ",
+        "TMPDIR",
+        "SSH_AUTH_SOCK",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "all_proxy",
+        # Windows
+        "SYSTEMROOT",
+        "SYSTEMDRIVE",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "USERNAME",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "PROGRAMFILES",
+        "NUMBER_OF_PROCESSORS",
+        "OS",
+    }
+)
+
+# Le sequenze ANSI (colori, cursore) che i programmi scrivono anche su una pipe
+# quando sono forzati: nel risultato per il modello sono solo token sprecati.
+_ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def ambiente_del_comando(ambiente: Mapping[str, str] | None = None) -> dict[str, str]:
+    """L'ambiente minimo per un comando: le `VARIABILI_DEL_COMANDO` presenti in `ambiente` (di serie `os.environ`).
+
+    Su Windows i nomi sono senza distinzione di maiuscole, e `os.environ` li
+    espone gia' maiuscoli; qui si confronta in maiuscolo per entrambi i sistemi,
+    conservando il nome originale.
+    """
+    sorgente = os.environ if ambiente is None else ambiente
+    ammesse = {nome.upper() for nome in VARIABILI_DEL_COMANDO}
+    return {
+        nome: valore for nome, valore in sorgente.items() if nome.upper() in ammesse or nome.upper().startswith("LC_")
+    }
+
+
+def testa_e_coda(testo: str, righe: int) -> str:
+    """Al piu' `righe` righe di `testo`: la prima meta' e l'ultima, con il conto di quelle tolte in mezzo.
+
+    Le ultime cento righe sole perdono la testa, dove `git log`, i test e i
+    compilatori mettono cio' che conta; la testa sola perde l'esito finale.
+    """
+    tutte = _ANSI.sub("", testo).splitlines()
+    if righe < 1 or len(tutte) <= righe:
+        return "\n".join(tutte)
+    testa = (righe + 1) // 2
+    coda = righe - testa
+    omesse = len(tutte) - testa - coda
+    avviso = "[... " + str(omesse) + " righe omesse: in tutto " + str(len(tutte)) + " ...]"
+    return "\n".join([*tutte[:testa], avviso, *tutte[len(tutte) - coda :]] if coda else [*tutte[:testa], avviso])
+
+
 class AresWorkspace(Workspace):
-    """Workspace Agno con nomi distinti dagli strumenti del quaderno, e la shell del sistema."""
+    """Workspace Agno con nomi distinti dagli strumenti del quaderno, e la shell del sistema.
+
+    `run_command` e' riscritto: quello di Agno eredita stdin e l'ambiente
+    intero della shell e tiene solo la coda dell'output. Qui lo stdin e' chiuso
+    (un comando che aspetta input termina subito invece di restare appeso fino
+    al timeout), l'ambiente e' `ambiente_del_comando`, e l'output torna con
+    testa e coda. La firma resta quella di Agno, cosi' lo schema per il
+    modello non cambia; la descrizione viene da `prompts.descrizione_del_comando`.
+    """
+
+    def run_command(self, args: list[str], tail: int = 100, timeout: int = 120) -> str:
+        """Esegue `args` nella cartella di lavoro e restituisce testa e coda dell'output, o l'errore."""
+        try:
+            esito = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                cwd=str(self.root),
+                timeout=timeout,
+                stdin=subprocess.DEVNULL,
+                env=ambiente_del_comando(),
+            )
+        except subprocess.TimeoutExpired:
+            return "Errore: il comando non e' finito entro " + str(timeout) + " secondi ed e' stato interrotto."
+        except OSError as errore:
+            return "Errore nell'avvio del comando: " + str(errore)
+        if esito.returncode != 0:
+            # Molti programmi scrivono l'errore su stdout: si danno entrambi.
+            pezzi = ["Errore (uscita " + str(esito.returncode) + ")."]
+            if esito.stderr.strip():
+                pezzi.append(testa_e_coda(esito.stderr, tail))
+            if esito.stdout.strip():
+                pezzi.append("Output: " + testa_e_coda(esito.stdout, tail))
+            return "\n".join(pezzi)
+        return testa_e_coda(esito.stdout, tail)
+
+    async def arun_command(self, args: list[str], tail: int = 100, timeout: int = 120) -> str:
+        """La variante asincrona delega a `run_command` in un thread: stesse garanzie, un codice solo."""
+        import asyncio
+
+        return await asyncio.to_thread(self.run_command, args, tail, timeout)
 
     def __init__(self, root, prefisso: str, **kwargs):
         super().__init__(root, **kwargs)
