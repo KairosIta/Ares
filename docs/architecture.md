@@ -61,7 +61,8 @@ chat non parte finché la migrazione non è avvenuta.
 - `log.py` zittisce o accende il log di Agno (chat, `/debug`,
   `ares inspect --prompt`); non importa niente di Ares.
 - `conferma.py` è la conferma scritta dei comandi di manutenzione — la frase
-  esatta da riscrivere prima di un restore, un prune o una fusione — con
+  esatta da riscrivere prima di un restore, un prune, una fusione, un
+  consolidamento delle memorie o dell'adozione o dello scarto di una skill — con
   l'editor della chat sul terminale e `input()` in una pipe.
 - `cartella.py` decide dove Ares lavora: la directory da cui si lancia
   `ares`, o quella di `--workspace`. Se è rischiosa — la radice del disco,
@@ -176,7 +177,10 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
     ordini, troncato oltre un tetto e dichiarato tale al modello;
   - le ultime conversazioni nate nella stessa cartella, con l'id per
     `read_past_session`, perché `search_past_sessions` non sa dove una
-    sessione è nata.
+    sessione è nata;
+  - gli strumenti accesi e, con lo scaffale, una riga per ogni gruppo da
+    attivare con `attiva_strumenti`;
+  - la sezione `skill`, una riga `nome: descrizione` per skill.
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt. `AresMemories` non perde una memoria corretta o
   tolta: la copia in `superate`, con `invalidata_il` e `sostituita_da`, e
@@ -242,7 +246,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `ops/preflight.py` verifica che Ollama risponda e che i modelli
   configurati siano scaricati, senza accendere niente e senza scrivere su
   disco. Avvisa se un modello locale già caricato con il contesto di Ares
-  non sta tutto in VRAM (`/api/ps`).
+  non sta tutto in VRAM (`/api/ps`); con `ARES_SANDBOX=bwrap` verifica
+  anche che la sandbox si possa applicare.
 - `ops/inspect_learning.py` rilegge gli archivi a modello spento; con
   `--prompt` stampa il system message intero che la chat manderebbe al
   modello da questa cartella, comprese istruzioni e memorie aggiunte da Agno.
@@ -295,9 +300,11 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
    presidiato (`core/autorizzazioni.py`).
 5. Il core esegue `continue_run` sullo stesso run dopo la decisione.
 6. La macchina di apprendimento riceve l'output completo e aggiorna gli store.
-7. Il nucleo confronta profilo e memorie con la fotografia; il client mostra
-   le variazioni e, se l'utente rifiuta, il nucleo ripristina. Poi il lock
-   si rilascia.
+7. Il nucleo annota la provenienza sulle memorie scritte dal turno,
+   confronta profilo e memorie con la fotografia e raccoglie ciò che il
+   radicamento ha scartato; il client mostra variazioni e scarti e, se
+   l'utente rifiuta le variazioni, il nucleo ripristina. Poi il lock si
+   rilascia.
 
 L'apprendimento usa sempre il run finale, quindi non perde il contenuto
 prodotto dopo una conferma.

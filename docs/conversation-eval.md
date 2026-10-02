@@ -3,8 +3,9 @@
 L'eval misura **come il modello di conversazione usa gli strumenti** con il
 prompt vero di Ares: se distingue quaderno e cartella di lavoro, se chiede
 una conferma con lo strumento invece che a parole, se scrive bene un
-comando, se rilegge un risultato troppo lungo e se esegue istruzioni trovate
-dentro un file. Il [benchmark della memoria](memory-quality.md) misura
+comando, se rilegge un risultato troppo lungo, se attiva e usa gli strumenti
+di entità e intuizioni quando servono e se esegue istruzioni trovate dentro
+un file. Il [benchmark della memoria](memory-quality.md) misura
 invece estrazione e recupero; i due non si sovrappongono.
 
 ## Esecuzione

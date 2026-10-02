@@ -191,6 +191,8 @@ Da approfondire:
   chiarire la persistenza di cronologia, quaderno e risultati.
 - Semantica di «dimentica»: non usare più un dato, rimuoverlo dalla memoria
   attiva o cancellarlo anche dalle altre copie, con una politica per i backup.
+  Oggi una memoria tolta esce dalla memoria attiva ma resta fra le superate,
+  nell'archivio e negli snapshot: la cancellazione vera resta da decidere.
 - Concorrenza, interruzioni, errori e ripristino verificabile.
 
 **Verifica attesa:** accettare una voce e rifiutarne un'altra produce lo
@@ -274,7 +276,8 @@ architettura e modalità di distribuzione non sono ancora state scelte.
 Approfondimento disponibile: [migliorie agentiche con il modello locale al
 centro](agentic-improvements.md), del 1 ottobre 2026: dieci interventi con
 evidenze nel codice, fonti 2025-2026, prove di accettazione e un protocollo
-per confrontare i modelli locali. Non è un'implementazione.
+per confrontare i modelli locali. È uno studio, non aggiornato: le dieci
+proposte sono state implementate fra v0.12.0 e Unreleased (vedi CHANGELOG).
 
 Restano dalla roadmap precedente, subordinati alle priorità sopra:
 

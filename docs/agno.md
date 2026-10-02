@@ -99,7 +99,10 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   l'esito si legge già da `response.tool_executions`. Profilo e memorie
   impostano `stop_after_tool_call` con il mixin `FunzioniRitoccate` di
   `agent/agno_interni.py`, che sovrascrive `_build_functions_for_model`
-  (superficie privata), come già fa il contesto di sessione. I numeri
+  (superficie privata), come fa il contesto di sessione quando usa la tool
+  call (estrattore cloud o `ARES_ESTRAZIONE_VINCOLATA=0`); con un
+  estrattore locale il contesto chiede invece un JSON vincolato dallo
+  schema. I numeri
   sono in [memory-quality.md](memory-quality.md);
   `tests/learning_cost_test.py` verifica le tre chiamate per turno e che la
   scrittura arrivi negli store.

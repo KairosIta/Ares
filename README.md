@@ -69,7 +69,7 @@ di più.
 | --- | --- | --- |
 | **Tutto in locale** *(distribuito)* | — | niente: conversazione, estrazione delle memorie ed embedding girano in scheda |
 | **Conversazione in cloud** | `ARES_MAIN_MODEL=glm-5.3-flash:cloud` | domande e risposte, il prompt con profilo e memorie, i file che legge, l'output dei comandi, le conversazioni passate che rilegge |
-| **Anche l'estrazione in cloud** | `ARES_LEARNING_MODEL=glm-5.3-flash:cloud` | quanto sopra, più il testo dei turni e le memorie già salvate, a ogni estrazione |
+| **Anche l'estrazione in cloud** | `ARES_LEARNING_MODEL=glm-5.3-flash:cloud` | quanto sopra, più il testo dei turni e le memorie già salvate, a ogni estrazione e a ogni `ares memories consolidate` |
 
 Un [modello cloud di Ollama](https://ollama.com/search?c=cloud) si riconosce
 dal tag `:cloud`. Il daemon locale lo inoltra a `ollama.com` dopo un
@@ -295,7 +295,7 @@ cosa, e dal clone funziona anche `python -m ares`. Su Windows `setup.ps1 -SkipPr
 dipendenze: lo usa la CI, dove Ollama non c'è.
 
 Tutto ciò che Ares impara vive in `~/.ares` (lo stato in `stato/`, gli
-snapshot in `backup/`), fuori dal clone, che si può spostare o rifare senza
+snapshot in `backup/`, le skill e le proposte in `skills/`), fuori dal clone, che si può spostare o rifare senza
 perdere niente. `ARES_HOME` nel `.env` sposta tutto altrove. Un clone che
 teneva lo stato in `tmp/` viene migrato dal setup con `ares migrate`; finché
 non succede né la chat né backup e manutenzione partono, per non sdoppiare
@@ -587,8 +587,9 @@ I comandi seguenti mostrano il prefisso Linux; su Windows sostituisci
 `.venv/bin/python` con `.\.venv\Scripts\python.exe`.
 
 ```bash
-# Le prove offline: cablaggio, retention, costo dell'apprendimento, backup/restore,
-# entità, CLI, valutazione e coerenza della versione dichiarata
+# Le prove offline: cablaggio, retention, costo dell'apprendimento, radicamento,
+# backup/restore, entità, consolidamento delle memorie, sandbox, skill, CLI,
+# valutazione e coerenza della versione dichiarata
 .venv/bin/python tests/run.py
 
 # Anche quelle che accendono Ollama, incluso un turno completo
@@ -610,7 +611,8 @@ accettazione, correzioni, preferenze temporanee, recupero in una nuova
 sessione, abbandono di idee o piani e distinzione fra decisione e avvio del
 lavoro, con rapporti JSON e Markdown e stato isolato. Per l'uso degli
 strumenti con il prompt vero - quaderno o cartella, conferme, comandi,
-risultati lunghi, istruzioni nascoste in un file - c'è
+risultati lunghi, entità e intuizioni attivate su richiesta, istruzioni
+nascoste in un file - c'è
 `.venv/bin/python -m evals.conversazione` ([strumenti in
 conversazione](docs/conversation-eval.md)).
 
@@ -623,8 +625,9 @@ la contesa termina con codice 3. Utenti diversi possono lavorare insieme.
 
 I comandi di manutenzione mostrano tabelle sul terminale e testo piatto in
 una pipe; gli errori vanno su stderr. Prima di toccare lo stato chiedono di
-riscrivere una frase esatta, con lo stesso editor della chat; `--yes` la
-salta, e da uno script la frase si passa su stdin. Quelli che leggono
+riscrivere una frase esatta, con lo stesso editor della chat; da uno
+script la frase si passa su stdin, e `ares backup restore`/`prune` e
+`ares sessions prune`/`delete` accettano anche `--yes`, che la salta. Quelli che leggono
 soltanto accettano `--json`: `ares backup list`, `ares backup verify`,
 `ares sessions status`, `ares entities audit`, `ares preflight`.
 
@@ -649,7 +652,9 @@ ares backup prune --keep 20
 
 Gli snapshot vivono per default in `~/.ares/backup`, accanto allo stato e
 fuori dal clone; `ARES_BACKUP_DIR` nel `.env` li sposta altrove. Database,
-indice vettoriale e cronologia restano esclusi da Git.
+indice vettoriale e cronologia restano esclusi da Git. Le skill in
+`~/.ares/skills` sono file tuoi fuori dallo stato: gli snapshot non le
+includono.
 
 Il backup è un comando che dai tu. Se l'ultimo snapshot ha più di
 `BACKUP_PROMEMORIA_GIORNI` giorni (sette per default, zero spegne il

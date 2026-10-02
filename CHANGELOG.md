@@ -87,6 +87,11 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   superate attraverso lo store vero, provenienza del turno e ripristino),
   `smoke` e `repl` (i comandi).
 
+- **Un alias per ogni sottocomando**: `ares-memories`, `ares-skills` e
+  `ares-migrate` si aggiungono agli altri, e `python -m ares.memories` e
+  `python -m ares.skills` funzionano come per entità e sessioni. La prova
+  `cli` verifica che ogni sottocomando di `ares` abbia il suo alias.
+
 ### Changed
 
 - **Strumenti su richiesta** (proposta 3.9 di `docs/agentic-improvements.md`).
