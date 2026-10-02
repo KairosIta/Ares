@@ -6,6 +6,49 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-02
+
+Ares diventa più sicuro e più stabile con il modello locale. La persona può
+dichiarare in `permessi.toml` quali comandi girano senza conferma e quali
+mai. I risultati degli strumenti arrivano al modello come dati delimitati,
+non come istruzioni. `workspace_run_command` gira con lo stdin chiuso e un
+ambiente ridotto, e un turno non può più insistere oltre tre conferme
+rifiutate. Il prefisso del prompt non cambia a ogni minuto, così Ollama
+riusa la cache: sul 9B il prefill dei turni successivi scende da 4,9 s a
+1-1,5 s.
+
+Il resto:
+
+- l'ora precisa la dà il nuovo strumento `che_ora_e`;
+- i parametri di campionamento si leggono dal `.env`;
+- gli eval misurano pass^3, con casi nuovi di memoria e di conferma, e c'è
+  un terzo eval per la latenza;
+- `docs/agentic-improvements.md` raccoglie lo studio delle migliorie, e
+  `docs/` le misure dei modelli locali (27B, Ornith 1.5 9B, MiMo-V2.6 9B).
+
+Compatibilità: nessuna migrazione e nessun formato su disco cambia;
+`permessi.toml` è facoltativo e, assente, tutto chiede conferma come prima.
+Un comando lanciato da Ares non vede più le variabili d'ambiente della
+shell della persona oltre a quelle di sistema (`PATH`, `HOME`, lingua,
+terminale, proxy): un comando che ne dipendeva va lanciato con la variabile
+scritta nel comando (`env NOME=valore ...`) o fuori da Ares. Un comando che legge da stdin riceve subito la
+fine dell'input invece di aspettare il timeout. Un turno si ferma dopo 30
+chiamate a strumenti.
+
+Verifica locale del 2026-10-02 su Linux/Python 3.12.14 e Agno 3.0.11:
+
+- diciassette prove verdi in 218,7 s, comprese quelle con Ollama
+  (`--tutte`), con copertura al 92% (5.383 istruzioni, 319 non eseguite,
+  1.580 rami, 188 parziali);
+- `ruff check`, `ruff format --check` (107 file) e `mypy` (71 file) puliti;
+- modelli: `glm-5.3-flash:cloud` per la conversazione,
+  `deepseek-v4.1-flash:cloud` per l'estrazione ed embedder locale
+  `nomic-embed-text-v2-moe`. Nel turno di `e2e` l'apprendimento ha scritto
+  profilo, memoria e contesto di sessione al primo tentativo, in 2,5 s;
+- eval degli strumenti con 3 ripetizioni sui modelli locali (9B, Ornith
+  1.5 9B, 27B, MiMo-V2.6 9B) e benchmark della memoria sul 9B, sul 27B e
+  sul MiMo, in `docs/conversation-eval.md` e `docs/memory-quality.md`.
+
 ### Added
 
 - **Regole di autorizzazione dichiarate dalla persona** (proposta 3.4 di
@@ -2073,7 +2116,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/KairosIta/Ares/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/KairosIta/Ares/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/KairosIta/Ares/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/KairosIta/Ares/compare/v0.8.2...v0.9.0
