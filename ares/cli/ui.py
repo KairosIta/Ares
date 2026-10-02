@@ -617,13 +617,20 @@ class CliRenderer:
         self.line(riga, style="ares.muted")
 
     def learned(self, righe: Iterable[str]) -> None:
-        """Cosa e' entrato in memoria: la sintesi in evidenza, il testo attenuato.
+        """Cosa e' entrato in memoria: le sintesi in evidenza, il testo attenuato.
 
         Fuori dallo stream, perche' arriva a turno chiuso, con la stessa forma
-        dell'esito di uno strumento.
+        dell'esito di uno strumento. Una sintesi e' una riga senza `|`; quella
+        di cio' che e' stato scartato e' un avviso.
         """
-        for indice, riga in enumerate(righe):
-            self.line(riga, style="ares.success" if indice == 0 else "ares.muted")
+        for riga in righe:
+            if riga.lstrip().startswith("|"):
+                stile = "ares.muted"
+            elif riga.lstrip().startswith("non appreso"):
+                stile = "ares.warning"
+            else:
+                stile = "ares.success"
+            self.line(riga, style=stile)
 
     def stream(self) -> RichRunStream:
         return RichRunStream(self)

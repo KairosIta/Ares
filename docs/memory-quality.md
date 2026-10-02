@@ -998,3 +998,68 @@ degli strumenti ma scrive segnaposto nel profilo e non salva il contesto
 in una fase su sette non è un miglioramento per la memoria di Ares. Come
 modello di conversazione da solo, con il 9B di serie o il cloud a
 estrarre, resta da misurare; come modello unico non è un candidato.
+
+### Radicamento dell'estrazione, 2 ottobre 2026
+
+Primo passo della proposta 3.6 di
+[agentic-improvements](agentic-improvements.md): profilo e memorie salvano
+solo ciò che ha un appiglio nella conversazione o nello store
+(`ares/agent/radicamento.py`). Il rapporto porta ora, per fase, i valori
+scartati (`scartati`, schema 4). A parità di tutto il resto, gli scarti di
+una fase sono esattamente ciò che il codice di prima avrebbe scritto in più.
+
+**MiMo-V2.6 9B, stesso giro del mattino.** Tutti gli undici casi, tre
+ripetizioni, `ares-mimo-2.6-9b` nei due ruoli, 73 fasi. Rapporto:
+`artifacts/memory-quality/radicamento-mimo-2.6-9b-20261002.json`.
+
+| Giro | Superate | Fallite | Da revisionare | Non conclusive | Errori |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| prima, mattino | 15 | 8 | 13 | 29 | 8 |
+| con il radicamento | 11 | 18 | 13 | 26 | 5 |
+
+- **Il profilo non ha più segnaposto.** Al mattino `name` valeva «Non
+  specificato» o «Gym member» in nove fasi, `preferred_name`, `timezone`
+  e `occupation` valevano «Non specificato» o «Sconosciuto» in sette fasi
+  ciascuno, ed `expertise` portava «Sviluppo software» in quattro. Ora
+  nessuno di questi valori è negli store. Gli scarti sono 37, tutti
+  segnaposto tranne due meta-valori («Italiano» come stile di
+  comunicazione, «nessun progetto o obiettivo attuale dichiarato» come
+  obiettivo). **Nessun contenuto detto nel dialogo è stato scartato.**
+- **Le fallite in più non vengono dal radicamento.** In 17 fasi fallite su
+  18 il dato atteso è nello store, e nessuna di quelle 17 ha scarti: la
+  sonda del MiMo risponde `null`, o riscrive il valore e la citazione. Una
+  parte viene dagli errori del mattino, che ora arrivano alla sonda e lì
+  falliscono (`correzione/iniziale`: da 2 errori a 3 fallite). La
+  diciottesima è `personaggio`, dove il nome del personaggio, Livia
+  Vesper, entra nel profilo: il nome è nel testo, e distinguere un gioco
+  di ruolo da un fatto è giudizio, non un controllo lessicale.
+- **Il costo non cambia**: estrazione media 10,9 s contro 11,0, nessuna
+  chiamata in più.
+
+In questo giro il MiMo non ha più scritto «Sviluppo software», quindi le
+invenzioni di tecnologie non sono state messe alla prova.
+**9B di serie, i sei casi del 10 settembre.** `avvio` e `correzione`, tre
+ripetizioni, `ares-qwen3.8-9b` (copia con renderer) nei due ruoli, 18 fasi:
+4 superate, 7 fallite, 2 da revisionare, 5 non conclusive, nessun errore,
+in 4,4 minuti con 6,4 s di estrazione media. Rapporto:
+`artifacts/memory-quality/radicamento-9b-20261002.json`.
+
+- **Nessuno scarto.** Il 9B di oggi non scrive più professioni né
+  tecnologie mai nominate: il profilo porta solo `current_focus` e
+  `communication_style`, entrambi dal dialogo. Lo stack di nove tecnologie
+  del 10 settembre veniva dal modello importato senza renderer e dal prompt
+  di allora; con renderer e prompt di `main` non si ripresenta, quindi qui
+  il radicamento non ha niente da fermare.
+- **Le sette fallite sono della sonda, non dello store**, che in ogni fase
+  contiene il dato giusto. Cinque sono di formato: «sintetica» o
+  «dettagliata» invece della forma attesa, o `null` con lo stato
+  «iniziato» scritto nel profilo. Due sono errori di giudizio veri: dopo
+  la sola decisione la sonda risponde «iniziato» o «non_iniziato» come
+  confermato.
+
+**Lettura.** Il radicamento fa ciò che promette e niente di più: toglie dal
+profilo i valori senza appiglio (segnaposto, nomi e professioni dedotti)
+senza scartare contenuti detti, e non costa inferenze. Non migliora il
+giudizio dell'estrattore né il recupero, che restano i limiti dei 9B in
+questo benchmark; il passo 2 della proposta, l'uscita vincolata, mira alla
+forma delle estrazioni.

@@ -405,6 +405,11 @@ class QualitaMemoriaTest(unittest.TestCase):
             mq.scrivi_json(percorso, rapporto)
             self.assertEqual(json.loads(percorso.read_text(encoding="utf-8")), rapporto)
             self.assertIn("non_conclusivo", mq.markdown(rapporto))
+            self.assertIn("radicamento, assenti dalla conversazione: 0.", mq.markdown(rapporto))
+        risultati[0]["fasi"][0]["scartati"] = ["profilo occupation: Sviluppatore software"]
+        testo = mq.markdown({"stato": "completato", "risultati": risultati})
+        self.assertIn("assenti dalla conversazione: 1.", testo)
+        self.assertIn("- esempio 1 " + mq.STATI[0] + ": profilo occupation: Sviluppatore software", testo)
 
     def test_astensione_senza_indizi(self):
         fase = mq.CASI["astensione"][0]

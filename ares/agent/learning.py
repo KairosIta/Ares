@@ -34,6 +34,8 @@ from agno.models.ollama import Ollama
 from agno.utils.log import log_warning
 
 from ares.agent.agno_interni import FunzioniRitoccate, elabora, strumenti_esposti
+from ares.agent.echo import CAMPI_DI_SERVIZIO
+from ares.agent.radicamento import Fonte, radica_campo, radica_memoria
 from ares.agent.runtime import build_learning_model
 from ares.agent.schemas import AresMemories, AresProfile
 from ares.config import QUADERNO_PREFIX, Impostazioni, Politica
@@ -373,22 +375,141 @@ def senza_conferma(funzioni: list[Any], nome: str) -> list[Any]:
     return funzioni
 
 
-class AresUserProfileStore(ScrittureSorvegliate, FunzioniRitoccate, UserProfileStore):
-    """Il profilo, con una sola chiamata al modello per turno (vedi `senza_conferma`)."""
+def _testi(valore: Any) -> Iterator[str]:
+    """I testi contenuti in un valore dello store, dizionari e liste compresi."""
+    if isinstance(valore, str):
+        yield valore
+    elif isinstance(valore, dict):
+        for chiave, interno in valore.items():
+            if chiave not in CAMPI_DI_SERVIZIO or chiave == "memories":
+                yield from _testi(interno)
+    elif isinstance(valore, (list, tuple)):
+        for interno in valore:
+            yield from _testi(interno)
+
+
+def argomenti_filtrati(
+    entrypoint: Callable[..., Any], filtro: Callable[[dict[str, Any]], dict[str, Any] | str]
+) -> Callable[..., Any]:
+    """`entrypoint` con gli argomenti passati prima da `filtro`.
+
+    Se `filtro` restituisce un testo, la funzione non viene chiamata e quel
+    testo e' la risposta al modello. La firma resta quella originale, che
+    Agno legge per lo schema.
+    """
+    if inspect.iscoroutinefunction(entrypoint):
+
+        @functools.wraps(entrypoint)
+        async def asincrono(*args: Any, **kwargs: Any) -> Any:
+            filtrati = filtro(kwargs)
+            return filtrati if isinstance(filtrati, str) else await entrypoint(*args, **filtrati)
+
+        return asincrono
+
+    @functools.wraps(entrypoint)
+    def sincrono(*args: Any, **kwargs: Any) -> Any:
+        filtrati = filtro(kwargs)
+        return filtrati if isinstance(filtrati, str) else entrypoint(*args, **filtrati)
+
+    return sincrono
+
+
+class EstrazioneRadicata:
+    """Mixin per profilo e memorie: l'estrazione salva solo cio' che ha un appiglio nel testo.
+
+    La fonte e' la conversazione passata all'estrazione piu' cio' che lo
+    store conteneva gia', cosi' un valore riscritto per intero non perde le
+    voci note. I criteri sono in `radicamento`. Cio' che viene scartato si
+    accumula finche' `prendi_scarti` non lo legge, una riga per valore:
+    l'eco del turno lo mostra. Gli strumenti agentici dati alla
+    conversazione non passano di qui. Va prima della classe di Agno nelle basi.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._fonte: Fonte | None = None
+        self._scarti: list[str] = []
+
+    def prendi_scarti(self) -> list[str]:
+        """Gli scarti dall'ultima lettura, svuotati."""
+        scarti, self._scarti = self._scarti, []
+        return scarti
+
+    def _con_fonte(self, kwargs: dict[str, Any], esistente: Any) -> None:
+        # Agno passa sempre `messages` per nome; senza, non si sa contro cosa radicare.
+        if "messages" not in kwargs:
+            self._fonte = None
+            return
+        # I ruoli che `get_conversation_text` mostra all'estrattore.
+        conversazione = (
+            m.get_content_string() for m in kwargs["messages"] or [] if m.role in ("user", "assistant", "model")
+        )
+        self._fonte = Fonte.da_testi([*conversazione, *_testi(to_dict_safe(esistente))])
+
+    def extract_and_save(self, *args: Any, **kwargs: Any) -> Any:
+        self._con_fonte(kwargs, self.get(user_id=kwargs.get("user_id")))  # type: ignore[attr-defined]
+        try:
+            return super().extract_and_save(*args, **kwargs)  # type: ignore[misc]
+        finally:
+            self._fonte = None
+
+    async def aextract_and_save(self, *args: Any, **kwargs: Any) -> Any:
+        self._con_fonte(kwargs, await self.aget(user_id=kwargs.get("user_id")))  # type: ignore[attr-defined]
+        try:
+            return await super().aextract_and_save(*args, **kwargs)  # type: ignore[misc]
+        finally:
+            self._fonte = None
+
+
+class AresUserProfileStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRitoccate, UserProfileStore):
+    """Il profilo, con una sola chiamata al modello per turno (vedi `senza_conferma`) e radicato."""
 
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
-        return senza_conferma(funzioni, "update_profile")
+        for funzione in senza_conferma(funzioni, "update_profile"):
+            if funzione.name == "update_profile" and funzione.entrypoint is not None:
+                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, self._radica)
+        return funzioni
+
+    def _radica(self, campi: dict[str, Any]) -> dict[str, Any]:
+        if self._fonte is None:
+            return campi
+        radicati = {}
+        for nome, valore in campi.items():
+            if not isinstance(valore, str):
+                radicati[nome] = valore
+                continue
+            verdetto = radica_campo(nome, valore, self._fonte)
+            self._scarti += ["profilo " + nome + ": " + scarto for scarto in verdetto.scartato]
+            radicati[nome] = verdetto.tenuto
+        return radicati
 
 
-class AresUserMemoryStore(ScrittureSorvegliate, FunzioniRitoccate, UserMemoryStore):
-    """Le memorie, con una sola chiamata per turno e la guida in italiano.
+# Gli strumenti dell'estrazione che scrivono il testo di una memoria.
+_SCRIVONO_MEMORIE = ("add_memory", "update_memory")
+
+
+class AresUserMemoryStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRitoccate, UserMemoryStore):
+    """Le memorie, con una sola chiamata per turno, la guida in italiano e radicate.
 
     La guida di Agno e' inglese e pensata per un agente di squadra; questa
     dice quando tocca al modello usare lo strumento.
     """
 
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
-        return senza_conferma(funzioni, "add_memory")
+        for funzione in senza_conferma(funzioni, "add_memory"):
+            if funzione.name in _SCRIVONO_MEMORIE and funzione.entrypoint is not None:
+                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, self._radica)
+        return funzioni
+
+    def _radica(self, argomenti: dict[str, Any]) -> dict[str, Any] | str:
+        testo = argomenti.get("memory")
+        if self._fonte is None or not isinstance(testo, str):
+            return argomenti
+        verdetto = radica_memoria(testo, self._fonte)
+        if verdetto.tenuto is None:
+            self._scarti += ["memoria: " + scarto for scarto in verdetto.scartato]
+            return "Memoria non salvata: nessuna sua parola compare nella conversazione."
+        return {**argomenti, "memory": verdetto.tenuto}
 
     def instructions(self) -> str:
         if not strumenti_esposti(self) or not self.config.agent_can_update_memories:

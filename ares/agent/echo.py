@@ -132,6 +132,28 @@ def ripristina(agent: Any, stato: Istantanea) -> bool:
     return fotografa(agent) == riduci(stato)
 
 
+def prendi_scarti(agent: Any) -> list[str]:
+    """Cio' che l'estrazione ha scartato perche' assente dalla conversazione, svuotato.
+
+    Gli store tengono gli scarti finche' qualcuno non li legge: il turno li
+    prende all'inizio, per non mostrare quelli di un turno precedente, e
+    alla fine.
+    """
+    scarti: list[str] = []
+    for store in _store(agent)[:2]:
+        prendi = getattr(store, "prendi_scarti", None)
+        if prendi is not None:
+            scarti += prendi()
+    return scarti
+
+
+def righe_scarti(scarti: list[str]) -> list[str]:
+    """Le righe dell'eco per cio' che non e' entrato in memoria, o nessuna."""
+    if not scarti:
+        return []
+    return ["   non appreso, assente dalla conversazione:", *("   | " + scarto for scarto in scarti)]
+
+
 def variazioni(prima: Fotografia, dopo: Fotografia) -> list[str]:
     """Le righe da mostrare, o nessuna se il turno non ha scritto niente.
 

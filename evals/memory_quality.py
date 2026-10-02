@@ -574,6 +574,17 @@ def markdown(rapporto: dict) -> str:
         "",
         f"Media sui casi: {riga_pass_k(aff['media_casi'])}.",
         "",
+    ]
+    scartati = [
+        f"- {risultato['caso']} {risultato['ripetizione']} {fase['nome']}: {scarto}"
+        for risultato in rapporto["risultati"]
+        for fase in risultato["fasi"]
+        for scarto in fase.get("scartati") or []
+    ]
+    righe += [
+        f"Valori scartati dal radicamento, assenti dalla conversazione: {len(scartati)}.",
+        "",
+        *([*scartati, ""] if scartati else []),
         "Il JSON accanto conserva messaggi, archivi, risposte, errori e motivi dei verdetti. "
         "I casi da revisionare e non conclusivi non sono successi. Nessun modello giudice viene usato.",
         "",
@@ -601,7 +612,7 @@ def metadati(impostazioni: Impostazioni) -> dict:
         "think_estrazione": impostazioni.think_apprendimento,
         "agno": version("agno"),
         "python": sys.version,
-        "schema_rapporto": 3,
+        "schema_rapporto": 4,
         "sorgenti_sha256": {p: hashlib.sha256((RADICE / p).read_bytes()).hexdigest() for p in percorsi},
         "limiti": "Test di estrazione su dialoghi fissi e recupero. Nessuna valutazione di entita', "
         "intuizioni, cronologia o dialogo end-to-end. Il contenuto ambiguo richiede revisione umana.",
@@ -694,8 +705,12 @@ def _worker(caso: str, risultato: Path) -> None:
         )
         return stato
 
+    def scarti() -> list[str]:
+        return macchina.user_profile_store.prendi_scarti() + macchina.user_memory_store.prendi_scarti()
+
     for indice, fase in enumerate(CASI[caso]):
         raccoglitore.avvisi.clear()
+        scarti()
         avvio = time.monotonic()
         voce: dict[str, Any] = {
             "nome": fase.nome,
@@ -714,6 +729,7 @@ def _worker(caso: str, risultato: Path) -> None:
                     agent_id="ares-eval",
                 )
             voce["secondi_estrazione"] = round(time.monotonic() - avvio, 3)
+            voce["scartati"] = scarti()
             voce["dopo"] = fotografia(fase.sessione)
             voce["tentativi_contesto"] = macchina.session_context_store.last_extraction_attempts
             if not macchina.session_context_store.context_updated:

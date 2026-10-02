@@ -3,11 +3,11 @@
 La sequenza e' sempre la stessa, sotto il lock del turno dell'utente:
 fotografia di profilo e memorie, turno (con le pause per autorizzare gli
 strumenti, chiuse dall'`Arbitro` dopo troppi rifiuti di seguito),
-variazioni, conferma degli apprendimenti e, se l'utente rifiuta,
-ripristino. Il client decide solo come mostrare e come chiedere,
-attraverso `ClienteTurno`; qui non si stampa niente. Senza presenza non si
-chiede niente: le conferme valgono no e gli apprendimenti restano (vedi
-`core/autorizzazioni.py`).
+variazioni e scarti dell'estrazione, conferma degli apprendimenti e, se
+l'utente rifiuta, ripristino. Il client decide solo come mostrare e come
+chiedere, attraverso `ClienteTurno`; qui non si stampa niente. Senza
+presenza non si chiede niente: le conferme valgono no e gli apprendimenti
+restano (vedi `core/autorizzazioni.py`).
 
 Il ripristino e' a posteriori: vedi i limiti in `agent/echo.py`.
 """
@@ -20,7 +20,7 @@ from typing import Any, Protocol
 from agno.run.agent import RunOutput
 
 from ares import config
-from ares.agent.echo import fotografa, istantanea, riduci, ripristina, variazioni
+from ares.agent.echo import fotografa, istantanea, prendi_scarti, riduci, righe_scarti, ripristina, variazioni
 from ares.agent.turn_core import TurnEvent, run_turn_cycle
 from ares.config import Percorsi, Politica
 from ares.core.autorizzazioni import Arbitro, Autorizzatore
@@ -99,6 +99,7 @@ def _turno_protetto(
     """
     # Prima del turno, non del post-hook: `update_user_memory` scrive durante il run.
     prima = istantanea(agent) if politica.mostra.apprendimenti else None
+    prendi_scarti(agent)
     risposta = None
     arbitro = Arbitro(cliente, percorsi, politica)
     try:
@@ -117,9 +118,11 @@ def _turno_protetto(
     if prima is None:
         return EsitoTurno(risposta)
     righe = variazioni(riduci(prima), fotografa(agent))
-    if not righe:
+    scartate = righe_scarti(prendi_scarti(agent))
+    if not righe and not scartate:
         return EsitoTurno(risposta)
-    chiedi = politica.mostra.conferma_apprendimenti and cliente.presidiato
-    tenere = cliente.apprendimenti(righe, chiedi=chiedi)
+    # Se e' stato solo scartato qualcosa, non c'e' niente da tenere o annullare.
+    chiedi = bool(righe) and politica.mostra.conferma_apprendimenti and cliente.presidiato
+    tenere = cliente.apprendimenti(righe + scartate, chiedi=chiedi)
     ripristino = None if tenere or not chiedi else ripristina(agent, prima)
-    return EsitoTurno(risposta, tuple(righe), ripristino)
+    return EsitoTurno(risposta, tuple(righe + scartate), ripristino)

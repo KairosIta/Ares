@@ -119,7 +119,10 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   prompt in inglese per memorie, entità e intuizioni. Con l'estrazione cloud
   profilo, memorie e contesto estraggono insieme, ciascuno in un thread;
   dopo un Ctrl-C un `Cancello` ferma le loro scritture, perché nessuna
-  arrivi dopo la fotografia del turno.
+  arrivi dopo la fotografia del turno. Profilo e memorie salvano solo ciò
+  che ha un appiglio nella conversazione o in ciò che lo store conteneva
+  già: i criteri sono in `radicamento.py`, e ciò che viene scartato resta
+  allo store finché l'eco del turno non lo legge.
 - `agno_interni.py` è l'unico posto che tocca nomi privati di Agno
   (`_build_functions_for_model`, `_should_expose_tools`,
   `determine_tools_for_model`, `_filter_store_kwargs`, i metodi di
@@ -146,7 +149,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt.
 - `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
-  restituisce la differenza, senza agganciarsi a funzioni private di Agno.
+  restituisce la differenza, senza agganciarsi a funzioni private di Agno;
+  raccoglie anche ciò che il radicamento ha scartato.
 - `ares/config.py` raccoglie le impostazioni versionate e decide i percorsi
   dello stato (vedi [Configurazione](#configurazione)). Importarlo non tocca
   il disco: la directory dello stato la crea `prepara_archivio()`, chiamata
