@@ -8,6 +8,24 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Regole di autorizzazione dichiarate dalla persona** (proposta 3.4 di
+  `docs/agentic-improvements.md`). Un file TOML, `.ares/permessi.toml`
+  nella cartella di lavoro o `permessi.toml` in `~/.ares`, elenca in
+  `[comandi]` i prefissi che non chiedono conferma (`consenti`) e quelli
+  che non girano mai (`nega`). Le regole valgono per prefisso sulle parole
+  del comando; un comando composto passato a una shell viene spezzato e
+  ogni parte deve essere coperta; `nega` vince; una parte scoperta, una
+  redirezione, una sostituzione o una riga di PowerShell fanno chiedere
+  come prima. Le legge il nucleo (`ares/core/regole.py`) a ogni turno, mai
+  il modello: una regola non concede ciò che la modalità vieta, tace una
+  conferma che la modalità chiederebbe, e solo con qualcuno davanti; `nega`
+  vale anche in `auto`, applicata da `run_command` prima di eseguire. Il
+  client vede ogni decisione presa per regola (`concessa` è il nuovo metodo
+  del protocollo; `negata` porta la regola), il banner e `/cartella` dicono
+  quante regole sono state lette e da dove, un file malformato vale assente
+  con un avviso. Prove offline in `nucleo` (`regole`: tabella di comandi,
+  file sommati e rotti, arbitro con e senza presenza, `auto`) e `repl`
+  (`regole a schermo`).
 - **Il prefisso del prompt non cambia più a ogni turno** (proposta 3.1 di
   `docs/agentic-improvements.md`). La riga dell'avvio porta solo il giorno,
   «Oggi: venerdì 2 ottobre 2026», non più l'ora al minuto: Ollama riusa la

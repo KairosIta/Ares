@@ -150,6 +150,9 @@ class ClienteFinto:
     def negata(self, richiesta: Richiesta) -> None:
         self.negate.append(richiesta)
 
+    def concessa(self, richiesta: Richiesta) -> None:
+        raise AssertionError("nessuna regola della persona in questa prova: " + repr(richiesta))
+
     # Il resto di `ClienteTurno`, per il turno del nucleo.
 
     @contextmanager

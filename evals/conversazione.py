@@ -366,6 +366,9 @@ def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
         def negata(self, richiesta: Any) -> None:
             pass
 
+        def concessa(self, richiesta: Any) -> None:
+            pass
+
     configura_log_agno(False)
     lavoro.mkdir()
     for nome, testo in caso.file.items():

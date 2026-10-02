@@ -410,6 +410,33 @@ tuoi: le applica finché non contraddicono ciò che gli chiedi, e nulla che
 scriva o lanci comandi parte per conto del file. `ares init` ne scrive uno
 scheletro nella cartella corrente e non tocca un file che esiste già.
 
+### Le regole di autorizzazione
+
+In `manuale` ogni comando chiede conferma, `git status` quanto `rm -rf`. Per
+non passare ad `auto` solo per la fatica, puoi dichiarare in un file TOML
+quali comandi girano senza chiedere e quali non girano mai:
+
+```toml
+# .ares/permessi.toml nella cartella, o ~/.ares/permessi.toml per te
+[comandi]
+consenti = ["git status", "git log", "git diff", "ls", "uv run pytest"]
+nega = ["rm -rf", "git push", "curl", "wget"]
+```
+
+Una regola è un prefisso sulle parole del comando: `git status --short` è
+coperto da `git status`, `git statusx` no. Un comando composto passato a
+una shell (`bash -lc "git add . && git push"`) viene spezzato e ogni parte
+deve essere coperta; `nega` vince su `consenti`; una parte scoperta, una
+redirezione, una sostituzione (`$(...)`) o una riga di PowerShell fanno
+chiedere come oggi. I due file si sommano. Una regola non concede ciò che
+la modalità vieta: tace una conferma che la modalità chiederebbe, e solo
+con qualcuno davanti, mai da una pipe. `nega` vale anche in `auto`. Il
+banner dice quante regole ha letto e da dove, `/cartella` pure, e ogni
+comando deciso da una regola compare nel terminale con la regola che l'ha
+deciso. Il prefisso è una convenzione, non una sandbox: uno script nella
+cartella che si chiama `git` resta un rischio, come dice
+[`SECURITY.md`](SECURITY.md#ares-non-è-una-sandbox).
+
 ### Le conversazioni
 
 Ogni `ares` apre una conversazione nuova, che nasce nella cartella e la

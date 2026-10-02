@@ -227,6 +227,9 @@ class _ClienteMuto:
     def negata(self, richiesta: Any) -> None:
         pass
 
+    def concessa(self, richiesta: Any) -> None:
+        pass
+
     def pausa_irrisolta(self) -> None:
         pass
 

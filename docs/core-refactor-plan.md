@@ -42,7 +42,7 @@ Il client offre il protocollo `ClienteTurno`:
 | Metodo | Cosa fa il client |
 | --- | --- |
 | `flusso()` | apre la presentazione e restituisce chi riceve gli eventi |
-| `autorizza(richiesta)`, `negata(richiesta)` | vedi il terzo passaggio |
+| `autorizza(richiesta)`, `negata(richiesta)`, `concessa(richiesta)` | vedi il terzo passaggio |
 | `pausa_irrisolta()`, `rifiuti_esauriti(quanti)`, `interrotto()`, `guasto(errore)` | avvisa |
 | `apprendimenti(righe, chiedi=...)` | mostra cosa è entrato in memoria e, se richiesto, chiede se tenerlo |
 
@@ -61,6 +61,7 @@ turno; le regole che ne seguono sono del nucleo:
 | senza presenza nessuna modalità scrive in silenzio | `_guardie_di_avvio`, solo all'avvio | `verifica_modo`, all'avvio, in `Sessioni.apri` e in `cambia_modo` |
 | `auto` solo all'apertura | `/modo`, per nome | `verifica_modo(..., in_corso=True)` → `ModoNonAmmesso` |
 | senza presenza una conferma vale no | il fallback di `CliInput` che risponde vuoto | `risolvi_pausa` rifiuta senza chiedere e avvisa con `negata` |
+| le regole della persona sui comandi | — | l'`Arbitro` le legge (`core/regole.py`): `consenti` conferma e avvisa con `concessa`, `nega` rifiuta e avvisa con `negata`, con la regola in `Richiesta.regola` |
 | `confirm()` / `reject()` sui requirement | `chiedi_conferme` in `cli/render.py` | `risolvi_pausa`; il client risponde con una `Decisione` |
 | niente domanda sugli apprendimenti senza presenza | risposta vuota del fallback | `chiedi` è falso |
 
