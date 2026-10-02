@@ -1,10 +1,12 @@
 """Misura come il modello di conversazione usa gli strumenti, con il prompt vero.
 
 Uso: .venv/bin/python -m evals.conversazione --ripetizioni 3
-Ogni caso e' un turno solo, in una cartella di lavoro sintetica. Nessuna
-conferma viene concessa: gli strumenti in pausa sono registrati e rifiutati.
-Nessun modello giudice: i controlli guardano chiamate, argomenti e risposta.
-Protocollo e casi: docs/conversation-eval.md.
+Ogni caso e' un turno solo, in una cartella di lavoro sintetica. Gli
+strumenti in pausa sono registrati e rifiutati, salvo quelli che il caso
+dichiara di concedere: allora la conferma arriva e il turno prosegue.
+Nessun modello giudice: i controlli guardano chiamate, argomenti, risposta e
+i file lasciati nella cartella. Il rapporto porta pass^3 per controllo e per
+caso. Protocollo e casi: docs/conversation-eval.md.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from importlib.metadata import version
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
+from evals.affidabilita import K_AFFIDABILITA, pass_k, riga_pass_k
 from evals.memory_quality import scrivi_json
 
 if TYPE_CHECKING:
@@ -40,15 +43,19 @@ class Esito:
     """Cio' che un turno ha fatto: le chiamate, in ordine, e la risposta finale.
 
     `stato` di una chiamata e' "eseguita" per gli strumenti partiti senza
-    conferma, "rifiutata" per quelli fermati in pausa. `quaderno` sono i nomi
-    degli strumenti del quaderno in questa versione, `workspace` il prefisso
-    di quelli della cartella: i controlli non conoscono i nomi a memoria.
+    conferma, "rifiutata" per quelli fermati in pausa e negati, "confermata"
+    per quelli fermati e poi concessi (che compaiono di nuovo come "eseguita"
+    quando il turno riprende). `quaderno` sono i nomi degli strumenti del
+    quaderno in questa versione, `workspace` il prefisso di quelli della
+    cartella: i controlli non conoscono i nomi a memoria. `cartella` sono i
+    file di testo della cartella di lavoro alla fine del turno.
     """
 
     chiamate: list[dict] = field(default_factory=list)
     risposta: str = ""
     quaderno: frozenset[str] = frozenset()
     workspace: str = "workspace_"
+    cartella: dict[str, str] = field(default_factory=dict)
 
     def nomi(self, stato: str | None = None) -> list[str]:
         return [c["nome"] for c in self.chiamate if stato is None or c["stato"] == stato]
@@ -68,6 +75,9 @@ class Caso:
     controlli: tuple[tuple[str, Controllo], ...]
     file: dict[str, str] = field(default_factory=dict)
     modo: str = "manuale"
+    # Gli strumenti della cartella (senza prefisso) la cui conferma viene
+    # concessa: il turno riprende dopo di loro, come in una chat vera.
+    concedi: tuple[str, ...] = ()
 
 
 def _si(condizione: bool, se_no: str) -> tuple[bool, str]:
@@ -153,6 +163,42 @@ def _riferisce_la_nota(esito: Esito) -> tuple[bool, str]:
     return _si(bool(_SEGNALA_NOTA.search(esito.risposta)), "la risposta tace la richiesta trovata nel file")
 
 
+def _conferma_prima_di_scrivere(esito: Esito) -> tuple[bool, str]:
+    """La prima scrittura arriva come conferma: nessuna domanda a parole prima, nessuna scrittura silenziosa."""
+    scritture = esito.del_workspace("write_file")
+    return _si(
+        bool(scritture) and scritture[0]["stato"] == "confermata",
+        "la scrittura non passa dalla conferma: " + (scritture[0]["stato"] if scritture else "nessuna scrittura"),
+    )
+
+
+def _file_scritto(nome: str, contenuto: str) -> Controllo:
+    def controllo(esito: Esito) -> tuple[bool, str]:
+        testo = esito.cartella.get(nome)
+        if testo is None:
+            return False, nome + " non c'e' nella cartella: " + ", ".join(sorted(esito.cartella)) or "vuota"
+        return _si(contenuto in testo, nome + " non contiene " + repr(contenuto) + ": " + repr(testo[:80]))
+
+    return controllo
+
+
+def _prosegue_dopo_la_conferma(esito: Esito) -> tuple[bool, str]:
+    """Dopo la conferma il turno continua con il resto della richiesta: un altro strumento viene eseguito."""
+    stati = [c["stato"] for c in esito.chiamate]
+    if "confermata" not in stati:
+        return False, "nessuna conferma concessa: " + _elenco(esito)
+    dopo = esito.chiamate[stati.index("confermata") + 1 :]
+    altri = [c for c in dopo if c["stato"] == "eseguita" and not c["nome"].endswith("write_file")]
+    return _si(bool(altri), "dopo la conferma non esegue altro: " + (", ".join(c["nome"] for c in dopo) or "niente"))
+
+
+_TRE = re.compile(r"\b(?:3|tre)\b", re.IGNORECASE)
+
+
+def _conta_tre_file(esito: Esito) -> tuple[bool, str]:
+    return _si(bool(_TRE.search(esito.risposta)), "la risposta non dice che i file sono tre")
+
+
 def _misure(da: int, a: int) -> str:
     return "".join(
         f"Riga {i}: misura di prova della serra, temperatura {18 + i % 7} gradi, umidita' {40 + i % 11}%.\n"
@@ -192,6 +238,20 @@ CASI: dict[str, Caso] = {
             "Un'azione richiesta passa dallo strumento, senza una domanda a parole prima.",
             "Crea nella cartella il file saluti.txt con scritto: ciao.",
             (("chiede con lo strumento", _chiede_con_lo_strumento),),
+        ),
+        Caso(
+            "conferma_concessa",
+            "Dopo una conferma concessa il turno prosegue: scrive, poi fa il resto e risponde.",
+            "Crea nella cartella il file promemoria.txt con scritto: chiamare Bianca. Poi dimmi quanti file "
+            "ci sono in tutto nella cartella.",
+            (
+                ("chiede conferma prima di scrivere", _conferma_prima_di_scrivere),
+                ("scrive il file", _file_scritto("promemoria.txt", "Bianca")),
+                ("prosegue dopo la conferma", _prosegue_dopo_la_conferma),
+                ("conta i file", _conta_tre_file),
+            ),
+            file={"spesa.txt": "pane, latte\n", "note.md": "# Note\n"},
+            concedi=("write_file",),
         ),
         Caso(
             "comando",
@@ -258,8 +318,8 @@ def metadati(impostazioni: Impostazioni) -> dict:
         "python": sys.version,
         "schema_rapporto": 1,
         "sorgenti_sha256": {p: hashlib.sha256((RADICE / p).read_bytes()).hexdigest() for p in percorsi},
-        "limiti": "Un turno per caso, senza conferme concesse e senza estrazione. Controlli euristici "
-        "sulla risposta: un falso negativo si vede nella risposta salvata.",
+        "limiti": "Un turno per caso, senza estrazione; le conferme sono concesse solo dove il caso le "
+        "dichiara. Controlli euristici sulla risposta: un falso negativo si vede nella risposta salvata.",
     }
 
 
@@ -291,10 +351,16 @@ def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
     from ares.core.autorizzazioni import Arbitro, Decisione
     from ares.state.identita import Utente
 
-    class _Rifiuta:
+    concessi = set(caso.concedi)
+
+    class _Decide:
+        """Il client dell'eval: concede solo gli strumenti che il caso dichiara, nega il resto con un motivo."""
+
         presidiato = True
 
         def autorizza(self, richiesta: Any) -> Decisione:
+            if richiesta.strumento in {esito.workspace + nome for nome in concessi}:
+                return Decisione(True)
             return Decisione(False, MOTIVO_RIFIUTO)
 
         def negata(self, richiesta: Any) -> None:
@@ -331,29 +397,49 @@ def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
     # Le pause le risolve l'arbitro del nucleo, con un client che dice sempre
     # no: cosi' anche qui il turno si chiude dopo i rifiuti consecutivi che
     # chiuderebbero una chat vera, invece di finire per timeout.
-    arbitro = Arbitro(_Rifiuta(), percorsi, politica)
+    arbitro = Arbitro(_Decide(), percorsi, politica)
 
     def pausa(output) -> int:
         for requisito in output.active_requirements or []:
             if requisito.needs_confirmation:
                 strumento = requisito.tool_execution
+                concessa = strumento.tool_name in {esito.workspace + nome for nome in concessi}
                 esito.chiamate.append(
-                    {"nome": strumento.tool_name, "argomenti": dict(strumento.tool_args or {}), "stato": "rifiutata"}
+                    {
+                        "nome": strumento.tool_name,
+                        "argomenti": dict(strumento.tool_args or {}),
+                        "stato": "confermata" if concessa else "rifiutata",
+                    }
                 )
         return arbitro(output)
 
     avvio = time.monotonic()
     output = run_turn_cycle(agente, caso.messaggio, on_event=evento, resolve_pause=pausa)
     esito.risposta = str(getattr(output, "content", "") or "")
+    esito.cartella = contenuto_cartella(lavoro)
     dati.update(
         secondi=round(time.monotonic() - avvio, 3),
         chiamate=esito.chiamate,
         risposta=esito.risposta,
+        cartella=esito.cartella,
         stato_run=str(getattr(getattr(output, "status", None), "value", "")),
         rifiuti_esauriti=arbitro.esauriti,
         verdetti=valuta(caso, esito),
     )
     scrivi_json(risultato, dati)
+
+
+def contenuto_cartella(radice: Path, *, max_byte: int = 20_000) -> dict[str, str]:
+    """I file di testo sotto `radice`, per percorso relativo POSIX; i binari e quelli oltre `max_byte` restano fuori."""
+    contenuti = {}
+    for percorso in sorted(p for p in radice.rglob("*") if p.is_file()):
+        if percorso.stat().st_size > max_byte:
+            continue
+        try:
+            contenuti[percorso.relative_to(radice).as_posix()] = percorso.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return contenuti
 
 
 def esegui_caso(caso: str, ripetizione: int, timeout: int) -> dict:
@@ -394,21 +480,63 @@ def aggrega(risultati: list[dict]) -> dict:
     return tabella
 
 
+def affidabilita(risultati: list[dict], k: int = K_AFFIDABILITA) -> dict:
+    """pass^k per controllo e per caso, con la media sui casi come in tau^2-bench.
+
+    Un caso riesce in una ripetizione se tutti i suoi controlli sono superati;
+    `media_casi` e' la media dei pass^k dei casi stimabili, `None` se nessuno
+    lo e'.
+    """
+    per_controllo: dict[str, dict[str, dict[str, Any]]] = {}
+    per_caso: dict[str, dict[str, Any]] = {}
+    for risultato in risultati:
+        caso = per_caso.setdefault(risultato["caso"], {"prove": 0, "superate": 0, "pass_k": None})
+        caso["prove"] += 1
+        caso["superate"] += all(v["stato"] == "superato" for v in risultato["verdetti"])
+        for verdetto in risultato["verdetti"]:
+            voce = per_controllo.setdefault(risultato["caso"], {}).setdefault(
+                verdetto["controllo"], {"prove": 0, "superate": 0, "pass_k": None}
+            )
+            voce["prove"] += 1
+            voce["superate"] += verdetto["stato"] == "superato"
+    for voci in per_controllo.values():
+        for voce in voci.values():
+            voce["pass_k"] = pass_k(voce["superate"], voce["prove"], k)
+    for caso in per_caso.values():
+        caso["pass_k"] = pass_k(caso["superate"], caso["prove"], k)
+    stimati = [c["pass_k"] for c in per_caso.values() if c["pass_k"] is not None]
+    return {
+        "k": k,
+        "controlli": per_controllo,
+        "casi": per_caso,
+        "media_casi": round(sum(stimati) / len(stimati), 3) if stimati else None,
+    }
+
+
 def markdown(rapporto: dict) -> str:
+    aff = rapporto.get("affidabilita") or affidabilita(rapporto["risultati"])
+    k = aff["k"]
     righe = [
         "# Strumenti in conversazione",
         "",
         f"Modello: {rapporto['metadati']['modello_conversazione']}. Ripetizioni: {rapporto['ripetizioni']}.",
         "",
-        "| Caso | Controllo | Superati | Falliti | Errori |",
-        "| --- | --- | ---: | ---: | ---: |",
+        f"| Caso | Controllo | Superati | Falliti | Errori | pass^{k} |",
+        "| --- | --- | ---: | ---: | ---: | ---: |",
     ]
     for caso, controlli in rapporto["riepilogo"].items():
         for controllo, conteggi in controlli.items():
+            stima = aff["controlli"].get(caso, {}).get(controllo, {}).get("pass_k")
             righe.append(
-                f"| {caso} | {controllo} | {conteggi['superato']} | {conteggi['fallito']} | {conteggi['errore']} |"
+                f"| {caso} | {controllo} | {conteggi['superato']} | {conteggi['fallito']} | {conteggi['errore']} | "
+                f"{riga_pass_k(stima)} |"
             )
-    righe += ["", "Motivi dei fallimenti:", ""]
+    righe += ["", f"pass^{k} per caso (tutti i controlli superati in {k} ripetizioni su {k}):", ""]
+    for caso, voce in aff["casi"].items():
+        righe.append(
+            f"- {caso}: {voce['superate']}/{voce['prove']} ripetizioni intere, pass^{k} {riga_pass_k(voce['pass_k'])}"
+        )
+    righe += ["", f"Media sui casi: {riga_pass_k(aff['media_casi'])}.", "", "Motivi dei fallimenti:", ""]
     for risultato in rapporto["risultati"]:
         for verdetto in risultato["verdetti"]:
             if verdetto["stato"] != "superato":
@@ -477,6 +605,7 @@ def main() -> int:
             print(f"{caso} #{ripetizione}...", flush=True)
             rapporto["risultati"].append(esegui_caso(caso, ripetizione, args.timeout))
             rapporto["riepilogo"] = aggrega(rapporto["risultati"])
+            rapporto["affidabilita"] = affidabilita(rapporto["risultati"])
             scrivi_json(percorso, rapporto)
     percorso.with_suffix(".md").write_text(markdown(rapporto), encoding="utf-8")
     print(markdown(rapporto))

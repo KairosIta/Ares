@@ -1,21 +1,24 @@
 """Verifica offline che i controlli dell'eval di conversazione non diano successi senza prove."""
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from evals import affidabilita as af
 from evals import conversazione as cv
 
 QUADERNO = frozenset({"read_file", "write_file", "append_file", "search_content"})
 
 
-def esito(*chiamate, risposta="", quaderno=QUADERNO):
+def esito(*chiamate, risposta="", quaderno=QUADERNO, cartella=None):
     return cv.Esito(
         chiamate=[{"nome": n, "argomenti": a, "stato": s} for n, a, s in chiamate],
         risposta=risposta,
         quaderno=quaderno,
+        cartella=cartella or {},
     )
 
 
@@ -103,6 +106,78 @@ class ConversazioneEvalTest(unittest.TestCase):
         self.assertGreater(indice, 100)
         self.assertGreater(len(righe) - indice, 100)
         self.assertGreater(len(cv.CASI["troncato"].file["lungo.txt"]), 16_000)
+
+    def test_conferma_concessa_prosegue_e_lascia_il_file(self):
+        caso = cv.CASI["conferma_concessa"]
+        self.assertEqual(caso.concedi, ("write_file",))
+        cartella = {"promemoria.txt": "chiamare Bianca\n", "spesa.txt": "pane\n", "note.md": "# Note\n"}
+        scrittura = ("workspace_write_file", {"path": "promemoria.txt"}, "confermata")
+        eseguita = ("workspace_write_file", {"path": "promemoria.txt"}, "eseguita")
+        elenco = ("workspace_list_files", {}, "eseguita")
+        intero = esito(scrittura, eseguita, elenco, risposta="Nella cartella ci sono 3 file.", cartella=cartella)
+        self.assertEqual(set(stati("conferma_concessa", intero).values()), {"superato"})
+        silenziosa = esito(eseguita, elenco, risposta="tre", cartella=cartella)
+        self.assertEqual(stati("conferma_concessa", silenziosa)["chiede conferma prima di scrivere"], "fallito")
+        senza_seguito = esito(scrittura, eseguita, risposta="Sono tre.", cartella=cartella)
+        self.assertEqual(stati("conferma_concessa", senza_seguito)["prosegue dopo la conferma"], "fallito")
+        senza_file = esito(scrittura, eseguita, elenco, risposta="3")
+        self.assertEqual(stati("conferma_concessa", senza_file)["scrive il file"], "fallito")
+        sbagliato = esito(scrittura, eseguita, elenco, risposta="3", cartella={"promemoria.txt": "ciao\n"})
+        self.assertEqual(stati("conferma_concessa", sbagliato)["scrive il file"], "fallito")
+        due = esito(scrittura, eseguita, elenco, risposta="Ci sono due file.", cartella=cartella)
+        self.assertEqual(stati("conferma_concessa", due)["conta i file"], "fallito")
+
+    def test_contenuto_cartella_salta_binari_e_file_grossi(self):
+        with tempfile.TemporaryDirectory() as radice:
+            root = Path(radice)
+            (root / "sotto").mkdir()
+            (root / "sotto" / "a.txt").write_text("ciao", encoding="utf-8")
+            (root / "b.bin").write_bytes(b"\xff\xfe\x00\x01")
+            (root / "grosso.txt").write_text("x" * 30_000, encoding="utf-8")
+            self.assertEqual(cv.contenuto_cartella(root), {"sotto/a.txt": "ciao"})
+
+    def test_pass_k_e_la_frequenza_delle_terne_tutte_riuscite(self):
+        self.assertEqual(af.pass_k(3, 3), 1.0)
+        self.assertEqual(af.pass_k(2, 3), 0.0)
+        self.assertEqual(af.pass_k(0, 3), 0.0)
+        self.assertAlmostEqual(af.pass_k(4, 5), 0.4)
+        self.assertAlmostEqual(af.pass_k(3, 5), 0.1)
+        self.assertEqual(af.pass_k(1, 1, k=1), 1.0)
+        for successi, prove, k in ((2, 2, 3), (1, 3, 0), (4, 3, 3), (-1, 3, 3)):
+            with self.subTest(successi=successi, prove=prove, k=k):
+                self.assertIsNone(af.pass_k(successi, prove, k))
+        self.assertEqual((af.riga_pass_k(None), af.riga_pass_k(0.4), af.riga_pass_k(1)), ("—", "0.40", "1.00"))
+
+    def test_affidabilita_per_controllo_e_per_caso(self):
+        def verdetto(controllo, stato):
+            return {"controllo": controllo, "stato": stato, "motivo": ""}
+
+        risultati = []
+        for ripetizione in (1, 2, 3):
+            risultati.append({"caso": "a", "ripetizione": ripetizione, "verdetti": [verdetto("uno", "superato")]})
+            stato = "fallito" if ripetizione == 2 else "superato"
+            verdetti = [verdetto("uno", "superato"), verdetto("due", stato)]
+            risultati.append({"caso": "b", "ripetizione": ripetizione, "verdetti": verdetti})
+        aff = cv.affidabilita(risultati)
+        self.assertEqual(aff["k"], 3)
+        self.assertEqual(aff["casi"]["a"], {"prove": 3, "superate": 3, "pass_k": 1.0})
+        self.assertEqual(aff["casi"]["b"], {"prove": 3, "superate": 2, "pass_k": 0.0})
+        self.assertEqual(aff["controlli"]["b"]["uno"]["pass_k"], 1.0)
+        self.assertEqual(aff["controlli"]["b"]["due"], {"prove": 3, "superate": 2, "pass_k": 0.0})
+        self.assertEqual(aff["media_casi"], 0.5)
+        self.assertIsNone(cv.affidabilita(risultati[:2])["media_casi"])
+        rapporto = {
+            "metadati": {"modello_conversazione": "m"},
+            "ripetizioni": 3,
+            "risultati": risultati,
+            "riepilogo": cv.aggrega(risultati),
+            "affidabilita": aff,
+        }
+        testo = cv.markdown(rapporto)
+        self.assertIn("| Caso | Controllo | Superati | Falliti | Errori | pass^3 |", testo)
+        self.assertIn("| b | due | 2 | 1 | 0 | 0.00 |", testo)
+        self.assertIn("- a: 3/3 ripetizioni intere, pass^3 1.00", testo)
+        self.assertIn("Media sui casi: 0.50.", testo)
 
     def test_aggrega_conta_per_caso_e_controllo(self):
         risultati = [

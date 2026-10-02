@@ -83,8 +83,16 @@ semantica generale del linguaggio naturale.
 | Abbandono ipotesi | 3 | Un'idea scartata non torna attuale, neppure dopo un dialogo su altro. |
 | Abbandono piano | 3 | Un progetto confermato e poi abbandonato viene sostituito nel recupero dal progetto attuale. |
 | Avvio | 4 | Una decisione o un programma futuro non dimostrano l'avvio; un avvio esplicito rimane noto quando la decisione viene ribadita. |
+| Astensione | 1 | Una domanda su un dato mai detto, senza alcun indizio nel dialogo, ha valore nullo e certezza sconosciuta. |
+| Dimenticanza | 2 | Un dato annotato e poi ritirato («non ricordare più…») non torna dalla sonda e non resta negli store. |
+| Aggiornamento lungo | 2 | La correzione di una preferenza arriva dopo quattro scambi su altro, estratti uno per uno, e sostituisce il valore iniziale. |
 
-Sono diciannove fasi per ripetizione, cinquantasette con le impostazioni predefinite.
+Sono ventiquattro fasi per ripetizione, settantadue con le impostazioni
+predefinite. Il rapporto porta anche **pass^3** per caso e per fase: la
+probabilità che tre ripetizioni scelte a caso riescano tutte, stimata con
+C(c, 3) / C(n, 3) su n ripetizioni e c successi (`evals/affidabilita.py`).
+Un caso riesce in una ripetizione solo se tutte le sue fasi sono superate:
+da revisionare e non conclusivo non contano, come nel resto del rapporto.
 I messaggi e i criteri esatti sono in `evals/memory_quality.py` e vengono
 copiati nel rapporto.
 

@@ -24,6 +24,8 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from evals.affidabilita import K_AFFIDABILITA, pass_k, riga_pass_k
+
 if TYPE_CHECKING:
     # Solo per le annotazioni: il modulo importa `ares` dentro le funzioni,
     # perche' l'ambiente della prova va preparato prima che `config` lo
@@ -50,6 +52,10 @@ class Fase:
     # dei lavori" sostiene "iniziato"). Si dichiara per fase: le altre
     # continuano a pretendere il termine esatto.
     evidenza_equivalente: re.Pattern[str] | None = None
+    # Scambi su altro, consegnati all'apprendimento uno per uno prima dello
+    # scambio della fase, nella stessa sessione: la memoria evolve fra il
+    # fatto e la sua correzione, come in una conversazione lunga. Senza sonda.
+    altri_turni: tuple[tuple[str, str], ...] = ()
 
 
 # Le due traiettorie divergono solo all'inizio: una possibilita' puo' non
@@ -93,6 +99,29 @@ AVVIO_AFFERMATO = re.compile(
     r"|\bha\s+(?:confermato|dichiarato|comunicato)\s+di\s+aver\s+iniziato\s+a\s+(?:lavorare|lavorarci|realizzare)\b"
 )
 
+
+# Quattro scambi su altro, fra un fatto e la sua correzione.
+ALTRI_TURNI = (
+    (
+        "Sto rileggendo un manuale di reti, il capitolo sul routing statico.",
+        "Il routing statico e' un buon punto di partenza; dimmi se vuoi degli esempi.",
+    ),
+    (
+        "Domani ho una riunione con il team alle 9.",
+        "Riunione con il team domani alle 9, segnato.",
+    ),
+    (
+        "Ho aggiornato il firmware del router di casa senza problemi.",
+        "Bene, il router e' aggiornato.",
+    ),
+    (
+        "La stampante dell'ufficio si inceppa ancora con la carta riciclata.",
+        "Puo' dipendere dalla grammatura: prova una carta piu' spessa.",
+    ),
+)
+
+DOMANDA_EDITOR = "Qual e' il mio editor di testo preferito? Riporta solo il nome nel valore."
+DOMANDA_TESSERA = "Qual e' il numero della mia tessera della palestra? Riporta solo il codice nel valore."
 
 CASI = {
     "ipotesi": (
@@ -195,6 +224,55 @@ CASI = {
             sessione="idea",
         ),
         *DOPO_ABBANDONO,
+    ),
+    "astensione": (
+        Fase(
+            "mai_detto",
+            "Ho reinstallato il sistema sul portatile e messo in ordine le cartelle dei documenti.",
+            "Bene, il portatile e' in ordine.",
+            "Qual e' il nome del mio gatto?",
+            da_rivedere=("gatt",),
+        ),
+    ),
+    "dimenticanza": (
+        Fase(
+            "annotata",
+            "Il numero della mia tessera della palestra e' GYM-5521, tienilo a mente.",
+            "Tessera della palestra GYM-5521, segnata.",
+            DOMANDA_TESSERA,
+            ("GYM-5521",),
+            sessione="tessera",
+        ),
+        Fase(
+            "dimenticata",
+            "Non ricordare piu' il numero della tessera della palestra: cancellalo dalla memoria, non deve restare.",
+            "D'accordo: non conservo piu' il numero della tessera.",
+            DOMANDA_TESSERA,
+            da_rivedere=("GYM-5521", "5521"),
+            sessione="richiesta",
+            memoria_precedente=("GYM-5521",),
+        ),
+    ),
+    "aggiornamento_lungo": (
+        Fase(
+            "iniziale",
+            "Il mio editor di testo preferito e' Vim, lo uso per tutto.",
+            "Vim come editor preferito, segnato.",
+            DOMANDA_EDITOR,
+            ("Vim",),
+            sessione="editor",
+        ),
+        Fase(
+            "corretta_dopo_altro",
+            "Ho cambiato idea sull'editor: ora uso Helix e ho abbandonato Vim del tutto.",
+            "Aggiorno: il tuo editor preferito e' Helix, Vim non piu'.",
+            DOMANDA_EDITOR,
+            ("Helix",),
+            ("Vim",),
+            sessione="lavoro",
+            memoria_precedente=("Vim",),
+            altri_turni=ALTRI_TURNI,
+        ),
     ),
     "avvio": (
         Fase(
@@ -422,6 +500,39 @@ def aggrega(risultati: list[dict]) -> dict:
     return {stato: conteggi[stato] for stato in STATI}
 
 
+def affidabilita(risultati: list[dict], k: int = K_AFFIDABILITA) -> dict:
+    """pass^k per caso e per fase: un caso riesce in una ripetizione se tutte le sue fasi sono superate.
+
+    Da revisionare e non conclusivo non sono successi, come nel resto del
+    rapporto. `media_casi` e' la media dei pass^k dei casi stimabili.
+    """
+    per_caso: dict[str, dict[str, Any]] = {}
+    per_fase: dict[str, dict[str, dict[str, Any]]] = {}
+    for risultato in risultati:
+        fasi = risultato.get("fasi", [])
+        caso = per_caso.setdefault(risultato["caso"], {"prove": 0, "superate": 0, "pass_k": None})
+        caso["prove"] += 1
+        caso["superate"] += bool(fasi) and all(f["valutazione"]["stato"] == "superato" for f in fasi)
+        for fase in fasi:
+            voce = per_fase.setdefault(risultato["caso"], {}).setdefault(
+                fase["nome"], {"prove": 0, "superate": 0, "pass_k": None}
+            )
+            voce["prove"] += 1
+            voce["superate"] += fase["valutazione"]["stato"] == "superato"
+    for voci in per_fase.values():
+        for voce in voci.values():
+            voce["pass_k"] = pass_k(voce["superate"], voce["prove"], k)
+    for caso in per_caso.values():
+        caso["pass_k"] = pass_k(caso["superate"], caso["prove"], k)
+    stimati = [c["pass_k"] for c in per_caso.values() if c["pass_k"] is not None]
+    return {
+        "k": k,
+        "casi": per_caso,
+        "fasi": per_fase,
+        "media_casi": round(sum(stimati) / len(stimati), 3) if stimati else None,
+    }
+
+
 def scrivi_json(percorso: Path, dati: dict) -> None:
     temporaneo = percorso.with_suffix(percorso.suffix + ".tmp")
     temporaneo.write_text(json.dumps(dati, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -446,11 +557,22 @@ def markdown(rapporto: dict) -> str:
                 f"| {risultato['caso']} | {risultato['ripetizione']} | {fase['nome']} | "
                 f"{fase['valutazione']['stato']} | {fase.get('secondi', 0):.2f} |"
             )
+    aff = rapporto.get("affidabilita") or affidabilita(rapporto["risultati"])
+    k = aff["k"]
     righe += [
         "",
         "Conteggi per fase (non percentuali di affidabilità generale):",
         "",
-        *[f"- {k}: {v}" for k, v in aggrega(rapporto["risultati"]).items()],
+        *[f"- {stato}: {quanti}" for stato, quanti in aggrega(rapporto["risultati"]).items()],
+        "",
+        f"pass^{k} per caso (tutte le fasi superate in {k} ripetizioni su {k}):",
+        "",
+        *[
+            f"- {caso}: {voce['superate']}/{voce['prove']} ripetizioni intere, pass^{k} {riga_pass_k(voce['pass_k'])}"
+            for caso, voce in aff["casi"].items()
+        ],
+        "",
+        f"Media sui casi: {riga_pass_k(aff['media_casi'])}.",
         "",
         "Il JSON accanto conserva messaggi, archivi, risposte, errori e motivi dei verdetti. "
         "I casi da revisionare e non conclusivi non sono successi. Nessun modello giudice viene usato.",
@@ -584,15 +706,13 @@ def _worker(caso: str, risultato: Path) -> None:
         dati["fasi"].append(voce)
         scrivi_json(risultato, dati)
         try:
-            macchina.process_completed_run(
-                messages=[
-                    Message(role="user", content=fase.utente),
-                    Message(role="assistant", content=fase.assistente),
-                ],
-                user_id="eval-user",
-                session_id=fase.sessione,
-                agent_id="ares-eval",
-            )
+            for utente, assistente in (*fase.altri_turni, (fase.utente, fase.assistente)):
+                macchina.process_completed_run(
+                    messages=[Message(role="user", content=utente), Message(role="assistant", content=assistente)],
+                    user_id="eval-user",
+                    session_id=fase.sessione,
+                    agent_id="ares-eval",
+                )
             voce["secondi_estrazione"] = round(time.monotonic() - avvio, 3)
             voce["dopo"] = fotografia(fase.sessione)
             voce["tentativi_contesto"] = macchina.session_context_store.last_extraction_attempts
@@ -760,6 +880,7 @@ def main() -> int:
 
     def salva() -> None:
         rapporto["riepilogo"] = aggrega(rapporto["risultati"])
+        rapporto["affidabilita"] = affidabilita(rapporto["risultati"])
         scrivi_json(percorso, rapporto)
         percorso.with_suffix(".md").write_text(markdown(rapporto), encoding="utf-8")
 
