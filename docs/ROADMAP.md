@@ -78,7 +78,33 @@ Riferimenti: [architettura](architecture.md), [integrazione Agno](agno.md),
 
 ## Rimandati dalla revisione di v0.13.0
 
-(da completare)
+La revisione di #158-#164 prima del rilascio ha corretto ogni difetto
+trovato. Restano da parte, di proposito:
+
+- **Piano e avanzamento con il 9B.** Una lista vuota non cancella più
+  `plan` e `progress`, ma un modello che restituisce solo i passi del turno
+  li sostituisce ancora. Serve un caso a più turni in
+  `evals/memory_quality.py` e una misura sul 9B prima di cambiare schema o
+  filtro.
+- **Nomi CJK senza spazi.** Le parole del radicamento valgono in ogni
+  alfabeto, ma un testo cinese o giapponese senza separatori è una parola
+  sola: un nome si radica solo se nella conversazione è staccato.
+- **Sandbox, limiti dichiarati in SECURITY.md.** I comandi leggono il resto
+  del disco; dentro la cartella possono scrivere codice che poi esegue la
+  persona (script, Makefile, `.envrc`); con la rete raggiungono localhost; un
+  `.git` nato durante un comando è scrivibile per quel comando. Il filtro
+  per dominio e un profilo per Windows e macOS restano fuori.
+- **Adozione di una skill.** Fra il controllo dell'impronta e lo
+  spostamento resta una finestra di pochi millisecondi; un lock condiviso
+  con `proponi_skill` la chiuderebbe.
+- **Memorie superate senza id.** Il tetto di dieci versioni vale per id; le
+  rare voci senza id non ne hanno.
+- **Ripetizioni minori.** `ares preflight` compone la riga della sandbox per
+  conto suo invece di usare `render.riga_sandbox`, perché lavora sul
+  dizionario dell'esito; `backup._git` interroga il clone di Ares senza
+  disattivare fsmonitor e hook, che lì sono della persona.
+- **`docs/core-refactor-plan.md`** resta il piano di un refactor concluso e
+  non si aggiorna.
 
 ## Ordine di lavoro: nucleo condiviso, memoria, infine UI
 

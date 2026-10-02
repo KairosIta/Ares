@@ -686,8 +686,8 @@ L'estrazione salva una memoria alla volta: con il tempo la stessa cosa
 compare scritta in due modi, e una preferenza cambiata convive con quella
 vecchia. Il consolidamento chiede all'embedder locale le coppie vicine e al
 modello di apprendimento se ciascuna è un doppione, una memoria superata o
-due cose distinte; di una coppia non distinta ritira la più vecchia, a
-favore della più recente. Senza `--apply` mostra soltanto il piano. Con
+due cose distinte; di una memoria superata ritira la più vecchia, di un
+doppione tiene la più completa. Senza `--apply` mostra soltanto il piano. Con
 `--apply` vale lo stesso protocollo della fusione delle entità: chat
 chiusa, conferma scritta, backup verificato. Le ritirate non si cancellano:
 passano fra le superate, con il rimando a quella che resta, e
