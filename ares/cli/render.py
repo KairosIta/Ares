@@ -8,6 +8,7 @@ from typing import Any
 
 from agno.run.agent import RunOutput
 
+from ares.agent.marcatura import smarca
 from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
@@ -151,9 +152,10 @@ def righe_esito(strumento, mostra: Mostra, errore=None) -> list:
     """Come e' finita una chiamata a uno strumento.
 
     Il conteggio dei caratteri precede l'anteprima: e' la parte esatta, quanto
-    e' entrato nella finestra del modello. La durata manca nel percorso di
-    ripresa dopo una conferma, dove Agno non copia le metriche: un segmento
-    assente sparisce invece di stampare zero.
+    e' entrato nella finestra del modello, delimitatori compresi; l'anteprima
+    li toglie, perche' alla persona servono le righe del contenuto. La durata
+    manca nel percorso di ripresa dopo una conferma, dove Agno non copia le
+    metriche: un segmento assente sparisce invece di stampare zero.
     """
     if errore is not None:
         testo = str(errore).strip()
@@ -172,7 +174,7 @@ def righe_esito(strumento, mostra: Mostra, errore=None) -> list:
         # Sotto il decimo di secondo l'arrotondamento a una cifra scriverebbe
         # "in 0.0 s", che sembra un guasto del cronometro.
         misura += " in " + ("<0.1" if durata < 0.1 else str(round(durata, 1))) + " s"
-    return ["   esito: " + misura, *anteprima_risultato(testo, mostra)]
+    return ["   esito: " + misura, *anteprima_risultato(smarca(testo), mostra)]
 
 
 # Gli strumenti con cui il modello scrive da solo nella memoria durevole.

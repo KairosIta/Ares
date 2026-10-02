@@ -274,6 +274,20 @@ mitigazione.
 Stato e backup vivono in `~/.ares`, fuori dal clone; `.env` resta nel clone
 ma fuori dal controllo versione.
 
+### Risultati degli strumenti
+
+Un file, l'output di un comando, una ricerca, un risultato riletto, una
+conversazione passata sono testo scritto da altri, e possono contenere un
+ordine travestito. Il prompt lo dice, ma in un modello locale piccolo la
+gerarchia fra istruzioni e dati non è addestrata: la impone
+`agent/marcatura.py`, un `tool_hook` di Agno che chiude il risultato di
+quegli strumenti fra una riga che nomina la fonte e dice che sono dati e una
+di chiusura, citando le righe del contenuto che imiterebbero il
+delimitatore. È delimitazione, non un filtro: riduce le iniezioni indirette
+che l'eval `iniezione` misura, non le azzera, e il confine resta la conferma.
+Il quaderno e gli strumenti di memoria non sono marcati, perché il testo lo
+ha scritto Ares e il prompt lo presenta già come materiale da valutare.
+
 ### Memoria durevole
 
 La memoria durevole non chiede conferma prima di scrivere: `save_learning`,

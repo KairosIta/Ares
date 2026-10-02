@@ -633,7 +633,9 @@ verifica che l'embedder rifiuti un modello cloud.
 Ciò che il modello legge può contenere un'istruzione: per questo ogni
 strumento che lascia una traccia sul disco chiede conferma nella modalità
 distribuita, `ARES.md` entra nel prompt come regole delimitate e non come
-ordini, e `ares -p` non scrive in memoria. Installazione e download dei
+ordini, ogni file, output o archivio che gli strumenti riportano arriva al
+modello delimitato come dati con la fonte dichiarata, e `ares -p` non scrive
+in memoria. Installazione e download dei
 modelli richiedono la rete, e i comandi shell autorizzati possono usarla:
 Ares è un agente locale controllato, non una sandbox di sicurezza. Il
 modello di sicurezza completo è in [`SECURITY.md`](SECURITY.md), che dice
