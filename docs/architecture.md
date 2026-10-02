@@ -257,6 +257,20 @@ cartella, chiede privilegi, usa la rete o cancella ricorsivamente
 (`avvertenze_comando` in `cli/render.py`). Non è un filtro — una lista nera
 si aggira con un alias — ma indica dove guardare.
 
+Le regole di autorizzazione (`core/regole.py`) sono i file TOML con cui la
+persona dichiara i comandi che non chiedono conferma e quelli che non
+girano mai: `.ares/permessi.toml` nella cartella e `permessi.toml` in
+`~/.ares`, sommati. Le legge l'`Arbitro` a ogni turno, mai il modello:
+prima di chiedere al client, un comando coperto da `consenti` è confermato
+e il client lo vede con `concessa`, uno coperto da `nega` è rifiutato con
+un motivo che dice al modello di non riprovare, e il client lo vede con
+`negata`. `nega` vale anche in `auto`, dove nessuna pausa passa dal nucleo:
+`AresWorkspace.run_command` consulta le stesse regole prima di eseguire.
+Un comando composto si spezza e ogni parte deve essere coperta; redirezioni,
+sostituzioni e righe di PowerShell non si decidono per regola. Il prefisso è
+dichiaratamente aggirabile; la proposta 3.5 dello studio (sandbox) è la
+mitigazione.
+
 Stato e backup vivono in `~/.ares`, fuori dal clone; `.env` resta nel clone
 ma fuori dal controllo versione.
 

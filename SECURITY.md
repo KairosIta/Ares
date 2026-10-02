@@ -95,10 +95,20 @@ prompt come regole del progetto delimitate, non come ordini; se è un link
 fuori dalla cartella vale come assente, e il confine del workspace non si
 aggira con un link.
 
+Le regole di autorizzazione (`.ares/permessi.toml` nella cartella,
+`permessi.toml` in `~/.ares`) tacciono la conferma di un comando per
+prefisso o lo negano sempre, anche in `auto`. Le legge il nucleo, non il
+modello; `nega` vince; un comando che non si sa spezzare chiede. Sono un
+prefisso sulle parole: `git -c core.pager=x status` non è coperto da
+`git status`, e un alias o uno script nella cartella con il nome di un
+comando consentito passano. Il file del progetto arriva con il clone, come
+`ARES.md`: il banner dice quante regole ha letto e da quali file.
+
 In `ares -p`, e comunque quando stdin non è un terminale, nessuno può
-rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono no e
-gli store di apprendimento non vengono scritti, né automaticamente né con
-gli strumenti. Cronologia e quaderno privato restano persistenti.
+rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono no, le
+regole non concedono niente e gli store di apprendimento non vengono
+scritti, né automaticamente né con gli strumenti. Cronologia e quaderno
+privato restano persistenti.
 
 ### La memoria si scrive prima della conferma
 

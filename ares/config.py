@@ -669,6 +669,13 @@ def modalita_scrive_in_silenzio(modo: str) -> bool:
 # in questa sessione: il modello non lo riscrive da un contenuto immaginato.
 WORKSPACE_READ_BEFORE_WRITE = True
 
+# Le regole di autorizzazione della persona sui comandi (`core/regole.py`):
+# prefissi che non chiedono conferma (`consenti`) o non girano mai (`nega`,
+# anche in `auto`). Quelle del progetto stanno nella cartella di lavoro,
+# quelle personali in `~/.ares`; il nucleo le legge, il modello no.
+REGOLE_PROGETTO = ".ares/permessi.toml"
+REGOLE_PERSONALI = "permessi.toml"
+
 # Quante chiamate a strumenti puo' fare un turno. Oltre, Agno risponde allo
 # strumento con un errore e il modello conclude; i rilettori dei risultati
 # lunghi (`read_result`, `search_result`) non contano. E' un tetto ai cicli
@@ -745,6 +752,10 @@ class Workspace:
     istruzioni_max_byte: int
     prefisso: str
     leggi_prima_di_scrivere: bool
+    # I file delle regole di autorizzazione: relativo alla cartella di lavoro
+    # il primo, alla home di Ares il secondo.
+    regole_progetto: str = ".ares/permessi.toml"
+    regole_personali: str = "permessi.toml"
 
 
 @dataclass(frozen=True)
@@ -806,6 +817,8 @@ def leggi_politica() -> Politica:
             istruzioni_max_byte=WORKSPACE_ISTRUZIONI_MAX_BYTE,
             prefisso=WORKSPACE_PREFIX,
             leggi_prima_di_scrivere=WORKSPACE_READ_BEFORE_WRITE,
+            regole_progetto=REGOLE_PROGETTO,
+            regole_personali=REGOLE_PERSONALI,
         ),
         mostra=Mostra(
             metriche=MOSTRA_METRICHE,

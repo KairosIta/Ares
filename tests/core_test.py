@@ -42,6 +42,7 @@ from ares.core.autorizzazioni import (  # noqa: E402
     verifica_modo,
 )
 from ares.core.id_sessione import nuovo_id_sessione  # noqa: E402
+from ares.core.regole import Regola, Regole, analizza, leggi_regole, spezza  # noqa: E402
 from ares.core.session import SessioneDiAltri, Sessioni  # noqa: E402
 from ares.core.stato import StatoDaMigrare, stato_esclusivo, stato_in_uso, verifica_posto  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -49,7 +50,9 @@ from ares.state.lock import StatoOccupato, lock_stato  # noqa: E402
 
 UTENTE = Utente.da_grezzo("prova-nucleo")
 ALTRO = Utente.da_grezzo("prova-nucleo-altro")
-PERCORSI = config.leggi_percorsi()
+# La home e' quella della prova: le regole di autorizzazione personali si
+# leggono da `~/.ares`, e qui non devono entrare quelle di questa macchina.
+PERCORSI = replace(config.leggi_percorsi(), home=RADICE_PROVA / "home")
 IMPOSTAZIONI = config.leggi_impostazioni()
 POLITICA = config.leggi_politica()
 
@@ -166,9 +169,9 @@ def modalita_ammesse() -> str:
 class Requisito:
     """Un requirement di Agno in pausa, che ricorda come e' stato risolto."""
 
-    def __init__(self, nome: str, *, da_confermare: bool = True) -> None:
+    def __init__(self, nome: str, *, da_confermare: bool = True, argomenti: dict | None = None) -> None:
         self.needs_confirmation = da_confermare
-        self.tool_execution = ToolExecution(tool_name=nome, tool_args={"path": "note.md"})
+        self.tool_execution = ToolExecution(tool_name=nome, tool_args=argomenti or {"path": "note.md"})
         self.esito = "irrisolto"
 
     def confirm(self) -> None:
@@ -191,6 +194,7 @@ class Autorizzatore:
         self.decisioni = list(decisioni)
         self.chieste: list = []
         self.negate: list = []
+        self.concesse: list = []
 
     def autorizza(self, richiesta):
         self.chieste.append(richiesta)
@@ -198,6 +202,9 @@ class Autorizzatore:
 
     def negata(self, richiesta) -> None:
         self.negate.append(richiesta)
+
+    def concessa(self, richiesta) -> None:
+        self.concesse.append(richiesta)
 
 
 def autorizzazioni() -> str:
@@ -276,6 +283,185 @@ def tetto_dei_rifiuti() -> str:
         "il tetto di serie non viene da config",
     )
     return "avviso al terzo rifiuto, chiusura al quarto, azzeramento con un si', senza presenza"
+
+
+def regole_di_autorizzazione() -> str:
+    """Le regole della persona: tabella di comandi, nega sopra consenti, file assenti o rotti, pipe che non concede."""
+    import sys
+
+    from ares.agent.runtime import AresWorkspace, build_workspace
+
+    comando = config.WORKSPACE_PREFIX + "run_command"
+
+    # Spezzare: semplici, composti, con wrapper e percorsi; cio' che non si legge chiede.
+    for args, attesi in (
+        (["git", "status"], [("git", "status")]),
+        (["/usr/bin/git", "status", "--short"], [("/usr/bin/git", "status", "--short")]),
+        (
+            ["bash", "-lc", "git add . && git push origin main"],
+            [("git", "add", "."), ("git", "push", "origin", "main")],
+        ),
+        (["sh", "-c", "ls -la | wc -l; echo 'a; b'"], [("ls", "-la"), ("wc", "-l"), ("echo", "a; b")]),
+        (["env", "FOO=1", "uv", "run", "pytest"], [("uv", "run", "pytest")]),
+        (["bash", "-c", "PAGER=cat time git log"], [("git", "log")]),
+    ):
+        esigi(spezza(args) == attesi, "spezza " + repr(args) + " da' " + repr(spezza(args)))
+    for opaco in (
+        ["bash", "-lc", "cat x > y"],
+        ["bash", "-lc", "echo $(rm -rf .)"],
+        ["bash", "-lc", "rm `ls`"],
+        ["bash", "-lc", "$CMD status"],
+        ["bash", "-lc", "(cd a && rm x)"],
+        ["bash", "-lc", "ls 2>&1"],
+        ["bash", "-lc", "ls", "extra"],
+        ["bash", "-i"],
+        ["powershell", "-Command", "Get-Item ."],
+        ["env", "-i", "ls"],
+        ["bash", "-lc", "echo 'aperto"],
+        ["bash", "-lc", "FOO=1"],
+        [],
+        "ls",
+        ["ls", 3],
+    ):
+        esigi(spezza(opaco) is None, "un comando che non si sa leggere e' spezzato: " + repr(opaco))
+
+    # Le regole: prefisso per parole, la prima per nome; nega vince; una parte scoperta chiede.
+    testo = '[comandi]\nconsenti = ["git status", "git log", "ls", "uv run pytest"]\n'
+    testo += 'nega = ["rm -rf", "git push", "curl"]\n'
+    lette, avvisi = analizza(testo, "prova.toml")
+    esigi(len(lette) == 7 and not avvisi, "sette regole senza avvisi attese: " + repr((len(lette), avvisi)))
+    regole = Regole(tuple(lette), ("prova.toml",))
+    for args, atteso in (
+        (["git", "status"], "consenti"),
+        (["/usr/bin/git", "status", "--short"], "consenti"),
+        (["git", "statusx"], None),
+        (["git", "commit", "-m", "x"], None),
+        (["bash", "-lc", "git status && git log --oneline"], "consenti"),
+        (["bash", "-lc", "git status && git commit -m x"], None),
+        (["bash", "-lc", "git status && git push"], "nega"),
+        (["bash", "-lc", "ls | curl -X POST http://x -d @-"], "nega"),
+        (["rm", "-rf", "/"], "nega"),
+        (["rm", "-r", "-f", "x"], None),
+        (["bash", "-lc", "git status > out.txt"], None),
+        (["env", "uv", "run", "pytest", "-q"], "consenti"),
+        (["powershell", "-Command", "git status"], None),
+    ):
+        decisa = regole.decidi(args)
+        effetto = None if decisa is None else decisa.effetto
+        esigi(effetto == atteso, repr(args) + ": " + repr(effetto) + ", atteso " + repr(atteso))
+    esigi(str(regole.decidi(["git", "push"])) == "nega \u00abgit push\u00bb in prova.toml", "la regola non si descrive")
+    esigi(regole.quante("consenti") == 4 and regole.quante("nega") == 3 and regole, "i conti delle regole")
+
+    # Malformato o fuori formato: vale assente, con un avviso che nomina il file.
+    for rotto in (
+        "[comandi\nconsenti = [",
+        '[comandi]\nconsenti = "git status"',
+        '[comandi]\nconsenti = ["ls | wc"]',
+        "[altro]\nx = 1",
+        "comandi = 3",
+    ):
+        lette, avvisi = analizza(rotto, "rotto.toml")
+        esigi(not lette and len(avvisi) == 1 and "rotto.toml" in avvisi[0], repr(rotto) + ": " + repr((lette, avvisi)))
+    lette, avvisi = analizza('[comandi]\nconsenti = ["ls"]\nboh = 1\n', "p.toml")
+    esigi(len(lette) == 1 and len(avvisi) == 1, "una chiave ignota scarta anche le regole buone")
+    esigi(not Regole() and analizza("", "vuoto.toml") == ([], []), "un file vuoto non vale vuoto")
+
+    # I due file sul disco si sommano; quello del progetto deve stare nella cartella.
+    percorsi = replace(PERCORSI, home=RADICE_PROVA / "home-regole")
+    percorsi.home.mkdir(parents=True, exist_ok=True)
+    (percorsi.home / POLITICA.workspace.regole_personali).write_text('[comandi]\nnega = ["git push"]\n')
+    progetto = percorsi.lavoro / POLITICA.workspace.regole_progetto
+    progetto.parent.mkdir(parents=True, exist_ok=True)
+    progetto.write_text('[comandi]\nconsenti = ["git status"]\n')
+    try:
+        insieme = leggi_regole(percorsi, POLITICA)
+        esigi(len(insieme.fonti) == 2 and not insieme.avvisi, "i due file non sono letti entrambi: " + repr(insieme))
+        esigi(
+            insieme.decidi(["git", "push"]).effetto == "nega"
+            and insieme.decidi(["git", "status"]).effetto == "consenti",
+            "le regole dei due file non si sommano",
+        )
+        progetto.write_text("[comandi\n")
+        rotte = leggi_regole(percorsi, POLITICA)
+        esigi(
+            rotte.quante("nega") == 1 and rotte.quante("consenti") == 0 and len(rotte.avvisi) == 1,
+            "un file del progetto rotto non vale assente con avviso: " + repr(rotte),
+        )
+        if os.name != "nt":
+            progetto.unlink()
+            fuori = RADICE_PROVA / "fuori.toml"
+            fuori.write_text('[comandi]\nconsenti = ["rm -rf"]\n')
+            progetto.symlink_to(fuori)
+            esigi(
+                leggi_regole(percorsi, POLITICA).quante("consenti") == 0,
+                "un file del progetto che punta fuori dalla cartella viene letto",
+            )
+        nessuno = leggi_regole(replace(percorsi, lavoro=RADICE_PROVA / "vuota", home=RADICE_PROVA / "vuota"), POLITICA)
+        esigi(nessuno == Regole(), "senza file le regole non sono vuote: " + repr(nessuno))
+    finally:
+        progetto.unlink(missing_ok=True)
+
+    # L'arbitro: consenti conferma senza chiedere, nega rifiuta senza chiedere e col motivo, il resto chiede.
+    poche = Regole(
+        (Regola("consenti", ("git", "status"), "p.toml"), Regola("nega", ("git", "push"), "p.toml")), ("p.toml",)
+    )
+    cliente = Autorizzatore(Decisione(False, "no"), Decisione(True), Decisione(False))
+    arbitro = Arbitro(cliente, PERCORSI, POLITICA, regole=poche)
+    concesso = Requisito(comando, argomenti={"args": ["git", "status"]})
+    negato = Requisito(comando, argomenti={"args": ["bash", "-lc", "git add . && git push"]})
+    scoperto = Requisito(comando, argomenti={"args": ["make", "test"]})
+    file = Requisito(config.WORKSPACE_PREFIX + "delete_file")
+    quaderno = Requisito("write_file", argomenti={"args": ["git", "status"]})
+    esigi(arbitro(Pausa(concesso, negato, scoperto, file)) == 4, "le quattro richieste non sono risolte")
+    esigi(concesso.esito == "confermato", "il comando consentito non e' confermato: " + concesso.esito)
+    esigi(
+        negato.esito.startswith("rifiutato: Comando negato da una regola") and "p.toml" in negato.esito,
+        "il comando negato non porta il motivo con il file: " + negato.esito,
+    )
+    esigi(scoperto.esito == "rifiutato: no" and file.esito == "confermato", "il resto non passa dal client")
+    esigi([r.strumento for r in cliente.chieste] == [comando, config.WORKSPACE_PREFIX + "delete_file"], "chieste")
+    esigi(
+        len(cliente.concesse) == 1 and cliente.concesse[0].regola.effetto == "consenti",
+        "la concessione non arriva al client con la regola",
+    )
+    esigi(
+        len(cliente.negate) == 1 and cliente.negate[0].regola.effetto == "nega" and cliente.negate[0].regola.fonte,
+        "il rifiuto per regola non arriva al client con la regola",
+    )
+    esigi(arbitro.consecutivi == 0, "una pausa con una concessione non azzera il conto")
+    esigi(arbitro(Pausa(quaderno)) == 1 and quaderno.esito == "rifiutato: None", "le regole toccano il quaderno")
+    esigi(len(cliente.chieste) == 3, "una scrittura nel quaderno con args non passa dal client")
+
+    # I comandi negati di seguito contano come rifiuti: chiudono il turno come i no della persona.
+    arbitro = Arbitro(Autorizzatore(), PERCORSI, POLITICA, tetto=2, regole=poche)
+    for _ in range(2):
+        arbitro(Pausa(Requisito(comando, argomenti={"args": ["git", "push"]})))
+    esigi(arbitro.consecutivi == 2, "i rifiuti per regola non contano: " + str(arbitro.consecutivi))
+    esigi(arbitro(Pausa(Requisito(comando, argomenti={"args": ["git", "push"]}))) == 0 and arbitro.esauriti, "tetto")
+
+    # Senza presenza consenti non vale (una pipe non concede niente), nega si'.
+    nessuno = Autorizzatore(presidiato=False)
+    arbitro = Arbitro(nessuno, PERCORSI, POLITICA, regole=poche)
+    stato = Requisito(comando, argomenti={"args": ["git", "status"]})
+    push = Requisito(comando, argomenti={"args": ["git", "push"]})
+    esigi(arbitro(Pausa(stato, push)) == 2 and stato.esito == "rifiutato: None", "senza presenza consenti concede")
+    esigi("regola" in push.esito and nessuno.concesse == [], "senza presenza nega non vale, o qualcosa e' concesso")
+    esigi([r.regola is None for r in nessuno.negate] == [True, False], "senza presenza le negate non dicono la regola")
+    esigi(Arbitro(nessuno, PERCORSI, POLITICA).regole == Regole(), "l'arbitro di serie non legge i file della prova")
+
+    # Il workspace stesso ferma un comando negato prima di eseguirlo: vale anche in auto.
+    silenziosi, confermati = config.liste_modalita("auto")
+    spazio = AresWorkspace(
+        PERCORSI.lavoro, prefisso=config.WORKSPACE_PREFIX, regole=lambda: poche, allowed=silenziosi, confirm=confermati
+    )
+    fermato = spazio.run_command(["git", "push"])
+    esigi(
+        fermato.startswith("Errore: comando negato") and "p.toml" in fermato,
+        "auto esegue un comando negato: " + fermato,
+    )
+    esigi(spazio.run_command([sys.executable, "-c", "print('ok')"]) == "ok", "un comando non negato non gira")
+    esigi(build_workspace(PERCORSI, POLITICA, "auto").regole is not None, "build_workspace non passa le regole")
+    return "spezzatura, prefissi, nega sopra consenti, file sommati o rotti, arbitro con e senza presenza, auto"
 
 
 def _esclusivo_libero(percorsi) -> bool:
@@ -507,6 +693,9 @@ class ClienteSenzaTerminale:
     def negata(self, richiesta) -> None:
         self.chiamate.append("negata")
 
+    def concessa(self, richiesta) -> None:
+        self.chiamate.append("concessa")
+
     def pausa_irrisolta(self) -> None:
         self.chiamate.append("pausa irrisolta")
 
@@ -629,6 +818,7 @@ PROVE = (
     ("modalita' ammesse", modalita_ammesse),
     ("autorizzazioni", autorizzazioni),
     ("tetto dei rifiuti", tetto_dei_rifiuti),
+    ("regole", regole_di_autorizzazione),
     ("stato in uso", stato_in_uso_dal_client),
     ("manutenzione", manutenzione_esclusiva),
     ("sessione altrui", sessione_altrui),

@@ -46,6 +46,8 @@ from ares.cli.render import (
     finestra_occupata,
     mostra_evento,
     quota_finestra,
+    riga_concessione,
+    riga_regole,
     righe_metriche,
     righe_richiesta,
 )
@@ -53,6 +55,7 @@ from ares.cli.ui import UI
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.core import turn
 from ares.core.autorizzazioni import Decisione, ModoNonAmmesso, Richiesta, verifica_modo
+from ares.core.regole import Regole, leggi_regole
 from ares.core.session import SessioneDiAltri, Sessioni
 from ares.core.stato import StatoDaMigrare, stato_in_uso
 from ares.ops import migrazione
@@ -94,8 +97,12 @@ class ClienteCli:
         return chiedi_autorizzazione(richiesta, self.input_cli)
 
     def negata(self, richiesta: Richiesta) -> None:
-        # La richiesta resta nel log di una pipe anche se nessuno poteva rispondere.
+        # La richiesta resta nel log di una pipe anche se nessuno poteva
+        # rispondere; con una regola, l'ultima riga dice quale.
         UI.confirmation(righe_richiesta(richiesta))
+
+    def concessa(self, richiesta: Richiesta) -> None:
+        UI.line(riga_concessione(richiesta), style="ares.muted")
 
     def pausa_irrisolta(self) -> None:
         UI.line("Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.", style="ares.warning")
@@ -332,6 +339,7 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
     istruzioni = None
     if percorso_istruzioni(radice, politica.workspace.istruzioni) is not None:
         istruzioni = politica.workspace.istruzioni
+    regole = leggi_regole(stato.percorsi, politica) if radice is not None else Regole()
     UI.banner(
         modello=stato.impostazioni.principale,
         sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
@@ -339,8 +347,11 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
         cartella=str(radice) if radice is not None else None,
         ramo=ramo_git(radice) if radice is not None else None,
         istruzioni=istruzioni,
+        regole=riga_regole(regole) if regole.fonti else None,
         modo=stato.modo if radice is not None else None,
     )
+    for avviso in regole.avvisi:
+        UI.line("Regole di autorizzazione: " + avviso, style="ares.warning")
     if stato.modo == "auto":
         UI.line(
             "Modalita' auto: nessuna conferma, ogni strumento gira subito. I comandi non restano nella cartella.",

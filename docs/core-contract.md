@@ -48,7 +48,7 @@ Le API pubbliche coprono soltanto le operazioni necessarie ad Ares.
 | Memoria | `core/turn.py` coordina fotografia, differenze, conferma e ripristino; il client mostra e chiede tramite `ClienteTurno` | Un client che usa `core/turn.py` eredita queste politiche; uno che usa soltanto `turn_core` no |
 | Lock | Il lock del turno avvolge il flusso in `core/turn.py`; quello dello stato lo tiene `core/stato.py` per tutta la vita del client | La manutenzione (backup, restore, prune) prende ancora il lock esclusivo dalla sua CLI |
 | Sessioni | `core/session.py` genera gli ID, verifica il proprietario e ricostruisce l'agente per cambiare sessione/modalità | Operazioni già condivise; elenchi ed esportazione passano da `Sessioni.elenco` e `conversazione`, che restituiscono riferimenti senza oggetti Agno |
-| Autorizzazioni | `core/autorizzazioni.py` applica le decisioni e le regole della presenza dichiarata dal client; la CLI la deriva da `isatty()`, e `cli/cartella.py` lo consulta ancora per la conferma scritta di una cartella rischiosa | La conferma della cartella resta una domanda della CLI |
+| Autorizzazioni | `core/autorizzazioni.py` applica le decisioni, le regole della presenza dichiarata dal client e le regole di autorizzazione della persona (`core/regole.py`, lette dal nucleo e mostrate dal client); la CLI la deriva da `isatty()`, e `cli/cartella.py` lo consulta ancora per la conferma scritta di una cartella rischiosa | La conferma della cartella resta una domanda della CLI |
 | Manutenzione | Primitive riutilizzabili esistono, ma alcuni flussi uniscono conferma, backup, scrittura e stampa | Estrarre l'operazione completa, mantenendo il rendering nei client |
 
 Riferimenti locali: [config](../ares/config.py),

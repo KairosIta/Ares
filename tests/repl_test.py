@@ -394,6 +394,65 @@ def comando_igienico() -> str:
     return "stdin chiuso, ambiente filtrato, 300 righe in testa, coda e conto, errori spiegati, variante asincrona"
 
 
+def regole_a_schermo() -> str:
+    """Cio' che la persona vede delle sue regole: la richiesta decisa da una regola, la concessione, il banner."""
+    from ares.core.regole import Regola, Regole
+
+    comando = config.WORKSPACE_PREFIX + "run_command"
+    nega = Regola("nega", ("git", "push"), "/p/.ares/permessi.toml")
+    consenti = Regola("consenti", ("git", "status"), "/p/.ares/permessi.toml")
+    negata = Richiesta(comando, {"args": ["git", "push", "--force"]}, PERCORSI.lavoro, regola=nega)
+    righe = righe_richiesta(negata)
+    esigi(
+        righe[-1] == "   rifiutato senza chiedere, per la regola nega \u00abgit push\u00bb in /p/.ares/permessi.toml",
+        "la richiesta negata per regola non dice la regola: " + repr(righe[-1]),
+    )
+    esigi("git push --force" in righe[1], "la richiesta negata non mostra il comando intero: " + repr(righe[1]))
+    senza = righe_richiesta(Richiesta(comando, {"args": ["git", "push"]}, PERCORSI.lavoro))
+    esigi(all("regola" not in riga for riga in senza), "una richiesta senza regola parla di regole")
+    concessa = Richiesta(comando, {"args": ["git", "status", "--short"]}, PERCORSI.lavoro, regola=consenti)
+    riga = render.riga_concessione(concessa)
+    attesa = (
+        "Eseguo senza chiedere: git status --short   (regola consenti \u00abgit status\u00bb in /p/.ares/permessi.toml)"
+    )
+    esigi(riga == attesa, "la concessione non dice comando e regola: " + riga)
+    esigi(
+        righe_richiesta(concessa)[-1].startswith("   concesso senza chiedere, per la regola consenti"),
+        "una richiesta concessa per regola non lo dice",
+    )
+
+    # Il client della CLI stampa la concessione in una riga, e la negata come richiesta intera.
+    stampate = []
+    with (
+        patch.object(chat.UI, "line", lambda testo, **_: stampate.append(("line", testo))),
+        patch.object(chat.UI, "confirmation", lambda righe: stampate.append(("conferma", list(righe)))),
+    ):
+        cliente = chat.ClienteCli(POLITICA, SimpleNamespace(), presidiato=True)
+        cliente.concessa(concessa)
+        cliente.negata(negata)
+    esigi(stampate[0] == ("line", riga), "il client non stampa la riga della concessione: " + repr(stampate[0]))
+    esigi(stampate[1][0] == "conferma" and "regola nega" in stampate[1][1][-1], "il client non mostra la negata")
+
+    # Il banner e `/cartella` riassumono le regole lette; i file assenti non compaiono.
+    regole = Regole((nega, consenti, consenti), ("/p/.ares/permessi.toml", "/h/permessi.toml"))
+    riassunto = render.riga_regole(regole)
+    esigi(
+        riassunto == "2 consenti, 1 nega  (/p/.ares/permessi.toml, /h/permessi.toml)",
+        "il riassunto delle regole sbaglia: " + riassunto,
+    )
+    esigi(
+        render.riga_regole(Regole((), ("/h/permessi.toml",))).startswith("nessuna regola valida"), "file senza regole"
+    )
+    console = Console(file=io.StringIO(), width=120, force_terminal=False)
+    CliRenderer(console=console).banner(modello="m", sessione="s", utente="u", cartella="/p", regole=riassunto)
+    testo = console.file.getvalue()
+    esigi("regole" in testo and "2 consenti, 1 nega" in testo, "il banner non mostra le regole: " + testo)
+    console = Console(file=io.StringIO(), width=120, force_terminal=False)
+    CliRenderer(console=console).banner(modello="m", sessione="s", utente="u", cartella="/p")
+    esigi("regole" not in console.file.getvalue(), "il banner parla di regole che non ci sono")
+    return "richiesta con la regola, riga della concessione, client, riassunto nel banner"
+
+
 def conferme_applicate() -> str:
     """Il consenso e il rifiuto dati a riga di comando risolvono davvero i requirement in pausa.
 
@@ -1918,6 +1977,7 @@ def main() -> int:
             ("conferma scrittura  ", conferma_scrittura),
             ("avvertenze comando  ", avvertenze_del_comando),
             ("comando igienico    ", comando_igienico),
+            ("regole a schermo    ", regole_a_schermo),
             ("conferme applicate  ", conferme_applicate),
             ("metriche del turno  ", metriche_del_turno),
             ("esito strumenti     ", esito_strumenti),

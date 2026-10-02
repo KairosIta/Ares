@@ -3,7 +3,7 @@
 import os
 import re
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from agno.fs import FileSystem
@@ -18,6 +18,7 @@ from ares import config
 from ares.agent.agno_interni import OllamaConRagionamento
 from ares.agent.prompts import data_e_ora, descrizione_del_comando
 from ares.config import Impostazioni, Percorsi, Politica
+from ares.core.regole import Regole, leggi_regole
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
 
@@ -235,10 +236,22 @@ class AresWorkspace(Workspace):
     al timeout), l'ambiente e' `ambiente_del_comando`, e l'output torna con
     testa e coda. La firma resta quella di Agno, cosi' lo schema per il
     modello non cambia; la descrizione viene da `prompts.descrizione_del_comando`.
+
+    `regole` legge le regole di autorizzazione della persona (`core/regole.py`)
+    al momento del comando: una `nega` lo ferma prima di eseguirlo, anche in
+    `auto`, dove nessuna conferma passa dal nucleo.
     """
+
+    regole: Callable[[], Regole] | None = None
 
     def run_command(self, args: list[str], tail: int = 100, timeout: int = 120) -> str:
         """Esegue `args` nella cartella di lavoro e restituisce testa e coda dell'output, o l'errore."""
+        regola = self.regole().decidi(args) if self.regole is not None else None
+        if regola is not None and regola.effetto == "nega":
+            return (
+                "Errore: comando negato da una regola di autorizzazione della persona (" + regola.fonte + "). "
+                "Non riprovare con una variante."
+            )
         try:
             esito = subprocess.run(
                 args,
@@ -270,8 +283,9 @@ class AresWorkspace(Workspace):
 
         return await asyncio.to_thread(self.run_command, args, tail, timeout)
 
-    def __init__(self, root, prefisso: str, **kwargs):
+    def __init__(self, root, prefisso: str, regole: Callable[[], Regole] | None = None, **kwargs):
         super().__init__(root, **kwargs)
+        self.regole = regole
         _con_prefisso(self, prefisso)
         for elenco in (self.functions, self.async_functions):
             if prefisso + "run_command" in elenco:
@@ -297,6 +311,7 @@ def build_workspace(percorsi: Percorsi, politica: Politica, modo: str | None = N
     return AresWorkspace(
         radice,
         prefisso=politica.workspace.prefisso,
+        regole=lambda: leggi_regole(percorsi, politica),
         allowed=silenziosi,
         confirm=confermati,
         require_read_before_write=politica.workspace.leggi_prima_di_scrivere,

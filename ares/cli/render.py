@@ -13,6 +13,7 @@ from ares.cli.editor import CliInput
 from ares.cli.ui import UI
 from ares.config import Impostazioni, Mostra
 from ares.core.autorizzazioni import Decisione, Richiesta
+from ares.core.regole import Regole
 
 # Gli eventi che aprono un'attesa, con cio' che l'indicatore dice, e quelli
 # che la chiudono.
@@ -364,7 +365,27 @@ def righe_richiesta(richiesta: Richiesta) -> list:
         # Per un `delete_file` il percorso e' relativo alla radice: senza
         # questa riga l'utente autorizza `note.md` senza sapere quale.
         righe.append("   nella directory: " + str(radice))
+    if richiesta.regola is not None:
+        righe.append(
+            "   "
+            + ("rifiutato" if richiesta.regola.effetto == "nega" else "concesso")
+            + " senza chiedere, per la regola "
+            + str(richiesta.regola)
+        )
     return righe
+
+
+def riga_regole(regole: Regole) -> str:
+    """Quante regole della persona valgono qui, e da quali file: «3 consenti, 2 nega  (/p/.ares/permessi.toml)»."""
+    conti = [str(regole.quante(e)) + " " + e for e in ("consenti", "nega") if regole.quante(e)]
+    return (", ".join(conti) if conti else "nessuna regola valida") + "  (" + ", ".join(regole.fonti) + ")"
+
+
+def riga_concessione(richiesta: Richiesta) -> str:
+    """La riga per un comando che gira senza conferma per una regola della persona: il comando intero, e la regola."""
+    args = richiesta.argomenti.get("args")
+    comando = shlex.join(args) if isinstance(args, list) and all(isinstance(a, str) for a in args) else str(args)
+    return "Eseguo senza chiedere: " + comando + "   (regola " + str(richiesta.regola) + ")"
 
 
 def chiedi_autorizzazione(richiesta: Richiesta, input_cli: CliInput) -> Decisione:
