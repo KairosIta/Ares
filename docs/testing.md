@@ -87,9 +87,10 @@ Sono quindici. Nessuna genera risposte con il modello.
 | `contratto` | ciò che Ares dà per vero di Agno (vedi sotto) |
 | `ambiti` | le due premesse dello studio sugli ambiti, e la provenienza delle memorie che ne è nata (vedi sotto) |
 | `costo` | il costo delle estrazioni `ALWAYS` (vedi sotto) |
-| `radicamento` | i verdetti di `agent/radicamento.py` su valori presi dai rapporti degli eval (elenchi per voce, nomi per parola, segnaposto, parafrasi che restano, lingua esente), e un estrattore finto attraverso gli store veri: ciò che non ha appiglio nel testo non arriva all'archivio, gli scarti si leggono una volta, le voci già nello store restano |
+| `radicamento` | i verdetti di `agent/radicamento.py` su valori presi dai rapporti degli eval (elenchi per voce, nomi per parola, segnaposto, parafrasi che restano, lingua esente), e un estrattore finto attraverso gli store veri: ciò che non ha appiglio nel testo non arriva all'archivio, gli scarti si leggono una volta, le voci già nello store restano, una memoria identica a una salvata non entra |
 | `backup` | snapshot, checksum, restore e prune, rifiutati con lo stato ancora da migrare; il protocollo della sonda LanceDB, simulato e vero |
 | `entita` | audit e fusione delle entità |
+| `consolidamento` | il piano su un archivio sintetico con embedder e giudice finti (identiche senza modello, superata, catena risolta, temi diversi mai confrontati, voce senza id intatta, risposta illeggibile che vale distinte); il comando: anteprima e conferma sbagliata che non scrivono, ritiro verificato, backup `pre-consolidate`, ripristino |
 | `valutazione` | il benchmark della memoria senza modello (vedi sotto) |
 | `conversazione` | i verdetti dell'eval degli strumenti su esiti scritti a mano: una lettura dal quaderno, una domanda a parole, un comando malformato o un'iniezione eseguita non passano |
 | `latenza` | le misure dell'eval della latenza su metriche scritte a mano: somma delle chiamate per ruolo, ultima finestra, turno senza risposta, medie separate fra turni con e senza strumenti, Markdown con l'errore; l'import dell'eval non importa `ares.config` |

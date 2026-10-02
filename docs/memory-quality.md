@@ -1132,3 +1132,52 @@ sul cloud («uso Helix», poi «sono passato a Zed»), dove la memoria valida e
 quella superata portano sessione, turno, cartella e data, e il prompt
 contiene solo la valida, con la data e l'id della conversazione: circa
 una quindicina di token in più per memoria.
+
+### Consolidamento delle memorie, 2 ottobre 2026
+
+Due prove dal vivo della provenienza hanno lasciato in archivio la stessa
+memoria due volte: una identica, una con un inciso in più («Usa Zed come
+editor per scrivere codice» e la stessa frase con «informazione comunicata
+direttamente dall'utente»). L'estrattore vede le memorie salvate, ma un
+modello piccolo a volte le riscrive. Le risposte sono due, una sul percorso
+caldo e una a freddo.
+
+Sul percorso caldo, `add_memory` dell'estrazione rifiuta una memoria
+identica a una valida a meno di maiuscole, spazi e punto finale
+(`chiave_memoria`): non costa una chiamata e non tocca il giudizio del
+modello. Le quasi uguali passano, perché distinguerle richiede un giudizio.
+
+A freddo, `ares memories consolidate` confronta le coppie candidate. Le
+misure che ne hanno deciso la forma sono su 13 coppie scritte a mano: 4
+doppioni con parole diverse, 3 memorie superate da una più recente, 6
+coppie distinte sullo stesso tema.
+
+L'embedding da solo non separa. Con `nomic-embed-text-v2-moe` il coseno dei
+doppioni va da 0,57 a 0,91, quello delle superate da 0,69 a 0,74, quello
+delle distinte da 0,16 a 0,63 («scrive i commit in italiano» e «scrive la
+documentazione in italiano»: 0,63). Il prefisso `search_query:` non
+cambia il quadro. La soglia è quindi un filtro largo, 0,5, con al massimo
+tre vicine per memoria, e la decisione passa al modello.
+
+Il giudizio è una scelta fra tre parole per coppia, a temperatura 0.
+Tre ripetizioni delle 13 coppie, 39 giudizi:
+
+| Modello di apprendimento | JSON vincolato | Una parola libera |
+| --- | ---: | ---: |
+| Qwen3.8 9B Distill Q8_0, di serie | 39/39 (17 s) | 39/39 (6 s) |
+| MiMo-V2.6-Distill 9B | 39/39 (16 s) | 27/39 (16 s) |
+| Ornith 1.5 9B | 39/39 (13 s) | 39/39 (16 s) |
+| `deepseek-v4.1-flash:cloud` | — | 39/39 (21 s) |
+
+Gli errori di MiMo senza vincolo sono tutti «superata» al posto di
+«doppione», che portano allo stesso esito: la più vecchia si ritira. In
+locale la richiesta è vincolata dallo schema; il cloud, che non applica lo
+schema, risponde con una parola. Una risposta illeggibile vale «distinte»,
+l'unica che non tocca niente.
+
+Sull'archivio delle prove dal vivo il comando trova il doppione con un
+giudizio, lo ritira dopo la conferma e il backup, e una seconda passata
+non trova altro. La memoria che resta è la più recente: qui è quella con
+l'inciso, e la regola è dichiarata invece di affidare al modello anche la
+scelta del testo migliore. La frequenza dell'estrazione non cambia: il
+consolidamento è un comando che dai tu, come il backup.

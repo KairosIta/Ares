@@ -49,7 +49,7 @@ from ares.agent.echo import CAMPI_DI_SERVIZIO
 from ares.agent.radicamento import Fonte, radica_campo, radica_memoria
 from ares.agent.runtime import build_learning_model
 from ares.agent.scaffale import ENTITA, INTUIZIONI, Scaffale
-from ares.agent.schemas import AresMemories, AresMemorieSenzaData, AresProfile
+from ares.agent.schemas import AresMemories, AresMemorieSenzaData, AresProfile, chiave_memoria
 from ares.config import QUADERNO_PREFIX, Impostazioni, Politica
 from ares.state.identita import Utente
 from ares.state.stores import namespace_entita, namespace_utente
@@ -706,11 +706,41 @@ class AresUserMemoryStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRito
     dice quando tocca al modello usare lo strumento.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._note: set[str] = set()
+
     def ritocca(self, funzioni: list[Any]) -> list[Any]:
         for funzione in senza_conferma(funzioni, "add_memory"):
-            if funzione.name in _SCRIVONO_MEMORIE and funzione.entrypoint is not None:
+            if funzione.entrypoint is None:
+                continue
+            if funzione.name == "add_memory":
+                funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, self._nuova)
+            elif funzione.name in _SCRIVONO_MEMORIE:
                 funzione.entrypoint = argomenti_filtrati(funzione.entrypoint, self._radica)
         return funzioni
+
+    def _con_fonte(self, kwargs: dict[str, Any], esistente: Any) -> None:
+        super()._con_fonte(kwargs, esistente)
+        voci = getattr(esistente, "memories", None) or []
+        self._note = {chiave_memoria(str(v.get("content") or "")) for v in voci if isinstance(v, dict)}
+
+    def _nuova(self, argomenti: dict[str, Any]) -> dict[str, Any] | str:
+        """Una memoria nuova: radicata, e non identica a una che c'e' gia'.
+
+        L'estrattore vede le memorie salvate, ma un modello piccolo a volte
+        ne riscrive una tale e quale. Le quasi uguali restano: le fonde
+        `ares memories consolidate`, con un giudizio e un'anteprima.
+        """
+        filtrati = self._radica(argomenti)
+        testo = filtrati.get("memory") if isinstance(filtrati, dict) else None
+        if not isinstance(testo, str):
+            return filtrati
+        # Non e' uno scarto per l'eco: la cosa e' gia' in memoria.
+        if chiave_memoria(testo) in self._note:
+            return "Memoria non salvata: e' gia' fra quelle che conosci."
+        self._note.add(chiave_memoria(testo))
+        return filtrati
 
     def _radica(self, argomenti: dict[str, Any]) -> dict[str, Any] | str:
         testo = argomenti.get("memory")

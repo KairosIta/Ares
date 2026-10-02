@@ -289,7 +289,7 @@ globale usa l’ambiente bloccato e segue il codice del clone a ogni pull.
 
 `ares` da solo apre la chat, `ares --help` elenca i sottocomandi di
 manutenzione (`ares backup`, `ares sessions`, `ares entities`, `ares
-preflight`, `ares inspect`, `ares migrate`). Gli alias `ares-backup`,
+memories`, `ares preflight`, `ares inspect`, `ares migrate`). Gli alias `ares-backup`,
 `ares-sessions`... fanno la stessa cosa, e dal clone funziona anche
 `python -m ares`. Su Windows `setup.ps1 -SkipPreflight` prepara soltanto le
 dipendenze: lo usa la CI, dove Ollama non c'è.
@@ -617,6 +617,24 @@ ares entities merge \
 
 La prima fusione è solo un’anteprima. `--apply` richiede la chat chiusa,
 acquisisce il lock esclusivo, crea un backup e domanda una conferma testuale.
+
+### Memorie doppie o superate
+
+```bash
+ares memories consolidate
+ares memories consolidate --apply
+```
+
+L'estrazione salva una memoria alla volta: con il tempo la stessa cosa
+compare scritta in due modi, e una preferenza cambiata convive con quella
+vecchia. Il consolidamento chiede all'embedder locale le coppie vicine e al
+modello di apprendimento se ciascuna è un doppione, una memoria superata o
+due cose distinte; di una coppia non distinta ritira la più vecchia, a
+favore della più recente. Senza `--apply` mostra soltanto il piano. Con
+`--apply` vale lo stesso protocollo della fusione delle entità: chat
+chiusa, conferma scritta, backup verificato. Le ritirate non si cancellano:
+passano fra le superate, con il rimando a quella che resta, e
+`/memorie superate` le mostra.
 
 ### Sessioni e risultati tool
 
