@@ -34,12 +34,17 @@ dell'utente su ciò che cambia nel tempo.
 
 Ares usa Agno 3.0.11, SQLite e LanceDB, un quaderno persistente,
 apprendimento sul turno completato anche dopo `continue_run`, backup e
-manutenzione di entità e sessioni. La CLI comprende REPL Rich/Prompt
+manutenzione di entità, sessioni e memorie (`ares memories consolidate`
+ritira doppioni e memorie superate). La CLI comprende REPL Rich/Prompt
 Toolkit, ripresa delle conversazioni, esportazione Markdown, uso in pipe e
-quattro modalità: `manuale`, `modifiche`, `piano`, `auto`. I risultati degli
-strumenti troppo grandi vengono conservati fuori dal prompt e riletti a
-pagine; la loro retention segue le conversazioni. Installazione
-riproducibile e CI su Ubuntu e Windows completano la base esistente.
+quattro modalità: `manuale`, `modifiche`, `piano`, `auto`; la persona può
+dichiarare in `permessi.toml` quali comandi non chiedono conferma e quali
+mai, e su Linux far girare i comandi in una sandbox bubblewrap facoltativa.
+I risultati degli strumenti troppo grandi vengono conservati fuori dal
+prompt e riletti a pagine; la loro retention segue le conversazioni. Gli
+strumenti di entità e intuizioni arrivano al modello solo quando li attiva.
+Installazione riproducibile e CI su Ubuntu e Windows completano la base
+esistente.
 
 Le sessioni registrano la cartella, ma profilo, memorie, entità, intuizioni
 e quaderno sono condivisi fra i progetti dello stesso utente. La conferma
@@ -52,13 +57,28 @@ profilo/memorie e lock concordano — e l'ID di sessione non collide fra
 cartelle omonime o avvii nello stesso secondo. Percorsi, modelli e politica
 arrivano ai costruttori come parametri, non come globali.
 
-Il prompt effettivo combina istruzioni nel codice, `ARES.md`, dati appresi
-e contesto di esecuzione. È ispezionabile con `ares inspect --prompt`, ma
-non esiste un ciclo di revisione e adozione di nuove procedure apprese.
-L'apprendimento riguarda dati e contesto, non i pesi del modello.
+Profilo e memorie salvano solo valori che hanno un appiglio nel testo della
+conversazione; ciò che viene scartato compare nell'eco del turno. Ogni
+memoria porta la conversazione, il turno e la cartella da cui viene, e una
+memoria corretta o tolta non si cancella: passa fra le superate, collegata
+a quella che la sostituisce (`/memorie origine`, `/memorie superate`).
+
+Il prompt effettivo combina istruzioni nel codice, `ARES.md`, le skill
+(procedure in `SKILL.md`, di cui il prompt porta solo nome e descrizione),
+dati appresi e contesto di esecuzione. È ispezionabile con
+`ares inspect --prompt`. Ares può proporre una procedura nuova come skill:
+la proposta non si carica finché la persona non la adotta
+(`ares skills adopt`) o la scarta (`ares skills discard`); questo è il solo
+ciclo di revisione e adozione delle procedure apprese, e non tocca le
+istruzioni nel codice. L'apprendimento riguarda dati e contesto, non i pesi
+del modello.
 
 Riferimenti: [architettura](architecture.md), [integrazione Agno](agno.md),
 [prompt](prompt.md), [qualità della memoria](memory-quality.md).
+
+## Rimandati dalla revisione di v0.13.0
+
+(da completare)
 
 ## Ordine di lavoro: nucleo condiviso, memoria, infine UI
 
@@ -171,6 +191,8 @@ Da approfondire:
   chiarire la persistenza di cronologia, quaderno e risultati.
 - Semantica di «dimentica»: non usare più un dato, rimuoverlo dalla memoria
   attiva o cancellarlo anche dalle altre copie, con una politica per i backup.
+  Oggi una memoria tolta esce dalla memoria attiva ma resta fra le superate,
+  nell'archivio e negli snapshot: la cancellazione vera resta da decidere.
 - Concorrenza, interruzioni, errori e ripristino verificabile.
 
 **Verifica attesa:** accettare una voce e rifiutarne un'altra produce lo
@@ -191,6 +213,11 @@ Da approfondire:
 - Provenienza consultabile senza reinserire tutta la cronologia nel prompt;
   comportamento dei riferimenti quando la fonte viene eliminata.
 
+Già disponibile: sessione, turno, cartella e data di validità di ogni
+memoria, e il collegamento fra una memoria superata e quella che la
+sostituisce. Restano aperti la distinzione delle fonti e la data
+dell'evento.
+
 **Verifica attesa:** «perché pensi questa cosa?» conduce a una fonte
 consultabile o ne dichiara l'assenza; una correzione aggiorna il dato attivo
 senza presentare il precedente come ancora valido.
@@ -207,7 +234,9 @@ Da approfondire:
   fatti ancora utili solo perché vecchi.
 - Limiti del Curator Agno: nella versione esaminata opera sul campo
   `memories` di un profilo personalizzato, non sullo User Memory Store
-  usato da Ares. Non è una pulizia pronta da abilitare.
+  usato da Ares. Non è una pulizia pronta da abilitare; doppioni e memorie
+  superate li ritira oggi `ares memories consolidate`, su richiesta e con
+  anteprima, backup e conferma.
 - Separazione fra regole fondamentali versionate, preferenze personali,
   convenzioni di progetto e procedure apprese da esiti verificati.
 - Ciclo proposta, evidenze, revisione, valutazione, adozione e annullamento
@@ -247,7 +276,8 @@ architettura e modalità di distribuzione non sono ancora state scelte.
 Approfondimento disponibile: [migliorie agentiche con il modello locale al
 centro](agentic-improvements.md), del 1 ottobre 2026: dieci interventi con
 evidenze nel codice, fonti 2025-2026, prove di accettazione e un protocollo
-per confrontare i modelli locali. Non è un'implementazione.
+per confrontare i modelli locali. È uno studio, non aggiornato: le dieci
+proposte sono state implementate fra v0.12.0 e Unreleased (vedi CHANGELOG).
 
 Restano dalla roadmap precedente, subordinati alle priorità sopra:
 

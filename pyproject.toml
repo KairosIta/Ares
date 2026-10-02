@@ -73,8 +73,11 @@ ares = "ares.cli.app:main"
 ares-backup = "ares.backup.snapshots:main"
 ares-entities = "ares.entities.maintenance:main"
 ares-sessions = "ares.sessions.maintenance:main"
+ares-memories = "ares.memories.maintenance:main"
+ares-skills = "ares.skills.revisione:main"
 ares-preflight = "ares.ops.preflight:main"
 ares-inspect = "ares.ops.inspect_learning:main"
+ares-migrate = "ares.ops.migrazione:main"
 
 [project.urls]
 Repository = "https://github.com/KairosIta/Ares"

@@ -25,6 +25,7 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import replace
 from datetime import datetime
@@ -1804,17 +1805,28 @@ def chat_avvio() -> str:
 
 
 def aiuto_senza_effetti() -> str:
-    """`--help` non crea l'archivio, per nessuno dei sette comandi.
+    """`--help` non crea l'archivio, per `ares` e per ogni sottocomando.
 
     `config.prepara_archivio()` si chiama nel comando, non all'import, perche'
     `--help` esce prima in Cyclopts. Un archivio creato stampando l'aiuto e'
-    comunque una traccia su una macchina condivisa.
+    comunque una traccia su una macchina condivisa. Ogni sottocomando ha anche
+    il suo alias `ares-<nome>` in `pyproject.toml`.
     """
+    from ares.cli.app import SOTTOCOMANDI
+
+    with (config.BASE_DIR / "pyproject.toml").open("rb") as file:
+        alias = tomllib.load(file)["project"]["scripts"]
+    attesi = {"ares": "ares.cli.app:main"} | {
+        "ares-" + nome: modulo.removesuffix(":app") + ":main" for nome, modulo, _ in SOTTOCOMANDI
+    }
+    esigi(alias == attesi, "alias in pyproject.toml diversi dai sottocomandi: " + str(alias))
     comandi = (
         "ares",
         "ares.backup",
         "ares.entities",
         "ares.sessions",
+        "ares.memories",
+        "ares.skills",
         "ares.ops.inspect_learning",
         "ares.ops.preflight",
         "ares.ops.migrazione",

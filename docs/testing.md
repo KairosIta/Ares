@@ -31,10 +31,10 @@ registrandola lì. Ogni prova resta eseguibile anche da sola.
 ### Un processo per prova
 
 Il runner non importa le prove: le lancia, una per processo. Ogni prova
-imposta `ARES_TMP` e `ARES_BACKUP_DIR` ed entra nella propria cartella di
-lavoro usa-e-getta (con `chdir`, perché nel prodotto la cartella di lavoro è
-la directory corrente) **prima** di importare `config`, che all'import
-fotografa l'ambiente in `AMBIENTE`.
+imposta `ARES_HOME`, `ARES_TMP` e `ARES_BACKUP_DIR` ed entra nella propria
+cartella di lavoro usa-e-getta (con `chdir`, perché nel prodotto la cartella
+di lavoro è la directory corrente) **prima** di importare `config`, che
+all'import fotografa l'ambiente in `AMBIENTE`.
 
 Percorsi, impostazioni e politica si derivano da quella fotografia con
 `leggi_percorsi()`, `leggi_impostazioni()` e `leggi_politica()`. Una prova
@@ -76,7 +76,7 @@ a copione, la tool call nella forma in cui Agno la mette nei messaggi. Come
 .venv/bin/python tests/run.py
 ```
 
-Sono quindici. Nessuna genera risposte con il modello.
+Sono diciotto. Nessuna genera risposte con il modello.
 
 | Prova | Cosa verifica |
 | --- | --- |
@@ -209,8 +209,10 @@ scritti.
   separato riceve solo comandi `/`, e un'asserzione verifica che nessun
   turno col modello sia stato aperto.
 - **Nessuna scrittura su disco all'import.** Importare `config` (`smoke`) e
-  `--help` di ognuno dei sette comandi (`cli`) non creano niente. Girano in
-  processi nuovi, perché un modulo si importa una volta sola.
+  `--help` di `ares` e degli otto sottocomandi (`cli`) non creano niente.
+  Girano in processi nuovi, perché un modulo si importa una volta sola. La
+  stessa prova verifica che ogni sottocomando abbia il suo alias `ares-<nome>`
+  in `pyproject.toml`.
 - **Terminale.** Le prove del terminale simulato impostano un ambiente Rich
   proprio, così `TERM=dumb`, `NO_COLOR` o la CI non cambiano le
   precondizioni; una prova separata verifica l'assenza di controlli ANSI su

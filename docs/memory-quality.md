@@ -84,7 +84,7 @@ semantica generale del linguaggio naturale.
 | Abbandono piano | 3 | Un progetto confermato e poi abbandonato viene sostituito nel recupero dal progetto attuale. |
 | Avvio | 4 | Una decisione o un programma futuro non dimostrano l'avvio; un avvio esplicito rimane noto quando la decisione viene ribadita. |
 | Astensione | 1 | Una domanda su un dato mai detto, senza alcun indizio nel dialogo, ha valore nullo e certezza sconosciuta. |
-| Dimenticanza | 2 | Un dato annotato e poi ritirato («non ricordare più…») non torna dalla sonda e non resta negli store. |
+| Dimenticanza | 2 | Un dato annotato e poi ritirato («non ricordare più…») non torna dalla sonda e non resta fra le memorie valide: passa fra le superate, che prompt e benchmark non leggono. |
 | Aggiornamento lungo | 2 | La correzione di una preferenza arriva dopo quattro scambi su altro, estratti uno per uno, e sostituisce il valore iniziale. |
 
 Sono ventiquattro fasi per ripetizione, settantadue con le impostazioni
@@ -163,6 +163,8 @@ memorie richieste prima del turno; i rapporti della prima misura mantengono
 lo schema originale.
 Lo schema 3 aggiunge il progetto per cui è richiesto un avvio precedente
 esplicito e applica i controlli sulle citazioni originali descritti sopra.
+Lo schema 4 aggiunge a ciascuna fase i valori che il radicamento ha
+scartato (`scartati`), elencati anche nel riepilogo Markdown.
 
 ## Prima misura, 7 settembre 2026
 
