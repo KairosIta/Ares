@@ -939,3 +939,62 @@ Letture.
 - **Costo.** La fase corretta vale cinque estrazioni: 33-38 s sul 9B,
   145-156 s sul 27B. Le altre fasi 5-11 s di estrazione sul 9B, 19-39 s sul
   27B; le sonde 3-6 s e 6-22 s.
+
+### MiMo-V2.6-Distill-Qwen-9B, 2 ottobre 2026
+
+Lo stesso giro del 27B su un terzo 9B: **`ares-mimo-2.6-9b`**, copia con
+renderer di `hf.co/bartowski/MiMo-V2.6-Distill-Qwen-9B-GGUF:Q8_0`, in
+entrambi i ruoli, contesto 128k (11 GB in VRAM, tutto in scheda), regime di
+Ares, tutti gli undici casi (compresi i tre del 2 ottobre), tre
+ripetizioni, Agno 3.0.11, prompt di `main` dopo #155. Fasi su 73:
+
+| Modello | Superate | Fallite | Da revisionare | Non conclusive | Errori |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 27B IQ3_S, 64k, 1 ottobre, 57 fasi | 18 | 3 | 32 | 3 | 1 |
+| MiMo 2.6 9B, 128k, 73 fasi | 15 | 8 | 13 | 29 | 8 |
+
+Rapporto: `artifacts/memory-quality/mimo-2.6-9b-20261002.json`. Il
+confronto con il 27B regge a meno dei sedici casi nuovi; quello che conta è
+la lettura fase per fase, che qui è netta:
+
+- **l'estrattore è debole.** In undici fasi su 73 `save_session_context`
+  non salva al primo tentativo, e in cinque nemmeno al secondo: la fase
+  finisce in errore («contesto di sessione non salvato»). Il modello passa
+  alla funzione argomenti che non passano la validazione (`progress`) o
+  chiude una tool call con XML malformato. Gli altri tre errori sono un
+  timeout, una sonda che non completa il turno e la fase interrotta dal
+  timeout. Il 27B ha un errore su 57, il 9B di serie nessuno nelle sue
+  misure;
+- **la sonda non rispetta il formato**: sette fasi non conclusive per JSON
+  non leggibile (testo prima dell'oggetto, due oggetti, campi mancanti) e
+  diciotto perché l'evidenza citata non è una sottostringa dello store, ma
+  una riga riscritta («Communication Style: Risposte dettagliate»). Sono
+  risposte quasi sempre giuste che il valutatore, di proposito, non conta;
+- **delle otto fallite, cinque sono di formato** (l'aggettivo chiesto solo
+  come valore arriva come «Risposte dettagliate», lo stesso fallimento del
+  cloud e del 27B) e **tre sono vere**: in `dimenticanza` due volte su tre
+  non recupera la tessera appena annotata, e la terza ripetizione di
+  `temporanea` risponde «sconosciuto» alla preferenza stabile;
+- **il profilo contiene segnaposto e deduzioni**, a differenza del 27B. In
+  nove fasi `name` vale «Non specificato» o «Gym member», in sette
+  `timezone`, `occupation` e `preferred_name` valgono «Non specificato» o
+  «Sconosciuto», e `expertise` porta «Sviluppo software» in dialoghi che
+  parlano solo di un editor di testo. Non sono le invenzioni del 9B di
+  serie del 10 settembre (professioni e tecnologie mai nominate), ma sono
+  campi scritti senza che il dialogo li dica, e un profilo pieno di «Non
+  specificato» torna in ogni prompt;
+- **le fasi nuove**: `astensione` tre superate come gli altri due;
+  `dimenticanza` una superata su sei; `aggiornamento_lungo` nessuna
+  superata, con la fase lunga a 67-88 secondi.
+
+Tempi medi per fase: estrazione 11,0 s, sonda 10,2 s; il giro intero dura
+28 minuti, contro 40 del 27B. In chat l'eval della latenza misura 11,6 s di risposta e 20,1 s di
+estrazione per turno (`artifacts/latenza/mimo-2.6-9b-20261002.json`),
+contro 12,3 e 14,0 del 9B di serie a 128k: la risposta è pari, l'estrazione
+costa metà in più, perché ripete il tentativo quando non salva.
+
+La conclusione del §2.4 vale alla lettera: un modello che migliora l'eval
+degli strumenti ma scrive segnaposto nel profilo e non salva il contesto
+in una fase su sette non è un miglioramento per la memoria di Ares. Come
+modello di conversazione da solo, con il 9B di serie o il cloud a
+estrarre, resta da misurare; come modello unico non è un candidato.
