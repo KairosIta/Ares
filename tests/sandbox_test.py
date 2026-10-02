@@ -25,7 +25,7 @@ RADICE_PROVA = prepara_ambiente("sandbox-test")
 
 from ares import config  # noqa: E402
 from ares.agent import sandbox as modulo  # noqa: E402
-from ares.agent.prompts import descrizione_del_comando  # noqa: E402
+from ares.agent.prompts import descrizione_del_comando, istruzioni_sugli_strumenti  # noqa: E402
 from ares.agent.runtime import build_workspace  # noqa: E402
 from ares.agent.sandbox import Sandbox, SandboxNonDisponibile, prepara_sandbox  # noqa: E402
 from ares.state.identita import Utente  # noqa: E402
@@ -166,7 +166,10 @@ def descrizioni() -> str:
     esigi(chiusa.endswith("in una sandbox: scrive solo nella cartella di lavoro e in /tmp, senza rete."), chiusa)
     aperta = descrizione_del_comando(True, True)
     esigi(aperta.endswith("e in /tmp."), aperta)
-    return "una frase breve: i limiti e cosa fare arrivano con l'errore"
+    strumenti = " ".join(istruzioni_sugli_strumenti(Path.cwd(), politica=CON_SANDBOX))
+    esigi("scrivono solo li'" in strumenti and "non sono isolati" not in strumenti, "sezione strumenti: " + strumenti)
+    esigi("non sono isolati" in " ".join(istruzioni_sugli_strumenti(Path.cwd(), politica=POLITICA)), "senza sandbox")
+    return "una frase breve: i limiti e cosa fare arrivano con l'errore; la sezione strumenti la segue"
 
 
 def comportamento_vero() -> str:

@@ -35,6 +35,8 @@ from ares.agent.runtime import (
     build_result_store,
     build_workspace,
 )
+from ares.agent.scaffale import PROPOSTE
+from ares.agent.skill import GUIDA_PROPOSTE, build_skill_toolkit, carica_skill, istruzioni_sulle_skill
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.identita import Utente
 from ares.state.sessioni import CHIAVE_CARTELLA, SessioneRiferimento, elenca
@@ -115,7 +117,15 @@ def build_assistant(
             ).voci
 
     macchina = build_learning_machine(db, knowledge, utente, impostazioni, politica, strumenti=interattivo)
-    scaffale = scaffale_della_macchina(macchina) if politica.apprendimento.su_richiesta else None
+    skills = carica_skill(percorsi, politica, spazio.root if spazio is not None else None)
+    # Proporre una skill scrive nella home della persona: non da `ares -p`.
+    propone = politica.apprendimento.skill and interattivo
+    scaffale = (
+        scaffale_della_macchina(macchina, {PROPOSTE.nome: lambda: GUIDA_PROPOSTE} if propone else None)
+        if politica.apprendimento.su_richiesta
+        else None
+    )
+    strumenti_skill = build_skill_toolkit(skills, percorsi, lettura=True, proposta=propone)
     modello = build_chat_model(impostazioni)
     modello.scaffale = scaffale
 
@@ -131,6 +141,7 @@ def build_assistant(
         metadata=metadata,
         tools=[build_quaderno(fs), build_orologio()]
         + ([spazio] if spazio is not None else [])
+        + ([strumenti_skill] if strumenti_skill is not None else [])
         + ([scaffale.toolkit()] if scaffale is not None else []),
         # Cio' che gli strumenti leggono dal mondo arriva al modello fra due
         # righe che dicono la fonte e che sono dati (`agent/marcatura.py`).
@@ -146,6 +157,10 @@ def build_assistant(
             interattivo=interattivo,
             precedenti=precedenti,
             su_richiesta=scaffale.gruppi if scaffale is not None else (),
+            # Senza scaffale la guida a proporre sta nel prompt, accanto all'elenco.
+            skill=istruzioni_sulle_skill(
+                skills, guida_proposte=GUIDA_PROPOSTE if propone and scaffale is None else None
+            ),
         ),
         learning=macchina,
         pre_hooks=[scaffale.pre_hook()] if scaffale is not None else None,

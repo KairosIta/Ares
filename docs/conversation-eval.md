@@ -509,3 +509,52 @@ una volta dichiarando di aver scritto nella home; con l'avviso
 nell'errore, che dice di non aggirare il limite, in otto prove su otto non
 l'ha fatto. Il cloud (`glm-5.3-flash:cloud`) ha riconosciuto la rete spenta
 dal primo errore e l'ha detto senza riprovare.
+
+## Skill, 2 ottobre 2026
+
+Proposta 3.8: procedure in `SKILL.md`, di cui il prompt porta solo nome e
+descrizione e che il modello legge con `leggi_skill`. Prova dal vivo con un
+archivio e una casa nuovi a ogni ripetizione, in tre passi.
+
+**Il cloud scrive la procedura.** La persona spiega in un messaggio come
+vuole le note di riunione (cartella, nome del file, titolo, tre sezioni,
+caselle per le cose da fare, una riga in un indice) e chiede di salvarlo
+come skill. `glm-5.3-flash:cloud` ha attivato il gruppo `proposte` e
+chiamato `proponi_skill` in 3 prove su 3, con passi numerati, il formato
+esatto e una verifica finale. Una di quelle proposte, adottata così com'è,
+è la skill dei passi seguenti.
+
+**Il 9B la usa.** Al 9B di serie (`ares-qwen3.8-9b`) si chiede «Annota la
+riunione di oggi sul budget» con presenti, una decisione e due cose da
+fare, senza dire il formato. Conta la nota scritta, nella cartella o nel
+quaderno: titolo, tre sezioni, caselle e riga nell'indice.
+
+| Configurazione | Nota nel formato della persona |
+| --- | ---: |
+| senza skill | 0/10 |
+| con la skill, prima formulazione | 1/4 |
+| con la skill, formulazione adottata | 9/10 |
+
+Senza skill il 9B scrive sempre una nota nel quaderno, in un formato suo.
+Con la prima formulazione («prima di cominciare chiama leggi_skill») ha
+letto la skill in due prove su quattro, e una volta ha attivato il gruppo
+che allora si chiamava `skill` credendo che servisse a usarla. La
+formulazione adottata dice perché leggerla («dicono formato, percorsi e
+passi che altrimenti non conosci»), lo ripete nella descrizione dello
+strumento, e il gruppo delle proposte si chiama `proposte`. Così il 9B
+l'ha letta 9 volte su 10 e ogni volta ha scritto la nota giusta; l'unica
+mancata è una nota nel formato suo. In due prove ha attivato `proposte`
+prima di leggere la skill: una chiamata sprecata, non un errore.
+
+Con una richiesta estranea (creare un file e contare le righe del README)
+la skill presente non è mai stata letta: 0 su 5.
+
+**Il 9B propone.** Con la stessa spiegazione del primo passo il 9B ha
+proposto la skill 3 volte su 5. Le proposte hanno il formato giusto e una
+verifica; la descrizione dice cosa fa ma non quando usarla. Nelle due
+mancate ha scritto la procedura nella risposta dicendo di averla salvata,
+senza chiamare lo strumento: il difetto noto del 9B, che descrive invece
+di agire. Con `proponi_skill` esposto subito invece che sullo scaffale è
+andata uguale (3/5), quindi resta su richiesta. La proposta in più non fa
+danni, perché nessuna entra senza `ares skills adopt`; il consiglio resta
+di far scrivere le skill a un modello forte e di usarle con quello locale.

@@ -144,6 +144,18 @@ prefisso sulle parole: `git -c core.pager=x status` non è coperto da
 comando consentito passano. Il file del progetto arriva con il clone, come
 `ARES.md`: il banner dice quante regole ha letto e da quali file.
 
+Le skill (`.ares/skills` nella cartella, `~/.ares/skills` per la persona)
+sono procedure che il modello legge e segue. Ares non ne esegue gli script
+e ignora `allowed-tools`: un comando suggerito da una skill passa da
+`run_command` con le conferme della modalità. Quelle del progetto arrivano
+con il clone, come `ARES.md`: nome e descrizione entrano nel prompt come
+regole della cartella, la procedura arriva con la stessa avvertenza, e a
+parità di nome vince la skill della persona. Il banner le elenca tutte. La
+lettura resta nella cartella della skill: un percorso o un link che ne esce
+non si apre. Una skill proposta da Ares va in `~/.ares/skills/proposte/`, che
+non si carica: entra solo con `ares skills adopt --apply` e la conferma
+scritta. Da `ares -p` non si propone.
+
 In `ares -p`, e comunque quando stdin non è un terminale, nessuno può
 rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono no, le
 regole non concedono niente e gli store di apprendimento non vengono

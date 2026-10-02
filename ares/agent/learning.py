@@ -5,7 +5,7 @@ import inspect
 import json
 import re
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from copy import deepcopy
@@ -862,17 +862,19 @@ class AresLearnedKnowledgeStore(StoreSuRichiesta, LearnedKnowledgeStore):
         )
 
 
-def scaffale_della_macchina(macchina: LearningMachine | None) -> Scaffale | None:
+def scaffale_della_macchina(
+    macchina: LearningMachine | None, altre: Mapping[str, Callable[[], str]] | None = None
+) -> Scaffale | None:
     """Lo scaffale con i gruppi che la macchina espone davvero, legato ai loro store.
 
-    `None` se nessuno store ha strumenti da tenere su richiesta.
+    `altre` aggiunge gruppi che non vengono da uno store, con la loro guida.
+    `None` se non resta nessun gruppo da tenere su richiesta.
     """
-    if macchina is None:
+    tutti = macchina.stores.values() if macchina is not None else ()
+    store = [s for s in tutti if isinstance(s, StoreSuRichiesta) and s.esposta()]
+    if not store and not altre:
         return None
-    store = [s for s in macchina.stores.values() if isinstance(s, StoreSuRichiesta) and s.esposta()]
-    if not store:
-        return None
-    scaffale = Scaffale(guide={s.GRUPPO: s.guida for s in store})
+    scaffale = Scaffale(guide={**{s.GRUPPO: s.guida for s in store}, **(altre or {})})
     for s in store:
         s.scaffale = scaffale
     return scaffale

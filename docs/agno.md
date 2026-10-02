@@ -118,6 +118,12 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   `reasoning_content` e rimandarlo nel campo `thinking` dell'API. Serve
   anche che il modello dichiari un `RENDERER`: il template jinja di un GGUF
   importato ignora quel campo (vedi «Modello locale» nel README).
+- **Skills senza `agno.skills`:** Ares legge la specifica *Agent Skills*
+  da sé (`agent/skill.py`). Il caricatore di Agno rifiuta i campi che altri
+  strumenti aggiungono al frontmatter, il suo testo per il prompt è in
+  inglese e `get_skill_script` esegue gli script fuori dalle conferme; qui
+  le skill si leggono e basta, con strumenti e sezione del prompt in
+  italiano.
 - **HITL v3:** la ripresa passa la lista `requirements` del `RunOutput`; le
   operazioni workspace sensibili continuano quindi sullo stesso run dopo la
   conferma.
@@ -132,10 +138,6 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **CodeMode:** riduce molti schemi tool a un kernel Python programmabile, ma
   i circa venticinque strumenti di Ares non giustificano un nuovo ambiente di
   esecuzione. Il workspace con conferme mantiene confini più leggibili.
-- **Skills:** il caricamento progressivo di istruzioni e riferimenti locali è
-  promettente per specializzazioni future. L'esecuzione degli script delle
-  skill deve però essere integrata col modello di conferme e col confine del
-  workspace prima di essere esposta.
 - **Decision Log:** adatto ad audit e feedback sulle decisioni; per Ares serve
   decidere cosa registrare senza trasformare ogni conversazione in
   telemetria locale rumorosa.
