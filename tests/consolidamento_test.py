@@ -160,9 +160,13 @@ def comando_completo() -> str:
     esigi(manifest.get("type") == "pre-consolidate", "tipo del backup: " + repr(manifest.get("type")))
     esigi(_comando() == 0 and len(store.get(user_id=UTENTE).memories) == 4, "la seconda passata cambia qualcosa")
 
+    # Su Windows il ripristino non sostituisce un archivio ancora aperto.
+    store.db.db_engine.dispose()
     ripristina_snapshot(PERCORSI, snapshot[0].name)
-    ripristinate = _store().get(user_id=UTENTE)
-    esigi(len(ripristinate.memories) == 7 and not ripristinate.superate, "ripristino: " + repr(ripristinate))
+    ripristinato = _store()
+    memorie = ripristinato.get(user_id=UTENTE)
+    ripristinato.db.db_engine.dispose()
+    esigi(len(memorie.memories) == 7 and not memorie.superate, "ripristino: " + repr(memorie))
     return "anteprima e conferma sbagliata non scrivono; 3 ritirate, backup verificato, ripristino a 7"
 
 

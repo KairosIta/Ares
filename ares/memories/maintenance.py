@@ -138,6 +138,15 @@ def _esegui_consolida(percorsi: Percorsi, impostazioni: Impostazioni, user: str,
         return 0
     config.prepara_archivio(percorsi)
     store = _store(percorsi)
+    try:
+        return _consolida(store, percorsi, impostazioni, utente, applica)
+    finally:
+        # Chi chiama puo' poi ripristinare o spostare lo stato nello stesso
+        # processo: su Windows una connessione aperta glielo impedirebbe.
+        store.db.db_engine.dispose()
+
+
+def _consolida(store: Any, percorsi: Percorsi, impostazioni: Impostazioni, utente: Utente, applica: bool) -> int:
     contenitore = store.get(user_id=utente.id)
     voci = [v for v in getattr(contenitore, "memories", None) or [] if isinstance(v, dict)]
     if len(voci) < 2:
