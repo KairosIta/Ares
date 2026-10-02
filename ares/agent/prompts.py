@@ -83,24 +83,34 @@ def _shell() -> tuple[str, list[str], str]:
     return "bash", ["bash", "-lc"], "git log --oneline | head -5"
 
 
+# I nomi che `sandbox._sola_lettura` protegge nella cartella, con la politica di serie.
+_PROTETTI_DAI_COMANDI = ".git, " + config.WORKSPACE_ISTRUZIONI + " e " + Path(config.REGOLE_PROGETTO).parts[0]
+
+
 def limiti_dei_comandi(sandbox: bool, rete: bool) -> str:
-    """Dove arriva un comando, da mettere dopo «gira».
+    """Dove arrivano i comandi, in una frase: la stessa nella descrizione dello strumento e nel prompt.
 
     Breve di proposito: con i fallimenti descritti in anticipo il 9B lancia
     meno comandi e ne scrive di piu' come testo. Cosa fare quando un limite
     blocca un comando lo dice l'errore stesso (`AVVISO_SANDBOX`).
     """
     if not sandbox:
-        return "con i permessi dell'utente, senza sandbox."
-    return "in una sandbox: scrive solo nella cartella di lavoro e in /tmp" + ("." if rete else ", senza rete.")
+        return "I comandi girano con i permessi dell'utente, senza sandbox: arrivano anche fuori dalla cartella."
+    return (
+        "I comandi girano in una sandbox: leggono anche fuori dalla cartella, ma scrivono solo li' e in una "
+        "/tmp che si svuota dopo ogni comando; "
+        + _PROTETTI_DAI_COMANDI
+        + " sono in sola lettura"
+        + ("." if rete else ", e non c'e' rete.")
+    )
 
 
-# In coda all'errore di un comando nella sandbox: arriva al modello quando
-# serve, cioe' quando un limite puo' aver fermato il comando.
+# In coda all'errore di un comando nella sandbox, fuori dal blocco dei dati,
+# quando l'errore puo' venire da un limite (`Sandbox.forse_colpa_sua`).
 AVVISO_SANDBOX = (
-    "Il comando gira in una sandbox: fuori dalla cartella di lavoro e da /tmp il disco e' in sola "
-    "lettura, lo stato di Ares e le credenziali non si vedono{rete}. Se l'errore viene da questo, non "
-    "riprovare e non aggirarlo scrivendo altrove: dillo alla persona."
+    "Nota di Ares: il comando gira in una sandbox. Fuori dalla cartella di lavoro e da /tmp il disco e' in "
+    "sola lettura, e cosi' " + _PROTETTI_DAI_COMANDI + "; lo stato di Ares e le credenziali non si "
+    "vedono{rete}. Se l'errore viene da questo, non riprovare e non aggirarlo scrivendo altrove: dillo alla persona."
 )
 
 
@@ -116,7 +126,7 @@ def descrizione_del_comando(sandbox: bool = False, rete: bool = False) -> str:
         "testa e coda con il conto delle righe omesse. Non ha input: un comando che lo aspetta "
         "termina subito. args e' il comando diviso in parole: ['git', 'status'], non ['git status']. "
         "Il comando non passa da una shell: per pipe, redirezioni o piu' comandi insieme passa la "
-        "riga intera a " + nome + ", come " + repr([*lancia, riga]) + ". Gira " + limiti_dei_comandi(sandbox, rete)
+        "riga intera a " + nome + ", come " + repr([*lancia, riga]) + ". " + limiti_dei_comandi(sandbox, rete)
     )
 
 
@@ -200,13 +210,8 @@ def istruzioni_sull_ambiente(
         + platform.release()
         + ", shell "
         + sistema
-        + ". I comandi che lanci girano "
-        + (
-            "in una sandbox: scrivono solo nella cartella di lavoro e in /tmp, "
-            + ("con la rete." if politica.workspace.sandbox_rete else "senza rete.")
-            if politica.workspace.sandbox is not None
-            else "con i permessi dell'utente, senza sandbox."
-        ),
+        + ". "
+        + limiti_dei_comandi(politica.workspace.sandbox is not None, politica.workspace.sandbox_rete),
     ]
     if interattivo and politica.apprendimento.automatici:
         righe.append(
@@ -381,13 +386,9 @@ def istruzioni_sugli_strumenti(
             "Lavori nella cartella da cui l'utente ti ha avviato, " + str(radice_lavoro) + ": "
             "e' il suo progetto, con i suoi file, non uno spazio tuo. Gli "
             "strumenti che cominciano con workspace_ leggono e scrivono li' "
-            "dentro, sul disco vero. Questo limite vale per gli strumenti sui file; "
-            + (
-                "i comandi leggono anche oltre la cartella, ma scrivono solo li' e in /tmp. "
-                if politica.workspace.sandbox
-                else "gli eventuali comandi non sono isolati e possono accedere oltre la cartella. "
-            )
-            + "Modifica solo cio' che serve alla richiesta: non riordinare, "
+            "dentro, sul disco vero. Questo limite vale per gli strumenti sui file. "
+            + limiti_dei_comandi(politica.workspace.sandbox is not None, politica.workspace.sandbox_rete)
+            + " Modifica solo cio' che serve alla richiesta: non riordinare, "
             "non rinominare e non cancellare per pulizia. Quelli che cominciano con "
             + config.QUADERNO_PREFIX
             + " sono invece il tuo quaderno, in un database locale e non nella cartella. Un "

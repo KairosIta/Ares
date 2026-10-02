@@ -71,6 +71,23 @@ def fonte(nome: str, argomenti: Mapping[str, Any], *, prefisso: str) -> str | No
     return etichetta + " " + _una_riga(argomenti.get(chiave) or "?")
 
 
+class ConNota(str):
+    """Un risultato con una nota di Ares in coda: il testo e' `dati`, a capo, `nota`.
+
+    La marcatura chiude nel blocco solo `dati` e lascia la nota fuori: e' Ares
+    a scriverla, non il mondo. Senza marcatura arriva il testo intero.
+    """
+
+    dati: str
+    nota: str
+
+    def __new__(cls, dati: str, nota: str) -> "ConNota":
+        risultato = super().__new__(cls, dati + "\n" + nota)
+        risultato.dati = dati
+        risultato.nota = nota
+        return risultato
+
+
 def _neutralizza(testo: str) -> str:
     """Cita le righe del contenuto che comincerebbero come un delimitatore."""
     return "\n".join(CITAZIONE + riga if _SOMIGLIA.match(riga) else riga for riga in testo.split("\n"))
@@ -104,7 +121,7 @@ def marca_risultati(prefisso: str) -> Callable[..., Any]:
     Agno passa gli argomenti per nome, secondo la firma: `function_name`,
     `function_call` (il resto della catena, da chiamare con gli argomenti) e
     `arguments`. Un risultato che non e' testo, o di uno strumento che non
-    legge dal mondo, passa intatto.
+    legge dal mondo, passa intatto; di un `ConNota` si marcano solo i dati.
     """
 
     def marcatore(function_name: str, function_call: Callable[..., Any], arguments: dict[str, Any]) -> Any:
@@ -112,6 +129,8 @@ def marca_risultati(prefisso: str) -> Callable[..., Any]:
         nome = fonte(function_name, arguments, prefisso=prefisso)
         if nome is None or not isinstance(risultato, str):
             return risultato
+        if isinstance(risultato, ConNota):
+            return marca(risultato.dati, nome) + "\n" + risultato.nota
         return marca(risultato, nome)
 
     return marcatore
