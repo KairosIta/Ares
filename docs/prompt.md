@@ -55,9 +55,17 @@ lo strumento sospende il turno, senza una domanda preliminare duplicata.
 Il nome di ogni strumento sui file dice dove agisce: `workspace_*` nella
 cartella, `quaderno_*` nel quaderno. La descrizione di
 `workspace_run_command` è di Ares, in italiano, con la shell del sistema
-(`bash -lc` o `powershell -Command`) al posto della docstring di Agno. Gli
+(`bash -lc` o `powershell -Command`) al posto della docstring di Agno, e
+anche l'esecuzione è di Ares: stdin chiuso, ambiente ridotto alle variabili
+di sistema, testa e coda dell'output con il conto delle righe omesse. Gli
 esempi del prompt e di quella descrizione non ricalcano i casi degli eval,
 che altrimenti misurerebbero una frase copiata.
+
+Due tetti chiudono i cicli di tentativi: `TOOL_CALL_LIMIT` chiamate a
+strumenti per turno, oltre le quali Agno risponde allo strumento con un
+errore e il modello conclude, e `RIFIUTI_CONSECUTIVI` conferme rifiutate di
+seguito, dopo le quali il nucleo dice al modello di rispondere con ciò che
+ha e, se chiede ancora, chiude il turno senza altre domande alla persona.
 
 Con `ares -p` non ci sono aggiornamenti automatici né strumenti degli store
 di apprendimento, e il prompt omette le relative guide (compresa quella

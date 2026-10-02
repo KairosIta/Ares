@@ -288,7 +288,17 @@ def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
     from ares.agent.assistant import build_assistant
     from ares.agent.turn_core import TurnEventKind, run_turn_cycle
     from ares.cli.log import configura_log_agno
+    from ares.core.autorizzazioni import Arbitro, Decisione
     from ares.state.identita import Utente
+
+    class _Rifiuta:
+        presidiato = True
+
+        def autorizza(self, richiesta: Any) -> Decisione:
+            return Decisione(False, MOTIVO_RIFIUTO)
+
+        def negata(self, richiesta: Any) -> None:
+            pass
 
     configura_log_agno(False)
     lavoro.mkdir()
@@ -318,17 +328,19 @@ def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
                 {"nome": e.tool.tool_name, "argomenti": dict(e.tool.tool_args or {}), "stato": "eseguita"}
             )
 
+    # Le pause le risolve l'arbitro del nucleo, con un client che dice sempre
+    # no: cosi' anche qui il turno si chiude dopo i rifiuti consecutivi che
+    # chiuderebbero una chat vera, invece di finire per timeout.
+    arbitro = Arbitro(_Rifiuta(), percorsi, politica)
+
     def pausa(output) -> int:
-        risolti = 0
         for requisito in output.active_requirements or []:
             if requisito.needs_confirmation:
                 strumento = requisito.tool_execution
                 esito.chiamate.append(
                     {"nome": strumento.tool_name, "argomenti": dict(strumento.tool_args or {}), "stato": "rifiutata"}
                 )
-                requisito.reject(MOTIVO_RIFIUTO)
-                risolti += 1
-        return risolti
+        return arbitro(output)
 
     avvio = time.monotonic()
     output = run_turn_cycle(agente, caso.messaggio, on_event=evento, resolve_pause=pausa)
@@ -338,6 +350,7 @@ def _worker(caso: Caso, lavoro: Path, risultato: Path) -> None:
         chiamate=esito.chiamate,
         risposta=esito.risposta,
         stato_run=str(getattr(getattr(output, "status", None), "value", "")),
+        rifiuti_esauriti=arbitro.esauriti,
         verdetti=valuta(caso, esito),
     )
     scrivi_json(risultato, dati)

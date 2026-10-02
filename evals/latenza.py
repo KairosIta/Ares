@@ -230,6 +230,9 @@ class _ClienteMuto:
     def pausa_irrisolta(self) -> None:
         pass
 
+    def rifiuti_esauriti(self, quanti: int) -> None:
+        pass
+
     def interrotto(self) -> None:
         pass
 

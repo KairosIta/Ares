@@ -37,7 +37,9 @@ nel terminale (modalità `manuale` salvo diversa indicazione) e manda un
 messaggio solo. Due differenze da una chat vera, entrambe fuori dal prompt:
 
 - nessuna conferma viene concessa: uno strumento in pausa è registrato come
-  `rifiutato` e il rifiuto arriva al modello con un motivo;
+  `rifiutato` e il rifiuto arriva al modello con un motivo, attraverso lo
+  stesso arbitro del nucleo: dopo tre rifiuti di seguito il turno si chiude
+  come in una chat vera, e il rapporto lo segna in `rifiuti_esauriti`;
 - l'estrazione dopo il turno è spenta, perché qui non si misura.
 
 I nomi degli strumenti del quaderno vengono dall'agente costruito, non da

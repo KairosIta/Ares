@@ -136,6 +136,9 @@ def build_assistant(
         add_history_to_context=True,
         num_history_runs=politica.cronologia.turni,
         max_tool_calls_from_history=politica.cronologia.strumenti_dalla_cronologia,
+        # Un tetto ai cicli di tentativi: oltre, lo strumento risponde con un
+        # errore e il modello conclude. I rilettori dell'offload non contano.
+        tool_call_limit=config.TOOL_CALL_LIMIT,
         search_past_sessions=politica.cronologia.sessioni_passate,
         num_past_sessions_to_search=politica.cronologia.sessioni_ricerca,
         num_past_session_runs_in_search=politica.cronologia.sessioni_anteprima,

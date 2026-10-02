@@ -100,6 +100,12 @@ class ClienteCli:
     def pausa_irrisolta(self) -> None:
         UI.line("Il turno e' in pausa per qualcosa che non so chiedere. Lo lascio li'.", style="ares.warning")
 
+    def rifiuti_esauriti(self, quanti: int) -> None:
+        UI.line(
+            "Chiudo il turno: " + str(quanti) + " richieste rifiutate di seguito, e il modello ne chiedeva un'altra.",
+            style="ares.warning",
+        )
+
     def interrotto(self) -> None:
         UI.blank()
         UI.line("Interrotto fuori dal turno.", style="ares.warning")

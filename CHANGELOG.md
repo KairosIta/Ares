@@ -22,6 +22,23 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   (`prompt_eval_duration` di Ollama), così il risparmio si vede turno per
   turno. `smoke` verifica che due system message consecutivi della stessa
   sessione siano identici e che la data compaia una volta sola.
+- **Igiene di `workspace_run_command` e due tetti ai cicli di tentativi**
+  (proposta 3.3 di `docs/agentic-improvements.md`). Il comando gira con lo
+  stdin chiuso, così uno che aspetta input termina subito invece di restare
+  appeso fino al timeout; con un ambiente ridotto alle variabili di sistema
+  (`PATH`, `HOME`, lingua, terminale, proxy, e su Windows quelle di
+  sistema), così un segreto esportato nella shell della persona non arriva
+  né al comando né, attraverso il suo output, al modello; e restituisce
+  testa e coda dell'output con il conto delle righe omesse, dove prima
+  tornavano le ultime cento righe e la testa di `git log` o dei test andava
+  persa. Gli errori dicono codice d'uscita, stderr e stdout in italiano.
+  `TOOL_CALL_LIMIT` (30) limita le chiamate a strumenti per turno;
+  `RIFIUTI_CONSECUTIVI` (3) chiude il turno quando il modello insiste dopo
+  tre conferme rifiutate di seguito: al terzo rifiuto il motivo gli dice di
+  rispondere con ciò che ha, alla richiesta successiva il nucleo rifiuta
+  senza chiedere alla persona e il turno finisce lì, con un avviso nel
+  terminale. L'eval degli strumenti usa lo stesso arbitro. Prove offline in
+  `repl` (`comando igienico`) e `nucleo` (`tetto dei rifiuti`).
 - **`python -m evals.latenza` misura quanto aspetta la persona, turno per
   turno.** Sei turni fissi in una conversazione sola su uno stato nuovo, con
   l'apprendimento acceso: per ogni turno i secondi della risposta e

@@ -32,7 +32,15 @@ from agno.session.agent import AgentSession  # noqa: E402
 from ares import config  # noqa: E402
 from ares.core import session as nucleo  # noqa: E402
 from ares.core import turn as nucleo_turno  # noqa: E402
-from ares.core.autorizzazioni import Decisione, ModoNonAmmesso, risolvi_pausa, verifica_modo  # noqa: E402
+from ares.core.autorizzazioni import (  # noqa: E402
+    MOTIVO_TURNO_CHIUSO,
+    Arbitro,
+    Decisione,
+    ModoNonAmmesso,
+    avviso_ultimo_rifiuto,
+    risolvi_pausa,
+    verifica_modo,
+)
 from ares.core.id_sessione import nuovo_id_sessione  # noqa: E402
 from ares.core.session import SessioneDiAltri, Sessioni  # noqa: E402
 from ares.core.stato import StatoDaMigrare, stato_esclusivo, stato_in_uso, verifica_posto  # noqa: E402
@@ -218,6 +226,56 @@ def autorizzazioni() -> str:
     esigi(len(nessuno.negate) == 1, "senza presenza il client non sa del rifiuto")
     esigi(risolvi_pausa(Pausa(), cliente, PERCORSI, POLITICA) == 0, "una pausa senza conferme risulta risolta")
     return "si', no con motivo, cartella e quaderno distinti, rifiuto senza presenza"
+
+
+def tetto_dei_rifiuti() -> str:
+    """L'arbitro chiude il turno dopo N rifiuti di seguito, e una conferma azzera il conto."""
+    avviso = avviso_ultimo_rifiuto(3)
+    cliente = Autorizzatore(*[Decisione(False, "no") for _ in range(5)])
+    arbitro = Arbitro(cliente, PERCORSI, POLITICA, tetto=3)
+    primo, secondo, terzo, quarto = (Requisito("x") for _ in range(4))
+    esigi(arbitro(Pausa(primo)) == 1 and primo.esito == "rifiutato: no", "il primo rifiuto non e' un rifiuto normale")
+    esigi(arbitro(Pausa(secondo)) == 1 and secondo.esito == "rifiutato: no", "il secondo rifiuto porta gia' l'avviso")
+    esigi(
+        arbitro(Pausa(terzo)) == 1 and terzo.esito == "rifiutato: no " + avviso,
+        "il terzo rifiuto non avvisa il modello",
+    )
+    esigi(not arbitro.esauriti and arbitro.consecutivi == 3, "dopo il terzo rifiuto il turno e' gia' chiuso")
+    esigi(arbitro(Pausa(quarto)) == 0 and arbitro.esauriti, "la quarta richiesta non chiude il turno")
+    esigi(
+        quarto.esito == "rifiutato: " + MOTIVO_TURNO_CHIUSO, "la richiesta oltre il tetto non e' rifiutata col motivo"
+    )
+    esigi(len(cliente.chieste) == 3, "oltre il tetto il nucleo chiede ancora al client")
+
+    # Una conferma concessa azzera il conto; una pausa mista (si' e no) pure.
+    decisioni = [Decisione(False), Decisione(False), Decisione(True), Decisione(False), Decisione(False)]
+    arbitro = Arbitro(Autorizzatore(*decisioni), PERCORSI, POLITICA, tetto=3)
+    for _ in range(5):
+        arbitro(Pausa(Requisito("x")))
+    esigi(not arbitro.esauriti and arbitro.consecutivi == 2, "una conferma concessa non azzera il conto")
+    misto = Arbitro(Autorizzatore(Decisione(False), Decisione(True)), PERCORSI, POLITICA, tetto=1)
+    esigi(
+        misto(Pausa(Requisito("x"), Requisito("y"))) == 2 and misto.consecutivi == 0,
+        "una pausa mista conta come rifiuto",
+    )
+
+    # Senza presenza ogni pausa e' un rifiuto, con l'avviso al posto giusto.
+    nessuno = Autorizzatore(presidiato=False)
+    arbitro = Arbitro(nessuno, PERCORSI, POLITICA, tetto=1)
+    unico = Requisito("x")
+    esigi(
+        arbitro(Pausa(unico)) == 1 and unico.esito == "rifiutato: " + avviso_ultimo_rifiuto(1),
+        "senza presenza l'avviso manca",
+    )
+    esigi(
+        arbitro(Pausa(Requisito("x"))) == 0 and arbitro.esauriti and nessuno.chieste == [],
+        "senza presenza il tetto non vale",
+    )
+    esigi(
+        Arbitro(nessuno, PERCORSI, POLITICA).tetto == config.RIFIUTI_CONSECUTIVI,
+        "il tetto di serie non viene da config",
+    )
+    return "avviso al terzo rifiuto, chiusura al quarto, azzeramento con un si', senza presenza"
 
 
 def _esclusivo_libero(percorsi) -> bool:
@@ -452,6 +510,9 @@ class ClienteSenzaTerminale:
     def pausa_irrisolta(self) -> None:
         self.chiamate.append("pausa irrisolta")
 
+    def rifiuti_esauriti(self, quanti: int) -> None:
+        self.chiamate.append("rifiuti esauriti " + str(quanti))
+
     def interrotto(self) -> None:
         self.chiamate.append("interrotto")
 
@@ -531,7 +592,35 @@ def turno_senza_terminale() -> str:
     esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta, ciclo=ciclo_guasto)
     esigi(cliente.chiamate[1] == "guasto: disco pieno", "il guasto non arriva al client: " + repr(cliente.chiamate))
     esigi(ripristini == ["istantanea"], "dopo un guasto cio' che e' stato scritto non passa dalla conferma")
-    return "eventi, eco, rifiuto, conferma spenta, senza presenza, niente di scritto, guasto"
+
+    # Un modello che insiste: il nucleo passa all'arbitro, che dopo i rifiuti
+    # di serie smette di riprendere, e il client sa perche' il turno e' finito.
+    class InPausa(RispostaFinta):
+        is_paused = True
+
+    def ciclo_insistente(agent, testo, *, on_event, resolve_pause):
+        pause = 0
+        while resolve_pause(Pausa(Requisito("x"))):
+            pause += 1
+        esigi(pause == config.RIFIUTI_CONSECUTIVI, "l'arbitro del turno non usa il tetto di config: " + str(pause))
+        return InPausa()
+
+    cliente = ClienteSenzaTerminale()
+    esito, _ = _turno(cliente, prima=vuota, dopo=vuota, ciclo=ciclo_insistente)
+    esigi(
+        cliente.chiamate == ["flusso"] + ["autorizza"] * config.RIFIUTI_CONSECUTIVI + ["rifiuti esauriti 3"],
+        "il turno chiuso dall'arbitro non e' detto al client: " + repr(cliente.chiamate),
+    )
+
+    def ciclo_in_pausa(agent, testo, *, on_event, resolve_pause):
+        return InPausa()
+
+    cliente = ClienteSenzaTerminale()
+    _turno(cliente, prima=vuota, dopo=vuota, ciclo=ciclo_in_pausa)
+    esigi(
+        cliente.chiamate == ["flusso", "pausa irrisolta"], "una pausa non dell'arbitro e' detta come rifiuti esauriti"
+    )
+    return "eventi, eco, rifiuto, conferma spenta, senza presenza, niente di scritto, guasto, arbitro"
 
 
 PROVE = (
@@ -539,6 +628,7 @@ PROVE = (
     ("apertura e modo", apertura_e_modo),
     ("modalita' ammesse", modalita_ammesse),
     ("autorizzazioni", autorizzazioni),
+    ("tetto dei rifiuti", tetto_dei_rifiuti),
     ("stato in uso", stato_in_uso_dal_client),
     ("manutenzione", manutenzione_esclusiva),
     ("sessione altrui", sessione_altrui),

@@ -669,6 +669,18 @@ def modalita_scrive_in_silenzio(modo: str) -> bool:
 # in questa sessione: il modello non lo riscrive da un contenuto immaginato.
 WORKSPACE_READ_BEFORE_WRITE = True
 
+# Quante chiamate a strumenti puo' fare un turno. Oltre, Agno risponde allo
+# strumento con un errore e il modello conclude; i rilettori dei risultati
+# lunghi (`read_result`, `search_result`) non contano. E' un tetto ai cicli
+# di tentativi, non un budget: una richiesta ordinaria ne usa meno di dieci.
+TOOL_CALL_LIMIT = 30
+
+# Dopo questi rifiuti consecutivi di una conferma il turno smette di
+# riprendere il modello: l'ultimo rifiuto gli dice di rispondere con cio' che
+# ha, e se chiede ancora uno strumento il turno finisce li', senza altre
+# domande alla persona (`core/autorizzazioni.Arbitro`).
+RIFIUTI_CONSECUTIVI = 3
+
 
 # ---------------------------------------------------------------------------
 # Politica della conversazione

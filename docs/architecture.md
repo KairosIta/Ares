@@ -112,7 +112,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `assistant.py` assembla l'agente in un punto solo e riesporta i
   costruttori; `runtime.py` costruisce modelli, indice vettoriale e
   strumenti, con un prefisso che dice dove agiscono (`quaderno_`,
-  `workspace_`).
+  `workspace_`); `AresWorkspace` riscrive `run_command` con stdin chiuso,
+  ambiente minimo e testa più coda dell'output.
 - `learning.py` configura gli store e il post-hook sul run completo, e
   riscrive in italiano, per una persona sola, la guida che Agno mette nel
   prompt in inglese per memorie, entità e intuizioni. Con l'estrazione cloud
