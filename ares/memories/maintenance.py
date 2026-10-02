@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ares import config
-from ares.agent.schemas import AresMemories
+from ares.agent.schemas import AresMemories, note_memoria
 from ares.backup.snapshots import ErroreBackup, crea_snapshot
 from ares.cli.comando import ESITO_RIFIUTO, esegui_protetto, nuova_app
 from ares.cli.conferma import conferma_scritta
@@ -36,7 +36,6 @@ from ares.memories.consolida import (
     leggi_relazione,
     messaggi_giudizio,
     pianifica,
-    quando,
 )
 from ares.state.identita import Utente, UtenteNonValido
 
@@ -91,9 +90,7 @@ def giudice(impostazioni: Impostazioni) -> Giudica:
 
 
 def _riga(voce: dict[str, Any]) -> str:
-    note = [quando(voce)[:10] or "data ignota"]
-    if voce.get("sessione"):
-        note.append("conversazione " + str(voce["sessione"]))
+    note = note_memoria(voce, ignota="data ignota")
     return " ".join(str(voce.get("content") or "").split()) + "  [" + ", ".join(note) + "]"
 
 
@@ -118,7 +115,8 @@ def stampa_piano(piano: PianoConsolida) -> None:
 def verifica(store: Any, user_id: str, piano: PianoConsolida, valide_prima: int) -> None:
     """Rilegge l'archivio: ogni ritirata e' fra le superate, e le valide sono quante previsto."""
     contenitore = store.get(user_id=user_id)
-    valide = {v.get("id") for v in getattr(contenitore, "memories", None) or [] if isinstance(v, dict)}
+    voci = [v for v in getattr(contenitore, "memories", None) or [] if isinstance(v, dict)]
+    valide = {v.get("id") for v in voci}
     superate = {
         v.get("id"): v.get("sostituita_da")
         for v in getattr(contenitore, "superate", None) or []
@@ -127,7 +125,7 @@ def verifica(store: Any, user_id: str, piano: PianoConsolida, valide_prima: int)
     for ritirata, resta in piano.sostituzioni.items():
         if ritirata in valide or superate.get(ritirata) != resta or resta not in valide:
             raise ErroreManutenzione("la verifica non torna sulla memoria " + ritirata)
-    if len(valide) != valide_prima - len(piano.ritiri):
+    if len(voci) != valide_prima - len(piano.ritiri):
         raise ErroreManutenzione("la verifica non torna sul numero delle memorie valide")
 
 
@@ -188,8 +186,8 @@ def consolidate(*, user: str = config.DEFAULT_USER_ID, apply: bool = False) -> i
     """Trova le memorie doppie o superate e propone di ritirarle.
 
     L'embedder locale propone le coppie vicine, il modello di apprendimento
-    giudica ciascuna: doppione, superata o distinte. Di una coppia non
-    distinta si ritira la piu' vecchia.
+    giudica ciascuna: doppione, superata o distinte. Di una superata si
+    ritira la piu' vecchia, di un doppione la meno completa.
 
     Args:
         user: utente di cui consolidare le memorie.

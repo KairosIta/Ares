@@ -603,6 +603,53 @@ def ctrl_c_non_lascia_scritture() -> str:
     return "interruzione subito, nessuna scrittura tardiva, nessun nuovo tentativo, turno seguente intatto"
 
 
+class ModelloAPassi(ModelloConta):
+    """Il contesto vincolato risponde un JSON per turno, dal copione; gli altri store non scrivono."""
+
+    def __init__(self, copione: list[dict[str, Any]]) -> None:
+        super().__init__(ubbidiente=False)
+        self.copione = list(copione)
+
+    def _risposta(self, tools: Any) -> ModelResponse:
+        if tools or not isinstance(getattr(self, "format", None), dict):
+            return super()._risposta(tools)
+        dati = {"summary": "Riordino dei moduli di Ares.", "goal": None, **self.copione.pop(0)}
+        return ModelResponse(role="assistant", content=json.dumps(dati), response_usage=MessageMetrics())
+
+
+def il_piano_vincolato_non_si_svuota() -> str:
+    """Una lista vuota dal JSON vincolato non cancella piano e avanzamento accumulati.
+
+    Lo schema li chiede sempre, e un modello piccolo risponde `[]` nei turni
+    in cui non c'e' niente di nuovo: Agno sostituirebbe le liste.
+    """
+    piano = ["dividere i moduli", "scrivere le prove", "aggiornare la documentazione"]
+    copione = [
+        {"plan": piano, "progress": ["dividere i moduli"]},
+        {"plan": [], "progress": []},
+        {"plan": piano, "progress": ["dividere i moduli", "scrivere le prove"]},
+    ]
+    utente = Utente.da_grezzo("costo-piano")
+    finto = ModelloAPassi(copione)
+    macchina = macchina_con(finto, None, VINCOLATA, utente)
+    letti = []
+    for _ in copione:
+        turno_completato(macchina, utente)
+        contesto = macchina.session_context_store.get(session_id="costo-" + utente.id)
+        letti.append((contesto.plan, contesto.progress))
+    esigi(letti[1] == letti[0], "un turno con liste vuote ha cancellato piano o avanzamento: " + repr(letti[1]))
+    esigi(
+        letti[2] == (piano, copione[2]["progress"]),
+        "un avanzamento nuovo non sostituisce il vecchio: " + repr(letti[2]),
+    )
+    schema = next(c for c in finto.chiamate if not c["strumenti"])["formato"]
+    esigi(
+        schema["properties"]["progress"]["description"].startswith("Tutti i passi completati finora"),
+        "lo schema non chiede l'avanzamento intero: " + schema["properties"]["progress"]["description"],
+    )
+    return "3 turni: [] conserva piano e avanzamento, una lista piena li sostituisce"
+
+
 def il_cancello_aspetta_chi_scrive() -> str:
     """`chiudi` aspetta la scrittura cominciata e rifiuta quelle dopo."""
     cancello = learning.Cancello()
@@ -640,6 +687,7 @@ def main() -> int:
             ("modello che non ubbidisce", il_modello_che_non_ubbidisce),
             ("scrittura negli store", la_scrittura_arriva_negli_store),
             ("estrazione vincolata", costo_dell_estrazione_vincolata),
+            ("piano vincolato", il_piano_vincolato_non_si_svuota),
             ("in parallelo", in_parallelo_come_in_serie),
             ("errore in parallelo", un_errore_non_ferma_gli_altri),
             ("ctrl-c in parallelo", ctrl_c_non_lascia_scritture),

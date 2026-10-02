@@ -127,12 +127,16 @@ def _turno_protetto(
     except Exception as errore:
         cliente.guasto(errore)
 
-    annota_provenienza(
-        agent,
-        dal=inizio,
-        turno=getattr(risposta, "run_id", None),
-        cartella=(getattr(agent, "metadata", None) or {}).get(CHIAVE_CARTELLA),
-    )
+    # Una provenienza non scritta non deve togliere al turno eco e conferma.
+    try:
+        annota_provenienza(
+            agent,
+            dal=inizio,
+            turno=getattr(risposta, "run_id", None),
+            cartella=(getattr(agent, "metadata", None) or {}).get(CHIAVE_CARTELLA),
+        )
+    except Exception as errore:
+        cliente.guasto(errore)
     if prima is None:
         prendi_scarti(agent)
         return EsitoTurno(risposta)

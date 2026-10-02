@@ -13,10 +13,12 @@ rimedia a freddo, in tre passi:
 2. il **giudizio**, una coppia alla volta: doppione, superata o distinte.
    E' una scelta fra tre parole, il compito piu' stretto che si possa dare
    a un modello piccolo; i testi identici non passano dal modello;
-3. il **piano**: di ogni coppia non distinta si ritira la memoria piu'
-   vecchia a favore della piu' recente, che resta valida con la sua
-   provenienza. Una memoria ritirata non si giudica piu', e un rimando a
-   una memoria a sua volta ritirata segue la catena fino a una valida.
+3. il **piano**: di una coppia superata si ritira la memoria piu' vecchia
+   a favore della piu' recente; di un doppione resta la piu' completa,
+   cioe' la piu' lunga, e a pari lunghezza la piu' recente. Quella che
+   resta e' valida con la sua provenienza. Una memoria ritirata non si
+   giudica piu', e un rimando a una memoria a sua volta ritirata segue la
+   catena fino a una valida.
 
 Ritirare vuol dire spostare fra le superate (`AresMemories.ritira`): niente
 si cancella, `/memorie superate` le mostra e un backup precede ogni scrittura.
@@ -30,7 +32,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from ares.agent.schemas import chiave_memoria
+from ares.agent.schemas import chiave_memoria, scritta_il
 
 Relazione = Literal["doppione", "superata", "distinte"]
 RELAZIONI: tuple[Relazione, ...] = ("doppione", "superata", "distinte")
@@ -74,9 +76,9 @@ class PianoConsolida:
         return "CONSOLIDA " + str(len(self.ritiri))
 
 
-def quando(voce: dict[str, Any]) -> str:
-    """La data di una memoria come la scrive Agno: ultima modifica, o nascita."""
-    return str(voce.get("updated_at") or voce.get("created_at") or "")
+def _completezza(voce: dict[str, Any]) -> int:
+    """Quanto dice una memoria, per scegliere fra due doppioni: la lunghezza del testo ridotto."""
+    return len(chiave_memoria(str(voce.get("content") or "")))
 
 
 def _coseno(primo: Sequence[float], secondo: Sequence[float]) -> float:
@@ -121,7 +123,9 @@ def pianifica(voci: Sequence[dict[str, Any]], incorpora: Incorpora, giudica: Giu
 
     for i, j, coseno in candidate(valide, incorpora):
         # A pari data vale l'ordine dell'archivio, dove Agno aggiunge in coda.
-        vecchia, recente = (valide[i], valide[j]) if quando(valide[i]) <= quando(valide[j]) else (valide[j], valide[i])
+        vecchia, recente = (
+            (valide[i], valide[j]) if scritta_il(valide[i]) <= scritta_il(valide[j]) else (valide[j], valide[i])
+        )
         if vecchia["id"] in ritirate or recente["id"] in ritirate:
             continue
         if coseno is None:
@@ -129,7 +133,12 @@ def pianifica(voci: Sequence[dict[str, Any]], incorpora: Incorpora, giudica: Giu
         else:
             relazione = giudica(vecchia, recente)
             piano.giudicate += 1
-        if relazione != "distinte":
+        if relazione == "distinte":
+            continue
+        # Un doppione con un dettaglio in piu' resta anche se e' il piu' vecchio.
+        if relazione == "doppione" and _completezza(vecchia) > _completezza(recente):
+            ritirate[recente["id"]] = (vecchia["id"], relazione)
+        else:
             ritirate[vecchia["id"]] = (recente["id"], relazione)
 
     per_id = {v["id"]: v for v in valide}

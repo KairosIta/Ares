@@ -122,9 +122,12 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   profilo, memorie e contesto estraggono insieme, ciascuno in un thread;
   dopo un Ctrl-C un `Cancello` ferma le loro scritture, perché nessuna
   arrivi dopo la fotografia del turno. Profilo e memorie salvano solo ciò
-  che ha un appiglio nella conversazione o in ciò che lo store conteneva
-  già: i criteri sono in `radicamento.py`, e ciò che viene scartato resta
-  allo store finché l'eco del turno non lo legge. Con un estrattore locale
+  che ha un appiglio nella conversazione (per `update_user_memory`, il
+  testo della richiesta) o nei valori che lo store conteneva già: i campi
+  del profilo e il testo delle memorie valide, non le superate né la
+  contabilità. I criteri sono in `radicamento.py`; fonte e note valgono per
+  una sola estrazione, e ciò che viene scartato resta allo store finché
+  l'eco del turno non lo legge. Con un estrattore locale
   il contesto di sessione non usa la tool call: `EstrazioneVincolata`
   chiede un JSON vincolato dallo schema (`format` di Ollama, temperatura 0,
   nessuno strumento nella stessa richiesta) e lo applica con la stessa
@@ -181,8 +184,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
     sessione è nata.
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt. `AresMemories` non perde una memoria corretta o
-  tolta: la copia in `superate`, con `invalidata_il` e `sostituita_da`, e
-  tiene in `memories` solo le valide, che sono le sole a raggiungere prompt,
+  tolta: la copia in `superate`, con `invalidata_il` e `sostituita_da`
+  (senza il `source` di Agno, e al più le ultime dieci versioni di ogni
+  memoria), e tiene in `memories` solo le valide, che sono le sole a raggiungere prompt,
   estrattore ed eco. Una cancellazione di Agno riassegna la lista filtrata:
   `__setattr__` la intercetta, qualunque strada l'abbia chiesta.
 - `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
@@ -190,7 +194,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   raccoglie anche ciò che il radicamento ha scartato, e dopo ogni turno
   scrive sulle memorie toccate da quale sessione, turno e cartella vengono
   (`annota_provenienza`), riconoscendole dall'`updated_at` che Agno
-  aggiorna. Nel prompt ogni memoria porta, accanto alla data, l'id della
+  aggiorna (una data senza fuso vale UTC). Un errore in questo passo arriva
+  al client come guasto, senza togliere al turno eco e conferma. Nel prompt ogni memoria porta, accanto alla data, l'id della
   conversazione da cui viene, che `read_past_session` rilegge; cartella e
   turno restano per `/memorie origine`.
 - `ares/config.py` raccoglie le impostazioni versionate e decide i percorsi
@@ -264,8 +269,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `memories/maintenance.py` espone `ares memories consolidate` e coordina
   lock, conferma, backup e verifica; `memories/consolida.py` decide il piano
   senza scrivere: coppie candidate (testi identici, vicine per embedding),
-  un giudizio per coppia, la più vecchia ritirata a favore della più
-  recente, le catene risolte su una memoria valida.
+  un giudizio per coppia; di una superata si ritira la più vecchia, di un
+  doppione la meno completa (la più corta, a pari lunghezza la più
+  vecchia); le catene si risolvono su una memoria valida.
 - `skills/revisione.py` è `ares skills`: elenca attive, non caricate e
   proposte; `adopt` mostra una proposta e con `--apply` e la conferma la
   sposta fra le attive, conservando in `.precedenti/` quella che sostituisce

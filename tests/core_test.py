@@ -803,6 +803,18 @@ def turno_senza_terminale() -> str:
     esigi(cliente.chiamate[1] == "guasto: disco pieno", "il guasto non arriva al client: " + repr(cliente.chiamate))
     esigi(ripristini == ["istantanea"], "dopo un guasto cio' che e' stato scritto non passa dalla conferma")
 
+    def provenienza_guasta(agent, **kwargs):
+        raise TypeError("data illeggibile")
+
+    cliente = ClienteSenzaTerminale(tenere=False)
+    with patch.object(nucleo_turno, "annota_provenienza", provenienza_guasta):
+        esito, ripristini = _turno(cliente, prima=vuota, dopo=scritta)
+    esigi(
+        cliente.chiamate == ["flusso", "guasto: data illeggibile", "apprendimenti chiesti"],
+        "una provenienza non scritta ferma il turno: " + repr(cliente.chiamate),
+    )
+    esigi(ripristini == ["istantanea"], "senza provenienza cio' che e' stato scritto non passa dalla conferma")
+
     # Un modello che insiste: il nucleo passa all'arbitro, che dopo i rifiuti
     # di serie smette di riprendere, e il client sa perche' il turno e' finito.
     class InPausa(RispostaFinta):
