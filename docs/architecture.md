@@ -324,14 +324,19 @@ dichiaratamente aggirabile.
 
 La sandbox (`agent/sandbox.py`), opzionale e solo su Linux, avvolge
 `run_command` in `bwrap`: radice in sola lettura, cartella di lavoro e
-`/tmp` privata scrivibili, stato di Ares, `.env`, runtime della sessione e
-credenziali note coperti, namespace nuovi per tutto, rete compresa salvo
-`ARES_SANDBOX_RETE=1`. `prepara_sandbox` la costruisce dalla politica e
-rifiuta con `SandboxNonDisponibile` se non si può applicare: la chat lo
-controlla dopo la cartella, `build_workspace` di nuovo per i client senza
-terminale, `ares preflight` per chi prepara l'ambiente. La descrizione di
-`run_command` lo dice in una frase; cosa fare quando un limite ferma un
-comando lo dice l'errore stesso (`prompts.AVVISO_SANDBOX`).
+`/tmp` privata scrivibili ma `.git`, `ARES.md` e `.ares` della cartella in
+sola lettura, `/run` vuota, stato di Ares, `.env`, runtime della sessione e
+credenziali note coperti (l'elenco si ricalcola a ogni comando), namespace
+nuovi per tutto, rete compresa salvo `ARES_SANDBOX_RETE=1`.
+`prepara_sandbox` la costruisce dalla politica e rifiuta con
+`SandboxNonDisponibile` se non si può applicare o se la cartella contiene la
+home: la chat lo controlla dopo la cartella, `build_workspace` di nuovo per
+i client senza terminale, `ares preflight` per chi prepara l'ambiente. Con
+la sandbox anche il `git status` di `/cartella` gira dentro di lei. Prompt e
+descrizione di `run_command` dicono i limiti con la stessa frase
+(`prompts.limiti_dei_comandi`); cosa fare quando un limite ferma un comando
+lo dice una nota in coda all'errore, fuori dal blocco dei dati e solo se
+l'errore può venire dalla sandbox (`prompts.AVVISO_SANDBOX`).
 
 Le skill si leggono e basta (`agent/skill.py`): `leggi_skill` resta nella
 cartella della skill, gli script non si eseguono e `allowed-tools` non

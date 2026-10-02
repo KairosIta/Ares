@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ares import config
+from ares.agent.sandbox import Sandbox
 from ares.cli.conferma import conferma_scritta, domanda
 from ares.cli.ui import UI
 from ares.config import Percorsi
@@ -112,19 +113,24 @@ def autorizza(percorso: Path, percorsi: Percorsi, *, esplicito: bool) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def file_modificati(percorso: Path) -> int | None:
+def file_modificati(percorso: Path, sandbox: Sandbox | None = None) -> int | None:
     """Quante voci `git status` elenca, o `None` se git non risponde.
 
-    Git si lancia solo su richiesta di `/cartella`, mai all'avvio.
+    Git si lancia solo su richiesta di `/cartella`, mai all'avvio. Esegue la
+    configurazione del repository (fsmonitor, hook, filtri), che un comando
+    puo' aver scritto se il repository e' nato durante la sessione: con la
+    `sandbox` gira dentro di lei, e comunque senza fsmonitor ne' hook.
     """
+    comando = ["git", "-c", "core.fsmonitor=", "-c", "core.hooksPath=" + os.devnull, "status", "--porcelain"]
     try:
         esito = subprocess.run(
-            ["git", "status", "--porcelain"],
+            sandbox.argv(comando) if sandbox is not None else comando,
             cwd=percorso,
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
