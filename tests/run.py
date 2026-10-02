@@ -43,6 +43,7 @@ PROVE = (
     ("contratto", "agno_contract_test.py", False, "estrazione, conferma, retry del contesto e limiti dichiarati"),
     ("ambiti", "scoping_test.py", False, "provenienza delle memorie e filtro per namespace delle intuizioni"),
     ("costo", "learning_cost_test.py", False, "quante inferenze costa un turno, e quanto pesano"),
+    ("radicamento", "radicamento_test.py", False, "l'estrazione salva solo cio' che ha un appiglio nel testo"),
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
     ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),

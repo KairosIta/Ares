@@ -722,8 +722,8 @@ class RispostaFinta:
     is_paused = False
 
 
-def _turno(cliente, *, prima, dopo, chiedi=True, ciclo=None):
-    """Un turno del nucleo con memoria e ciclo del modello simulati."""
+def _turno(cliente, *, prima, dopo, chiedi=True, ciclo=None, scarti=()):
+    """Un turno del nucleo con memoria, scarti dell'estrazione e ciclo del modello simulati."""
     mostra = replace(POLITICA.mostra, apprendimenti=True, conferma_apprendimenti=chiedi)
     politica = replace(POLITICA, mostra=mostra)
     ripristini: list[object] = []
@@ -733,7 +733,10 @@ def _turno(cliente, *, prima, dopo, chiedi=True, ciclo=None):
         return RispostaFinta()
 
     letture = iter([prima, dopo])
+    # Gli scarti lasciati da un turno precedente, letti all'inizio, non si mostrano.
+    prese = iter([["memoria: di un turno precedente"], list(scarti)])
     with (
+        patch.object(nucleo_turno, "prendi_scarti", lambda agent: next(prese)),
         patch.object(nucleo_turno, "run_turn_cycle", ciclo or ciclo_predefinito),
         patch.object(nucleo_turno, "istantanea", lambda agent: "istantanea"),
         patch.object(nucleo_turno, "riduci", lambda stato: next(letture)),
@@ -773,6 +776,24 @@ def turno_senza_terminale() -> str:
     cliente = ClienteSenzaTerminale()
     esito, _ = _turno(cliente, prima=vuota, dopo=vuota)
     esigi("apprendimenti" not in " ".join(cliente.chiamate) and esito.appreso == (), "eco senza niente di scritto")
+
+    # Solo scarti: l'eco li mostra, ma non c'e' niente da tenere o annullare.
+    cliente = ClienteSenzaTerminale(tenere=False)
+    esito, ripristini = _turno(cliente, prima=vuota, dopo=vuota, scarti=["profilo occupation: Sviluppatore"])
+    esigi(cliente.chiamate[-1] == "apprendimenti" and ripristini == [], "si chiede di tenere uno scarto")
+    esigi(
+        cliente.righe[0].strip().startswith("non appreso") and "occupation: Sviluppatore" in cliente.righe[1],
+        "l'eco non mostra lo scarto: " + repr(cliente.righe),
+    )
+    esigi(not any("turno precedente" in r for r in cliente.righe), "l'eco mostra gli scarti di un turno precedente")
+
+    cliente = ClienteSenzaTerminale(tenere=True)
+    esito, _ = _turno(cliente, prima=vuota, dopo=scritta, scarti=["memoria: possiede un gatto"])
+    esigi(cliente.chiamate[-1] == "apprendimenti chiesti", "con una scrittura e uno scarto non si chiede")
+    esigi(
+        "usa Debian 13" in " ".join(esito.appreso) and "possiede un gatto" in " ".join(esito.appreso),
+        "l'esito non porta scritture e scarti: " + repr(esito.appreso),
+    )
 
     def ciclo_guasto(agent, testo, *, on_event, resolve_pause):
         raise RuntimeError("disco pieno")

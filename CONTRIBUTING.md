@@ -87,7 +87,7 @@ Il runner elenca le prove con `--help` e ne esegue una sola con
 `tests/run.py`: è l'unico elenco, e la CI legge quello.
 
 Le prove con Ollama non girano in CI: i runner di GitHub non hanno una GPU.
-**Tre prove su quattordici esistono quindi solo se qualcuno le lancia.**
+**Tre prove su diciotto esistono quindi solo se qualcuno le lancia.**
 Quando le esegui prima di un bump di Agno o di un rilascio, scrivilo nella
 voce del CHANGELOG, con data e versione di Agno:
 

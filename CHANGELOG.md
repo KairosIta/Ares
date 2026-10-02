@@ -6,6 +6,32 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Added
+
+- **Profilo e memorie salvano solo ciò che ha un appiglio nel testo**
+  (proposta 3.6 di `docs/agentic-improvements.md`, passo 1). Prima di
+  scrivere, ogni valore estratto si confronta con la conversazione che
+  l'estrattore ha letto e con ciò che lo store conteneva già, per radici di
+  parola e senza accenti (`ares/agent/radicamento.py`). Un elenco
+  (`tools_and_stack`, `expertise`) si giudica voce per voce, un nome parola
+  per parola; un segnaposto come «Non specificato» o «Sconosciuto» non
+  entra mai; un campo descrittivo o una memoria cadono solo se nessuna loro
+  parola compare nel testo, perché l'estrattore riformula e aggiunge le
+  qualifiche che i criteri gli chiedono; la lingua non si giudica. Il
+  controllo è in codice, non nel prompt, e non costa inferenze. Ciò che
+  viene scartato compare nell'eco del turno sotto «non appreso», senza
+  chiedere conferma, e nel rapporto del benchmark della memoria
+  (`scartati`, schema 4). Il criterio del §3.6, tre parole consecutive
+  presenti nel testo, è stato provato sui 180 valori dei rapporti degli
+  eval e scarterebbe parafrasi giuste («non ho deciso» diventa «non
+  decisa»). Prove offline in `radicamento` (nuova) e `nucleo`.
+  Misure in `docs/memory-quality.md`: sul MiMo-V2.6 9B, stesso giro del
+  mattino, 37 scarti, tutti segnaposto o meta-valori, nessun contenuto
+  detto scartato, e il profilo senza «Non specificato», «Gym member» o
+  «Sviluppo software»; sul 9B di serie nessuno scarto, perché con renderer e
+  prompt attuali non inventa più. Il giudizio dell'estrattore e il recupero
+  non cambiano.
+
 ## [0.12.0] - 2026-10-02
 
 Ares diventa più sicuro e più stabile con il modello locale. La persona può

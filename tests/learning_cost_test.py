@@ -61,9 +61,10 @@ CHIAMATE_PER_TURNO = len(STORE_ALWAYS)
 
 # Cosa risponde il modello finto quando decide di scrivere. Il profilo vuole
 # almeno un campo, o la scrittura non cambia niente; le memorie vogliono il
-# testo; il contesto un riepilogo.
+# testo; il contesto un riepilogo. Profilo e memorie devono avere un appiglio
+# nella conversazione, o il radicamento li scarta.
 ARGOMENTI_DI_SALVATAGGIO: dict[str, dict[str, Any]] = {
-    "update_profile": {"communication_style": "risposte brevi, senza preamboli"},
+    "update_profile": {"current_focus": "organizzare i moduli e le prove di Ares"},
     "add_memory": {"memory": "Lavora su Ares la sera, dopo le 22."},
     "save_session_context": {"summary": "Misura del costo delle estrazioni."},
 }
@@ -383,7 +384,7 @@ def la_scrittura_arriva_negli_store() -> str:
     memorie = macchina.user_memory_store.get(user_id=UTENTE.id)
     esigi(profilo is not None, "il profilo e' vuoto dopo una tool call accettata")
     esigi(
-        ARGOMENTI_DI_SALVATAGGIO["update_profile"]["communication_style"] in str(profilo),
+        ARGOMENTI_DI_SALVATAGGIO["update_profile"]["current_focus"] in str(profilo),
         "il profilo non contiene cio' che il modello ha scritto: " + str(profilo),
     )
     esigi(memorie is not None, "le memorie sono vuote dopo una tool call accettata")

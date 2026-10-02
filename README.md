@@ -312,7 +312,10 @@ l'archivio.
   entrato in profilo e memorie, sia dagli strumenti del modello sia
   dall'estrazione automatica, con il testo intero, e la CLI chiede se
   tenerlo: un `n` riporta i due store a prima del turno. Tace quando non è
-  cambiato niente.
+  cambiato niente. Un valore estratto che non ha appiglio nella
+  conversazione, come una professione o una tecnologia mai nominate o un
+  «Non specificato» in un campo vuoto, non entra: l'eco lo elenca come non
+  appreso.
 - **Il contesto non si satura, e lo stato si può riprendere.** Entro la quota
   Agno i risultati molto grandi restano lossless negli archivi locali e
   vengono riletti a pagine; snapshot verificati, restore protetto, fusione
