@@ -17,6 +17,7 @@ indovina il nome, funziona comunque.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -91,7 +92,7 @@ class Scaffale:
 
     def attiva(self, nome: str, stato: dict[str, Any] | None) -> str:
         """Attiva un gruppo e restituisce cio' che il modello legge: la guida o l'errore."""
-        nome = _semplice(nome)
+        nome = semplice(nome)
         if nome not in self.guide:
             disponibili = ", ".join(g.nome for g in self.gruppi)
             return "Gruppo sconosciuto: " + repr(nome) + ". I gruppi sono: " + disponibili + "."
@@ -132,10 +133,15 @@ class Scaffale:
         return riprendi_strumenti
 
 
-def _semplice(nome: str) -> str:
-    """Il nome di un gruppo come lo scrive un modello, ridotto: «Entita'», «entità» ed «entita» coincidono."""
-    scomposto = unicodedata.normalize("NFKD", nome.strip().lower())
-    return "".join(c for c in scomposto if c.isalnum() or c == "_")
+def semplice(nome: str) -> str:
+    """Un nome come lo scrive un modello, ridotto a minuscole, cifre e trattini singoli.
+
+    Vale per i gruppi e per le skill: «Entita'», «entità» ed «entita»
+    coincidono, come «Note Riunione», «note_riunione» e «note-riunione».
+    """
+    scomposto = unicodedata.normalize("NFKD", nome.lower())
+    senza_accenti = "".join(c for c in scomposto if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "-", senza_accenti).strip("-")
 
 
 def nome_strumento(voce: Any) -> str | None:

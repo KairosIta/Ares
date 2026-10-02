@@ -81,7 +81,7 @@ from ares.agent.assistant import (  # noqa: E402
 )
 from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
 from ares.agent.prompts import descrizione_del_comando, strumenti_spazio  # noqa: E402
-from ares.agent.scaffale import CHIAVE_STATO, ENTITA, GRUPPI, INTUIZIONI, Scaffale  # noqa: E402
+from ares.agent.scaffale import CHIAVE_STATO, ENTITA, INTUIZIONI, Scaffale  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.agent.turn_core import run_turn_cycle  # noqa: E402
 from ares.cli.commands import StatoChat, gestisci_comando  # noqa: E402
@@ -772,6 +772,9 @@ def strumenti(agent, user_id: str) -> str:
         "remember_about",
         "search_learnings",
         "save_learning",
+        "attiva_strumenti",
+        "leggi_skill",
+        "proponi_skill",
         *(nome for nome, _ in strumenti_spazio([*silenziosi, *confermati], POLITICA)),
     ):
         if nome in istruzioni:
@@ -831,7 +834,8 @@ def strumenti_su_richiesta(user_id: str) -> str:
     esigi("attiva_strumenti" in _nomi(prima), "attiva_strumenti non arriva al modello")
     esigi(not (entita | intuizioni) & _nomi(prima), "schemi dei gruppi al primo turno: " + repr(_nomi(prima)))
     sistema = _sistema(prima)
-    for gruppo in GRUPPI:
+    # I gruppi di questa sessione: proposte manca con ARES_SKILL=0.
+    for gruppo in agent.model.scaffale.gruppi:
         esigi(sistema.count("- " + gruppo.nome + " (") == 1, "il prompt non nomina una volta il gruppo " + gruppo.nome)
     esigi("<istruzioni_entita>" not in sistema, "la guida delle entita' e' nel prompt prima dell'attivazione")
     esigi(entita <= _nomi(dopo), "dopo l'attivazione gli schemi delle entita' non arrivano: " + repr(_nomi(dopo)))

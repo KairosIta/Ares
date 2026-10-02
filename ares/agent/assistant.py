@@ -36,7 +36,13 @@ from ares.agent.runtime import (
     build_workspace,
 )
 from ares.agent.scaffale import PROPOSTE
-from ares.agent.skill import GUIDA_PROPOSTE, build_skill_toolkit, carica_skill, istruzioni_sulle_skill
+from ares.agent.skill import (
+    GUIDA_PROPOSTE,
+    build_skill_toolkit,
+    carica_skill,
+    guida_proposte_attivata,
+    istruzioni_sulle_skill,
+)
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.identita import Utente
 from ares.state.sessioni import CHIAVE_CARTELLA, SessioneRiferimento, elenca
@@ -87,9 +93,10 @@ def build_assistant(
     sessione registra la sua cartella in `metadata`, letta da `ares resume` e
     `/sessioni`.
 
-    Con `politica.apprendimento.su_richiesta` gli strumenti di entita' e
-    intuizioni stanno sullo scaffale (`agent/scaffale.py`): il modello li
-    vede dopo averli attivati.
+    Con `politica.apprendimento.su_richiesta` gli strumenti di entita',
+    intuizioni e `proponi_skill` stanno sullo scaffale (`agent/scaffale.py`):
+    il modello li vede dopo averli attivati, e da allora ne ha la guida nel
+    system message.
     """
     modo = modo or config.MODO_PREDEFINITO
     db = build_db(percorsi)
@@ -161,6 +168,7 @@ def build_assistant(
             skill=istruzioni_sulle_skill(
                 skills, guida_proposte=GUIDA_PROPOSTE if propone and scaffale is None else None
             ),
+            aggiunte=guida_proposte_attivata(scaffale) if propone and scaffale is not None else None,
         ),
         learning=macchina,
         pre_hooks=[scaffale.pre_hook()] if scaffale is not None else None,

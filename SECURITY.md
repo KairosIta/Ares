@@ -149,12 +149,17 @@ sono procedure che il modello legge e segue. Ares non ne esegue gli script
 e ignora `allowed-tools`: un comando suggerito da una skill passa da
 `run_command` con le conferme della modalità. Quelle del progetto arrivano
 con il clone, come `ARES.md`: nome e descrizione entrano nel prompt come
-regole della cartella, la procedura arriva con la stessa avvertenza, e a
-parità di nome vince la skill della persona. Il banner le elenca tutte. La
-lettura resta nella cartella della skill: un percorso o un link che ne esce
-non si apre. Una skill proposta da Ares va in `~/.ares/skills/proposte/`, che
-non si carica: entra solo con `ares skills adopt --apply` e la conferma
-scritta. Da `ares -p` non si propone.
+regole della cartella, senza parentesi angolari che aprano o chiudano una
+sezione, al più 20 skill e 4000 caratteri di descrizioni; la procedura
+arriva con la stessa avvertenza fra due righe che la delimitano, e gli altri
+file della skill come dati. A parità di nome vince la skill della persona.
+Una skill del progetto che, risolti i link, esce dalla cartella di lavoro
+non si carica. Il banner le elenca tutte, e `ares skills list` dice perché
+una non è caricata. La lettura resta nella cartella della skill: un percorso
+o un link che ne esce non si apre. Una skill proposta da Ares va in
+`~/.ares/skills/proposte/`, che non si carica: entra solo con
+`ares skills adopt --apply` e la conferma scritta, e solo se dopo
+l'anteprima non è cambiata. Da `ares -p` non si propone.
 
 In `ares -p`, e comunque quando stdin non è un terminale, nessuno può
 rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono no, le

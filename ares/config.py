@@ -224,8 +224,8 @@ try:
     # che con una tool call; vale solo con un estrattore locale (vedi
     # `Impostazioni.estrazione_vincolata`). Assente: acceso.
     ESTRAZIONE_VINCOLATA = leggi_interruttore("ARES_ESTRAZIONE_VINCOLATA", AMBIENTE.get("ARES_ESTRAZIONE_VINCOLATA"))
-    # Gli strumenti di entita' e intuizioni fuori dal prompt finche' il
-    # modello non li attiva (`agent/scaffale.py`). Assente: acceso.
+    # Gli strumenti di entita', intuizioni e `proponi_skill` fuori dal prompt
+    # finche' il modello non li attiva (`agent/scaffale.py`). Assente: acceso.
     SU_RICHIESTA = leggi_interruttore("ARES_STRUMENTI_SU_RICHIESTA", AMBIENTE.get("ARES_STRUMENTI_SU_RICHIESTA"))
     # I comandi dentro bubblewrap (`agent/sandbox.py`). Assente: spenta, perche'
     # accesa toglierebbe la rete a comandi che oggi funzionano.
@@ -765,8 +765,8 @@ class Apprendimento:
 
     `memorie_datate` viene da `DATE_MEMORIE`, `strumenti_memoria` da
     `MEMORY_AGENT_TOOLS`, `su_richiesta` da `ARES_STRUMENTI_SU_RICHIESTA`:
-    gli strumenti di entita' e intuizioni arrivano al modello solo dopo che
-    li ha attivati. `skill` da `ARES_SKILL`: le procedure scritte o adottate
+    gli strumenti di entita', intuizioni e `proponi_skill` arrivano al
+    modello solo dopo che li ha attivati. `skill` da `ARES_SKILL`: le procedure scritte o adottate
     dalla persona, lette quando servono.
     """
 
