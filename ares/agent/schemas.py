@@ -91,9 +91,12 @@ class AresMemories(Memories):
     e l'eco non le vedono; `/memorie superate` le mostra.
 
     `Memories.get_memories_text` usa solo `content`: il modello non saprebbe
-    se una preferenza e' di ieri o dell'anno scorso. La data e' `updated_at`
-    (ripiego `created_at`), assoluta: l'ora corrente e' gia' nel prompt, e
-    un calcolo relativo sarebbe aritmetica in piu' per un modello piccolo.
+    se una preferenza e' di ieri o dell'anno scorso, ne' da dove la sa. La
+    data e' `updated_at` (ripiego `created_at`), assoluta: l'ora corrente e'
+    gia' nel prompt, e un calcolo relativo sarebbe aritmetica in piu' per un
+    modello piccolo. Accanto, la conversazione registrata da
+    `annota_provenienza`: il suo id dice gia' cartella e giorno, e
+    `read_past_session` la rilegge.
     """
 
     superate: list[dict[str, Any]] = field(default_factory=list, metadata={"internal": True})
@@ -122,7 +125,7 @@ class AresMemories(Memories):
         super().__setattr__(nome, valore)
 
     def get_memories_text(self) -> str:
-        """Le memorie come testo per il prompt, ognuna con la sua data.
+        """Le memorie come testo per il prompt, ognuna con data e conversazione.
 
         La legenda in testa evita che la data sia letta come parte di cio'
         che l'utente ha detto.
@@ -139,11 +142,16 @@ class AresMemories(Memories):
             if not contenuto:
                 continue
             quando = (memoria.get("updated_at") or memoria.get("created_at") or "")[:10]
-            righe.append("- " + contenuto + (" [" + quando + "]" if quando else ""))
+            sessione = memoria.get("sessione")
+            note = [quando] if quando else []
+            if sessione:
+                note.append("conversazione " + str(sessione))
+            righe.append("- " + contenuto + (" [" + ", ".join(note) + "]" if note else ""))
 
         if not righe:
             return ""
-        return "\n".join(["(fra parentesi quadre, la data in cui hai saputo la cosa)", *righe])
+        legenda = "(fra parentesi quadre, la data in cui hai saputo la cosa e, se registrata, la conversazione)"
+        return "\n".join([legenda, *righe])
 
 
 @dataclass

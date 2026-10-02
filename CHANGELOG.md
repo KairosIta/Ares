@@ -17,8 +17,9 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   dall'estrazione o da `update_user_memory`, non sparisce: passa fra le superate
   di `AresMemories`, con `invalidata_il` e, per una correzione,
   `sostituita_da`. Prompt, estrattore, eco e benchmark vedono solo le
-  valide; il modello non vede la provenienza, che resta un dato per la
-  persona. `/memorie origine` dice da quale conversazione e cartella viene
+  valide. Nel prompt ogni memoria porta, accanto alla data, la conversazione
+  da cui viene: il modello sa rispondere «da dove lo sai?» e può rileggerla
+  con `read_past_session`. `/memorie origine` dice da quale conversazione e cartella viene
   ogni memoria, `/memorie superate` mostra quelle corrette o tolte, e
   `/memorie` dice quante ce ne sono. Le memorie scritte prima restano senza
   provenienza e lo dichiarano; la retention delle sessioni lascia la

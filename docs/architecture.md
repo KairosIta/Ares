@@ -164,7 +164,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   raccoglie anche ciò che il radicamento ha scartato, e dopo ogni turno
   scrive sulle memorie toccate da quale sessione, turno e cartella vengono
   (`annota_provenienza`), riconoscendole dall'`updated_at` che Agno
-  aggiorna. Il modello non vede la provenienza: la mostra `/memorie origine`.
+  aggiorna. Nel prompt ogni memoria porta, accanto alla data, l'id della
+  conversazione da cui viene, che `read_past_session` rilegge; cartella e
+  turno restano per `/memorie origine`.
 - `ares/config.py` raccoglie le impostazioni versionate e decide i percorsi
   dello stato (vedi [Configurazione](#configurazione)). Importarlo non tocca
   il disco: la directory dello stato la crea `prepara_archivio()`, chiamata

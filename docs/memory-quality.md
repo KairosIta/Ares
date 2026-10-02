@@ -1130,4 +1130,5 @@ Il benchmark chiama la macchina di apprendimento direttamente, senza il
 turno del nucleo: la provenienza la provano `ambiti` offline e un turno vero
 sul cloud («uso Helix», poi «sono passato a Zed»), dove la memoria valida e
 quella superata portano sessione, turno, cartella e data, e il prompt
-contiene solo la valida.
+contiene solo la valida, con la data e l'id della conversazione: circa
+una quindicina di token in più per memoria.

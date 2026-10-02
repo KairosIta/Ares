@@ -267,10 +267,9 @@ def provenienza_del_turno() -> str:
         "la nuova non porta la provenienza: " + str(nuova),
     )
     esigi("sessione" not in vecchia, "una memoria non toccata dal turno e' stata annotata: " + str(vecchia))
-    esigi(
-        "sessione-prova" not in store.get(user_id=UTENTE).get_memories_text(),
-        "la provenienza arriva nel prompt",
-    )
+    testo = store.get(user_id=UTENTE).get_memories_text()
+    esigi("conversazione sessione-prova]" in testo, "la conversazione d'origine non arriva nel prompt: " + testo)
+    esigi("run-7" not in testo and "/progetti/alfa" not in testo, "turno o cartella arrivano nel prompt: " + testo)
 
     esigi(ripristina(agente, prima), "il ripristino non riporta le memorie a prima")
     esigi(
@@ -286,7 +285,7 @@ def provenienza_del_turno() -> str:
     dati = store.get(user_id=UTENTE)
     esigi(dati is not None and len(dati.superate) == 1 and not dati.memories, "il ripristino perde le superate")
     esigi(ripristina(agente, Istantanea()) and store.get(user_id=UTENTE) is None, "il ripristino a vuoto lascia dati")
-    return "annotata solo la memoria del turno, invisibile al prompt; il ripristino toglie tutto e tiene le superate"
+    return "annotata solo la memoria del turno, col prompt che ne cita la sessione; il ripristino tiene le superate"
 
 
 # ---------------------------------------------------------------------------

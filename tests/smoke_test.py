@@ -2010,12 +2010,14 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     esigi("data ignota" in righe[0], "una sessione senza data non lo dice: " + repr(righe))
     esigi(tronca(a_parti, 5) == "prima...", "il troncamento della domanda non avviene")
 
-    # Le memorie come testo per il prompt: la legenda in testa, la data fra
-    # quadre, una voce che non e' un dict resa com'e', una vuota saltata.
+    # Le memorie come testo per il prompt: la legenda in testa, data e
+    # conversazione fra quadre, una voce che non e' un dict resa com'e', una
+    # vuota saltata.
     memorie = AresMemories(
         user_id=user_id,
         memories=[
             {"content": "Con data.", "updated_at": "2026-09-05T10:00:00"},
+            {"content": "Con origine.", "updated_at": "2026-10-02T09:00:00", "sessione": "ares-20261002-0900-ab12"},
             {"content": "Senza data."},
             {"content": ""},
             "testo nudo",
@@ -2025,9 +2027,13 @@ def comandi_sull_archivio(agent, user_id: str, session_id: str) -> str:
     righe = testo.splitlines()
     esigi(righe[0].startswith("(fra parentesi quadre"), "la legenda non apre il testo: " + repr(righe))
     esigi("- Con data. [2026-09-05]" in righe, "la data non e' resa a giorno: " + repr(righe))
+    esigi(
+        "- Con origine. [2026-10-02, conversazione ares-20261002-0900-ab12]" in righe,
+        "la conversazione d'origine non e' resa: " + repr(righe),
+    )
     esigi("- Senza data." in righe, "una memoria senza data non compare: " + repr(righe))
     esigi("- testo nudo" in righe, "una voce non dict non compare: " + repr(righe))
-    esigi(len(righe) == 4, "una memoria vuota occupa una riga: " + repr(righe))
+    esigi(len(righe) == 5, "una memoria vuota occupa una riga: " + repr(righe))
     esigi(AresMemories(user_id=user_id, memories=[]).get_memories_text() == "", "senza memorie il testo non e' vuoto")
     solo_vuote = AresMemories(user_id=user_id, memories=[{"content": ""}])
     esigi(solo_vuote.get_memories_text() == "", "sole memorie vuote producono la legenda")
