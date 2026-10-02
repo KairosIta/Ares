@@ -22,6 +22,22 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   (`prompt_eval_duration` di Ollama), così il risparmio si vede turno per
   turno. `smoke` verifica che due system message consecutivi della stessa
   sessione siano identici e che la data compaia una volta sola.
+- **Gli eval misurano l'affidabilità, non la brillantezza** (proposta 3.10
+  di `docs/agentic-improvements.md`). I rapporti dei due eval portano
+  pass^3 per controllo, per fase e per caso, con la media sui casi: la
+  probabilità che tre ripetizioni riescano tutte, stimata come in τ²-bench
+  (`evals/affidabilita.py`). Il benchmark della memoria guadagna tre casi:
+  `astensione` (un dato mai detto, senza indizi), `dimenticanza` (un dato
+  annotato e poi ritirato su richiesta) e `aggiornamento_lungo` (la
+  correzione arriva dopo quattro scambi su altro, estratti uno per uno).
+  L'eval degli strumenti guadagna `conferma_concessa`, dove la scrittura
+  viene autorizzata e il turno prosegue: i casi possono dichiarare in
+  `concedi` quali conferme ricevono, e il rapporto conserva i file lasciati
+  nella cartella. Le prove `valutazione` e `conversazione` verificano i
+  verdetti dei casi nuovi su esiti scritti a mano e pass^3 come funzione
+  pura. Prime misure sul 9B e sul 27B locali in `docs/memory-quality.md` e
+  `docs/conversation-eval.md`: astensione e dimenticanza 3/3 per entrambi,
+  conferma concessa 3/3 per entrambi.
 - **Igiene di `workspace_run_command` e due tetti ai cicli di tentativi**
   (proposta 3.3 di `docs/agentic-improvements.md`). Il comando gira con lo
   stdin chiuso, così uno che aspetta input termina subito invece di restare

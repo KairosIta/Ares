@@ -83,8 +83,16 @@ semantica generale del linguaggio naturale.
 | Abbandono ipotesi | 3 | Un'idea scartata non torna attuale, neppure dopo un dialogo su altro. |
 | Abbandono piano | 3 | Un progetto confermato e poi abbandonato viene sostituito nel recupero dal progetto attuale. |
 | Avvio | 4 | Una decisione o un programma futuro non dimostrano l'avvio; un avvio esplicito rimane noto quando la decisione viene ribadita. |
+| Astensione | 1 | Una domanda su un dato mai detto, senza alcun indizio nel dialogo, ha valore nullo e certezza sconosciuta. |
+| Dimenticanza | 2 | Un dato annotato e poi ritirato («non ricordare più…») non torna dalla sonda e non resta negli store. |
+| Aggiornamento lungo | 2 | La correzione di una preferenza arriva dopo quattro scambi su altro, estratti uno per uno, e sostituisce il valore iniziale. |
 
-Sono diciannove fasi per ripetizione, cinquantasette con le impostazioni predefinite.
+Sono ventiquattro fasi per ripetizione, settantadue con le impostazioni
+predefinite. Il rapporto porta anche **pass^3** per caso e per fase: la
+probabilità che tre ripetizioni scelte a caso riescano tutte, stimata con
+C(c, 3) / C(n, 3) su n ripetizioni e c successi (`evals/affidabilita.py`).
+Un caso riesce in una ripetizione solo se tutte le sue fasi sono superate:
+da revisionare e non conclusivo non contano, come nel resto del rapporto.
 I messaggi e i criteri esatti sono in `evals/memory_quality.py` e vengono
 copiati nel rapporto.
 
@@ -892,3 +900,42 @@ strumenti e memoria e nessuna invenzione nel profilo, ma un turno operativo
 da quattro o cinque minuti e tre quarti di minuto di attesa dopo ogni
 risposta. È il modello per chi accetta di aspettare in cambio della
 privacy, non un sostituto del 9B per la chat veloce.
+
+### Astensione, dimenticanza e aggiornamento lungo, 2 ottobre 2026
+
+I tre casi nuovi, tre ripetizioni, regime di Ares, con lo stesso modello
+per conversazione ed estrazione
+(`artifacts/memory-quality/casi-nuovi-*-20261002.json`):
+
+| Caso, fase | 9B di serie, 128k | 27B IQ3_S, 64k |
+| --- | --- | --- |
+| `astensione`, mai detto | 3 superate | 3 superate |
+| `dimenticanza`, annotata | 3 superate | 3 superate |
+| `dimenticanza`, dimenticata | 3 superate | 3 superate |
+| `aggiornamento_lungo`, iniziale | 3 superate | 2 superate, 1 errore |
+| `aggiornamento_lungo`, corretta dopo altro | 3 da revisionare | 3 da revisionare |
+| pass^3 per caso | 1,00 / 1,00 / 0,00 | 1,00 / 1,00 / 0,00 |
+| media sui casi | 0,67 | 0,67 |
+
+Letture.
+
+- **Astensione.** Senza alcun indizio nel dialogo nessuno dei due modelli
+  inventa il gatto: valore nullo, certezza sconosciuta, e negli store non
+  compare niente di felino. Tre su tre per entrambi.
+- **Dimenticanza.** Dopo «non ricordare più il numero della tessera» la
+  memoria viene cancellata davvero: nella fotografia dopo la fase la lista
+  delle memorie è vuota, e la sonda si astiene. Tre su tre per entrambi: la
+  dimenticanza su richiesta, che il protocollo non misurava, funziona con
+  l'estrazione di serie.
+- **Aggiornamento lungo.** Dopo quattro scambi su altro la correzione passa:
+  valore «Helix» con certezza confermata in tutte e sei le ripetizioni, con
+  una citazione che la sostiene. Il verdetto è «da revisionare» perché lo
+  store conserva anche «ha abbandonato Vim», e il termine vecchio è nella
+  lista da rivedere: alla lettura è una memoria giusta, la storia della
+  preferenza e non una contraddizione, come già per `correzione`. Il
+  valutatore resta severo per scelta; pass^3 è zero per questo. Sul 27B
+  una sonda della fase iniziale è finita in errore HTTP 500 per una tool
+  call con XML malformato, lo stesso guasto del 1 ottobre.
+- **Costo.** La fase corretta vale cinque estrazioni: 33-38 s sul 9B,
+  145-156 s sul 27B. Le altre fasi 5-11 s di estrazione sul 9B, 19-39 s sul
+  27B; le sonde 3-6 s e 6-22 s.

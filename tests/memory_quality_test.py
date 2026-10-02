@@ -406,6 +406,58 @@ class QualitaMemoriaTest(unittest.TestCase):
             self.assertEqual(json.loads(percorso.read_text(encoding="utf-8")), rapporto)
             self.assertIn("non_conclusivo", mq.markdown(rapporto))
 
+    def test_astensione_senza_indizi(self):
+        fase = mq.CASI["astensione"][0]
+        self.assertEqual(mq.valuta(fase, risposta(), {})["stato"], "superato")
+        inventato = risposta("Micio", "confermato", "Il gatto si chiama Micio")
+        self.assertEqual(mq.valuta(fase, inventato, memoria("Il gatto si chiama Micio"))["stato"], "fallito")
+        self.assertEqual(mq.valuta(fase, risposta(), memoria("Ha un gatto."))["stato"], "da_revisionare")
+
+    def test_dimenticanza_richiede_il_dato_prima_e_la_sua_assenza_dopo(self):
+        fase = mq.CASI["dimenticanza"][1]
+        prima = memoria("Tessera della palestra: GYM-5521.")
+        self.assertEqual(mq.valuta(fase, risposta(), {}, prima)["stato"], "superato")
+        self.assertEqual(mq.valuta(fase, risposta(), prima, prima)["stato"], "da_revisionare")
+        self.assertEqual(mq.valuta(fase, risposta(), {}, {})["stato"], "non_conclusivo")
+        ricordato = risposta("GYM-5521", "confermato", "GYM-5521")
+        self.assertEqual(mq.valuta(fase, ricordato, prima, prima)["stato"], "fallito")
+
+    def test_aggiornamento_lungo_passa_da_quattro_scambi_su_altro(self):
+        fase = mq.CASI["aggiornamento_lungo"][1]
+        self.assertEqual(len(fase.altri_turni), 4)
+        self.assertEqual(len(mq.dialogo_serializzabile(fase)["altri_turni"]), 4)
+        self.assertTrue(all(not f.altri_turni for caso in mq.CASI.values() for f in caso if f.nome != fase.nome))
+        prima = memoria("Il suo editor preferito e' Vim.")
+        dopo = memoria("Il suo editor preferito e' Helix.")
+        giusta = risposta("Helix", "confermato", "Il suo editor preferito e' Helix.")
+        self.assertEqual(mq.valuta(fase, giusta, dopo, prima)["stato"], "superato")
+        self.assertEqual(mq.valuta(fase, giusta, dopo, {})["stato"], "non_conclusivo")
+        misto = memoria("Il suo editor preferito e' Helix. Prima usava Vim.")
+        self.assertEqual(mq.valuta(fase, giusta, misto, prima)["stato"], "da_revisionare")
+        vecchia = risposta("Vim", "confermato", "Il suo editor preferito e' Vim.")
+        self.assertEqual(mq.valuta(fase, vecchia, prima, prima)["stato"], "fallito")
+
+    def test_affidabilita_per_caso_e_per_fase(self):
+        def ripetizione(caso, n, stati):
+            return {
+                "caso": caso,
+                "ripetizione": n,
+                "fasi": [{"nome": f"f{i}", "valutazione": {"stato": s}} for i, s in enumerate(stati)],
+            }
+
+        risultati = [ripetizione("a", n, ["superato", "superato"]) for n in (1, 2, 3)]
+        risultati += [ripetizione("b", n, ["superato", "da_revisionare" if n == 3 else "superato"]) for n in (1, 2, 3)]
+        aff = mq.affidabilita(risultati)
+        self.assertEqual(aff["casi"]["a"], {"prove": 3, "superate": 3, "pass_k": 1.0})
+        self.assertEqual(aff["casi"]["b"], {"prove": 3, "superate": 2, "pass_k": 0.0})
+        self.assertEqual(aff["fasi"]["b"]["f1"], {"prove": 3, "superate": 2, "pass_k": 0.0})
+        self.assertEqual(aff["media_casi"], 0.5)
+        testo = mq.markdown({"stato": "completato", "risultati": risultati, "affidabilita": aff})
+        self.assertIn("- a: 3/3 ripetizioni intere, pass^3 1.00", testo)
+        self.assertIn("Media sui casi: 0.50.", testo)
+        senza = mq.affidabilita([{"caso": "c", "ripetizione": 1, "fasi": []}])
+        self.assertEqual(senza["casi"]["c"]["superate"], 0)
+
     def test_il_worker_parte_senza_ares_importato(self):
         # Il worker isola home e stato prima di importare `ares.config`: un
         # import anticipato in `main` lo fermerebbe a ogni caso.
