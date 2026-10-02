@@ -22,6 +22,7 @@ from agno.models.base import Model
 from agno.models.message import MessageMetrics
 from agno.models.response import ModelResponse
 from ollama import ChatResponse
+from ollama import Message as MessaggioOllama
 
 
 def tool_call(nome: str, **argomenti: Any) -> dict[str, Any]:
@@ -86,4 +87,5 @@ class OllamaFinto:
         parti = self.risposte.pop(0)
         for indice, parte in enumerate(parti):
             ultima = indice == len(parti) - 1
-            yield ChatResponse(model="finto", message={"role": "assistant", "content": "", **parte}, done=ultima)
+            messaggio = MessaggioOllama(**{"role": "assistant", "content": "", **parte})
+            yield ChatResponse(model="finto", message=messaggio, done=ultima)
