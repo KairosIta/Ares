@@ -1,8 +1,9 @@
 """Configurazione centrale di Ares.
 
 I valori predefiniti sono pensati per un host locale con circa 16 GiB di
-VRAM. Modelli, percorsi e identita' si sovrascrivono dal `.env` o
-dall'ambiente; il resto si cambia qui.
+VRAM. Modelli, percorsi, identita', contesto, campionamento e gli
+interruttori delle funzioni facoltative si sovrascrivono dal `.env` o
+dall'ambiente (l'elenco e' `.env.example`); il resto si cambia qui.
 
 Importare il modulo non tocca il disco: legge `.env` e definisce nomi. I
 nomi sono la sorgente; `leggi_percorsi`, `leggi_impostazioni` e

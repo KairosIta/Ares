@@ -482,7 +482,7 @@ gruppo («persone, progetti, sistemi e prodotti…»): in tre prove a mano il
 La riga attuale nomina gli strumenti del gruppo, dice quando attivarlo e
 chiede di non sostituirlo con la memoria o con il quaderno.
 
-## Sandbox dei comandi, 2 ottobre 2026
+### Sandbox dei comandi, 2 ottobre 2026
 
 Proposta 3.5: con `ARES_SANDBOX=bwrap` i comandi girano in bubblewrap. Prova
 dal vivo con il 9B di serie (`ares-qwen3.8-9b`), un archivio nuovo a ogni
@@ -510,7 +510,7 @@ nell'errore, che dice di non aggirare il limite, in otto prove su otto non
 l'ha fatto. Il cloud (`glm-5.3-flash:cloud`) ha riconosciuto la rete spenta
 dal primo errore e l'ha detto senza riprovare.
 
-## Skill, 2 ottobre 2026
+### Skill, 2 ottobre 2026
 
 Proposta 3.8: procedure in `SKILL.md`, di cui il prompt porta solo nome e
 descrizione e che il modello legge con `leggi_skill`. Prova dal vivo con un

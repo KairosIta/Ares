@@ -136,7 +136,7 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
 - **Media offloading:** Ares non accetta ancora immagini, audio o video nella
   CLI; abilitarlo ora creerebbe storage senza un percorso utente che lo usi.
 - **CodeMode:** riduce molti schemi tool a un kernel Python programmabile, ma
-  i circa venticinque strumenti di Ares non giustificano un nuovo ambiente di
+  i circa trenta strumenti di Ares non giustificano un nuovo ambiente di
   esecuzione. Il workspace con conferme mantiene confini più leggibili.
 - **Decision Log:** adatto ad audit e feedback sulle decisioni; per Ares serve
   decidere cosa registrare senza trasformare ogni conversazione in
@@ -147,9 +147,12 @@ sotto lock esclusivo, ottenendo una copia consistente anche con WAL.
   proporre prima di salvare: un'approvazione che dipende dalla sua
   obbedienza. La conferma sulla memoria durevole è costruita in Ares
   (`agent/echo.py`, `CONFERMA_APPRENDIMENTI`).
-- **Curator:** può deduplicare e potare apprendimenti, ma deve passare dallo
-  stesso modello di anteprima, backup e applicazione già usato per le
-  entità.
+- **Curator:** deduplica e pota il campo `memories` di un profilo
+  personalizzato, non lo User Memory Store che Ares usa, quindi non
+  riguarda le sue memorie. Doppioni e memorie superate li ritira il
+  consolidamento di Ares (`ares/memories/consolida.py`,
+  `ares memories consolidate`), con anteprima, conferma e backup come per
+  le entità, e senza cancellare: la memoria ritirata passa fra le superate.
 - **Session summary e compressione:** richiedono ulteriori inferenze e si
   sovrappongono al contesto di sessione già estratto. Offloading e limiti
   deterministici proteggono la finestra senza una chiamata al modello.

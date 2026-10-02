@@ -12,9 +12,9 @@ separatamente. L'embedding resta locale per costruzione.
 Il codice vive nel package `ares/`, diviso per responsabilità. Fra
 parentesi il sottocomando di `ares` che ogni package espone: `cli/app.py` li
 registra per nome di modulo, così `ares backup list` non importa Agno e
-`ares --help` li elenca tutti. Gli alias `ares-backup`, `ares-sessions`...
-passano dalla stessa App, e ogni sottopackage con un `__main__.py` risponde
-anche a `python -m`.
+`ares --help` li elenca tutti. Ogni sottocomando ha un alias `ares-<nome>`
+(`ares-backup`, `ares-skills`...) che passa dalla stessa App, e ogni
+sottopackage con un `__main__.py` risponde anche a `python -m`.
 
 ```text
 ares/
@@ -55,7 +55,9 @@ chat non parte finché la migrazione non è avvenuta.
 - `chat.py` avvia e coordina la REPL. `commands.py` contiene la tabella dei
   comandi locali, il loro dispatch e lo `StatoChat` che `/sessione`,
   `/metriche` e `/debug` modificano a metà conversazione. `render.py`
-  presenta eventi, conferme e metriche del turno.
+  presenta eventi, conferme e metriche del turno. `conversazioni.py` rende
+  come testo le sessioni in archivio, per `/sessioni` e per il Markdown di
+  `/esporta`.
 - `log.py` zittisce o accende il log di Agno (chat, `/debug`,
   `ares inspect --prompt`); non importa niente di Ares.
 - `conferma.py` è la conferma scritta dei comandi di manutenzione — la frase
@@ -224,6 +226,13 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   modello. Utenti diversi restano indipendenti. I file dei lock per utente
   vivono accanto al lock di stato, con un hash dell'identità nel nome, e non
   vengono rimossi al rilascio, per non separare i processi su file diversi.
+- `identita.py` decide la forma canonica dell'id utente: `Utente` si
+  ottiene solo da `Utente.da_grezzo`, così namespace, chiave di profilo e
+  memorie in Agno e lock dei turni usano lo stesso id (`Demo` e `demo` non
+  diventano due archivi).
+- `vecchio_posto.py` riconosce, senza toccarli, stato e backup rimasti nel
+  posto delle versioni vecchie: `core/stato.py` rifiuta di aprire lo stato
+  finché ci sono, `ops/migrazione.py` li sposta.
 - `git.py` legge il ramo corrente da `.git/HEAD`, anche in un worktree,
   senza lanciare git: banner e prompt non aspettano un processo né
   falliscono dove git non c'è.
@@ -434,9 +443,12 @@ memoria resta vera anche se la conversazione da cui è nata non c'è più.
 
 ## Configurazione
 
-Le impostazioni versionate sono in `ares/config.py`. Identità, percorsi
-locali e i due modelli (conversazione ed estrazione delle memorie) si
-sovrascrivono con le variabili di `.env.example`; il `.env` del clone non
+Le impostazioni versionate sono in `ares/config.py`. Con le variabili di
+`.env.example` si sovrascrivono identità, percorsi locali, i due modelli
+(conversazione ed estrazione delle memorie), il contesto (`ARES_NUM_CTX`),
+le sei opzioni di campionamento (`ARES_TEMPERATURE`, `ARES_TOP_P`...) e gli
+interruttori `ARES_ESTRAZIONE_VINCOLATA`, `ARES_STRUMENTI_SU_RICHIESTA`,
+`ARES_SANDBOX`, `ARES_SANDBOX_RETE` e `ARES_SKILL`; il `.env` del clone non
 viene pubblicato.
 
 `config.py` è la sorgente dei valori, ma il resto del codice non li legge
@@ -445,8 +457,8 @@ da lì: li riceve in tre oggetti, costruiti una volta al confine del processo.
 | Oggetto | Costruito da | Contiene |
 | --- | --- | --- |
 | `Percorsi` | `leggi_percorsi()` | home, stato, backup, cartella di lavoro; i nomi derivati (SQLite, indice, lock, cronologia) sono proprietà |
-| `Impostazioni` | `leggi_impostazioni()` | modelli di conversazione, estrazione ed embedding, host e `keep_alive` di Ollama, contesto, temperature, `think`, campionamento (`top_p`, `top_k`, `min_p`, `repeat_penalty`, `presence_penalty`) |
-| `Politica` | `leggi_politica()` | cosa si impara (`Apprendimento`), quanta cronologia (`Cronologia`), come si usa la cartella (`Workspace`), cosa si mostra (`Mostra`) |
+| `Impostazioni` | `leggi_impostazioni()` | modelli di conversazione, estrazione ed embedding, host e `keep_alive` di Ollama, contesto, temperature, `think`, campionamento (`top_p`, `top_k`, `min_p`, `repeat_penalty`, `presence_penalty`), `vincolo_estrazione` (da cui `estrazione_vincolata`) |
+| `Politica` | `leggi_politica()` | cosa si impara e quali strumenti si offrono (`Apprendimento`, con strumenti su richiesta e skill), quanta cronologia (`Cronologia`), come si usa la cartella (`Workspace`, con la sandbox dei comandi), cosa si mostra (`Mostra`) |
 
 L'identità viaggia a parte, come `Utente`.
 

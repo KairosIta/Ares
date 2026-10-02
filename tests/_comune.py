@@ -5,7 +5,7 @@ Non un framework: le funzioni che le prove ripetevano identiche (padding,
 formato del fallimento, traceback). Ogni prova resta uno script autonomo.
 
 Regola: questo modulo non importa `config` ne' niente di `ares`. `config`
-fotografa `ARES_TMP`, `ARES_BACKUP_DIR` e il `.env` all'import, quindi
+fotografa `ARES_HOME`, `ARES_TMP`, `ARES_BACKUP_DIR` e il `.env` all'import, quindi
 `prepara_ambiente` deve poter girare prima: una prova che importasse
 `config` troppo presto scriverebbe accanto ai dati veri.
 """
