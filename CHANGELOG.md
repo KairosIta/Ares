@@ -8,6 +8,27 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Skill** (proposta 3.8 di `docs/agentic-improvements.md`). Procedure in
+  formato *Agent Skills* (`SKILL.md` con `name` e `description`, lo stesso
+  di Claude Code e Codex), lette da `~/.ares/skills` e da `.ares/skills`
+  nella cartella (`ares/agent/skill.py`). Nel prompt, sezione `skill`, entra
+  una riga per skill; la procedura e gli altri file della skill arrivano con
+  `leggi_skill`, che non esce dalla cartella della skill. Le skill si
+  leggono e basta: gli script non si eseguono e `allowed-tools` non concede
+  niente. Quelle del progetto valgono come `ARES.md`; a parità di nome vince
+  quella della persona; una cartella che non si carica compare all'avvio
+  con il motivo. Ares può proporne una con `proponi_skill`, sullo scaffale
+  nel gruppo `proposte` e mai da `ares -p`: la proposta va in
+  `~/.ares/skills/proposte/`, che non si carica, finché la persona non la
+  adotta. `ares skills list`, `adopt` e `discard` (con anteprima, `--apply`
+  e conferma scritta; una skill sostituita resta in `.precedenti/`), `/skill`
+  nella chat e una riga nel banner. `ARES_SKILL=0` le spegne. Non usa
+  `agno.skills`, il cui testo è in inglese e i cui strumenti eseguono gli
+  script. Prova offline `skill`; le prove ora usano anche una casa
+  usa-e-getta (`ARES_HOME`). Sul 9B una skill scritta dal cloud porta la
+  nota nel formato voluto da 0/10 a 9/10, e una richiesta estranea non la
+  legge mai (0/5) (`docs/conversation-eval.md`).
+
 - **Sandbox dei comandi, opzionale, su Linux** (proposta 3.5 di
   `docs/agentic-improvements.md`). Con `ARES_SANDBOX=bwrap` ogni
   `run_command` parte dentro bubblewrap (`ares/agent/sandbox.py`): radice in
@@ -131,6 +152,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   «Sviluppo software»; sul 9B di serie nessuno scarto, perché con renderer e
   prompt attuali non inventa più. Il giudizio dell'estrattore e il recupero
   non cambiano.
+
+### Fixed
+
+- La sezione `strumenti` del prompt diceva che i comandi non sono isolati
+  anche con la sandbox accesa; ora dice che leggono oltre la cartella ma
+  scrivono solo lì e in `/tmp`.
 
 ## [0.12.0] - 2026-10-02
 

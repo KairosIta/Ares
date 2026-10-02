@@ -34,6 +34,7 @@ from agno.run.agent import RunOutput
 from ares import config
 from ares.agent.prompts import percorso_istruzioni
 from ares.agent.sandbox import SandboxNonDisponibile, prepara_sandbox
+from ares.agent.skill import carica_skill, proposte
 from ares.agent.turn_core import TurnEvent
 from ares.backup.snapshots import avviso_residui_restore, promemoria_backup
 from ares.cli import cartella
@@ -50,6 +51,7 @@ from ares.cli.render import (
     riga_concessione,
     riga_regole,
     riga_sandbox,
+    riga_skill,
     righe_metriche,
     righe_richiesta,
 )
@@ -342,6 +344,9 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
     if percorso_istruzioni(radice, politica.workspace.istruzioni) is not None:
         istruzioni = politica.workspace.istruzioni
     regole = leggi_regole(stato.percorsi, politica) if radice is not None else Regole()
+    # Le stesse che l'agente ha appena caricato: stesse cartelle, stesso istante.
+    skills = carica_skill(stato.percorsi, politica, radice)
+    in_attesa = len(proposte(stato.percorsi)) if politica.apprendimento.skill else 0
     UI.banner(
         modello=stato.impostazioni.principale,
         sessione=session + ("  (" + etichetta + ")" if etichetta else ""),
@@ -351,10 +356,13 @@ def _accoglienza(stato: StatoChat, *, session: str, etichetta: str, radice: Path
         istruzioni=istruzioni,
         regole=riga_regole(regole) if regole.fonti else None,
         sandbox=riga_sandbox(politica) if radice is not None and politica.workspace.sandbox else None,
+        skill=riga_skill(skills, in_attesa),
         modo=stato.modo if radice is not None else None,
     )
     for avviso in regole.avvisi:
         UI.line("Regole di autorizzazione: " + avviso, style="ares.warning")
+    for scartata in skills.scartate:
+        UI.line("Skill non caricata, " + str(scartata.cartella) + ": " + scartata.motivo, style="ares.warning")
     if stato.modo == "auto":
         UI.line(
             "Modalita' auto: nessuna conferma, ogni strumento gira subito. "

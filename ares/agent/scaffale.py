@@ -1,12 +1,13 @@
 """Strumenti su richiesta: gruppi descritti con una riga, attivati quando servono.
 
-Entita' e intuizioni servono in una minoranza di turni, ma i loro sei schemi
-e le loro guide arriverebbero al modello a ogni richiesta. Qui restano fuori
-finche' il modello non chiama `attiva_strumenti(gruppo)`: lo strumento
-restituisce la guida del gruppo, e dalla richiesta successiva, anche nello
-stesso turno, gli schemi arrivano con gli altri. Il gruppo resta attivo per
-il resto della sessione: togliere uno schema a meta' sposterebbe di nuovo il
-prefisso del prompt, che il daemon tiene in cache.
+Entita', intuizioni e la proposta di skill servono in una minoranza di
+turni, ma i loro sette schemi e le loro guide arriverebbero al modello a
+ogni richiesta. Qui restano fuori finche' il modello non chiama
+`attiva_strumenti(gruppo)`: lo strumento restituisce la guida del gruppo, e
+dalla richiesta successiva, anche nello stesso turno, gli schemi arrivano
+con gli altri. Il gruppo resta attivo per il resto della sessione:
+togliere uno schema a meta' sposterebbe di nuovo il prefisso del prompt,
+che il daemon tiene in cache.
 
 Il filtro sta nel modello (`OllamaConRagionamento.get_request_params`), non
 in Agno: Agno conosce ed esegue tutti gli strumenti, il modello vede solo
@@ -50,7 +51,15 @@ INTUIZIONI = Gruppo(
     "chiede di salvare un criterio da riusare",
     ("search_learnings", "save_learning"),
 )
-GRUPPI = (ENTITA, INTUIZIONI)
+# Lo strumento di `agent/skill.py`: serve di rado, e il suo schema e' lungo.
+# Non si chiama «skill»: un modello piccolo lo attiverebbe per usarne una.
+PROPOSTE = Gruppo(
+    "proposte",
+    "quando la persona ti chiede di salvare un procedimento come skill, o dopo aver portato a termine "
+    "una procedura in piu' passi, non ovvia, che servira' di nuovo",
+    ("proponi_skill",),
+)
+GRUPPI = (ENTITA, INTUIZIONI, PROPOSTE)
 
 
 @dataclass

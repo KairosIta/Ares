@@ -232,6 +232,9 @@ try:
     SANDBOX = leggi_sandbox(AMBIENTE.get("ARES_SANDBOX"))
     # La rete dentro la sandbox. Assente: niente rete.
     SANDBOX_RETE = leggi_interruttore("ARES_SANDBOX_RETE", AMBIENTE.get("ARES_SANDBOX_RETE")) is True
+    # Le skill della persona e del progetto, e lo strumento che ne propone
+    # di nuove (`agent/skill.py`). Assente: accese.
+    SKILL = leggi_interruttore("ARES_SKILL", AMBIENTE.get("ARES_SKILL"))
 except ValueError as errore:
     # All'import, prima di ogni comando: una riga e non un traceback.
     raise SystemExit("Configurazione di Ares non valida: " + str(errore)) from None
@@ -560,6 +563,12 @@ class Percorsi:
     def fs_db_file(self) -> str:
         return str(self.stato / "filesystem.db")
 
+    # Fuori dallo stato: sono file della persona, che li scrive o li adotta,
+    # e un restore non deve riavvolgerli.
+    @property
+    def skill(self) -> Path:
+        return self.home / "skills"
+
     @property
     def lancedb_uri(self) -> str:
         return str(self.stato / "lancedb")
@@ -723,6 +732,12 @@ WORKSPACE_READ_BEFORE_WRITE = True
 REGOLE_PROGETTO = ".ares/permessi.toml"
 REGOLE_PERSONALI = "permessi.toml"
 
+# Le skill (`agent/skill.py`): quelle del progetto nella cartella di lavoro,
+# quelle della persona in `~/.ares/skills`. Le proposte di Ares stanno in una
+# sottocartella che non si carica, finche' la persona non le adotta.
+SKILL_PROGETTO = ".ares/skills"
+SKILL_PROPOSTE = "proposte"
+
 # Quante chiamate a strumenti puo' fare un turno. Oltre, Agno risponde allo
 # strumento con un errore e il modello conclude; i rilettori dei risultati
 # lunghi (`read_result`, `search_result`) non contano. E' un tetto ai cicli
@@ -751,7 +766,8 @@ class Apprendimento:
     `memorie_datate` viene da `DATE_MEMORIE`, `strumenti_memoria` da
     `MEMORY_AGENT_TOOLS`, `su_richiesta` da `ARES_STRUMENTI_SU_RICHIESTA`:
     gli strumenti di entita' e intuizioni arrivano al modello solo dopo che
-    li ha attivati.
+    li ha attivati. `skill` da `ARES_SKILL`: le procedure scritte o adottate
+    dalla persona, lette quando servono.
     """
 
     profilo: bool
@@ -764,6 +780,7 @@ class Apprendimento:
     tentativi_contesto: int
     strumenti_memoria: bool
     su_richiesta: bool = True
+    skill: bool = True
 
     @property
     def automatici(self) -> bool:
@@ -855,6 +872,7 @@ def leggi_politica() -> Politica:
             tentativi_contesto=SESSION_CONTEXT_RETRIES,
             strumenti_memoria=MEMORY_AGENT_TOOLS,
             su_richiesta=SU_RICHIESTA is not False,
+            skill=SKILL is not False,
         ),
         cronologia=Cronologia(
             sessioni_passate=SEARCH_PAST_SESSIONS,

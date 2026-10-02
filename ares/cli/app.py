@@ -43,6 +43,7 @@ SOTTOCOMANDI = (
     ("sessions", "ares.sessions.maintenance:app", "Retention delle sessioni e dei risultati tool"),
     ("entities", "ares.entities.maintenance:app", "Audit e fusione delle entita' duplicate"),
     ("memories", "ares.memories.maintenance:app", "Ritira le memorie doppie o superate, con anteprima e backup"),
+    ("skills", "ares.skills.revisione:app", "Le skill attive e le proposte di Ares da adottare o scartare"),
     ("preflight", "ares.ops.preflight:app", "Controlla che Ollama risponda e che i modelli ci siano"),
     ("inspect", "ares.ops.inspect_learning:app", "Ispeziona gli archivi di apprendimento senza toccarli"),
     ("migrate", "ares.ops.migrazione:app", "Sposta stato e backup di prima in ~/.ares"),

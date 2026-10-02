@@ -20,6 +20,7 @@ from ares.config import Impostazioni, Percorsi, Politica
 from ares.core.autorizzazioni import ModoNonAmmesso
 from ares.core.regole import leggi_regole
 from ares.core.session import SessioneAttiva, SessioneDiAltri, Sessioni
+from ares.skills.revisione import stampa_skill
 from ares.state.archivi import build_filesystem
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
@@ -349,6 +350,16 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
         UI.line("attenzione: la cartella " + motivo, style="ares.warning")
 
 
+def _comando_skill(stato: StatoChat, argomento: str) -> None:
+    """Le skill che questa conversazione vede e le proposte in attesa.
+
+    Ricaricate adesso: una skill adottata nel frattempo compare qui, e
+    nella conversazione dalla prossima.
+    """
+    radice = stato.percorsi.lavoro if stato.politica.workspace.attivo else None
+    stampa_skill(stato.percorsi, stato.politica, radice)
+
+
 def _comando_esporta(stato: StatoChat, argomento: str) -> None:
     """La conversazione corrente in un file Markdown.
 
@@ -410,6 +421,7 @@ COMANDI: tuple[Comando, ...] = (
     Comando("/entita", (), "le entita' registrate; /entita <testo> cerca fra loro", _comando_entita),
     Comando("/file", (), "i file scritti dall'agente", _comando_file),
     Comando("/cartella", ("/lavoro",), "la cartella di lavoro: percorso, git, ARES.md", _comando_cartella),
+    Comando("/skill", (), "le skill attive e le proposte da rivedere", _comando_skill),
     Comando("/modo", (), "la modalita' corrente; /modo <nome> passa a manuale, modifiche o piano", _comando_modo),
     Comando("/metriche", (), "accende o spegne il costo di ogni turno", _comando_metriche),
     Comando("/debug", (), "accende o spegne le chiamate al modello a schermo", _comando_debug),

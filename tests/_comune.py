@@ -32,7 +32,7 @@ RICH_FORZATURE = ("FORCE_COLOR", "TTY_COMPATIBLE", "TTY_INTERACTIVE")
 def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = True) -> Path:
     """Sceglie i percorsi usa-e-getta della prova, prima che `config` li legga.
 
-    Restituisce la radice temporanea, con `stato/`, `backup/` e `lavoro/`.
+    Restituisce la radice temporanea, con `casa/`, `stato/`, `backup/` e `lavoro/`.
     Fallisce se `config` e' gia' in memoria, perche' i percorsi sarebbero gia'
     decisi. La cartella di lavoro e' la directory corrente, come per `ares` in
     un progetto: per questo la prova ci entra con `chdir`.
@@ -45,6 +45,9 @@ def prepara_ambiente(prefisso: str, *, workspace: bool = True, backup: bool = Tr
     # lo riempirebbe di sequenze ANSI.
     for variabile in RICH_FORZATURE:
         os.environ.pop(variabile, None)
+    # Anche la casa: le skill e le regole personali che vi stanno sono della
+    # persona, e una prova non deve ne' leggerle ne' scriverci.
+    os.environ["ARES_HOME"] = str(radice / "casa")
     os.environ["ARES_TMP"] = str(radice / "stato")
     if backup:
         os.environ["ARES_BACKUP_DIR"] = str(radice / "backup")

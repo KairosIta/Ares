@@ -26,6 +26,7 @@ ares/
 ├── backup/         snapshot locali: creazione, verifica, restore      (ares backup)
 ├── entities/       audit e fusione delle entità                       (ares entities)
 ├── memories/       consolidamento delle memorie doppie o superate     (ares memories)
+├── skills/         revisione delle skill: elenco, adozione, scarto    (ares skills)
 ├── sessions/       retention di sessioni e risultati tool             (ares sessions)
 └── ops/            preflight, ispezione e migrazione a modello spento (ares preflight, inspect, migrate)
 ```
@@ -139,7 +140,16 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   `OllamaConRagionamento`, il modello di conversazione ed estrazione,
   conserva il `thinking` di Ollama e lo rimanda al passo successivo, e
   toglie dalla richiesta gli strumenti che lo scaffale tiene nascosti.
-- `scaffale.py` tiene entità e intuizioni su richiesta: il prompt le
+- `skill.py` carica le skill da `~/.ares/skills` e da `.ares/skills` della
+  cartella, senza `proposte/` e le cartelle nascoste; scarta con il motivo
+  quelle senza descrizione o con un nome fuori specifica, e a parità di nome
+  tiene quella della persona. Nel prompt mette la sezione `skill`, una riga
+  `nome: descrizione` per skill; `leggi_skill` restituisce la procedura o un
+  altro file della cartella della skill, senza uscirne. `proponi_skill`
+  scrive in `proposte/`, che non si carica. Agno ha un suo `agno.skills`, ma
+  il testo per il prompt è in inglese e gli strumenti eseguono gli script:
+  qui si usa solo la specifica.
+- `scaffale.py` tiene entità, intuizioni e la proposta di skill su richiesta: il prompt le
   descrive con una riga per gruppo e `attiva_strumenti(gruppo)` ne
   restituisce la guida. Agno conosce ed esegue tutti gli strumenti, ma il
   modello riceve gli schemi di un gruppo solo dopo averlo attivato: il
@@ -252,6 +262,11 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   senza scrivere: coppie candidate (testi identici, vicine per embedding),
   un giudizio per coppia, la più vecchia ritirata a favore della più
   recente, le catene risolte su una memoria valida.
+- `skills/revisione.py` è `ares skills`: elenca attive, non caricate e
+  proposte; `adopt` mostra una proposta e con `--apply` e la conferma la
+  sposta fra le attive, conservando in `.precedenti/` quella che sostituisce;
+  `discard` la cancella. Le skill sono file della persona fuori dallo stato:
+  niente lock né snapshot.
 - `sessions/maintenance.py` coordina anteprima, conferma, lock e snapshot
   della retention; `sessions/retention.py` apre entrambi i backend, registra
   su Agno il filesystem dei payload e verifica la cancellazione congiunta di
@@ -317,6 +332,12 @@ controlla dopo la cartella, `build_workspace` di nuovo per i client senza
 terminale, `ares preflight` per chi prepara l'ambiente. La descrizione di
 `run_command` lo dice in una frase; cosa fare quando un limite ferma un
 comando lo dice l'errore stesso (`prompts.AVVISO_SANDBOX`).
+
+Le skill si leggono e basta (`agent/skill.py`): `leggi_skill` resta nella
+cartella della skill, gli script non si eseguono e `allowed-tools` non
+concede niente. Quelle del progetto entrano come `ARES.md`, regole della
+cartella e non ordini; una proposta di Ares diventa attiva solo con
+`ares skills adopt --apply`.
 
 Stato e backup vivono in `~/.ares`, fuori dal clone; `.env` resta nel clone
 ma fuori dal controllo versione.

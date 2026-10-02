@@ -382,8 +382,12 @@ def istruzioni_sugli_strumenti(
             "e' il suo progetto, con i suoi file, non uno spazio tuo. Gli "
             "strumenti che cominciano con workspace_ leggono e scrivono li' "
             "dentro, sul disco vero. Questo limite vale per gli strumenti sui file; "
-            "gli eventuali comandi non sono isolati e possono accedere oltre la cartella. "
-            "Modifica solo cio' che serve alla richiesta: non riordinare, "
+            + (
+                "i comandi leggono anche oltre la cartella, ma scrivono solo li' e in /tmp. "
+                if politica.workspace.sandbox
+                else "gli eventuali comandi non sono isolati e possono accedere oltre la cartella. "
+            )
+            + "Modifica solo cio' che serve alla richiesta: non riordinare, "
             "non rinominare e non cancellare per pulizia. Quelli che cominciano con "
             + config.QUADERNO_PREFIX
             + " sono invece il tuo quaderno, in un database locale e non nella cartella. Un "
@@ -646,6 +650,7 @@ SEZIONI = (
     "memoria",
     "quaderno",
     "strumenti",
+    "skill",
     "regole_del_progetto",
     "questo_avvio",
 )
@@ -691,8 +696,12 @@ def istruzioni(
     interattivo: bool = True,
     precedenti: Sequence[SessioneRiferimento] = (),
     su_richiesta: Sequence[Gruppo] = (),
+    skill: Sequence[str] = (),
 ) -> Istruzioni:
-    """Il prompt di Ares, sezione per sezione, nell'ordine di `SEZIONI`."""
+    """Il prompt di Ares, sezione per sezione, nell'ordine di `SEZIONI`.
+
+    `skill` sono i paragrafi di `agent/skill.istruzioni_sulle_skill`.
+    """
     nome_regole = politica.workspace.istruzioni
     regole = nome_regole if percorso_istruzioni(radice_lavoro, nome_regole) else None
     conversazioni = istruzioni_sulle_conversazioni(precedenti, cartella=radice_lavoro, politica=politica)
@@ -721,6 +730,7 @@ def istruzioni(
                 radice_lavoro, modo, politica=politica, interattivo=interattivo, su_richiesta=su_richiesta
             ),
         ),
+        *_sezione("skill", skill),
         *_sezione("regole_del_progetto", istruzioni_dalla_cartella(radice_lavoro, politica)),
     ]
     avvio = istruzioni_sull_avvio(utente=utente, session_id=session_id, radice_lavoro=radice_lavoro)

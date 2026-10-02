@@ -18,6 +18,7 @@ nell'ordine di `prompts.SEZIONI`:
 | `memoria` | quali archivi si aggiornano e come ragionare sui ricordi |
 | `quaderno` | il quaderno privato |
 | `strumenti` | istruzioni sugli strumenti accesi, workspace compreso; una riga per ogni gruppo su richiesta |
+| `skill` | una riga `nome: descrizione` per skill, e quando leggerla con `leggi_skill`; senza scaffale, anche come proporne una |
 | `regole_del_progetto` | `ARES.md`, se c'è |
 | `questo_avvio` | utente, conversazione, cartella, conversazioni precedenti, data del giorno |
 
@@ -29,8 +30,10 @@ giorno: con l'ora al minuto il system message cambierebbe a ogni turno e
 Ollama ricalcolerebbe da quel punto in giù tutto il prompt, guide degli
 store, memorie, schemi degli strumenti e cronologia compresi. Dentro la
 stessa giornata due turni consecutivi hanno lo stesso prefisso e la KV
-cache viene riusata. L'ora precisa la dà lo strumento `che_ora_e`, l'unico
-che Ares definisce da sé, e il prompt dice di usarlo invece di indovinare.
+cache viene riusata. L'ora precisa la dà lo strumento `che_ora_e`, e il prompt dice di usarlo
+invece di indovinare. Le skill sono caricate una volta all'avvio: una
+adottata durante la conversazione entra dalla successiva, e il prefisso
+resta fermo.
 Dopo le sezioni Agno aggiunge la guida ai risultati lunghi, le guide degli
 store e le memorie. Per ispezionare il risultato completo senza interrogare
 il modello:

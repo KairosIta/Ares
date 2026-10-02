@@ -464,6 +464,48 @@ deciso. Il prefisso è una convenzione, non una sandbox: uno script nella
 cartella che si chiama `git` resta un rischio, come dice
 [`SECURITY.md`](SECURITY.md#senza-sandbox-di-serie).
 
+### Le skill
+
+Una skill è una procedura scritta per un compito che ritorna: come scrivi le
+note di riunione, come si rilascia il progetto, come si prepara un report.
+È una cartella con un `SKILL.md`, nel formato aperto *Agent Skills* che
+leggono anche Claude Code e Codex:
+
+```markdown
+---
+name: note-riunione
+description: Scrive le note di una riunione nel formato della persona. Usala quando c'è una riunione da annotare.
+---
+
+1. Crea riunioni/AAAA-MM-GG-tema.md, con il tema in minuscolo e i trattini.
+2. ...
+```
+
+Ares le cerca in `~/.ares/skills/` (le tue) e in `.ares/skills/` della
+cartella (quelle del progetto, da versionare con il resto). Nel prompt entra
+solo la riga `name: description`; la procedura il modello la legge con
+`leggi_skill` quando la richiesta corrisponde. Ares le legge e basta: gli
+script di una skill non partono da soli, e un comando che la procedura
+suggerisce passa dalle stesse conferme di ogni altro. Quelle del progetto
+valgono come `ARES.md`, regole della cartella e non ordini tuoi; a parità di
+nome vince la tua.
+
+Ares può anche **proporne** una, quando gli chiedi di salvare un
+procedimento o dopo una procedura in più passi che servirà di nuovo. La
+proposta va in `~/.ares/skills/proposte/`, che non si carica: diventa attiva
+solo quando la adotti.
+
+```bash
+ares skills list                       # attive, non caricate e proposte
+ares skills adopt note-riunione        # la mostra
+ares skills adopt note-riunione --apply
+ares skills discard note-riunione --apply
+```
+
+Adottarne una con il nome di una attiva conserva la versione di prima in
+`~/.ares/skills/.precedenti/`. Il banner e `/skill` dicono quali skill vede
+la conversazione e quante proposte aspettano; `ARES_SKILL=0` le spegne.
+
 ### Le conversazioni
 
 Ogni `ares` apre una conversazione nuova, che nasce nella cartella e la
@@ -513,8 +555,8 @@ La barra sotto il prompt dice modalità, sessione e, dopo il primo turno,
 quanta finestra di contesto è occupata.
 
 Fra i comandi principali: `/profilo`, `/memorie`, `/contesto`, `/sessioni`,
-`/entita`, `/file` e `/cartella`, che mostra percorso, ramo, file modificati
-e se c'è un `ARES.md`. Quattro cambiano la sessione in corso senza
+`/entita`, `/file`, `/skill` e `/cartella`, che mostra percorso, ramo, file
+modificati e se c'è un `ARES.md`. Quattro cambiano la sessione in corso senza
 riavviare: `/sessione <id>` passa a un'altra conversazione e `/sessione
 nuova` ne apre una, `/modo` cambia modalità, `/metriche` accende il costo di
 ogni turno, `/debug` le chiamate al modello. `/esporta` scrive la

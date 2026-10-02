@@ -8,7 +8,9 @@ from typing import Any
 
 from agno.run.agent import RunOutput
 
+from ares import config
 from ares.agent.marcatura import smarca
+from ares.agent.skill import Skills
 from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
@@ -382,6 +384,20 @@ def riga_sandbox(politica: Politica) -> str:
     if politica.workspace.sandbox is None:
         return "nessuna: i comandi girano con i tuoi permessi"
     return politica.workspace.sandbox + (", con la rete" if politica.workspace.sandbox_rete else ", senza rete")
+
+
+def riga_skill(skills: Skills, in_attesa: int) -> str | None:
+    """Le skill di questa conversazione e le proposte da rivedere, o `None` se non c'e' niente."""
+    parti = []
+    if skills.attive:
+        parti.append(", ".join(s.nome + (" (progetto)" if s.origine == "progetto" else "") for s in skills.attive))
+    if in_attesa:
+        parti.append(
+            (str(in_attesa) + " proposte" if in_attesa > 1 else "1 proposta")
+            + " da rivedere: "
+            + config.comando_ares("skills", "list")
+        )
+    return "; ".join(parti) or None
 
 
 def riga_regole(regole: Regole) -> str:

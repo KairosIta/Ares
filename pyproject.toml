@@ -41,6 +41,9 @@ dependencies = [
     # Non lo usiamo: lo pretende l'__init__ di agno.models.ollama, che importa
     # OllamaResponses insieme a Ollama.
     "openai",
+    # Il frontmatter dei SKILL.md (ares/agent/skill.py). Arriva gia' con agno,
+    # ma lo importiamo direttamente.
+    "pyyaml",
     # Carica le personalizzazioni locali da un file .env ignorato da Git.
     "python-dotenv",
     # Renderer della CLI: Markdown, streaming Live, pannelli, tabelle e tema.
@@ -135,6 +138,12 @@ no_implicit_optional = true
 # `tests/_comune.py`, `tests/_doppi.py`) la CI lo nomina esplicitamente,
 # scavalcando questo `exclude`.
 exclude = ['^\.venv/', '^tests/']
+
+# PyYAML non porta i tipi, e il pacchetto di stub sarebbe una dipendenza in
+# piu' per una chiamata sola (`yaml.safe_load` in ares/agent/skill.py).
+[[tool.mypy.overrides]]
+module = ["yaml"]
+ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
 # Misura di copertura
