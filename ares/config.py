@@ -215,6 +215,9 @@ try:
     # che con una tool call; vale solo con un estrattore locale (vedi
     # `Impostazioni.estrazione_vincolata`). Assente: acceso.
     ESTRAZIONE_VINCOLATA = leggi_interruttore("ARES_ESTRAZIONE_VINCOLATA", AMBIENTE.get("ARES_ESTRAZIONE_VINCOLATA"))
+    # Gli strumenti di entita' e intuizioni fuori dal prompt finche' il
+    # modello non li attiva (`agent/scaffale.py`). Assente: acceso.
+    SU_RICHIESTA = leggi_interruttore("ARES_STRUMENTI_SU_RICHIESTA", AMBIENTE.get("ARES_STRUMENTI_SU_RICHIESTA"))
 except ValueError as errore:
     # All'import, prima di ogni comando: una riga e non un traceback.
     raise SystemExit("Configurazione di Ares non valida: " + str(errore)) from None
@@ -732,7 +735,9 @@ class Apprendimento:
     """Cosa Ares impara, da solo e su richiesta, e con quali limiti.
 
     `memorie_datate` viene da `DATE_MEMORIE`, `strumenti_memoria` da
-    `MEMORY_AGENT_TOOLS`.
+    `MEMORY_AGENT_TOOLS`, `su_richiesta` da `ARES_STRUMENTI_SU_RICHIESTA`:
+    gli strumenti di entita' e intuizioni arrivano al modello solo dopo che
+    li ha attivati.
     """
 
     profilo: bool
@@ -744,6 +749,7 @@ class Apprendimento:
     max_aggiornamenti: int
     tentativi_contesto: int
     strumenti_memoria: bool
+    su_richiesta: bool = True
 
     @property
     def automatici(self) -> bool:
@@ -831,6 +837,7 @@ def leggi_politica() -> Politica:
             max_aggiornamenti=MAX_UPDATES_PER_RUN,
             tentativi_contesto=SESSION_CONTEXT_RETRIES,
             strumenti_memoria=MEMORY_AGENT_TOOLS,
+            su_richiesta=SU_RICHIESTA is not False,
         ),
         cronologia=Cronologia(
             sessioni_passate=SEARCH_PAST_SESSIONS,

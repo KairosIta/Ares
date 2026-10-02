@@ -14,6 +14,7 @@ from ares.agent.learning import (
     apprendi_a_run_completato,
     build_learning_machine,
     build_session_context_store,
+    scaffale_della_macchina,
 )
 from ares.agent.marcatura import marca_risultati
 from ares.agent.prompts import (
@@ -83,6 +84,10 @@ def build_assistant(
     esplicite" in docs/architecture.md. Con lo spazio di lavoro acceso la
     sessione registra la sua cartella in `metadata`, letta da `ares resume` e
     `/sessioni`.
+
+    Con `politica.apprendimento.su_richiesta` gli strumenti di entita' e
+    intuizioni stanno sullo scaffale (`agent/scaffale.py`): il modello li
+    vede dopo averli attivati.
     """
     modo = modo or config.MODO_PREDEFINITO
     db = build_db(percorsi)
@@ -109,17 +114,24 @@ def build_assistant(
                 limite=politica.cronologia.sessioni_nel_prompt,
             ).voci
 
+    macchina = build_learning_machine(db, knowledge, utente, impostazioni, politica, strumenti=interattivo)
+    scaffale = scaffale_della_macchina(macchina) if politica.apprendimento.su_richiesta else None
+    modello = build_chat_model(impostazioni)
+    modello.scaffale = scaffale
+
     return Agent(
         # Il nome lo dice gia' la descrizione, in italiano: acceso, Agno
         # aggiungerebbe "Your name is: Ares." in coda.
         name="Ares",
         description=descrizione(impostazioni, politica, interattivo=interattivo),
-        model=build_chat_model(impostazioni),
+        model=modello,
         db=db,
         user_id=utente.id,
         session_id=session_id,
         metadata=metadata,
-        tools=[build_quaderno(fs), build_orologio()] + ([spazio] if spazio is not None else []),
+        tools=[build_quaderno(fs), build_orologio()]
+        + ([spazio] if spazio is not None else [])
+        + ([scaffale.toolkit()] if scaffale is not None else []),
         # Cio' che gli strumenti leggono dal mondo arriva al modello fra due
         # righe che dicono la fonte e che sono dati (`agent/marcatura.py`).
         tool_hooks=[marca_risultati(politica.workspace.prefisso)],
@@ -133,8 +145,10 @@ def build_assistant(
             modo=modo,
             interattivo=interattivo,
             precedenti=precedenti,
+            su_richiesta=scaffale.gruppi if scaffale is not None else (),
         ),
-        learning=build_learning_machine(db, knowledge, utente, impostazioni, politica, strumenti=interattivo),
+        learning=macchina,
+        pre_hooks=[scaffale.pre_hook()] if scaffale is not None else None,
         post_hooks=[apprendi_a_run_completato] if interattivo else [],
         add_learnings_to_context=True,
         add_history_to_context=True,

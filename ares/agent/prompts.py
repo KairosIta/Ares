@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from ares import config
 from ares.agent.agno_interni import funzioni_per_modello
+from ares.agent.scaffale import Gruppo
 from ares.config import Impostazioni, Politica
 from ares.state.git import ramo_git
 from ares.state.identita import Utente
@@ -314,30 +315,29 @@ def istruzioni_di_collaborazione(*, interattivo: bool = True) -> list[str]:
 
 
 def istruzioni_sugli_strumenti(
-    radice_lavoro=None, modo: str | None = None, *, politica: Politica, interattivo: bool = True
+    radice_lavoro=None,
+    modo: str | None = None,
+    *,
+    politica: Politica,
+    interattivo: bool = True,
+    su_richiesta: Sequence[Gruppo] = (),
 ) -> list[str]:
-    """Istruzioni solo per gli strumenti che la politica ha davvero cablato."""
+    """Istruzioni solo per gli strumenti che la politica ha davvero cablato.
+
+    `su_richiesta` sono i gruppi dello scaffale (`agent/scaffale.py`): una
+    riga ciascuno, perche' il modello sappia che esistono e come averli.
+    """
     modo = modo or config.MODO_PREDEFINITO
     dette = [
         "Il messaggio di sistema dice che giorno e', non l'ora: se la risposta dipende dall'ora, o "
         "da quanto tempo e' passato, leggila con che_ora_e invece di indovinarla."
     ]
-    if interattivo and politica.apprendimento.entita:
+    if su_richiesta:
         dette.append(
-            "Su persone e progetti distingui i fatti dagli eventi quando usi "
-            "remember_about, e scrivi gli uni e gli altri in italiano: un "
-            "fatto e' un valore attuale che un giorno sara' sostituito, un "
-            "evento e' qualcosa che e' accaduto in un momento preciso. Distingui la data "
-            "dell'evento da quella in cui ne vieni a conoscenza: se il momento non e' noto, "
-            "non attribuirgli la data di oggi. Anche un evento registrato puo' richiedere "
-            "una correzione se la fonte era sbagliata."
-        )
-    if interattivo and politica.apprendimento.intuizioni:
-        dette.append(
-            "Quando l'utente chiede esplicitamente di salvare un criterio nelle "
-            "intuizioni, usa prima search_learnings per i duplicati e poi "
-            "save_learning: non scriverlo nel quaderno, che non viene cercato "
-            "automaticamente nelle conversazioni future."
+            "Alcuni strumenti arrivano solo quando li chiedi: chiama attiva_strumenti con il nome del "
+            "gruppo, poi usa gli strumenti che compaiono, che restano per il resto della conversazione. "
+            "Non sostituirli con la memoria o con il quaderno: attiva il gruppo.\n"
+            + "\n".join("- " + g.nome + " (" + ", ".join(g.strumenti) + "): " + g.riga + "." for g in su_richiesta)
         )
     if politica.cronologia.sessioni_passate:
         dette.append(
@@ -663,6 +663,7 @@ def istruzioni(
     modo: str | None = None,
     interattivo: bool = True,
     precedenti: Sequence[SessioneRiferimento] = (),
+    su_richiesta: Sequence[Gruppo] = (),
 ) -> Istruzioni:
     """Il prompt di Ares, sezione per sezione, nell'ordine di `SEZIONI`."""
     nome_regole = politica.workspace.istruzioni
@@ -688,7 +689,10 @@ def istruzioni(
         *_sezione("memoria", istruzioni_sulla_memoria(politica=politica, interattivo=interattivo)),
         *_sezione("quaderno", istruzioni_sul_quaderno()),
         *_sezione(
-            "strumenti", istruzioni_sugli_strumenti(radice_lavoro, modo, politica=politica, interattivo=interattivo)
+            "strumenti",
+            istruzioni_sugli_strumenti(
+                radice_lavoro, modo, politica=politica, interattivo=interattivo, su_richiesta=su_richiesta
+            ),
         ),
         *_sezione("regole_del_progetto", istruzioni_dalla_cartella(radice_lavoro, politica)),
     ]

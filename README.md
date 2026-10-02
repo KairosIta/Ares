@@ -365,7 +365,10 @@ vengono indicizzati nel database principale e conservati in
 `filesystem.db`, entrambi inclusi negli snapshot. Dopo il turno, la macchina
 di apprendimento aggiorna gli store configurati; entità e intuizioni restano
 invece agentiche e vengono consultate o modificate solo quando Ares decide di
-chiamarne gli strumenti.
+chiamarne gli strumenti. Quegli strumenti non arrivano al modello finché non
+li attiva con `attiva_strumenti`: il prompt li descrive con una riga, e
+ogni richiesta pesa circa un quinto in meno (`ARES_STRUMENTI_SU_RICHIESTA=0`
+li dà tutti da subito).
 
 ## Come si usa
 

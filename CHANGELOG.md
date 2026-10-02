@@ -8,6 +8,31 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Strumenti su richiesta** (proposta 3.9 di `docs/agentic-improvements.md`).
+  I sei strumenti di entità e intuizioni non arrivano al modello finché non
+  li attiva: il prompt porta una riga per gruppo, con gli strumenti che
+  contiene e quando attivarlo, e `attiva_strumenti(gruppo)` restituisce la
+  guida del gruppo (`ares/agent/scaffale.py`). Il filtro sta in
+  `OllamaConRagionamento.get_request_params`: Agno conosce ed esegue tutti
+  gli strumenti, il modello vede uno schema dalla richiesta dopo
+  l'attivazione, nello stesso turno. Il gruppo resta attivo per la
+  conversazione, anche ripresa: è in `session_state`, e un pre-hook lo
+  rilegge. Ogni richiesta pesa circa 6.700 caratteri in meno, un quinto:
+  23 strumenti invece di 28, 16.043 caratteri di schemi invece di 20.877,
+  system message di 10.712 invece di 12.385. `ARES_STRUMENTI_SU_RICHIESTA=0`
+  li dà tutti da subito. Sessioni passate e correzione delle memorie restano
+  sempre presenti: il prompt le nomina già, e una correzione non deve
+  dipendere da un passo in più. Le guide di entità e intuizioni assorbono i
+  due paragrafi che stavano nella sezione `strumenti`. Due casi nuovi
+  nell'eval degli strumenti, `entita` e `intuizione`; prova offline in
+  `smoke` con un turno vero e il client Ollama finto, ora in
+  `tests/_doppi.py`. Sul 9B di serie, tre ripetizioni: i casi nuovi
+  passano 6 su 6 con lo scaffale (`entita` 1/3 senza), e il modello attiva
+  il gruppo e chiama lo strumento nello stesso turno; l'eval intero dà
+  49/63 controlli acceso e 51/63 spento, con scarti di uno su casi che non
+  toccano lo scaffale. Il cloud passa 21/21 sui casi provati
+  (`docs/conversation-eval.md`).
+
 - **Le memorie sanno da dove vengono, e una correzione non cancella**
   (proposta 3.7 di `docs/agentic-improvements.md`). Dopo ogni turno Ares
   scrive sulle memorie che il turno ha scritto la sessione, il turno, la

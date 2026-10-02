@@ -45,7 +45,7 @@ from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from _comune import NON_CONCLUSIVO, esegui, esigi, prepara_ambiente, pulisci
-from _doppi import ModelloACopione, tool_call
+from _doppi import ModelloACopione, OllamaFinto, tool_call
 
 # I percorsi vanno scelti prima di importare config, che li legge quando
 # `leggi_percorsi` viene chiamata; e `build_workspace` apre la directory di
@@ -81,7 +81,9 @@ from ares.agent.assistant import (  # noqa: E402
 )
 from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
 from ares.agent.prompts import descrizione_del_comando, strumenti_spazio  # noqa: E402
+from ares.agent.scaffale import CHIAVE_STATO, ENTITA, GRUPPI, INTUIZIONI, Scaffale  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
+from ares.agent.turn_core import run_turn_cycle  # noqa: E402
 from ares.cli.commands import StatoChat, gestisci_comando  # noqa: E402
 from ares.cli.conversazioni import righe_sessione  # noqa: E402
 from ares.cli.ui import stampa_store  # noqa: E402
@@ -784,6 +786,90 @@ def strumenti(agent, user_id: str) -> str:
     return str(len(attesi)) + " strumenti su " + str(len(nomi)) + " consegnati: " + ", ".join(sorted(attesi))
 
 
+def _con_scaffale(acceso: bool):
+    """La politica di serie con lo scaffale acceso o spento."""
+    return replace(POLITICA, apprendimento=replace(POLITICA.apprendimento, su_richiesta=acceso))
+
+
+def _turno_finto(agent, risposte: list[list[dict]]) -> OllamaFinto:
+    """Un turno vero attraverso Agno, con il client Ollama finto; senza estrazione dopo."""
+    client = OllamaFinto(risposte)
+    agent.model.client = client
+    agent.post_hooks = []
+    run_turn_cycle(agent, "ciao", on_event=lambda _: None, resolve_pause=lambda _: 0)
+    return client
+
+
+def _nomi(richiesta: dict) -> set[str]:
+    return {voce["function"]["name"] for voce in richiesta.get("tools") or []}
+
+
+def _sistema(richiesta: dict) -> str:
+    return next(m["content"] for m in richiesta["messages"] if m["role"] == "system")
+
+
+def strumenti_su_richiesta(user_id: str) -> str:
+    """Entita' e intuizioni arrivano al modello solo dopo `attiva_strumenti`, e restano.
+
+    Un turno vero attraverso Agno, col client Ollama finto: la prima
+    richiesta ha `attiva_strumenti` e una riga per gruppo, senza schemi ne'
+    guide dei gruppi; la richiesta dopo l'attivazione, nello stesso turno, ha
+    gli schemi del gruppo attivato e non dell'altro. La sessione ripresa con
+    un agente nuovo li ha dal primo turno, e la guida e' nel prompt. Spento,
+    tutto arriva subito e lo strumento non c'e'.
+    """
+    # Un utente proprio: le sessioni di questa prova non entrano negli elenchi del seme.
+    utente = Utente.da_grezzo(user_id + "-scaffale")
+    if not (POLITICA.apprendimento.entita and POLITICA.apprendimento.intuizioni):
+        return NON_CONCLUSIVO + "entita' o intuizioni sono spente in config.py"
+    entita, intuizioni = set(ENTITA.strumenti), set(INTUIZIONI.strumenti)
+
+    agent = build_assistant(PERCORSI, IMPOSTAZIONI, _con_scaffale(True), utente, session_id="scaffale")
+    attivazione = {"function": {"name": "attiva_strumenti", "arguments": {"gruppo": "Entita'"}}}
+    client = _turno_finto(agent, [[{"tool_calls": [attivazione]}], [{"content": "fatto"}]])
+    prima, dopo = client.richieste
+    esigi("attiva_strumenti" in _nomi(prima), "attiva_strumenti non arriva al modello")
+    esigi(not (entita | intuizioni) & _nomi(prima), "schemi dei gruppi al primo turno: " + repr(_nomi(prima)))
+    sistema = _sistema(prima)
+    for gruppo in GRUPPI:
+        esigi(sistema.count("- " + gruppo.nome + " (") == 1, "il prompt non nomina una volta il gruppo " + gruppo.nome)
+    esigi("<istruzioni_entita>" not in sistema, "la guida delle entita' e' nel prompt prima dell'attivazione")
+    esigi(entita <= _nomi(dopo), "dopo l'attivazione gli schemi delle entita' non arrivano: " + repr(_nomi(dopo)))
+    esigi(not intuizioni & _nomi(dopo), "l'attivazione delle entita' porta anche le intuizioni")
+    risultato = next(m["content"] for m in dopo["messages"] if m["role"] == "tool")
+    esigi("remember_about" in risultato and "fatti dagli eventi" in risultato, "la guida non torna: " + risultato)
+    stato = agent.get_session_state(session_id="scaffale")
+    esigi(stato.get(CHIAVE_STATO) == ["entita"], "la sessione non conserva il gruppo: " + repr(stato))
+
+    ripresa = build_assistant(PERCORSI, IMPOSTAZIONI, _con_scaffale(True), utente, session_id="scaffale")
+    (richiesta,) = _turno_finto(ripresa, [[{"content": "fatto"}]]).richieste
+    esigi(entita <= _nomi(richiesta), "la sessione ripresa perde gli strumenti attivati")
+    esigi(not intuizioni & _nomi(richiesta), "la sessione ripresa attiva le intuizioni")
+    sistema = _sistema(richiesta)
+    esigi("<istruzioni_entita>" in sistema, "la guida delle entita' attivate non e' nel prompt")
+    esigi("<istruzioni_intuizioni>" not in sistema, "la guida delle intuizioni chiuse e' nel prompt")
+    esigi(not righe_inglesi(sistema), "la guida attivata ha righe inglesi: " + repr(righe_inglesi(sistema)[:2]))
+
+    spento = build_assistant(PERCORSI, IMPOSTAZIONI, _con_scaffale(False), utente, session_id="scaffale-spento")
+    (richiesta,) = _turno_finto(spento, [[{"content": "fatto"}]]).richieste
+    esigi(spento.model.scaffale is None, "spento, il modello ha uno scaffale")
+    esigi((entita | intuizioni) <= _nomi(richiesta), "spento, gli schemi dei gruppi non arrivano subito")
+    esigi("attiva_strumenti" not in _nomi(richiesta), "spento, attiva_strumenti arriva al modello")
+    sistema = _sistema(richiesta)
+    esigi("<istruzioni_entita>" in sistema and "<istruzioni_intuizioni>" in sistema, "spento, mancano le guide")
+    esigi("attiva_strumenti" not in sistema, "spento, il prompt nomina attiva_strumenti")
+
+    scaffale = Scaffale(guide={"entita": lambda: "guida"})
+    sconosciuto = {}
+    esigi(scaffale.attiva("intuizioni", sconosciuto).startswith("Gruppo sconosciuto"), "un gruppo assente si attiva")
+    esigi(sconosciuto == {} and not scaffale.attivi, "un gruppo sconosciuto cambia lo stato")
+    esigi("guida" in scaffale.attiva(" ENTITÀ ", None) and scaffale.attivo("entita"), "il nome accentato non attiva")
+    return (
+        str(len(entita | intuizioni)) + " schemi fuori dal primo turno, attivati a meta' turno e ripresi con la "
+        "sessione; spento arrivano subito"
+    )
+
+
 # Parole che in italiano non esistono: due diverse sulla stessa riga la
 # dicono inglese. I nomi degli strumenti non contano, `\b` non spezza `_`.
 _PAROLE_INGLESI = re.compile(r"\b(the|is|are|you|your|to|of|and|with|when|use|this|that)\b", re.IGNORECASE)
@@ -831,15 +917,16 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     doppio = re.search(r"\S {2,}\S", fuori_dai_dati(prompt))
     esigi(doppio is None, "il prompt contiene un doppio spazio: " + repr(doppio and doppio.group()))
     attesi = ["quaderno privato", "Formatta le risposte in Markdown", "La tua memoria, e chi la scrive", "- Oggi: "]
+    # Con lo scaffale le guide di entita' e intuizioni arrivano dopo
+    # l'attivazione: le prova `strumenti_su_richiesta`.
     if config.LEARN_KNOWLEDGE:
-        attesi += [
-            "<istruzioni_intuizioni>",
-            "search_learnings",
-            "una persona sola",
-            "titolo, intuizione e contesto in italiano",
-        ]
+        attesi += ["search_learnings"]
+        if not POLITICA.apprendimento.su_richiesta:
+            attesi += ["<istruzioni_intuizioni>", "una persona sola", "titolo, intuizione e contesto in italiano"]
     if config.LEARN_ENTITIES:
-        attesi += ["<istruzioni_entita>", "remember_about"]
+        attesi += ["remember_about"] + ([] if POLITICA.apprendimento.su_richiesta else ["<istruzioni_entita>"])
+    if POLITICA.apprendimento.su_richiesta and (config.LEARN_KNOWLEDGE or config.LEARN_ENTITIES):
+        attesi += ["attiva_strumenti"]
     if config.LEARN_USER_MEMORY and config.MEMORY_AGENT_TOOLS:
         attesi += ["<istruzioni_memorie>", "update_user_memory"]
     if config.OFFLOAD_TOOL_RESULTS:
@@ -2704,6 +2791,7 @@ def main() -> int:
             ("identita            ", lambda: identita(agent)),
             ("ambiente nel prompt ", lambda: ambiente_nel_prompt(agent, args.user, args.session)),
             ("strumenti           ", lambda: strumenti(agent, args.user)),
+            ("strumenti su richiesta", lambda: strumenti_su_richiesta(args.user)),
             ("prompt in italiano  ", lambda: prompt_in_italiano(agent, args.user, args.session)),
             ("struttura del prompt", lambda: struttura_del_prompt(agent, args.user, args.session)),
             ("istruzioni modalita'", istruzioni_fuori_modalita),
