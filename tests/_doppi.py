@@ -1,7 +1,8 @@
 """Doppi condivisi fra piu' prove
 ==============================
 
-Un modello finto e la tool call che gli si mette in bocca. Stanno qui e non
+Un modello finto, un client Ollama finto e la tool call che gli si mette in
+bocca. Stanno qui e non
 in `_comune.py` perche' importano Agno; come `_comune.py`, non importano
 `ares` ne' `config`, quindi si possono importare prima di
 `prepara_ambiente`.
@@ -20,6 +21,7 @@ from typing import Any
 from agno.models.base import Model
 from agno.models.message import MessageMetrics
 from agno.models.response import ModelResponse
+from ollama import ChatResponse
 
 
 def tool_call(nome: str, **argomenti: Any) -> dict[str, Any]:
@@ -66,3 +68,22 @@ class ModelloACopione(Model):
 
     def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
         return response
+
+
+class OllamaFinto:
+    """Il client `ollama` di `OllamaConRagionamento`: risponde in streaming e tiene le richieste.
+
+    Ogni risposta e' una lista di messaggi parziali, come i chunk di
+    `/api/chat`; l'ultimo chunk chiude con `done`.
+    """
+
+    def __init__(self, risposte: list[list[dict[str, Any]]]) -> None:
+        self.risposte = list(risposte)
+        self.richieste: list[dict[str, Any]] = []
+
+    def chat(self, **kwargs: Any):
+        self.richieste.append(kwargs)
+        parti = self.risposte.pop(0)
+        for indice, parte in enumerate(parti):
+            ultima = indice == len(parti) - 1
+            yield ChatResponse(model="finto", message={"role": "assistant", "content": "", **parte}, done=ultima)

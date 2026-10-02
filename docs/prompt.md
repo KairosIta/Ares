@@ -17,7 +17,7 @@ nell'ordine di `prompts.SEZIONI`:
 | `senza_terminale` | solo con `-p` o una pipe |
 | `memoria` | quali archivi si aggiornano e come ragionare sui ricordi |
 | `quaderno` | il quaderno privato |
-| `strumenti` | istruzioni sugli strumenti accesi, workspace compreso |
+| `strumenti` | istruzioni sugli strumenti accesi, workspace compreso; una riga per ogni gruppo su richiesta |
 | `regole_del_progetto` | `ARES.md`, se c'è |
 | `questo_avvio` | utente, conversazione, cartella, conversazioni precedenti, data del giorno |
 
@@ -131,6 +131,15 @@ fonti e condizioni pertinenti, senza spacciare una proposta per una
 decisione o un'idea per una procedura verificata. La guida delle intuizioni
 richiede titolo, contenuto e contesto in italiano anche quando la risposta
 è in un'altra lingua, conservando nomi tecnici e identificativi.
+
+Con gli strumenti su richiesta (`ares/agent/scaffale.py`, acceso di serie)
+le guide di entità e intuizioni non sono nel prompt: la sezione `strumenti`
+porta una riga per gruppo, con gli strumenti che contiene e quando
+attivarlo, e chiede di non sostituirli con la memoria o con il quaderno. La
+guida arriva come risposta di `attiva_strumenti` e, dal turno dopo, torna
+nel blocco dello store. La riga nomina gli strumenti e dice quando attivare
+il gruppo: con una descrizione dell'ambito soltanto il 9B di serie non
+attivava mai le entità, e ripiegava su `update_user_memory`.
 
 ## Verifica e limiti
 

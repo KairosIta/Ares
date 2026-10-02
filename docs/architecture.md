@@ -136,7 +136,18 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   contesto di sessione costruisce prompt e funzioni dell'estrazione); `INTERNI` li elenca e la
   prova `contratto` verifica che esistano nella versione installata.
   `OllamaConRagionamento`, il modello di conversazione ed estrazione,
-  conserva il `thinking` di Ollama e lo rimanda al passo successivo.
+  conserva il `thinking` di Ollama e lo rimanda al passo successivo, e
+  toglie dalla richiesta gli strumenti che lo scaffale tiene nascosti.
+- `scaffale.py` tiene entità e intuizioni su richiesta: il prompt le
+  descrive con una riga per gruppo e `attiva_strumenti(gruppo)` ne
+  restituisce la guida. Agno conosce ed esegue tutti gli strumenti, ma il
+  modello riceve gli schemi di un gruppo solo dopo averlo attivato: il
+  filtro sta in `get_request_params`, che Agno chiama a ogni richiesta,
+  quindi lo schema compare già nella richiesta successiva dello stesso
+  turno. I gruppi attivati restano in `session_state` e un pre-hook li
+  riprende con la sessione; la guida, dopo l'attivazione, torna nel prompt.
+  Un gruppo non si disattiva: toglierne lo schema sposterebbe di nuovo il
+  prefisso del prompt.
 - `prompts.py` compone il prompt solo con ciò che è davvero abilitato:
   - una scheda dell'avvio: modelli (e se sono locali o cloud), embedder,
     finestra di contesto, sistema e shell, utente, conversazione, cartella e

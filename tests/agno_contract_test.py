@@ -63,7 +63,7 @@ from _comune import chiudi, esegui, esigi, prepara_ambiente
 RADICE_PROVA = prepara_ambiente("agno-contract-test")
 RADICE = Path(__file__).resolve().parent.parent
 
-from _doppi import ModelloACopione, tool_call  # noqa: E402
+from _doppi import ModelloACopione, OllamaFinto, tool_call  # noqa: E402
 from agno.fs._paths import MAX_SEGMENT_CHARS, normalize_namespace  # noqa: E402
 from agno.learn import (  # noqa: E402
     LearningMachine,
@@ -74,7 +74,6 @@ from agno.learn import (  # noqa: E402
 from agno.learn.stores import UserMemoryStore, UserProfileStore  # noqa: E402
 from agno.models.message import Message, MessageMetrics  # noqa: E402
 from agno.models.response import ModelResponse  # noqa: E402
-from ollama import ChatResponse  # noqa: E402
 
 from ares import config  # noqa: E402
 
@@ -705,25 +704,6 @@ def interni_presenti() -> str:
             classe.__name__ + " non passa da FunzioniRitoccate: il mixin e' dopo la classe di Agno",
         )
     return str(len(INTERNI)) + " interni presenti, " + str(len(ritoccati)) + " store ritoccati"
-
-
-class OllamaFinto:
-    """Il client `ollama` di `OllamaConRagionamento`: risponde in streaming e tiene le richieste.
-
-    Ogni risposta e' una lista di messaggi parziali, come i chunk di
-    `/api/chat`; l'ultimo chunk chiude con `done`.
-    """
-
-    def __init__(self, risposte: list[list[dict[str, Any]]]) -> None:
-        self.risposte = list(risposte)
-        self.richieste: list[dict[str, Any]] = []
-
-    def chat(self, **kwargs: Any):
-        self.richieste.append(kwargs)
-        parti = self.risposte.pop(0)
-        for indice, parte in enumerate(parti):
-            ultima = indice == len(parti) - 1
-            yield ChatResponse(model="finto", message={"role": "assistant", "content": "", **parte}, done=ultima)
 
 
 def ragionamento_rimandato() -> str:

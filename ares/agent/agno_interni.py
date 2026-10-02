@@ -12,6 +12,8 @@ from agno.models.message import Message
 from agno.models.ollama import Ollama
 from agno.models.response import ModelResponse
 
+from ares.agent.scaffale import visibili
+
 # (modulo, oggetto, attributo): cio' che deve esistere nella versione di Agno
 # installata. Attributo vuoto: basta l'oggetto.
 INTERNI: tuple[tuple[str, str, str], ...] = (
@@ -26,6 +28,7 @@ INTERNI: tuple[tuple[str, str, str], ...] = (
     ("agno.agent._tools", "determine_tools_for_model", ""),
     ("agno.learn.machine", "_filter_store_kwargs", ""),
     ("agno.offload.tools", "OFFLOAD_INSTRUCTION", ""),
+    ("agno.models.ollama", "Ollama", "get_request_params"),
     ("agno.models.ollama", "Ollama", "_format_message"),
     ("agno.models.ollama", "Ollama", "_parse_provider_response"),
     ("agno.models.ollama", "Ollama", "_parse_provider_response_delta"),
@@ -113,7 +116,17 @@ class OllamaConRagionamento(Ollama):
     ragionamento, lasciando vuota la risposta. Qui il ragionamento diventa
     `reasoning_content` del messaggio e torna nel campo `thinking`
     dell'API; se usarlo lo decide il renderer di ciascun modello.
+
+    Con uno `scaffale` (`agent/scaffale.py`) gli strumenti che tiene
+    nascosti non arrivano al modello. Agno chiama `get_request_params` a
+    ogni richiesta, anche fra una chiamata di strumento e l'altra dello
+    stesso turno: un gruppo attivato compare alla richiesta successiva.
     """
+
+    scaffale: Any = None
+
+    def get_request_params(self, tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        return super().get_request_params(tools=visibili(tools, self.scaffale) if tools else tools)
 
     def _format_message(self, message: Message, compress_tool_results: bool = False) -> dict[str, Any]:
         formattato = super()._format_message(message, compress_tool_results)

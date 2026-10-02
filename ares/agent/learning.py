@@ -48,6 +48,7 @@ from ares.agent.agno_interni import (
 from ares.agent.echo import CAMPI_DI_SERVIZIO
 from ares.agent.radicamento import Fonte, radica_campo, radica_memoria
 from ares.agent.runtime import build_learning_model
+from ares.agent.scaffale import ENTITA, INTUIZIONI, Scaffale
 from ares.agent.schemas import AresMemories, AresMemorieSenzaData, AresProfile
 from ares.config import QUADERNO_PREFIX, Impostazioni, Politica
 from ares.state.identita import Utente
@@ -735,14 +736,44 @@ class AresUserMemoryStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRito
         )
 
 
-class AresEntityMemoryStore(EntityMemoryStore):
-    """Le entita', spiegate in italiano: quattro strumenti e quando usarli."""
+class StoreSuRichiesta:
+    """Mixin per uno store la cui guida e i cui strumenti possono stare sullo scaffale.
+
+    `guida` e' il testo; `instructions` lo incornicia in `TAG`, e resta vuoto
+    se lo store non espone strumenti o se lo `scaffale` tiene chiuso il suo
+    `GRUPPO`: allora la guida arriva al modello solo come risposta di
+    `attiva_strumenti`.
+    """
+
+    TAG = ""
+    GRUPPO = ""
+    scaffale: Scaffale | None = None
+
+    def esposta(self) -> bool:
+        return True
+
+    def guida(self) -> str:
+        raise NotImplementedError
 
     def instructions(self) -> str:
-        if not strumenti_esposti(self):
+        if not self.esposta():
             return ""
+        if self.scaffale is not None and not self.scaffale.attivo(self.GRUPPO):
+            return ""
+        return "<" + self.TAG + ">\n" + self.guida() + "\n</" + self.TAG + ">"
+
+
+class AresEntityMemoryStore(StoreSuRichiesta, EntityMemoryStore):
+    """Le entita', spiegate in italiano: quattro strumenti e quando usarli."""
+
+    TAG = "istruzioni_entita"
+    GRUPPO = ENTITA.nome
+
+    def esposta(self) -> bool:
+        return strumenti_esposti(self)
+
+    def guida(self) -> str:
         return (
-            "<istruzioni_entita>\n"
             "Le entita' sono persone, progetti, sistemi e prodotti che contano per la persona con "
             "cui parli, con i loro fatti ed eventi. Non si aggiornano da sole. "
             "remember_about registra un fatto, un evento, una descrizione o una nota su "
@@ -753,11 +784,15 @@ class AresEntityMemoryStore(EntityMemoryStore):
             "un fatto o archivia un'entita' intera. Registra quando impari qualcosa di sostanziale "
             "su una persona, un progetto o un sistema che servira' in una conversazione futura, "
             "e scrivilo in italiano.\n"
-            "</istruzioni_entita>"
+            "Distingui i fatti dagli eventi quando usi remember_about: un fatto e' un valore attuale "
+            "che un giorno sara' sostituito, un evento e' qualcosa che e' accaduto in un momento "
+            "preciso. Distingui la data dell'evento da quella in cui ne vieni a conoscenza: se il "
+            "momento non e' noto, non attribuirgli la data di oggi. Anche un evento registrato puo' "
+            "richiedere una correzione se la fonte era sbagliata."
         )
 
 
-class AresLearnedKnowledgeStore(LearnedKnowledgeStore):
+class AresLearnedKnowledgeStore(StoreSuRichiesta, LearnedKnowledgeStore):
     """Le intuizioni, spiegate in italiano e senza regole di squadra.
 
     La guida di Agno chiede di conservare "obiettivi e politiche del team
@@ -765,14 +800,20 @@ class AresLearnedKnowledgeStore(LearnedKnowledgeStore):
     regola farebbe salvare come intuizione cio' che e' una preferenza.
     """
 
-    def instructions(self) -> str:
+    TAG = "istruzioni_intuizioni"
+    GRUPPO = INTUIZIONI.nome
+
+    def esposta(self) -> bool:
         # Agno restituisce le istruzioni AGENTIC anche con gli strumenti spenti.
-        if not self.config.enable_agent_tools:
-            return ""
-        if self.config.mode != LearningMode.AGENTIC:
-            return super().instructions()
+        return self.config.enable_agent_tools
+
+    def instructions(self) -> str:
+        if self.esposta() and self.config.mode != LearningMode.AGENTIC:
+            return LearnedKnowledgeStore.instructions(self)
+        return super().instructions()
+
+    def guida(self) -> str:
         return (
-            "<istruzioni_intuizioni>\n"
             "Le intuizioni sono criteri riutilizzabili imparati lavorando, cercabili per "
             "somiglianza. Non si aggiornano da sole. search_learnings(query) le cerca: usalo "
             "prima di rispondere a una domanda di metodo, di scelta o di convenzione, e sempre "
@@ -786,9 +827,25 @@ class AresLearnedKnowledgeStore(LearnedKnowledgeStore):
             "persona - quelle sono memorie - o doppioni. Conserva il criterio e le condizioni "
             "in cui vale, non la sola risposta al caso specifico; distingui una procedura "
             "verificata da un'idea ancora da provare. Qui c'e' una persona sola: non esistono "
-            "regole di squadra da conservare per altri.\n"
-            "</istruzioni_intuizioni>"
+            "regole di squadra da conservare per altri. Non scrivere un criterio nel quaderno: "
+            "il quaderno non viene cercato automaticamente nelle conversazioni future."
         )
+
+
+def scaffale_della_macchina(macchina: LearningMachine | None) -> Scaffale | None:
+    """Lo scaffale con i gruppi che la macchina espone davvero, legato ai loro store.
+
+    `None` se nessuno store ha strumenti da tenere su richiesta.
+    """
+    if macchina is None:
+        return None
+    store = [s for s in macchina.stores.values() if isinstance(s, StoreSuRichiesta) and s.esposta()]
+    if not store:
+        return None
+    scaffale = Scaffale(guide={s.GRUPPO: s.guida for s in store})
+    for s in store:
+        s.scaffale = scaffale
+    return scaffale
 
 
 def build_session_context_store(db: SqliteDb, model: Ollama, politica: Politica) -> AresSessionContextStore:
