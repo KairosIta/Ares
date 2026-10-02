@@ -28,6 +28,7 @@ from ares.agent.skill import (
     carica_proposta,
     carica_skill,
     errore_nome,
+    impronta,
     proposte,
 )
 from ares.cli.comando import ESITO_FATTO, ESITO_GUASTO, ESITO_RIFIUTO, nuova_app
@@ -99,6 +100,8 @@ def _adotta(percorsi: Percorsi, nome: str, applica: bool) -> int:
     if isinstance(proposta, Scartata):
         UI.err("La proposta " + nome + " non si caricherebbe: " + proposta.motivo)
         return ESITO_RIFIUTO
+    # L'impronta prima di mostrarla: si adotta solo cio' che la persona ha visto.
+    vista = impronta(proposta.cartella)
     UI.heading("Proposta " + nome)
     UI.line(proposta.file.read_text(encoding="utf-8").rstrip())
     UI.blank()
@@ -114,6 +117,9 @@ def _adotta(percorsi: Percorsi, nome: str, applica: bool) -> int:
         return ESITO_FATTO
     if not conferma_scritta("ADOTTA " + nome):
         UI.line("Conferma non corrispondente: niente adottato.", style="ares.warning")
+        return ESITO_RIFIUTO
+    if not proposta.cartella.is_dir() or impronta(proposta.cartella) != vista:
+        UI.err("La proposta " + nome + " e' cambiata dopo l'anteprima: niente adottato. Rileggila e riprova.")
         return ESITO_RIFIUTO
     destinazione, precedente = adotta(percorsi, nome)
     UI.line("Skill adottata: " + str(destinazione) + ". Vale dalla prossima conversazione.", style="ares.success")

@@ -142,10 +142,12 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   toglie dalla richiesta gli strumenti che lo scaffale tiene nascosti.
 - `skill.py` carica le skill da `~/.ares/skills` e da `.ares/skills` della
   cartella, senza `proposte/` e le cartelle nascoste; scarta con il motivo
-  quelle senza descrizione o con un nome fuori specifica, e a parità di nome
-  tiene quella della persona. Nel prompt mette la sezione `skill`, una riga
-  `nome: descrizione` per skill; `leggi_skill` restituisce la procedura o un
-  altro file della cartella della skill, senza uscirne. `proponi_skill`
+  quelle senza descrizione, con un nome fuori specifica o riservato, quelle
+  del progetto che portano fuori dalla cartella e quelle oltre il tetto del
+  progetto, e a parità di nome tiene quella della persona. Nel prompt mette
+  la sezione `skill`, una riga `nome: descrizione` per skill; `leggi_skill`
+  restituisce la procedura o un altro file della cartella della skill, senza
+  uscirne, e per quelle del progetto fra due righe di delimitazione. `proponi_skill`
   scrive in `proposte/`, che non si carica. Agno ha un suo `agno.skills`, ma
   il testo per il prompt è in inglese e gli strumenti eseguono gli script:
   qui si usa solo la specifica.
@@ -156,7 +158,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   filtro sta in `get_request_params`, che Agno chiama a ogni richiesta,
   quindi lo schema compare già nella richiesta successiva dello stesso
   turno. I gruppi attivati restano in `session_state` e un pre-hook li
-  riprende con la sessione; la guida, dopo l'attivazione, torna nel prompt.
+  riprende con la sessione; la guida, dopo l'attivazione, torna nel prompt:
+  quelle di entità e intuizioni dai loro store, quella delle proposte da
+  `Istruzioni`.
   Un gruppo non si disattiva: toglierne lo schema sposterebbe di nuovo il
   prefisso del prompt.
 - `prompts.py` compone il prompt solo con ciò che è davvero abilitato:
@@ -264,8 +268,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   recente, le catene risolte su una memoria valida.
 - `skills/revisione.py` è `ares skills`: elenca attive, non caricate e
   proposte; `adopt` mostra una proposta e con `--apply` e la conferma la
-  sposta fra le attive, conservando in `.precedenti/` quella che sostituisce;
-  `discard` la cancella. Le skill sono file della persona fuori dallo stato:
+  sposta fra le attive, conservando in `.precedenti/` quella che sostituisce
+  e rimettendola a posto se lo spostamento fallisce; rifiuta una proposta
+  cambiata dopo l'anteprima. `discard` la cancella. Le skill sono file della persona fuori dallo stato:
   niente lock né snapshot.
 - `sessions/maintenance.py` coordina anteprima, conferma, lock e snapshot
   della retention; `sessions/retention.py` apre entrambi i backend, registra

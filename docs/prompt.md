@@ -34,6 +34,8 @@ cache viene riusata. L'ora precisa la dà lo strumento `che_ora_e`, e il prompt 
 invece di indovinare. Le skill sono caricate una volta all'avvio: una
 adottata durante la conversazione entra dalla successiva, e il prefisso
 resta fermo.
+Una volta attivato il gruppo `proposte`, prima di `questo_avvio` c'è anche
+la sua guida, in `<istruzioni_proposte>`.
 Dopo le sezioni Agno aggiunge la guida ai risultati lunghi, le guide degli
 store e le memorie. Per ispezionare il risultato completo senza interrogare
 il modello:

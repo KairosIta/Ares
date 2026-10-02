@@ -6,7 +6,7 @@ comporrebbe per un turno: e' cio' che stampa `ares inspect --prompt`.
 
 import os
 import platform
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -675,15 +675,26 @@ class Istruzioni(list):
     la data, ed e' cio' che vedono le prove e il salvataggio di Agno. Dentro
     la stessa giornata il risultato e' identico a ogni turno: il prefisso
     del prompt resta uguale e Ollama riusa la KV cache.
+
+    `aggiunte`, se c'e', da' a ogni chiamata i blocchi che dipendono dallo
+    stato della sessione, come la guida di un gruppo attivato; stanno prima
+    di `questo_avvio`.
     """
 
-    def __init__(self, fisse: Sequence[str], avvio: Sequence[str]) -> None:
+    def __init__(
+        self, fisse: Sequence[str], avvio: Sequence[str], aggiunte: Callable[[], Sequence[str]] | None = None
+    ) -> None:
         super().__init__([*fisse, *_sezione("questo_avvio", ["\n".join(avvio)])])
         self.fisse = list(fisse)
         self.avvio = list(avvio)
+        self.aggiunte = aggiunte
 
     def __call__(self) -> list[str]:
-        return [*self.fisse, *_sezione("questo_avvio", ["\n".join([*self.avvio, riga_della_data()])])]
+        return [
+            *self.fisse,
+            *(self.aggiunte() if self.aggiunte is not None else ()),
+            *_sezione("questo_avvio", ["\n".join([*self.avvio, riga_della_data()])]),
+        ]
 
 
 def istruzioni(
@@ -698,10 +709,12 @@ def istruzioni(
     precedenti: Sequence[SessioneRiferimento] = (),
     su_richiesta: Sequence[Gruppo] = (),
     skill: Sequence[str] = (),
+    aggiunte: Callable[[], Sequence[str]] | None = None,
 ) -> Istruzioni:
     """Il prompt di Ares, sezione per sezione, nell'ordine di `SEZIONI`.
 
-    `skill` sono i paragrafi di `agent/skill.istruzioni_sulle_skill`.
+    `skill` sono i paragrafi di `agent/skill.istruzioni_sulle_skill`;
+    `aggiunte` va a `Istruzioni`.
     """
     nome_regole = politica.workspace.istruzioni
     regole = nome_regole if percorso_istruzioni(radice_lavoro, nome_regole) else None
@@ -735,7 +748,7 @@ def istruzioni(
         *_sezione("regole_del_progetto", istruzioni_dalla_cartella(radice_lavoro, politica)),
     ]
     avvio = istruzioni_sull_avvio(utente=utente, session_id=session_id, radice_lavoro=radice_lavoro)
-    return Istruzioni(fisse, [*avvio, *conversazioni])
+    return Istruzioni(fisse, [*avvio, *conversazioni], aggiunte)
 
 
 def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
@@ -743,7 +756,8 @@ def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
 
     Ripete i passi di `run()` fino al messaggio, senza chiamare il modello ne'
     salvare la sessione: inizializza l'agente, legge la sessione (o ne crea
-    una solo in memoria), risolve gli strumenti e chiede il messaggio.
+    una solo in memoria) con il suo `session_state`, riprende i gruppi dello
+    scaffale come fa il pre-hook, risolve gli strumenti e chiede il messaggio.
     La risoluzione degli strumenti e' un interno di Agno (vedi
     `agno_interni`).
     """
@@ -763,7 +777,14 @@ def messaggio_di_sistema(agent: Any, *, session_id: str, utente: Utente) -> str:
         user_id=user_id,
         metadata=dict(agent.metadata) if agent.metadata else None,
     )
-    contesto = RunContext(run_id=str(uuid4()), session_id=session_id, user_id=user_id, metadata=agent.metadata)
+    salvato = (sessione.session_data or {}).get("session_state")
+    stato = dict(salvato) if isinstance(salvato, dict) else {}
+    contesto = RunContext(
+        run_id=str(uuid4()), session_id=session_id, user_id=user_id, metadata=agent.metadata, session_state=stato
+    )
+    scaffale = getattr(agent.model, "scaffale", None)
+    if scaffale is not None:
+        scaffale.carica(stato)
     esito = RunOutput(run_id=contesto.run_id, session_id=session_id, user_id=user_id)
     strumenti = agent.get_tools(run_response=esito, run_context=contesto, session=sessione, user_id=user_id)
     funzioni = funzioni_per_modello(
