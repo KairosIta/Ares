@@ -402,11 +402,25 @@ def _conta_chiamate(elenco) -> tuple:
     for metriche in elenco or []:
         entrata += getattr(metriche, "input_tokens", 0) or 0
         uscita += getattr(metriche, "output_tokens", 0) or 0
-        fornitore = getattr(metriche, "provider_metrics", None) or {}
-        durata = fornitore.get("total_duration")
+        durata = (getattr(metriche, "provider_metrics", None) or {}).get("total_duration")
         if isinstance(durata, (int, float)):
             nanosecondi += durata
     return entrata, uscita, nanosecondi / 1_000_000_000
+
+
+def secondi_di_prefill(elenco) -> float:
+    """Secondi spesi da Ollama a leggere il prompt (`prompt_eval_duration`), sommati sulle chiamate.
+
+    E' la parte del turno che la KV cache puo' risparmiare: con il prefisso
+    del prompt stabile, dal secondo turno dovrebbe essere una frazione del
+    primo. Zero se il fornitore non la riporta.
+    """
+    nanosecondi = 0.0
+    for metriche in elenco or []:
+        durata = (getattr(metriche, "provider_metrics", None) or {}).get("prompt_eval_duration")
+        if isinstance(durata, (int, float)):
+            nanosecondi += durata
+    return nanosecondi / 1_000_000_000
 
 
 def _token(quanti: int) -> str:
@@ -475,6 +489,9 @@ def righe_metriche(risposta, impostazioni: Impostazioni) -> list:
             + quota_finestra(prompt, impostazioni)
             + ")"
         )
+    prefill = secondi_di_prefill(dettagli.get("model"))
+    if prefill:
+        pezzi.append("prefill " + str(round(prefill, 1)) + " s")
     if uscita:
         pezzi.append("risposta " + _token(uscita) + " tok / " + str(round(secondi_risposta, 1)) + " s")
     if appresi:

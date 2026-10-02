@@ -632,7 +632,8 @@ da [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Riassunto delle prove descritte sopra, nella forma di
 [testing.md](testing.md): offline e deterministiche dove possibile, con
-Ollama dove si misura il modello. Nessuna è implementata.
+Ollama dove si misura il modello. Lo stato di ciascuna proposta è nel
+CHANGELOG, voce per voce.
 
 | Prova | Dimostra | Tipo | Proposta |
 | --- | --- | --- | --- |

@@ -12,7 +12,7 @@ from agno.vectordb.search import SearchType
 
 from ares import config
 from ares.agent.agno_interni import OllamaConRagionamento
-from ares.agent.prompts import descrizione_del_comando
+from ares.agent.prompts import data_e_ora, descrizione_del_comando
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.state.archivi import build_db, build_filesystem, build_result_store
 from ares.state.platform_files import rendi_privato
@@ -27,6 +27,7 @@ __all__ = [
     "build_filesystem",
     "build_knowledge",
     "build_learning_model",
+    "build_orologio",
     "build_quaderno",
     "build_result_store",
     "build_workspace",
@@ -115,6 +116,24 @@ def build_quaderno(fs: FileSystem) -> Toolkit:
     strumenti = fs.tools()
     _con_prefisso(strumenti, config.QUADERNO_PREFIX)
     return strumenti
+
+
+def che_ora_e() -> str:
+    """Dice che giorno e che ora e' adesso, nel fuso orario della persona.
+
+    Il messaggio di sistema porta solo la data: chiama questo strumento
+    quando serve l'ora precisa, o per sapere quanto tempo e' passato.
+    """
+    return data_e_ora()
+
+
+def build_orologio() -> Toolkit:
+    """L'unico strumento che dice l'ora: il system message porta solo il giorno.
+
+    Cosi' il prefisso del prompt non cambia a ogni turno (vedi
+    `prompts.riga_della_data`), e l'ora costa token solo quando serve.
+    """
+    return Toolkit(name="orologio", tools=[che_ora_e])
 
 
 class AresWorkspace(Workspace):

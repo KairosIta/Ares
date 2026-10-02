@@ -19,14 +19,21 @@ nell'ordine di `prompts.SEZIONI`:
 | `quaderno` | il quaderno privato |
 | `strumenti` | istruzioni sugli strumenti accesi, workspace compreso |
 | `regole_del_progetto` | `ARES.md`, se c'è |
-| `questo_avvio` | utente, conversazione, cartella, conversazioni precedenti, ora |
+| `questo_avvio` | utente, conversazione, cartella, conversazioni precedenti, data del giorno |
 
 Prima viene ciò che vale per ogni sessione, poi ciò che dipende dalla
 cartella, in fondo ciò che cambia a ogni sessione o turno. La privacy la
-dice solo la descrizione iniziale. L'ora la aggiunge `Istruzioni` a ogni
-system message, in italiano, al posto della riga di Agno. Dopo le sezioni
-Agno aggiunge la guida ai risultati lunghi, le guide degli store e le
-memorie. Per ispezionare il risultato completo senza interrogare il modello:
+dice solo la descrizione iniziale. La data la aggiunge `Istruzioni` a ogni
+system message, in italiano, al posto della riga di Agno, e porta solo il
+giorno: con l'ora al minuto il system message cambierebbe a ogni turno e
+Ollama ricalcolerebbe da quel punto in giù tutto il prompt, guide degli
+store, memorie, schemi degli strumenti e cronologia compresi. Dentro la
+stessa giornata due turni consecutivi hanno lo stesso prefisso e la KV
+cache viene riusata. L'ora precisa la dà lo strumento `che_ora_e`, l'unico
+che Ares definisce da sé, e il prompt dice di usarlo invece di indovinare.
+Dopo le sezioni Agno aggiunge la guida ai risultati lunghi, le guide degli
+store e le memorie. Per ispezionare il risultato completo senza interrogare
+il modello:
 
 ```bash
 ares inspect --prompt

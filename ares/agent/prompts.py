@@ -213,32 +213,35 @@ _MESI = (
 )
 
 
-def riga_dell_ora(adesso: datetime | None = None) -> str:
-    """L'ora del turno in italiano, con il fuso: le date delle memorie sono in UTC.
+def _giorno(adesso: datetime) -> str:
+    """«mercoledi' 30 settembre 2026»: scritto qui e non con `strftime`, che seguirebbe il locale del processo."""
+    return _GIORNI[adesso.weekday()] + " " + str(adesso.day) + " " + _MESI[adesso.month - 1] + " " + str(adesso.year)
 
-    Scritta qui e non con `strftime`, che darebbe giorni e mesi nella lingua
-    del locale del processo.
+
+def riga_della_data(oggi: datetime | None = None) -> str:
+    """La data del turno nel fuso della persona, senza l'ora: le date delle memorie sono in UTC.
+
+    Solo il giorno, perche' la riga sta nel system message: con l'ora al
+    minuto cambierebbe a ogni turno e Ollama ricalcolerebbe da qui in giu'
+    anche cio' che segue (guide degli store, profilo, memorie, strumenti).
+    L'ora precisa la da' lo strumento `che_ora_e`.
     """
+    oggi = oggi or datetime.now(ZoneInfo(config.FUSO_ORARIO))
+    # Il rimando sta accanto alla data: e' qui che il modello guarda quando
+    # gli chiedono l'ora, e il 9B senza rimando la inventa.
+    return "- Oggi: " + _giorno(oggi) + ". Per l'ora precisa chiama che_ora_e."
+
+
+def data_e_ora(adesso: datetime | None = None) -> str:
+    """«mercoledi' 30 settembre 2026, 22:04 CEST»: la risposta dello strumento `che_ora_e`."""
     adesso = adesso or datetime.now(ZoneInfo(config.FUSO_ORARIO))
-    return (
-        "- Adesso: "
-        + _GIORNI[adesso.weekday()]
-        + " "
-        + str(adesso.day)
-        + " "
-        + _MESI[adesso.month - 1]
-        + " "
-        + str(adesso.year)
-        + ", "
-        + adesso.strftime("%H:%M %Z")
-        + "."
-    )
+    return _giorno(adesso) + ", " + adesso.strftime("%H:%M %Z")
 
 
 def istruzioni_sull_avvio(*, utente: Utente, session_id: str, radice_lavoro=None) -> list[str]:
     """Chi, quale conversazione e dove: le righe che cambiano da una sessione all'altra.
 
-    L'ora non e' qui: la aggiunge `Istruzioni` a ogni turno.
+    La data non e' qui: la aggiunge `Istruzioni` a ogni turno.
     """
     righe = ["- Utente: " + utente.id + ". Conversazione: " + session_id + "."]
     if radice_lavoro is not None:
@@ -309,7 +312,10 @@ def istruzioni_sugli_strumenti(
 ) -> list[str]:
     """Istruzioni solo per gli strumenti che la politica ha davvero cablato."""
     modo = modo or config.MODO_PREDEFINITO
-    dette = []
+    dette = [
+        "Il messaggio di sistema dice che giorno e', non l'ora: se la risposta dipende dall'ora, o "
+        "da quanto tempo e' passato, leggila con che_ora_e invece di indovinarla."
+    ]
     if interattivo and politica.apprendimento.entita:
         dette.append(
             "Su persone e progetti distingui i fatti dagli eventi quando usi "
@@ -622,12 +628,14 @@ def _sezione(tag: str, paragrafi: Sequence[str]) -> list[str]:
 
 
 class Istruzioni(list):
-    """Le sezioni del prompt; chiamata, rende anche l'ora del turno.
+    """Le sezioni del prompt; chiamata, rende anche la data del turno.
 
     Agno chiama le istruzioni quando sono chiamabili, a ogni system message:
-    e' l'unico modo di avere l'ora aggiornata senza la riga inglese di
+    e' l'unico modo di avere la data aggiornata senza la riga inglese di
     `add_datetime_to_context`. Come lista contiene le stesse sezioni senza
-    l'ora, ed e' cio' che vedono le prove e il salvataggio di Agno.
+    la data, ed e' cio' che vedono le prove e il salvataggio di Agno. Dentro
+    la stessa giornata il risultato e' identico a ogni turno: il prefisso
+    del prompt resta uguale e Ollama riusa la KV cache.
     """
 
     def __init__(self, fisse: Sequence[str], avvio: Sequence[str]) -> None:
@@ -636,7 +644,7 @@ class Istruzioni(list):
         self.avvio = list(avvio)
 
     def __call__(self) -> list[str]:
-        return [*self.fisse, *_sezione("questo_avvio", ["\n".join([*self.avvio, riga_dell_ora()])])]
+        return [*self.fisse, *_sezione("questo_avvio", ["\n".join([*self.avvio, riga_della_data()])])]
 
 
 def istruzioni(

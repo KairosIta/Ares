@@ -59,13 +59,22 @@ def _secondi_e_token(elenco: Any) -> tuple[float, int, int]:
     nanosecondi = 0.0
     entrata = uscita = 0
     for metriche in elenco or []:
-        fornitore = getattr(metriche, "provider_metrics", None) or {}
-        durata = fornitore.get("total_duration")
+        durata = (getattr(metriche, "provider_metrics", None) or {}).get("total_duration")
         if isinstance(durata, (int, float)):
             nanosecondi += durata
         entrata += getattr(metriche, "input_tokens", 0) or 0
         uscita += getattr(metriche, "output_tokens", 0) or 0
     return nanosecondi / 1e9, entrata, uscita
+
+
+def _secondi_di_prefill(elenco: Any) -> float:
+    """Secondi di `prompt_eval_duration` sommati: la lettura del prompt che la KV cache puo' risparmiare."""
+    nanosecondi = 0.0
+    for metriche in elenco or []:
+        durata = (getattr(metriche, "provider_metrics", None) or {}).get("prompt_eval_duration")
+        if isinstance(durata, (int, float)):
+            nanosecondi += durata
+    return nanosecondi / 1e9
 
 
 def _finestra(risposta: Any) -> int:
@@ -94,6 +103,7 @@ def misura_turno(nome: str, risposta: Any, *, strumenti: int, appreso: int, seco
     return {
         "turno": nome,
         "risposta_s": round(risposta_s, 1),
+        "prefill_s": round(_secondi_di_prefill(dettagli.get("model")), 1),
         "estrazione_s": round(estrazione_s, 1),
         "turno_s": round(secondi_turno, 1),
         "finestra_tok": _finestra(risposta),
@@ -137,13 +147,13 @@ def markdown(rapporto: dict[str, Any]) -> str:
         f"Conversazione: {m['modello_conversazione']}. Estrazione: {m['modello_estrazione']}. "
         f"Contesto: {m['opzioni_conversazione']['num_ctx']}.",
         "",
-        "| Turno | Risposta | Estrazione | Turno intero | Finestra | Token in uscita | Strumenti | Appreso |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Turno | Risposta | Prefill | Estrazione | Turno intero | Finestra | Token in uscita | Strumenti | Appreso |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for t in rapporto["turni"]:
         righe.append(
-            f"| {t['turno']} | {t['risposta_s']} s | {t['estrazione_s']} s | {t['turno_s']} s | {t['finestra_tok']} | "
-            f"{t['risposta_tok_out']} | {t['strumenti']} | {t['appreso']} |"
+            f"| {t['turno']} | {t['risposta_s']} s | {t['prefill_s']} s | {t['estrazione_s']} s | {t['turno_s']} s | "
+            f"{t['finestra_tok']} | {t['risposta_tok_out']} | {t['strumenti']} | {t['appreso']} |"
         )
     r = rapporto["riepilogo"]
 

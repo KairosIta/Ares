@@ -8,6 +8,20 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Il prefisso del prompt non cambia più a ogni turno** (proposta 3.1 di
+  `docs/agentic-improvements.md`). La riga dell'avvio porta solo il giorno,
+  «Oggi: venerdì 2 ottobre 2026», non più l'ora al minuto: Ollama riusa la
+  KV cache solo sul prefisso identico, e con l'ora ricalcolava a ogni cambio
+  di minuto tutto ciò che segue, guide degli store, memorie, schemi degli
+  strumenti e cronologia. Sul 9B locale il prefill di un turno a 9,4k token
+  costava 4,9 s quando il minuto era cambiato; con la data sola i turni
+  successivi al primo restano fra 1 e 1,5 s anche a 20k token. L'ora precisa
+  la dà il nuovo strumento `che_ora_e`, senza conferma, e la riga della data
+  dice di chiamarlo invece di indovinare. La riga delle
+  metriche della CLI e l'eval della latenza mostrano i secondi di prefill
+  (`prompt_eval_duration` di Ollama), così il risparmio si vede turno per
+  turno. `smoke` verifica che due system message consecutivi della stessa
+  sessione siano identici e che la data compaia una volta sola.
 - **`python -m evals.latenza` misura quanto aspetta la persona, turno per
   turno.** Sei turni fissi in una conversazione sola su uno stato nuovo, con
   l'apprendimento acceso: per ogni turno i secondi della risposta e
