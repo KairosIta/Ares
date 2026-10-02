@@ -152,6 +152,16 @@ jobs:
           uv sync --locked --python python
           uv pip check --python "${{ matrix.python }}"
 
+      # La prova `sandbox` usa bwrap vero dove c'e'. Ubuntu 24.04 nega i
+      # namespace utente senza un profilo AppArmor: sul runner, usa e getta,
+      # la restrizione si toglie invece di scrivere un profilo.
+      - name: Bubblewrap per la prova della sandbox
+        if: runner.os == 'Linux' && needs.modifiche.outputs.solo_documenti != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Prepara l’ambiente Windows
         if: runner.os == 'Windows' && needs.modifiche.outputs.solo_documenti != 'true'
         shell: pwsh

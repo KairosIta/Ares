@@ -12,7 +12,7 @@ from ares.agent.marcatura import smarca
 from ares.agent.turn_core import TurnEvent, TurnEventKind, consume_events
 from ares.cli.editor import CliInput
 from ares.cli.ui import UI
-from ares.config import Impostazioni, Mostra
+from ares.config import Impostazioni, Mostra, Politica
 from ares.core.autorizzazioni import Decisione, Richiesta
 from ares.core.regole import Regole
 
@@ -375,6 +375,13 @@ def righe_richiesta(richiesta: Richiesta) -> list:
             + str(richiesta.regola)
         )
     return righe
+
+
+def riga_sandbox(politica: Politica) -> str:
+    """Dove arrivano i comandi: «bwrap, senza rete», o «nessuna» con i permessi dell'utente."""
+    if politica.workspace.sandbox is None:
+        return "nessuna: i comandi girano con i tuoi permessi"
+    return politica.workspace.sandbox + (", con la rete" if politica.workspace.sandbox_rete else ", senza rete")
 
 
 def riga_regole(regole: Regole) -> str:

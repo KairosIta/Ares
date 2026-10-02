@@ -529,9 +529,10 @@ class CliRenderer:
         ramo: str | None = None,
         istruzioni: str | None = None,
         regole: str | None = None,
+        sandbox: str | None = None,
         modo: str | None = None,
     ) -> None:
-        """Il riquadro d'avvio. `cartella`, `ramo`, `istruzioni`, `regole` e `modo` compaiono solo se ci sono.
+        """Il riquadro d'avvio. Cartella, ramo, istruzioni, regole, sandbox e modo compaiono solo se ci sono.
 
         La cartella e' la prima riga dopo il modello perche' e' la cosa che
         cambia da un avvio all'altro, e la sola che, sbagliata, fa danni.
@@ -551,6 +552,8 @@ class CliRenderer:
             dati.add_row(_testo("istruzioni", "ares.muted"), _testo(istruzioni, "ares.text"))
         if regole:
             dati.add_row(_testo("regole", "ares.muted"), Text(regole, style="ares.text", overflow="fold"))
+        if sandbox:
+            dati.add_row(_testo("sandbox", "ares.muted"), _testo(sandbox, "ares.text"))
         if modo:
             stile = "ares.warning" if modo == "auto" else "ares.text"
             dati.add_row(_testo("modalita'", "ares.muted"), _testo(modo, stile))

@@ -47,6 +47,7 @@ PROVE = (
     ("backup", "backup_test.py", False, "snapshot, checksum, restore, prune"),
     ("entita", "entity_maintenance_test.py", False, "audit e fusione delle entita'"),
     ("consolidamento", "consolidamento_test.py", False, "memorie doppie o superate ritirate, con backup e ripristino"),
+    ("sandbox", "sandbox_test.py", False, "comandi dentro bwrap: rifiuti all'avvio e isolamento vero su Linux"),
     ("cli", "cli_test.py", False, "preflight, ispezione, backup e REPL a riga di comando"),
     ("valutazione", "memory_quality_test.py", False, "verdetti, prove, isolamento e guasti del benchmark"),
     ("conversazione", "conversazione_eval_test.py", False, "controlli dell'eval sugli strumenti in conversazione"),

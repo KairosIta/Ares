@@ -83,7 +83,28 @@ def _shell() -> tuple[str, list[str], str]:
     return "bash", ["bash", "-lc"], "git log --oneline | head -5"
 
 
-def descrizione_del_comando() -> str:
+def limiti_dei_comandi(sandbox: bool, rete: bool) -> str:
+    """Dove arriva un comando, da mettere dopo «gira».
+
+    Breve di proposito: con i fallimenti descritti in anticipo il 9B lancia
+    meno comandi e ne scrive di piu' come testo. Cosa fare quando un limite
+    blocca un comando lo dice l'errore stesso (`AVVISO_SANDBOX`).
+    """
+    if not sandbox:
+        return "con i permessi dell'utente, senza sandbox."
+    return "in una sandbox: scrive solo nella cartella di lavoro e in /tmp" + ("." if rete else ", senza rete.")
+
+
+# In coda all'errore di un comando nella sandbox: arriva al modello quando
+# serve, cioe' quando un limite puo' aver fermato il comando.
+AVVISO_SANDBOX = (
+    "Il comando gira in una sandbox: fuori dalla cartella di lavoro e da /tmp il disco e' in sola "
+    "lettura, lo stato di Ares e le credenziali non si vedono{rete}. Se l'errore viene da questo, non "
+    "riprovare e non aggirarlo scrivendo altrove: dillo alla persona."
+)
+
+
+def descrizione_del_comando(sandbox: bool = False, rete: bool = False) -> str:
     """La descrizione di `run_command` per il modello, al posto della docstring di Agno.
 
     Quella e' in inglese e propone `bash -c` anche su Windows: qui la shell e'
@@ -95,8 +116,7 @@ def descrizione_del_comando() -> str:
         "testa e coda con il conto delle righe omesse. Non ha input: un comando che lo aspetta "
         "termina subito. args e' il comando diviso in parole: ['git', 'status'], non ['git status']. "
         "Il comando non passa da una shell: per pipe, redirezioni o piu' comandi insieme passa la "
-        "riga intera a " + nome + ", come " + repr([*lancia, riga]) + ". Gira con i permessi "
-        "dell'utente, senza sandbox."
+        "riga intera a " + nome + ", come " + repr([*lancia, riga]) + ". Gira " + limiti_dei_comandi(sandbox, rete)
     )
 
 
@@ -180,7 +200,13 @@ def istruzioni_sull_ambiente(
         + platform.release()
         + ", shell "
         + sistema
-        + ". I comandi che lanci girano con i permessi dell'utente, senza sandbox.",
+        + ". I comandi che lanci girano "
+        + (
+            "in una sandbox: scrivono solo nella cartella di lavoro e in /tmp, "
+            + ("con la rete." if politica.workspace.sandbox_rete else "senza rete.")
+            if politica.workspace.sandbox is not None
+            else "con i permessi dell'utente, senza sandbox."
+        ),
     ]
     if interattivo and politica.apprendimento.automatici:
         righe.append(
@@ -257,7 +283,8 @@ def istruzioni_sulla_fiducia(*, regole: str | None, interattivo: bool = True) ->
 
     Memorie e `ARES.md` hanno ciascuno la propria cautela; cio' che arriva
     dagli strumenti - un file, l'output di un comando - puo' contenere testo
-    scritto per sembrare un ordine, e i comandi non hanno sandbox. Quei
+    scritto per sembrare un ordine, e una sandbox, se c'e', limita dove
+    arriva un comando ma non cosa fa nella cartella. Quei
     risultati arrivano delimitati (`agent/marcatura.py`): qui si dice al
     modello che cosa significa il blocco. `regole` e' il nome del file delle
     regole, se c'e'.

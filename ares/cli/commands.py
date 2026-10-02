@@ -14,7 +14,7 @@ from ares.agent.prompts import percorso_istruzioni
 from ares.cli import cartella
 from ares.cli.conversazioni import conto_scambi, righe_sessione, testo_markdown
 from ares.cli.log import configura_log_agno
-from ares.cli.render import riga_origine, riga_regole, righe_superata
+from ares.cli.render import riga_origine, riga_regole, riga_sandbox, righe_superata
 from ares.cli.ui import UI, byte_leggibili, stampa_store
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.core.autorizzazioni import ModoNonAmmesso
@@ -342,6 +342,7 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
             "nessun " + stato.politica.workspace.regole_progetto + " ne' permessi.toml in ~/.ares",
             style="ares.muted",
         )
+    UI.pair("sandbox", riga_sandbox(stato.politica), style=None if stato.politica.workspace.sandbox else "ares.muted")
     for avviso in regole.avvisi:
         UI.line("attenzione: " + avviso, style="ares.warning")
     for motivo in cartella.rischi(radice, stato.percorsi):

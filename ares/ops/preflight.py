@@ -21,6 +21,9 @@ il cui template non legge `.Thinking`, e' un altro avviso: Ollama non gli
 rimanda il ragionamento dei passi precedenti, e dopo uno strumento il 9B di
 serie risponde dentro il ragionamento lasciando vuota la risposta. Capita ai
 GGUF importati da Hugging Face, che arrivano senza renderer.
+
+Con `ARES_SANDBOX=bwrap` controlla anche che la sandbox si possa applicare:
+se no la chat non parte, quindi l'ambiente non e' pronto.
 """
 
 import json
@@ -103,6 +106,7 @@ def esamina(impostazioni: Impostazioni) -> dict[str, Any]:
         "avviso_cloud": impostazioni.avviso_cloud(),
         "pronto": False,
         "errore": None,
+        "sandbox": _sandbox(),
     }
     try:
         presenti = modelli_disponibili(impostazioni.host)
@@ -130,7 +134,7 @@ def esamina(impostazioni: Impostazioni) -> dict[str, Any]:
         )
         if not presente:
             esito["mancanti"].append(modello)
-    esito["pronto"] = not esito["mancanti"]
+    esito["pronto"] = not esito["mancanti"] and esito["sandbox"]["motivo"] is None
     esito["memoria"] = _memoria(impostazioni)
     esito["senza_renderer"] = _senza_renderer(impostazioni, esito["mancanti"])
     return esito
@@ -158,6 +162,20 @@ def _senza_renderer(impostazioni: Impostazioni, mancanti: list[str]) -> list[str
         if not rimanda_il_ragionamento(scheda):
             senza.append(modello)
     return senza
+
+
+def _sandbox() -> dict[str, Any]:
+    """La sandbox dei comandi: se e' chiesta e, se si', se si puo' applicare qui."""
+    from ares.agent.sandbox import SandboxNonDisponibile, prepara_sandbox
+
+    politica = config.leggi_politica()
+    voce: dict[str, Any] = {"chiesta": politica.workspace.sandbox, "rete": politica.workspace.sandbox_rete}
+    try:
+        prepara_sandbox(config.leggi_percorsi(), politica)
+        voce["motivo"] = None
+    except SandboxNonDisponibile as errore:
+        voce["motivo"] = str(errore)
+    return voce
 
 
 def righe_ragionamento(senza_renderer: list[str]) -> list[tuple[str, str]]:
@@ -273,6 +291,13 @@ def controlla(*, come_json: Annotated[bool, Parameter(name="--json")] = False) -
         UI.line("Avvia il server con: ollama serve", style="ares.muted")
         return ESITO_GUASTO
     UI.line("  raggiungibile, " + str(esito["modelli_scaricati"]) + " modelli scaricati", style="ares.success")
+    sandbox = esito["sandbox"]
+    if sandbox["chiesta"]:
+        UI.pair("Sandbox", sandbox["chiesta"] + (", con la rete" if sandbox["rete"] else ", senza rete"))
+        if sandbox["motivo"] is not None:
+            UI.line("  " + sandbox["motivo"], style="ares.error")
+            return ESITO_GUASTO
+        UI.line("  applicabile", style="ares.success")
     UI.blank()
 
     UI.table(

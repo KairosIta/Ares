@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from agno.fs import FileSystem
@@ -16,7 +17,8 @@ from agno.vectordb.search import SearchType
 
 from ares import config
 from ares.agent.agno_interni import OllamaConRagionamento
-from ares.agent.prompts import data_e_ora, descrizione_del_comando
+from ares.agent.prompts import AVVISO_SANDBOX, data_e_ora, descrizione_del_comando
+from ares.agent.sandbox import Sandbox, prepara_sandbox
 from ares.config import Impostazioni, Percorsi, Politica
 from ares.core.regole import Regole, leggi_regole
 from ares.state.archivi import build_db, build_filesystem, build_result_store
@@ -244,10 +246,12 @@ class AresWorkspace(Workspace):
 
     `regole` legge le regole di autorizzazione della persona (`core/regole.py`)
     al momento del comando: una `nega` lo ferma prima di eseguirlo, anche in
-    `auto`, dove nessuna conferma passa dal nucleo.
+    `auto`, dove nessuna conferma passa dal nucleo. Con `sandbox` il comando
+    gira dentro `bwrap` (`agent/sandbox.py`).
     """
 
     regole: Callable[[], Regole] | None = None
+    sandbox: Sandbox | None = None
 
     def run_command(self, args: list[str], tail: int = 100, timeout: int = 120) -> str:
         """Esegue `args` nella cartella di lavoro e restituisce testa e coda dell'output, o l'errore."""
@@ -259,7 +263,7 @@ class AresWorkspace(Workspace):
             )
         try:
             esito = subprocess.run(
-                args,
+                self.sandbox.argv(args) if self.sandbox is not None else args,
                 capture_output=True,
                 text=True,
                 errors="replace",
@@ -279,6 +283,8 @@ class AresWorkspace(Workspace):
                 pezzi.append(testa_e_coda(esito.stderr, tail))
             if esito.stdout.strip():
                 pezzi.append("Output: " + testa_e_coda(esito.stdout, tail))
+            if self.sandbox is not None:
+                pezzi.append(AVVISO_SANDBOX.format(rete="" if self.sandbox.rete else ", e la rete e' spenta"))
             return "\n".join(pezzi)
         return testa_e_coda(esito.stdout, tail)
 
@@ -288,13 +294,23 @@ class AresWorkspace(Workspace):
 
         return await asyncio.to_thread(self.run_command, args, tail, timeout)
 
-    def __init__(self, root, prefisso: str, regole: Callable[[], Regole] | None = None, **kwargs):
+    def __init__(
+        self,
+        root,
+        prefisso: str,
+        regole: Callable[[], Regole] | None = None,
+        sandbox: Sandbox | None = None,
+        **kwargs,
+    ):
         super().__init__(root, **kwargs)
         self.regole = regole
+        self.sandbox = sandbox
         _con_prefisso(self, prefisso)
         for elenco in (self.functions, self.async_functions):
             if prefisso + "run_command" in elenco:
-                elenco[prefisso + "run_command"].description = descrizione_del_comando()
+                elenco[prefisso + "run_command"].description = descrizione_del_comando(
+                    sandbox is not None, sandbox is not None and sandbox.rete
+                )
 
         # L'istruzione predefinita nomina gli strumenti prima della rinomina.
         # Il prompt italiano e coerente viene composto da assistant_prompts.
@@ -307,7 +323,9 @@ def build_workspace(percorsi: Percorsi, politica: Politica, modo: str | None = N
 
     La cartella e' gia' stata vagliata e autorizzata da `cli/cartella.py`; qui
     si pretende solo che esista, per non lavorare in una directory nata da un
-    refuso. `modo` vuoto vale `config.MODO_PREDEFINITO`.
+    refuso. `modo` vuoto vale `config.MODO_PREDEFINITO`. Solleva
+    `SandboxNonDisponibile` se la politica chiede una sandbox che qui non si
+    puo' applicare.
     """
     radice = percorsi.lavoro.resolve()
     if not radice.is_dir():
@@ -317,6 +335,7 @@ def build_workspace(percorsi: Percorsi, politica: Politica, modo: str | None = N
         radice,
         prefisso=politica.workspace.prefisso,
         regole=lambda: leggi_regole(percorsi, politica),
+        sandbox=prepara_sandbox(replace(percorsi, lavoro=radice), politica),
         allowed=silenziosi,
         confirm=confermati,
         require_read_before_write=politica.workspace.leggi_prima_di_scrivere,

@@ -8,6 +8,27 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ### Added
 
+- **Sandbox dei comandi, opzionale, su Linux** (proposta 3.5 di
+  `docs/agentic-improvements.md`). Con `ARES_SANDBOX=bwrap` ogni
+  `run_command` parte dentro bubblewrap (`ares/agent/sandbox.py`): radice in
+  sola lettura, cartella di lavoro e `/tmp` privata scrivibili; stato di
+  Ares, `.env` del clone, directory di runtime della sessione e credenziali
+  note della home coperti; namespace nuovi per tutto, rete compresa
+  (`ARES_SANDBOX_RETE=1` la ridà, senza filtro per dominio); i processi
+  lasciati in background muoiono con il comando. Se la sandbox è chiesta e
+  non si può applicare la chat esce con 1 e una riga, `build_workspace`
+  rifiuta per i client senza terminale e `ares preflight` dà l'ambiente
+  come non pronto. Banner e `/cartella` la mostrano. Il modello la conosce
+  da una frase nella descrizione del comando e nella scheda dell'ambiente;
+  i limiti e il «non riprovare, non aggirare» arrivano nell'errore di un
+  comando fallito. Conferme e modalità non cambiano. SECURITY.md passa da
+  «Ares non è una sandbox» a una sezione sulla sandbox opzionale e sui suoi
+  limiti. Prova offline `sandbox`, con bwrap vero dove crea i namespace; la
+  CI Ubuntu installa `bubblewrap`. Sul 9B la sandbox non cambia quante
+  volte lancia un comando (16/30 spenta, 11/30 accesa, nel rumore), e con
+  l'avviso nell'errore non aggira più un limite scrivendo altrove (0/8,
+  prima 2/3) (`docs/conversation-eval.md`).
+
 - **Consolidamento delle memorie** (proposta 3.6, passo 3, di
   `docs/agentic-improvements.md`). `ares memories consolidate` trova le
   memorie doppie o superate e ne mostra il piano; con `--apply` chiede la

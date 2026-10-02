@@ -305,8 +305,18 @@ un motivo che dice al modello di non riprovare, e il client lo vede con
 `AresWorkspace.run_command` consulta le stesse regole prima di eseguire.
 Un comando composto si spezza e ogni parte deve essere coperta; redirezioni,
 sostituzioni e righe di PowerShell non si decidono per regola. Il prefisso è
-dichiaratamente aggirabile; la proposta 3.5 dello studio (sandbox) è la
-mitigazione.
+dichiaratamente aggirabile.
+
+La sandbox (`agent/sandbox.py`), opzionale e solo su Linux, avvolge
+`run_command` in `bwrap`: radice in sola lettura, cartella di lavoro e
+`/tmp` privata scrivibili, stato di Ares, `.env`, runtime della sessione e
+credenziali note coperti, namespace nuovi per tutto, rete compresa salvo
+`ARES_SANDBOX_RETE=1`. `prepara_sandbox` la costruisce dalla politica e
+rifiuta con `SandboxNonDisponibile` se non si può applicare: la chat lo
+controlla dopo la cartella, `build_workspace` di nuovo per i client senza
+terminale, `ares preflight` per chi prepara l'ambiente. La descrizione di
+`run_command` lo dice in una frase; cosa fare quando un limite ferma un
+comando lo dice l'errore stesso (`prompts.AVVISO_SANDBOX`).
 
 Stato e backup vivono in `~/.ares`, fuori dal clone; `.env` resta nel clone
 ma fuori dal controllo versione.

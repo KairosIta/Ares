@@ -208,6 +208,15 @@ def leggi_interruttore(variabile: str, valore: str | None) -> bool | None:
     raise ValueError(variabile + " deve essere 0 o 1: " + repr(valore))
 
 
+def leggi_sandbox(valore: str | None) -> str | None:
+    """`bwrap` o `None` (assente, vuoto o `0`) da `ARES_SANDBOX`; `ValueError` per altro."""
+    if valore is None or valore.strip() in ("", "0"):
+        return None
+    if valore.strip() == "bwrap":
+        return "bwrap"
+    raise ValueError("ARES_SANDBOX deve essere bwrap o 0: " + repr(valore))
+
+
 try:
     NUM_CTX = leggi_num_ctx(AMBIENTE.get("ARES_NUM_CTX"))
     _CAMPIONAMENTO = leggi_campionamento(AMBIENTE)
@@ -218,6 +227,11 @@ try:
     # Gli strumenti di entita' e intuizioni fuori dal prompt finche' il
     # modello non li attiva (`agent/scaffale.py`). Assente: acceso.
     SU_RICHIESTA = leggi_interruttore("ARES_STRUMENTI_SU_RICHIESTA", AMBIENTE.get("ARES_STRUMENTI_SU_RICHIESTA"))
+    # I comandi dentro bubblewrap (`agent/sandbox.py`). Assente: spenta, perche'
+    # accesa toglierebbe la rete a comandi che oggi funzionano.
+    SANDBOX = leggi_sandbox(AMBIENTE.get("ARES_SANDBOX"))
+    # La rete dentro la sandbox. Assente: niente rete.
+    SANDBOX_RETE = leggi_interruttore("ARES_SANDBOX_RETE", AMBIENTE.get("ARES_SANDBOX_RETE")) is True
 except ValueError as errore:
     # All'import, prima di ogni comando: una riga e non un traceback.
     raise SystemExit("Configurazione di Ares non valida: " + str(errore)) from None
@@ -792,6 +806,9 @@ class Workspace:
     # il primo, alla home di Ares il secondo.
     regole_progetto: str = ".ares/permessi.toml"
     regole_personali: str = "permessi.toml"
+    # La sandbox dei comandi: `None` o `"bwrap"`, e se ha la rete.
+    sandbox: str | None = None
+    sandbox_rete: bool = False
 
 
 @dataclass(frozen=True)
@@ -856,6 +873,8 @@ def leggi_politica() -> Politica:
             leggi_prima_di_scrivere=WORKSPACE_READ_BEFORE_WRITE,
             regole_progetto=REGOLE_PROGETTO,
             regole_personali=REGOLE_PERSONALI,
+            sandbox=SANDBOX,
+            sandbox_rete=SANDBOX_RETE,
         ),
         mostra=Mostra(
             metriche=MOSTRA_METRICHE,

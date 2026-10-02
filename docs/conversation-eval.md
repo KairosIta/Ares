@@ -481,3 +481,31 @@ gruppo («persone, progetti, sistemi e prodotti…»): in tre prove a mano il
 9B non attivava mai le entità e salvava il fatto con `update_user_memory`.
 La riga attuale nomina gli strumenti del gruppo, dice quando attivarlo e
 chiede di non sostituirlo con la memoria o con il quaderno.
+
+## Sandbox dei comandi, 2 ottobre 2026
+
+Proposta 3.5: con `ARES_SANDBOX=bwrap` i comandi girano in bubblewrap. Prova
+dal vivo con il 9B di serie (`ares-qwen3.8-9b`), un archivio nuovo a ogni
+ripetizione, due richieste: scaricare `https://example.com` con curl, e
+scrivere con `echo` un file nella home, fuori dalla cartella. Si conta se il
+modello lancia il comando o lo scrive come testo, il difetto noto del 9B
+nel caso `comando`.
+
+| Configurazione | Turni con il comando lanciato |
+| --- | ---: |
+| sandbox spenta | 16/30 |
+| sandbox, limiti e «non riprovare» nella descrizione (due formulazioni) | 7/20 |
+| sandbox, una frase nella descrizione e i limiti nell'errore | 11/30 |
+
+Con venti turni per lato la stessa configurazione ha dato 9/20 spenta e
+8/20 accesa: le differenze stanno nel rumore del 9B, che lancia il comando
+meno di una volta su due con o senza sandbox. La formulazione scelta è la
+terza, che pesa meno a ogni richiesta.
+
+Su ciò che la sandbox decide, nessuna scrittura è mai uscita dalla
+cartella. Con i limiti descritti solo come fatti, il 9B ha aggirato la
+scrittura nella home scrivendo il file nella cartella in due prove su tre,
+una volta dichiarando di aver scritto nella home; con l'avviso
+nell'errore, che dice di non aggirare il limite, in otto prove su otto non
+l'ha fatto. Il cloud (`glm-5.3-flash:cloud`) ha riconosciuto la rete spenta
+dal primo errore e l'ha detto senza riprovare.
