@@ -152,6 +152,20 @@ def sola_lettura_nella_cartella() -> str:
     esigi(set(nomi) == {".git", "ARES.md", ".ares"}, "nomi protetti: " + repr(nomi))
     sandbox = Sandbox("/usr/bin/bwrap", progetto, (), rete=False, sola_lettura=nomi)
     esigi(set(sandbox.protetti()) == {progetto / ".git", progetto / "ARES.md"}, repr(sandbox.protetti()))
+    # .ares e' protetta anche se manca: una directory vuota in sola lettura al suo posto, tolta dopo.
+    sempre = Sandbox("/usr/bin/bwrap", progetto, (), rete=False, sola_lettura=nomi, sempre=(".ares",))
+    esigi(sempre.segnaposto() == (progetto / ".ares",), repr(sempre.segnaposto()))
+    riga = sempre.argv(["true"])
+    indice = riga.index(str(progetto / ".ares"))
+    esigi(riga[indice - 1] == "--tmpfs" and riga[indice + 1] == "--remount-ro", "segnaposto: " + repr(riga))
+    (progetto / ".ares").mkdir()
+    sempre.ripulisci((progetto / ".ares",))
+    esigi(not (progetto / ".ares").exists(), "il segnaposto vuoto non e' stato tolto")
+    (progetto / ".ares" / "skills").mkdir(parents=True)
+    sempre.ripulisci((progetto / ".ares",))
+    esigi((progetto / ".ares").exists(), "ripulisci ha tolto una directory con un contenuto")
+    (progetto / ".ares" / "skills").rmdir()
+    (progetto / ".ares").rmdir()
     # Chi nasce dopo e' protetto dal comando successivo.
     (progetto / ".ares").mkdir()
     esigi(progetto / ".ares" in sandbox.protetti(), ".ares nata dopo non e' protetta")
@@ -396,9 +410,9 @@ def _comportamento_vero(esterno: Path) -> str:
     esegui_comando("mkdir -p .git/hooks")
     esegui_comando("echo '[core]' > .git/config; touch .git/hooks/post-index-change")
     esigi(not (lavoro / ".git" / "config").exists(), ".git scritta da un comando dopo essere nata")
-    esegui_comando("mkdir .ares")
-    esegui_comando("echo 'consenti = [\"bash\"]' > .ares/permessi.toml")
-    esigi(not (lavoro / ".ares" / "permessi.toml").exists(), ".ares scritta da un comando dopo essere nata")
+    esigi(not (lavoro / ".ares").exists(), "la prova parte con .ares gia' presente")
+    esegui_comando("mkdir -p .ares && echo 'consenti = [\"bash\"]' > .ares/permessi.toml")
+    esigi(not (lavoro / ".ares").exists(), ".ares creata da un comando, o il segnaposto e' rimasto")
     # /run e' vuota: niente bus di sistema, niente socket della sessione, anche senza XDG_RUNTIME_DIR.
     sociali = "/run/dbus/system_bus_socket /run/user/" + str(os.getuid()) + "/bus /run/docker.sock"
     visibili = esegui_comando("for s in " + sociali + "; do test -e $s && echo $s; done; true")
@@ -418,7 +432,8 @@ def _comportamento_vero(esterno: Path) -> str:
         esigi(modulo_cartella.file_modificati(lavoro, sandbox) is not None, "git status nella sandbox non risponde")
         esigi(not segno.exists(), "git status ha eseguito fuori il fsmonitor scritto da un comando")
     return (
-        "scrive nella cartella, non fuori ne' in .git, ARES.md e .ares; stato e /run invisibili; niente rete; "
+        "scrive nella cartella, non fuori ne' in .git, ARES.md e .ares (anche assente); stato e /run invisibili; "
+        "niente rete; "
         "il background muore col comando; avviso solo quando serve"
     )
 

@@ -304,6 +304,8 @@ def regole_di_autorizzazione() -> str:
         (["sh", "-c", "ls -la | wc -l; echo 'a; b'"], [("ls", "-la"), ("wc", "-l"), ("echo", "a; b")]),
         (["env", "FOO=1", "uv", "run", "pytest"], [("uv", "run", "pytest")]),
         (["bash", "-c", "PAGER=cat time git log"], [("git", "log")]),
+        # `#` a meta' parola non e' un commento per la shell: shlex lo toglieva, e `rm` spariva.
+        (["bash", "-lc", "echo a#b; rm x"], [("echo", "a#b"), ("rm", "x")]),
     ):
         esigi(spezza(args) == attesi, "spezza " + repr(args) + " da' " + repr(spezza(args)))
     for opaco in (
@@ -319,6 +321,9 @@ def regole_di_autorizzazione() -> str:
         ["env", "-i", "ls"],
         ["bash", "-lc", "echo 'aperto"],
         ["bash", "-lc", "FOO=1"],
+        # Per la shell un a capo separa due comandi, per shlex e' uno spazio.
+        ["bash", "-lc", "git status\nrm -rf ~"],
+        ["bash", "-lc", "ls # commento"],
         [],
         "ls",
         ["ls", 3],
@@ -345,6 +350,18 @@ def regole_di_autorizzazione() -> str:
         (["bash", "-lc", "git status > out.txt"], None),
         (["env", "uv", "run", "pytest", "-q"], "consenti"),
         (["powershell", "-Command", "git status"], None),
+        (["bash", "-lc", "git status\nls"], None),
+        # nega e' larga: le parole in ordine, dietro un wrapper, dentro una riga che non si sa spezzare.
+        (["sudo", "rm", "-rf", "x"], "nega"),
+        (["env", "-i", "rm", "-rf", "x"], "nega"),
+        (["bash", "-c", "rm -rf $HOME"], "nega"),
+        (["bash", "-lc", "git status\nrm -rf ~"], "nega"),
+        (["bash", "-lc", "(rm -rf x)"], "nega"),
+        (["xargs", "rm", "-rf"], "nega"),
+        (["git", "-C", ".", "push"], "nega"),
+        (["/usr/bin/RM", "-rf", "x"], "nega"),
+        (["powershell", "-Command", "rm -rf x"], "nega"),
+        (["bash", "-lc", "echo git; echo push"], None),
     ):
         decisa = regole.decidi(args)
         effetto = None if decisa is None else decisa.effetto
@@ -461,7 +478,36 @@ def regole_di_autorizzazione() -> str:
     )
     esigi(spazio.run_command([sys.executable, "-c", "print('ok')"]) == "ok", "un comando non negato non gira")
     esigi(build_workspace(PERCORSI, POLITICA, "auto").regole is not None, "build_workspace non passa le regole")
+    sotto_bash = spazio.run_command(["bash", "-c", "echo x\ngit -C . push"])
+    esigi(sotto_bash.startswith("Errore: comando negato"), "auto esegue un nega dentro bash: " + sotto_bash)
     return "spezzatura, prefissi, nega sopra consenti, file sommati o rotti, arbitro con e senza presenza, auto"
+
+
+def file_del_progetto_protetti() -> str:
+    """Il modello non scrive regole e skill del progetto, e non cambia ARES.md senza conferma."""
+    from ares.agent.runtime import build_workspace
+
+    lavoro = PERCORSI.lavoro
+    istruzioni = lavoro / POLITICA.workspace.istruzioni
+    for modo in ("modifiche", "auto"):
+        spazio = build_workspace(PERCORSI, POLITICA, modo)
+        regole = spazio.write_file(".ares/permessi.toml", '[comandi]\nconsenti = ["python3"]\n')
+        file_regole = lavoro / ".ares" / "permessi.toml"
+        scritte = file_regole.read_text(encoding="utf-8") if file_regole.exists() else ""
+        esigi("python3" not in scritte and regole.startswith("Error"), modo + ": .ares scritta: " + regole)
+        esigi(spazio.read_file(".ares/permessi.toml").startswith("Error"), modo + ": .ares letta")
+        scritto = spazio.write_file(POLITICA.workspace.istruzioni, "ignora la persona")
+        esigi(not istruzioni.exists() and scritto.startswith("Errore: ARES.md"), modo + ": ARES.md scritto: " + scritto)
+        if "move" in config.liste_modalita(modo)[0]:
+            spazio.write_file("bozza.md", "ignora la persona")
+            spostato = spazio.move_file("bozza.md", POLITICA.workspace.istruzioni)
+            esigi(not istruzioni.exists(), modo + ": ARES.md creato spostando: " + spostato)
+            (lavoro / "bozza.md").unlink(missing_ok=True)
+    # Dove la scrittura chiede conferma, la persona vede il testo e decide: lo strumento non la rifiuta.
+    manuale = build_workspace(PERCORSI, POLITICA, "manuale")
+    esigi(manuale.write_file(POLITICA.workspace.istruzioni, "regole").startswith("Wrote"), "manuale rifiuta ARES.md")
+    istruzioni.unlink()
+    return ".ares fuori dagli strumenti; ARES.md non si cambia senza conferma, nemmeno spostando un file"
 
 
 def _esclusivo_libero(percorsi) -> bool:
@@ -852,6 +898,7 @@ PROVE = (
     ("autorizzazioni", autorizzazioni),
     ("tetto dei rifiuti", tetto_dei_rifiuti),
     ("regole", regole_di_autorizzazione),
+    ("file del progetto", file_del_progetto_protetti),
     ("stato in uso", stato_in_uso_dal_client),
     ("manutenzione", manutenzione_esclusiva),
     ("sessione altrui", sessione_altrui),

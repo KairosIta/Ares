@@ -29,6 +29,21 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   delimitatore viene citata. Un `ARES.md` vuoto o che è una cartella non
   viene annunciato come regole del progetto. Gli errori scritti da Ares
   (comando negato, timeout) non arrivano più marcati come dati del mondo.
+- **Regole di autorizzazione non aggirabili con un a capo o un commento.**
+  `bash -lc 'git status\nrm -rf ~'` passava per un solo comando coperto da
+  `consenti "git status"`, e `echo a#b; rm x` per il solo `echo a`: ora una
+  riga con un a capo o un commento chiede, e `#` a metà parola resta una
+  parola. `nega` scatta quando le sue parole compaiono in ordine in un
+  comando, anche dietro `sudo` o `env`, dentro `bash -c`, con opzioni in
+  mezzo (`git -C . push`) o in una riga che le regole non sanno spezzare:
+  prima, in `auto`, questi comandi giravano.
+- Gli strumenti sui file non leggono né scrivono `.ares`: prima il modello
+  poteva scrivere `.ares/permessi.toml` in `modifiche` senza conferma, e
+  dal turno dopo i comandi consentiti lì passavano da soli. `ARES.md` non
+  si cambia, né si crea spostando un file, nelle modalità in cui la
+  scrittura non chiede conferma.
+- Con la sandbox `.ares` è in sola lettura anche quando manca: un comando
+  confermato non può più crearla con regole `consenti` dentro.
 
 ## [0.13.0] - 2026-10-03
 

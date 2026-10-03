@@ -122,6 +122,7 @@ def file_modificati(percorso: Path, sandbox: Sandbox | None = None) -> int | Non
     `sandbox` gira dentro di lei, e comunque senza fsmonitor ne' hook.
     """
     comando = ["git", "-c", "core.fsmonitor=", "-c", "core.hooksPath=" + os.devnull, "status", "--porcelain"]
+    segnaposto = sandbox.segnaposto() if sandbox is not None else ()
     try:
         esito = subprocess.run(
             sandbox.argv(comando) if sandbox is not None else comando,
@@ -134,6 +135,9 @@ def file_modificati(percorso: Path, sandbox: Sandbox | None = None) -> int | Non
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
+    finally:
+        if sandbox is not None:
+            sandbox.ripulisci(segnaposto)
     if esito.returncode != 0:
         return None
     return sum(1 for riga in esito.stdout.splitlines() if riga.strip())

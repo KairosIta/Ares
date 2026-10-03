@@ -7,8 +7,10 @@ Senza sandbox un comando gira con i permessi dell'utente (SECURITY.md). Con
   privata, che sparisce con il comando;
 - dentro la cartella, `.git`, `ARES.md` e `.ares` in sola lettura: git ne
   esegue la configurazione e gli hook, Ares rilegge le regole e le skill del
-  progetto. Chi manca quando il comando parte si puo' creare (un `git init`
-  e' legittimo), e dal comando dopo e' in sola lettura anche lui;
+  progetto. `.ares` lo e' anche se manca: al suo posto, per la durata del
+  comando, c'e' una directory vuota in sola lettura, tolta dopo. `.git` e
+  `ARES.md` che mancano si possono creare (un `git init` e' legittimo), e dal
+  comando dopo sono in sola lettura anche loro;
 - `/run` vuota: niente D-Bus di sistema, niente socket di servizi (Docker,
   libvirt, la sessione dell'utente). Con la rete resta solo cio' che serve a
   risolvere i nomi;
@@ -33,6 +35,7 @@ comportamento senza sandbox.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import os
 import re
@@ -100,7 +103,7 @@ class Sandbox:
 
     `candidati` sono i percorsi da nascondere, `sola_lettura` i nomi da
     proteggere dentro la cartella: contano quelli che esistono quando il
-    comando parte.
+    comando parte. `sempre` sono le directory protette anche se mancano.
     """
 
     bwrap: str
@@ -108,6 +111,17 @@ class Sandbox:
     candidati: tuple[Path, ...]
     rete: bool
     sola_lettura: tuple[str, ...] = (".git",)
+    sempre: tuple[str, ...] = ()
+
+    def segnaposto(self) -> tuple[Path, ...]:
+        """Le directory di `sempre` che mancano: `argv` le crea vuote per proteggerle, `ripulisci` le toglie."""
+        return tuple(self.cartella / nome for nome in self.sempre if not os.path.lexists(self.cartella / nome))
+
+    def ripulisci(self, segnaposto: Sequence[Path]) -> None:
+        """Toglie i `segnaposto` rimasti vuoti; uno che nel frattempo ha un contenuto resta."""
+        for percorso in segnaposto:
+            with contextlib.suppress(OSError):
+                percorso.rmdir()
 
     def nascosti(self) -> tuple[Path, ...]:
         """I `candidati` che esistono ora, senza doppioni e senza chi contiene la cartella."""
@@ -141,6 +155,8 @@ class Sandbox:
         # `-try`: un collegamento simbolico rotto non deve far fallire ogni comando.
         for percorso in self.protetti():
             riga += ["--ro-bind-try", str(percorso), str(percorso)]
+        for percorso in self.segnaposto():
+            riga += ["--tmpfs", str(percorso), "--remount-ro", str(percorso)]
         # Dopo la cartella: un segreto dentro la cartella resta coperto.
         for percorso in self.nascosti():
             if percorso.is_dir():
@@ -316,4 +332,5 @@ def prepara_sandbox(percorsi: Percorsi, politica: Politica) -> Sandbox | None:
         _candidati(percorsi),
         rete=politica.workspace.sandbox_rete,
         sola_lettura=_sola_lettura(politica),
+        sempre=(Path(politica.workspace.regole_progetto).parts[0],),
     )
