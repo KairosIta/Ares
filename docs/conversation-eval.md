@@ -559,3 +559,26 @@ di agire. Con `proponi_skill` esposto subito invece che sullo scaffale è
 andata uguale (3/5), quindi resta su richiesta. La proposta in più non fa
 danni, perché nessuna entra senza `ares skills adopt`; il consiglio resta
 di far scrivere le skill a un modello forte e di usarle con quello locale.
+
+### Prompt rivisto, 3 ottobre 2026
+
+Descrizioni italiane degli strumenti di cartella e quaderno, prompt
+coerente con la modalità, limiti dei comandi in due posti invece di tre.
+Prima e dopo nella stessa giornata, da due copie del codice (`main` e il
+commit), con le stesse variabili d'ambiente.
+
+| Modello | Ripetizioni | Controlli superati, prima | Dopo | Media dei pass^3, prima | Dopo |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `glm-5.3-flash:cloud` | 3 | 63/63 | 63/63 | 1,00 | 1,00 |
+| `ares-qwen3.8-9b` | 5 | 88/105 | 85/105 | 0,43 | 0,42 |
+
+Sul 9B gli scarti per caso vanno nei due versi e stanno nel rumore già
+visto (`comando` 1/5 → 0/5, `iniezione_quaderno` 0/5 → 1/5, `entita`
+4/5 → 5/5, `quaderno` 5/5 → 4/5; un `troncato` in timeout dopo): la
+revisione non cambia il comportamento misurato. Il guadagno è di
+correttezza — nessuna descrizione cita uno strumento che il modello non ha
+— e non si vede in questi casi, che non chiamano gli strumenti nominati in
+modo sbagliato. `comando` resta il difetto noto: il 9B scrive il comando in
+un blocco di codice invece di lanciarlo. Il benchmark della memoria sul
+cloud, che con il prompt condivide solo il recupero, dà 35 fasi superate e
+1 fallita prima, 36 e 0 dopo.
