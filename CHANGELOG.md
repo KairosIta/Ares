@@ -21,6 +21,20 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   sul ragionamento con i ricordi entra solo con l'apprendimento automatico
   acceso, e il prompt chiama sempre «persona» chi usa Ares.
 
+### Fixed
+
+- **Una memoria rifiutata non torna al turno dopo.** Profilo e memorie si
+  estraggono dal solo turno concluso: prima l'estrattore riceveva anche gli
+  ultimi cinque turni della cronologia, e una memoria appena rifiutata,
+  ancora presente lì, veniva riproposta. L'estrazione costa anche meno. Il
+  contesto di sessione continua a leggere la cronologia, perché la riassume.
+- Un `update_memory` con lo stesso testo non cambia più data, `source` e
+  provenienza: la memoria vecchia passava per nuova nel prompt e nel
+  consolidamento, che fra due doppioni ritira la più vecchia.
+- Il radicamento confronta le sigle corte («AWS», «Vim», «Go», «C») a parola
+  intera: prima valevano sempre radicate, e sono proprio quelle che un
+  estrattore piccolo inventa.
+
 ### Security
 
 - `ARES.md` e la prima domanda delle conversazioni precedenti non possono
