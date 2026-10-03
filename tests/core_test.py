@@ -768,7 +768,7 @@ class RispostaFinta:
     is_paused = False
 
 
-def _turno(cliente, *, prima, dopo, chiedi=True, ciclo=None, scarti=()):
+def _turno(cliente, *, prima, dopo, chiedi=True, ciclo=None, scarti=(), ripristina=None):
     """Un turno del nucleo con memoria, scarti dell'estrazione e ciclo del modello simulati."""
     mostra = replace(POLITICA.mostra, apprendimenti=True, conferma_apprendimenti=chiedi)
     politica = replace(POLITICA, mostra=mostra)
@@ -787,7 +787,7 @@ def _turno(cliente, *, prima, dopo, chiedi=True, ciclo=None, scarti=()):
         patch.object(nucleo_turno, "istantanea", lambda agent: "istantanea"),
         patch.object(nucleo_turno, "riduci", lambda stato: next(letture)),
         patch.object(nucleo_turno, "fotografa", lambda agent: next(letture)),
-        patch.object(nucleo_turno, "ripristina", lambda agent, stato: ripristini.append(stato) or True),
+        patch.object(nucleo_turno, "ripristina", ripristina or (lambda agent, stato: ripristini.append(stato) or True)),
     ):
         esito = nucleo_turno.esegui_turno(PERCORSI, politica, AgenteFinto(), "ciao", cliente)
     return esito, ripristini
@@ -860,6 +860,14 @@ def turno_senza_terminale() -> str:
         "una provenienza non scritta ferma il turno: " + repr(cliente.chiamate),
     )
     esigi(ripristini == ["istantanea"], "senza provenienza cio' che e' stato scritto non passa dalla conferma")
+
+    # Un Ctrl-C durante il ripristino lo lascia a meta': l'esito deve dirlo.
+    def ripristino_interrotto(agent, stato):
+        raise KeyboardInterrupt
+
+    cliente = ClienteSenzaTerminale(tenere=False)
+    esito, _ = _turno(cliente, prima=vuota, dopo=scritta, ripristina=ripristino_interrotto)
+    esigi(esito.ripristino is False, "un ripristino interrotto non risulta incompleto: " + repr(esito.ripristino))
 
     # Un modello che insiste: il nucleo passa all'arbitro, che dopo i rifiuti
     # di serie smette di riprendere, e il client sa perche' il turno e' finito.

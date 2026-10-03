@@ -588,6 +588,21 @@ class Percorsi:
         return self.stato / "cronologia_chat.txt"
 
 
+def _percorso_da(env: Mapping[str, str], variabile: str) -> Path | None:
+    """Il percorso di `variabile`, con `~` espansa; `None` se manca.
+
+    Ne' il `.env` ne' `Path` espandono la tilde, e un percorso relativo
+    sdoppierebbe lo stato per ogni cartella da cui si lancia Ares: si rifiuta.
+    """
+    valore = env.get(variabile, "").strip()
+    if not valore:
+        return None
+    percorso = Path(valore).expanduser()
+    if not percorso.is_absolute():
+        raise ValueError(variabile + " deve essere un percorso assoluto o con ~: " + repr(valore))
+    return percorso
+
+
 def leggi_percorsi(ambiente: Mapping[str, str] | None = None, cwd: Path | None = None) -> Percorsi:
     """I percorsi di questo avvio, dall'ambiente dato o da `AMBIENTE`.
 
@@ -596,7 +611,7 @@ def leggi_percorsi(ambiente: Mapping[str, str] | None = None, cwd: Path | None =
     che `cli/cartella.py` fermera' con un avviso.
     """
     env: Mapping[str, str] = AMBIENTE if ambiente is None else ambiente
-    home = Path(env.get("ARES_HOME") or Path.home() / ".ares")
+    home = _percorso_da(env, "ARES_HOME") or Path.home() / ".ares"
     if cwd is None:
         try:
             cwd = Path(os.getcwd()).resolve()
@@ -604,10 +619,19 @@ def leggi_percorsi(ambiente: Mapping[str, str] | None = None, cwd: Path | None =
             cwd = Path.home()
     return Percorsi(
         home=home,
-        stato=Path(env.get("ARES_TMP") or home / "stato"),
-        backup=Path(env.get("ARES_BACKUP_DIR") or home / "backup"),
+        stato=_percorso_da(env, "ARES_TMP") or home / "stato",
+        backup=_percorso_da(env, "ARES_BACKUP_DIR") or home / "backup",
         lavoro=cwd,
     )
+
+
+# Come per le altre variabili: una riga all'import, non un traceback al
+# primo comando che apre lo stato.
+try:
+    for _variabile in ("ARES_HOME", "ARES_TMP", "ARES_BACKUP_DIR"):
+        _percorso_da(AMBIENTE, _variabile)
+except ValueError as errore:
+    raise SystemExit("Configurazione di Ares non valida: " + str(errore)) from None
 
 
 # Le posizioni dello stato nelle versioni vecchie, lette da

@@ -62,7 +62,7 @@ def _sposta(vecchio: Path, nuovo: Path) -> None:
     try:
         shutil.copytree(vecchio, staging, symlinks=True)
         os.replace(staging, nuovo)
-    except Exception:
+    except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
     shutil.rmtree(vecchio)

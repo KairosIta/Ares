@@ -147,5 +147,12 @@ def _turno_protetto(
     # Se e' stato solo scartato qualcosa, non c'e' niente da tenere o annullare.
     chiedi = bool(righe) and politica.mostra.conferma_apprendimenti and cliente.presidiato
     tenere = cliente.apprendimenti(righe + scartate, chiedi=chiedi)
-    ripristino = None if tenere or not chiedi else ripristina(agent, prima)
+    ripristino = None
+    if chiedi and not tenere:
+        # Un Ctrl-C a meta' lascerebbe profilo e memorie mezzi ripristinati
+        # senza dirlo: si riporta come ripristino incompleto.
+        try:
+            ripristino = ripristina(agent, prima)
+        except KeyboardInterrupt:
+            ripristino = False
     return EsitoTurno(risposta, tuple(righe + scartate), ripristino)

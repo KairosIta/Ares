@@ -1785,6 +1785,24 @@ def cartella_di_lavoro() -> str:
         any("il codice di Ares" in m for m in cartella.rischi(config.BASE_DIR, PERCORSI)),
         "il clone di Ares non e' segnalato",
     )
+    # L'altro verso: dentro la casa di Ares (le skill attive) o dentro lo stato.
+    skill = PERCORSI.home / "skills"
+    skill.mkdir(parents=True, exist_ok=True)
+    motivi = cartella.rischi(skill, PERCORSI)
+    esigi(
+        motivi == ["sta dentro la casa di Ares (" + str(PERCORSI.home) + ")"],
+        "le skill attive passano: " + repr(motivi),
+    )
+    motivi = cartella.rischi(PERCORSI.home, PERCORSI)
+    esigi(any("e' la casa di Ares" in m for m in motivi), "la casa senza stato ne' backup passa: " + repr(motivi))
+    dentro_stato = PERCORSI.stato / "lancedb"
+    dentro_stato.mkdir(parents=True, exist_ok=True)
+    motivi = cartella.rischi(dentro_stato, PERCORSI)
+    esigi(any("sta dentro lo stato di Ares" in m for m in motivi), "una cartella dello stato passa: " + repr(motivi))
+    esigi(
+        not any("il codice di Ares" in m for m in cartella.rischi(config.BASE_DIR / "docs", PERCORSI)),
+        "una cartella del clone e' segnalata: sviluppare Ares con Ares e' lecito",
+    )
 
     # autorizza senza terminale: passa se non c'e' rischio, rifiuta una
     # cartella ereditata dalla shell, prosegue se e' stata nominata apposta.

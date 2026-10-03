@@ -59,7 +59,7 @@ def _prepara_restore(percorsi: Percorsi, snapshot: Path, manifest: dict[str, Any
                 raise integrity.ErroreBackup("LanceDB cambia durante la preparazione del restore")
         _privato(staging)
         return staging
-    except Exception:
+    except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
 

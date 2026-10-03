@@ -79,6 +79,23 @@ def rischi(percorso: Path, percorsi: Percorsi) -> list[str]:
     ):
         if _stesso_o_sotto(Path(dentro), percorso):
             motivi.append("contiene " + nome + " (" + str(dentro) + ")")
+    # L'altro verso: da dentro, gli strumenti scriverebbero stato, backup o
+    # skill attive senza passare dai comandi che li proteggono. Il codice no:
+    # lavorare su una parte del clone e' sviluppare Ares.
+    for nome, casa in (
+        ("lo stato di Ares", percorsi.stato),
+        ("i backup di Ares", percorsi.backup),
+        ("la casa di Ares", percorsi.home),
+    ):
+        if percorso != Path(casa).resolve() and _stesso_o_sotto(percorso, Path(casa)):
+            motivi.append("sta dentro " + nome + " (" + str(casa) + ")")
+            break
+    else:
+        # Se la casa contiene stato o backup l'ha gia' detto "contiene"; se li
+        # hanno spostati, restano le skill.
+        spostati = not any(_stesso_o_sotto(Path(d), percorso) for d in (percorsi.stato, percorsi.backup))
+        if spostati and percorso == Path(percorsi.home).resolve():
+            motivi.append("e' la casa di Ares (" + str(percorsi.home) + ")")
     return motivi
 
 
