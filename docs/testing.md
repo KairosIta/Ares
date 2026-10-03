@@ -256,21 +256,24 @@ usa-e-getta. Un figlio va lanciato come modulo (`-m ares.…`), non per
 percorso: un file eseguito per percorso è `__main__` e la misura, che segue
 il package `ares`, non lo vede.
 
-**Misura del 25 settembre 2026** (solo offline, Linux, Python 3.12.3): 91%,
-con 4.436 istruzioni, 306 scoperte e 1.364 rami. Fra i moduli: `cli/chat.py`
-95%, `agent/echo.py` 96%, `state/lock.py` e `cli/comando.py` 100%,
-`backup/restore.py` 87%, `cli/ui.py` 84%, `cli/commands.py` 80%,
-`cli/conferma.py` 77% (resta scoperta la domanda con l'editor di Prompt
-Toolkit, disponibile solo su un terminale vero; le prove passano dal ripiego
-`input()`). Sono misure, non soglie: una percentuale alta non dimostra che
+**Misura del 3 ottobre 2026** (solo offline, Linux, Python 3.12.14): 91%,
+con 6.982 istruzioni, 467 scoperte e 2.064 rami. Il nucleo è coperto quasi
+per intero: `core/session.py`, `core/turn.py` e `core/stato.py` 100%,
+`core/autorizzazioni.py` 99%, `core/regole.py` 95%. Fra gli altri moduli:
+`cli/chat.py` 94%, `agent/echo.py` 95%, `agent/skill.py` 93%,
+`agent/sandbox.py` 92%, `backup/restore.py` 88%, `cli/ui.py` 83%,
+`cli/commands.py` 79%, `cli/conferma.py` 77% (resta scoperta la domanda con
+l'editor di Prompt Toolkit, disponibile solo su un terminale vero; le prove
+passano dal ripiego `input()`). Sono misure, non soglie: una percentuale alta non dimostra che
 siano coperti tutti gli interleaving fra chat o tutti i punti in cui una
 copia può fallire.
 
-Lo scoperto è quasi tutto gestori d'errore e rami di piattaforma. Nessuna
-di quelle righe richiede un modello vero: `--tutte --copertura` produce un
-rapporto identico, riga per riga e ramo per ramo. Le prove con Ollama
-verificano ciò che un modello finto non può dire, non allargano la
-copertura.
+Lo scoperto è quasi tutto gestori d'errore e rami di piattaforma. Quasi
+nessuna di quelle righe richiede un modello vero: `--tutte --copertura`
+copre in più solo le quattro righe della risposta di Ollama non in
+streaming (`OllamaConRagionamento._parse_provider_response`), che le prove
+offline non chiedono. Le prove con Ollama verificano ciò che un modello
+finto non può dire, non allargano la copertura.
 
 ## Analisi statica
 

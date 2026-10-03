@@ -1,8 +1,11 @@
 # Audit mirato per il refactor del core applicativo
 
 Data: 2026-09-28.
-**Stato: analisi del codice attuale.** Serve a guidare la prima estrazione
-dal client CLI verso un nucleo applicativo.
+**Stato al 3 ottobre 2026: storico.** Fotografia del codice al 28
+settembre, prima del refactor concluso con #123-#134. Ha guidato la prima
+estrazione dal client CLI verso un nucleo applicativo; da allora alcuni
+nomi sono cambiati (per esempio `cli/cartella.nuovo_id_sessione` è ora
+`ares/core/id_sessione.py`).
 
 ## 1. Ciclo di vita della sessione
 

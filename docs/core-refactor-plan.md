@@ -1,7 +1,9 @@
 # Piano di refactor del core applicativo
 
 Data: 2026-09-28, aggiornato il 2026-09-30.
-**Stato: implementati i sei passaggi (sessione, turno, autorizzazioni, stato in uso, riferimenti di sessione, lock della manutenzione).**
+**Stato al 3 ottobre 2026: concluso.** Implementati i sei passaggi
+(sessione, turno, autorizzazioni, stato in uso, riferimenti di sessione,
+lock della manutenzione); il piano non si aggiorna più.
 
 ## Obiettivo
 Un nucleo applicativo indipendente dall'interfaccia, a partire dal ciclo di

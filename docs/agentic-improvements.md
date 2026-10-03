@@ -2,7 +2,12 @@
 
 Data: 1 ottobre 2026, su Ares 0.11.0 e Agno 3.0.11.
 
-**Stato: proposta di progettazione, non implementata.** Rilegge Ares alla
+**Stato al 3 ottobre 2026: concluso.** Le dieci proposte sono entrate fra
+v0.12.0 e v0.13.0 (#151-#164; vedi CHANGELOG). Il testo resta quello dello
+studio: evidenze e misure descrivono il codice del 1 ottobre, e il «si
+propone» va letto come la proposta di allora.
+
+Rilegge Ares alla
 luce degli studi e degli strumenti usciti fra il 2025 e il 2026 sugli agenti
 LLM — memoria, context engineering, sicurezza, standard, valutazione, modelli
 locali — e propone dieci interventi, ciascuno con l'evidenza nel codice, la
