@@ -24,12 +24,16 @@ ne prende quasi tre).
 
 import argparse
 import io
+import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
+
+from _comune import VARIABILE_ESITO
 
 RADICE = Path(__file__).resolve().parent.parent
 
@@ -54,6 +58,7 @@ PROVE = (
     ("valutazione", "memory_quality_test.py", False, "verdetti, prove, isolamento e guasti del benchmark"),
     ("conversazione", "conversazione_eval_test.py", False, "controlli dell'eval sugli strumenti in conversazione"),
     ("latenza", "latenza_eval_test.py", False, "le misure dell'eval della latenza su metriche scritte a mano"),
+    ("runner", "runner_test.py", False, "i controlli non concludenti di una prova arrivano al riepilogo"),
     ("rilascio", "rilascio_test.py", False, "versione concorde fra lock, CHANGELOG e SECURITY; link fra documenti"),
     ("affidabilita", "learning_reliability_test.py", True, "retry dell'estrazione del contesto"),
     ("intuizioni", "learned_knowledge_test.py", True, "salvataggio e riuso delle intuizioni"),
@@ -163,15 +168,27 @@ def coverage_disponibile() -> bool:
     )
 
 
-def esegui(prova: tuple[str, str, bool, str], copertura: bool) -> tuple[int, float]:
-    """Lancia una prova e restituisce esito e durata.
+def leggi_non_concludenti(percorso: Path) -> list[str]:
+    """I controlli non concludenti che una prova ha lasciato nel suo esito; vuota senza esito."""
+    try:
+        dati = json.loads(percorso.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [str(nome) for nome in dati.get("non_concludenti", [])]
+
+
+def esegui(prova: tuple[str, str, bool, str], copertura: bool, esiti: Path) -> tuple[int, float, list[str]]:
+    """Lancia una prova e restituisce esito, durata e controlli non concludenti.
 
     L'output passa a schermo mentre arriva: le prove con Ollama durano minuti
-    e stampano l'avanzamento.
+    e stampano l'avanzamento. I non concludenti arrivano da un file in
+    `esiti`, perche' del figlio si vede solo il codice di uscita.
     """
     percorso = Path("tests") / prova[1]
     comando = [sys.executable]
     ambiente = dict(os.environ)
+    file_esito = esiti / (prova[0] + ".json")
+    ambiente[VARIABILE_ESITO] = str(file_esito)
     if copertura:
         # `-m coverage run` invece di un wrapper: si misura lo stesso script
         # con lo stesso argv.
@@ -185,7 +202,27 @@ def esegui(prova: tuple[str, str, bool, str], copertura: bool) -> tuple[int, flo
     except subprocess.TimeoutExpired:
         print(f"TIMEOUT: {prova[0]} non e' terminata entro {timeout} secondi.")
         esito = 124
-    return esito, time.monotonic() - avvio
+    return esito, time.monotonic() - avvio, leggi_non_concludenti(file_esito)
+
+
+def righe_riepilogo(esiti: list[tuple[str, int, float, list[str]]]) -> list[str]:
+    """Una riga per prova, con quanti controlli non sono stati concludenti, e il loro elenco.
+
+    Un non concludente e' passato senza dimostrare niente (manca bwrap, un
+    modello, un'opzione accesa): non cambia il codice di uscita, ma un `ok`
+    da solo lo nasconderebbe.
+    """
+    righe = []
+    for nome, esito, durata, non_concludenti in esiti:
+        stato = "ok      " if esito == 0 else "FALLITA "
+        riga = stato + " " + nome.ljust(14) + " " + format(durata, "6.1f") + " s"
+        if non_concludenti:
+            riga += "   " + str(len(non_concludenti)) + " non concludent" + ("i" if len(non_concludenti) > 1 else "e")
+        righe.append(riga)
+    elenco = [nome + ": " + ", ".join(nc) for nome, _, _, nc in esiti if nc]
+    if elenco:
+        righe += ["", "Non concludenti, passati senza dimostrare niente:"] + ["  " + voce for voce in elenco]
+    return righe
 
 
 def main(argomenti: list[str] | None = None) -> int:
@@ -208,24 +245,24 @@ def main(argomenti: list[str] | None = None) -> int:
     if copertura:
         pulisci_dati_copertura()
 
-    esiti: list[tuple[str, int, float]] = []
+    esiti: list[tuple[str, int, float, list[str]]] = []
     avvio = time.monotonic()
-    for prova in prove:
-        print()
-        print("=" * 72)
-        print(prova[0].upper(), "-", prova[3])
-        print("=" * 72)
-        esito, durata = esegui(prova, copertura)
-        esiti.append((prova[0], esito, durata))
+    with tempfile.TemporaryDirectory(prefix="ares-esiti-") as cartella:
+        for prova in prove:
+            print()
+            print("=" * 72)
+            print(prova[0].upper(), "-", prova[3])
+            print("=" * 72)
+            esito, durata, non_concludenti = esegui(prova, copertura, Path(cartella))
+            esiti.append((prova[0], esito, durata, non_concludenti))
 
     print()
     print("=" * 72)
     print("RIEPILOGO")
     print("=" * 72)
-    for nome, esito, durata in esiti:
-        stato = "ok      " if esito == 0 else "FALLITA "
-        print(stato, nome.ljust(14), format(durata, "6.1f"), "s")
-    falliti = [nome for nome, esito, _ in esiti if esito != 0]
+    for riga in righe_riepilogo(esiti):
+        print(riga)
+    falliti = [nome for nome, esito, _, _ in esiti if esito != 0]
     print()
     print(len(esiti), "prove in", round(time.monotonic() - avvio, 1), "s")
 
