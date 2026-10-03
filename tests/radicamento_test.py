@@ -78,7 +78,10 @@ CAMPI = (
         "Markdown (per appunti, note)",
         ("Docker",),
     ),
-    ("tools_and_stack", "Go, C", "Ciao.", "Go, C", ()),
+    # Le sigle corte si confrontano a parola intera: inventate restano fuori, dette restano.
+    ("tools_and_stack", "Go, C", "Ciao.", None, ("Go", "C")),
+    ("tools_and_stack", "Go, C, AWS", "Scrivo in Go e in C, deploy su AWS.", "Go, C, AWS", ()),
+    ("tools_and_stack", "Vim, Rust", "Uso Rust da un anno.", "Rust", ("Vim",)),
     ("name", "Gym member", "Il numero della mia tessera della palestra e' GYM-5521.", None, ("Gym member",)),
     ("name", "Prova", "Mi chiamo Prova e uso Linux.", "Prova", ()),
     ("occupation", "Sconosciuto", "Mi chiamo Prova.", None, ("Sconosciuto",)),
@@ -293,6 +296,50 @@ def la_fonte_e_solo_il_testo_valido() -> str:
     return "una memoria ritirata, una data, un source e una cartella non radicano niente"
 
 
+def la_cronologia_resta_fuori() -> str:
+    """Profilo e memorie si estraggono dal solo turno: una frase dei turni prima non radica, ne' si rilegge.
+
+    E' cio' che impedisce a una memoria rifiutata di tornare al turno dopo,
+    quando la frase che l'ha generata e' ancora nella cronologia del run.
+    """
+    utente = Utente.da_grezzo("radicamento-cronologia")
+    finto = EstrattoreFinto(
+        {"save_session_context": {"summary": "Un turno."}, "add_memory": {"memory": "Usa Emacs come editor."}}
+    )
+    with patch.object(learning, "build_learning_model", lambda impostazioni: finto):
+        macchina = build_learning_machine(build_db(PERCORSI), None, utente, CON_STRUMENTI, POLITICA)
+    passato = Message(role="user", content="Uso Emacs da anni.")
+    passato.from_history = True
+    macchina.process_completed_run(
+        messages=[passato, Message(role="user", content="Ciao."), Message(role="assistant", content="Ciao!")],
+        user_id=utente.id,
+        session_id="radicamento-cronologia",
+        agent_id="radicamento",
+    )
+    memorie = getattr(macchina.user_memory_store.get(user_id=utente.id), "memories", None)
+    esigi(not memorie, "una memoria radicata nella cronologia e' entrata: " + repr(memorie))
+    scarti = macchina.user_memory_store.prendi_scarti()
+    esigi(scarti == ["memoria: Usa Emacs come editor."], "scarti: " + repr(scarti))
+    filtrati = learning._solo_il_turno({"messages": [passato, Message(role="user", content="x")], "user_id": "u"})
+    esigi([m.content for m in filtrati["messages"]] == ["x"] and filtrati["user_id"] == "u", repr(filtrati))
+    return "una frase dei turni prima non radica una memoria, e non arriva all'estrattore"
+
+
+def la_riscrittura_identica_non_tocca() -> str:
+    """Un `update_memory` con lo stesso testo non cambia data, `source` ne' superate."""
+    memorie = AresMemories(user_id="u")
+    identificativo = memorie.add_memory("Usa Helix come editor.", source="vecchio")
+    memorie.memories[0]["updated_at"] = "2026-01-01T00:00:00+00:00"
+    esigi(memorie.update_memory(identificativo, " Usa Helix come editor. ", source="nuovo"), "non trovata")
+    voce = memorie.memories[0]
+    esigi(voce["updated_at"] == "2026-01-01T00:00:00+00:00" and voce["source"] == "vecchio", repr(voce))
+    esigi(memorie.superate == [], "una riscrittura identica e' fra le superate: " + repr(memorie.superate))
+    esigi(memorie.update_memory(identificativo, "Usa Zed come editor."), "riscrittura vera rifiutata")
+    esigi(len(memorie.superate) == 1 and memorie.memories[0]["content"] == "Usa Zed come editor.", "riscrittura")
+    esigi(not memorie.update_memory("assente", "x"), "una memoria assente risulta aggiornata")
+    return "stesso testo: niente data nuova, niente superata; testo nuovo: la vecchia passa fra le superate"
+
+
 def la_richiesta_e_la_fonte() -> str:
     """`update_user_memory` passa dal radicamento: la fonte e' il testo della richiesta."""
     utente = Utente.da_grezzo("radicamento-richiesta")
@@ -365,6 +412,8 @@ def main() -> int:
             ("doppione identico", il_doppione_identico_non_entra),
             ("fonte valida", la_fonte_e_solo_il_testo_valido),
             ("richiesta", la_richiesta_e_la_fonte),
+            ("cronologia fuori", la_cronologia_resta_fuori),
+            ("riscrittura identica", la_riscrittura_identica_non_tocca),
             ("estrazioni intrecciate", estrazioni_intrecciate),
         )
     )

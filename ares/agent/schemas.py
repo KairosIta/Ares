@@ -170,8 +170,16 @@ class AresMemories(Memories):
         self.__dict__["memories"] = restano
 
     def update_memory(self, memory_id: str, content: str, **kwargs: Any) -> bool:
+        """Riscrive una memoria; con lo stesso testo non la tocca.
+
+        Agno aggiornerebbe comunque data e `source`, e la memoria passerebbe
+        per nuova: nel prompt, nella provenienza e per il consolidamento, che
+        fra due doppioni ritira la piu' vecchia.
+        """
         voce = self.get_memory(memory_id)
-        if voce is not None and (voce.get("content") or "").strip() != content.strip():
+        if voce is not None and (voce.get("content") or "").strip() == content.strip():
+            return True
+        if voce is not None:
             self._supera(voce, sostituita_da=memory_id)
         return super().update_memory(memory_id, content, **kwargs)
 
