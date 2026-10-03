@@ -133,8 +133,11 @@ class OllamaConRagionamento(Ollama):
 
     scaffale: Any = None
 
-    def get_request_params(self, tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-        return super().get_request_params(tools=visibili(tools, self.scaffale) if tools else tools)
+    # I `**kwargs` passano ad Agno gli argomenti che una versione nuova
+    # aggiungesse: un override rigido fallirebbe a meta' turno
+    # (`tests/agno_contract_test.py`, "firme degli override").
+    def get_request_params(self, tools: list[dict[str, Any]] | None = None, **kwargs: Any) -> dict[str, Any]:
+        return super().get_request_params(tools=visibili(tools, self.scaffale) if tools else tools, **kwargs)
 
     def _format_message(self, message: Message, compress_tool_results: bool = False) -> dict[str, Any]:
         formattato = super()._format_message(message, compress_tool_results)
@@ -148,7 +151,7 @@ class OllamaConRagionamento(Ollama):
             risposta.reasoning_content = _pensiero(response)
         return risposta
 
-    def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
-        risposta = super()._parse_provider_response_delta(response)
+    def _parse_provider_response_delta(self, response: Any, **kwargs: Any) -> ModelResponse:
+        risposta = super()._parse_provider_response_delta(response, **kwargs)
         risposta.reasoning_content = _pensiero(response)
         return risposta

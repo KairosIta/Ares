@@ -48,11 +48,13 @@ passaggio, non cio' che scriverebbe); il terzo li costruisce davvero.
 
 import asyncio
 import importlib
+import inspect
 import re
 from contextlib import contextmanager
 from dataclasses import replace
 from importlib.metadata import version
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -619,9 +621,9 @@ def memoria_non_confermabile() -> str:
     return "PROPOSE e HITL rifiutati da profilo e memorie, ALWAYS accettata"
 
 
-# Le pagine che devono dichiarare la versione di Agno. `CHANGELOG.md` e
-# `docs/memory-quality.md` sono esclusi di proposito: raccontano versioni
-# passate. L'elenco e' esplicito perche' una pagina che smette di citare la
+# Le pagine che devono dichiarare la versione di Agno. `CHANGELOG.md` e gli
+# studi con le loro misure (`VERSIONI_STORICHE`) sono esclusi di proposito:
+# raccontano versioni passate. L'elenco e' esplicito perche' una pagina che smette di citare la
 # versione non esca dal controllo in silenzio.
 FILE_CHE_DICHIARANO = (
     "README.md",
@@ -634,7 +636,12 @@ FILE_CHE_DICHIARANO = (
 VERSIONE_AGNO = re.compile(r"Agno (\d+\.\d+\.\d+)")
 CARTELLE_DICHIARANTI = ("ares", "docs", "evals")
 FILE_DI_RADICE = ("README.md", "SECURITY.md")
-VERSIONI_STORICHE = ("docs/memory-quality.md",)
+VERSIONI_STORICHE = (
+    "docs/memory-quality.md",
+    "docs/conversation-eval.md",
+    "docs/agentic-improvements.md",
+    "docs/project-scopes.md",
+)
 
 
 def _testi_dichiaranti() -> list[tuple[str, str]]:
@@ -704,6 +711,114 @@ def interni_presenti() -> str:
             classe.__name__ + " non passa da FunzioniRitoccate: il mixin e' dopo la classe di Agno",
         )
     return str(len(INTERNI)) + " interni presenti, " + str(len(ritoccati)) + " store ritoccati"
+
+
+def _funzione(valore: Any) -> Any:
+    """La funzione dietro un attributo di classe; `None` per proprieta' e campi."""
+    if isinstance(valore, (staticmethod, classmethod)):
+        valore = valore.__func__
+    return valore if inspect.isfunction(valore) else None
+
+
+def _incompatibilita(nostra: inspect.Signature, loro: inspect.Signature) -> list[str]:
+    """Perche' `nostra` non accetta ogni chiamata valida per `loro`; vuota se la accetta."""
+    tipo = inspect.Parameter
+    nostri = list(nostra.parameters.values())
+    loro_parametri = list(loro.parameters.values())
+    variadica = any(p.kind is tipo.VAR_POSITIONAL for p in nostri)
+    chiavi = any(p.kind is tipo.VAR_KEYWORD for p in nostri)
+    per_nome = {p.name: p for p in nostri if p.kind not in (tipo.VAR_POSITIONAL, tipo.VAR_KEYWORD)}
+    posizionali = [p for p in nostri if p.kind in (tipo.POSITIONAL_ONLY, tipo.POSITIONAL_OR_KEYWORD)]
+    problemi = []
+    for indice, parametro in enumerate(loro_parametri):
+        if parametro.kind is tipo.VAR_POSITIONAL:
+            if not variadica:
+                problemi.append("manca *" + parametro.name)
+            continue
+        if parametro.kind is tipo.VAR_KEYWORD:
+            if not chiavi:
+                problemi.append("manca **" + parametro.name)
+            continue
+        # Per posizione: la stessa casella, o un *args che la prende.
+        if parametro.kind in (tipo.POSITIONAL_ONLY, tipo.POSITIONAL_OR_KEYWORD) and not variadica:
+            casella = posizionali[indice] if indice < len(posizionali) else None
+            if casella is None or (casella.name != parametro.name and parametro.kind is not tipo.POSITIONAL_ONLY):
+                problemi.append(parametro.name + " non e' il posizionale " + str(indice))
+        # Per nome: lo stesso parametro, o un **kwargs che lo prende.
+        if parametro.kind is not tipo.POSITIONAL_ONLY and parametro.name not in per_nome and not chiavi:
+            problemi.append("manca " + parametro.name)
+    nomi_loro = {p.name for p in loro_parametri}
+    for parametro in per_nome.values():
+        if parametro.name not in nomi_loro and parametro.default is tipo.empty:
+            problemi.append(parametro.name + " e' obbligatorio solo per Ares")
+    return problemi
+
+
+def firme_compatibili() -> str:
+    """Ogni metodo che Ares ridefinisce su una classe di Agno accetta le chiamate di Agno.
+
+    `interni_presenti` vede un nome sparito, non un argomento aggiunto: con
+    un parametro nuovo nella firma di Agno, un override rigido fallirebbe
+    solo quando Agno lo passa, a meta' turno. Qui si confrontano le firme.
+    """
+    from agno.tools.workspace import Workspace
+
+    from ares.agent.agno_interni import OllamaConRagionamento
+    from ares.agent.runtime import AresWorkspace
+    from ares.agent.schemas import AresMemories, AresMemorieSenzaData, AresProfile
+
+    classi = [
+        AresWorkspace,
+        OllamaConRagionamento,
+        AresProfile,
+        AresMemories,
+        AresMemorieSenzaData,
+        *(
+            classe
+            for classe in vars(learning).values()
+            if isinstance(classe, type) and classe.__module__ == learning.__name__
+        ),
+    ]
+    esigi(issubclass(AresWorkspace, Workspace), "AresWorkspace non estende piu' il Workspace di Agno")
+    confrontati: set[tuple[str, str]] = set()
+    problemi = []
+    for classe in classi:
+        agno = [base for base in classe.__mro__ if base.__module__.startswith("agno.")]
+        if not agno:
+            continue
+        for base in classe.__mro__:
+            if not base.__module__.startswith("ares."):
+                continue
+            for nome, valore in vars(base).items():
+                nostra = _funzione(valore)
+                if nostra is None or (nome.startswith("__") and nome != "__setattr__"):
+                    continue
+                originale = next((_funzione(vars(a).get(nome)) for a in agno if _funzione(vars(a).get(nome))), None)
+                if originale is None or (base.__qualname__, nome) in confrontati:
+                    continue
+                confrontati.add((base.__qualname__, nome))
+                for problema in _incompatibilita(inspect.signature(nostra), inspect.signature(originale)):
+                    problemi.append(base.__qualname__ + "." + nome + ": " + problema)
+    esigi(not problemi, "override incompatibili con Agno " + version("agno") + ": " + "; ".join(problemi))
+    esigi(len(confrontati) >= 10, "troppo pochi override confrontati: " + str(sorted(confrontati)))
+    return str(len(confrontati)) + " override con la firma di Agno " + version("agno")
+
+
+def quaderno_condiviso() -> str:
+    """Il quaderno resta nella partizione condivisa del suo namespace.
+
+    Agno 3.1 divide i file per utente quando lo store e' `user_scoped` o il
+    namespace contiene `{user_id}`. Il namespace di Ares e' gia' per utente:
+    finire in una partizione renderebbe invisibili le note scritte prima.
+    """
+    from ares.agent.runtime import build_filesystem
+
+    fs = build_filesystem(PERCORSI, Utente.da_grezzo(UTENTE))
+    esigi(not fs.user_scoped and fs.user_id is None, "il quaderno e' diviso per utente: " + repr(fs.user_scoped))
+    # Il passo con cui Agno prepara il filesystem per un turno, con l'utente del turno.
+    eseguito = fs._resolve_from_context(run_context=SimpleNamespace(user_id=UTENTE))
+    esigi(eseguito.user_id is None, "un turno lega il quaderno a un utente: " + repr(eseguito.user_id))
+    return "namespace " + fs.namespace + ", partizione condivisa anche in un turno"
 
 
 def ragionamento_rimandato() -> str:
@@ -797,6 +912,8 @@ def main() -> int:
             ("retry contesto", contesto_riprova),
             ("memoria non confermabile", memoria_non_confermabile),
             ("interni di Agno", interni_presenti),
+            ("firme degli override", firme_compatibili),
+            ("quaderno condiviso", quaderno_condiviso),
             ("ragionamento rimandato", ragionamento_rimandato),
             ("limite utente", limite_utente),
             ("versione dichiarata", versione_dichiarata),

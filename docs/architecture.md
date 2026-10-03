@@ -396,7 +396,7 @@ e l'estrazione automatica aggiorna profilo e memorie dopo ogni risposta. Un
 file o l'output di un comando con dentro un'istruzione può quindi lasciare
 una traccia reiniettata in ogni sessione futura.
 
-Non è una scelta: in Agno 3.0.11 `PROPOSE` vale solo per le intuizioni e
+Non è una scelta: in Agno 3.1.1 `PROPOSE` vale solo per le intuizioni e
 `HITL` per nessuno store, quindi profilo e memorie non sono confermabili a
 livello di framework (dettagli in [agno.md](agno.md);
 `tests/agno_contract_test.py` sorveglia il limite). Il controllo sta quindi

@@ -20,6 +20,14 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   dello strumento e nella scheda dell'ambiente, non tre volte. Il paragrafo
   sul ragionamento con i ricordi entra solo con l'apprendimento automatico
   acceso, e il prompt chiama sempre «persona» chi usa Ares.
+- **Agno 3.1.1.** Il vincolo passa a `>=3.1.1,<3.2`. La 3.1 non tocca
+  `agno.learn` né il modello Ollama, e ciò che arriva al modello in un turno
+  con pausa e ripresa è identico alla 3.0.11. `tests/agno_contract_test.py`
+  controlla ora anche le firme: ogni metodo che Ares ridefinisce deve
+  accettare tutti gli argomenti di quello di Agno, e gli override di
+  `Ollama` passano ad Agno gli argomenti che non conoscono. Una prova fissa
+  il quaderno nella partizione condivisa del FileSystem, dove stanno le
+  note scritte prima.
 
 ### Fixed
 

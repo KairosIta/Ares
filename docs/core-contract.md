@@ -71,7 +71,7 @@ Riprodotti il 13 settembre 2026 senza modello né archivi, corretti il 21:
    `ares/state/identita.py` è il solo punto di normalizzazione, e tutti gli
    archivi ricevono la forma canonica.
 
-Nello schema SQLite di Agno 3.0.11, `session_id` è la chiave primaria della
+Nello schema SQLite di Agno 3.1.1, `session_id` è la chiave primaria della
 tabella delle sessioni. L'upsert verifica il proprietario in caso di
 conflitto, ma non crea un'identità distinta per progetto. Occorre un ID
 univoco nell'archivio, oltre ai controlli di appartenenza.
@@ -306,7 +306,7 @@ disconnessione come approvazione e non promette continuazione durevole.
 
 ## 7. Agno: capacità verificate e limiti
 
-Il riferimento implementativo è la versione 3.0.11 del lock e del sorgente
+Il riferimento implementativo è la versione 3.1.1 del lock e del sorgente
 installato. La documentazione online può includere capacità successive:
 non si assume che ogni opzione documentata sia già adottabile.
 
