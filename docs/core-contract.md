@@ -26,7 +26,7 @@ Già implementato:
 
 Al 13 settembre restavano proposte sessioni e turni come operazioni del
 nucleo, eventi e autorizzazioni; sono entrati con il refactor
-([core-refactor-plan.md](core-refactor-plan.md)).
+([storia/core-refactor-plan.md](storia/core-refactor-plan.md)).
 
 ## 1. Risultato atteso e perimetro
 

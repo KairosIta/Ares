@@ -54,7 +54,7 @@ PROVE = (
     ("valutazione", "memory_quality_test.py", False, "verdetti, prove, isolamento e guasti del benchmark"),
     ("conversazione", "conversazione_eval_test.py", False, "controlli dell'eval sugli strumenti in conversazione"),
     ("latenza", "latenza_eval_test.py", False, "le misure dell'eval della latenza su metriche scritte a mano"),
-    ("rilascio", "rilascio_test.py", False, "la versione dichiarata coincide fra lock, CHANGELOG e SECURITY"),
+    ("rilascio", "rilascio_test.py", False, "versione concorde fra lock, CHANGELOG e SECURITY; link fra documenti"),
     ("affidabilita", "learning_reliability_test.py", True, "retry dell'estrazione del contesto"),
     ("intuizioni", "learned_knowledge_test.py", True, "salvataggio e riuso delle intuizioni"),
     ("e2e", "e2e_test.py", True, "un turno completo e la rilettura da un altro processo"),

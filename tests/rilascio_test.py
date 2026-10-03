@@ -8,6 +8,10 @@ rilegge a ogni modifica, e sono gia' rimasti indietro. E' l'equivalente di
 `versione_dichiarata` in `tests/agno_contract_test.py`, applicato ad Ares.
 
 Il metro non e' il tag: la CI non ha i tag, e il tag si crea dopo il merge.
+
+Gli stessi documenti si collegano fra loro con percorsi relativi, che uno
+spostamento rompe in silenzio: anche quelli si controllano qui, perche'
+questa prova gira pure sulle PR di soli documenti.
 """
 
 import re
@@ -25,6 +29,12 @@ SEZIONE_UNRELEASED = re.compile(r"^## \[Unreleased\]$", re.M)
 LINEA_SUPPORTATA = re.compile(r"^\|\s*(\d+\.\d+)\.x\s*\|", re.M)
 LINEA_NON_SUPPORTATA = re.compile(r"^\|\s*<\s*(\d+\.\d+)\s*\|", re.M)
 COLLEGAMENTO_UNRELEASED = re.compile(r"^\[Unreleased\]:\s*(\S+)$", re.M)
+# `[testo](percorso)` e `![alt](percorso)`, con un titolo facoltativo.
+LINK_MARKDOWN = re.compile(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+BLOCCO_DI_CODICE = re.compile(r"^```.*?^```", re.M | re.S)
+CODICE_IN_LINEA = re.compile(r"`[^`\n]*`")
+# Cartelle che non sono documentazione del repository.
+FUORI_DAI_DOCUMENTI = {".git", ".venv", "artifacts", "htmlcov", "node_modules", "__pycache__"}
 
 
 def testo(nome: str) -> str:
@@ -126,6 +136,43 @@ def collegamenti_di_confronto() -> str:
     return "Unreleased da v" + atteso + ", e " + atteso + " collegata"
 
 
+def documenti() -> list[Path]:
+    """I Markdown del repository, fuori da venv, artefatti e cache."""
+    return sorted(
+        percorso
+        for percorso in RADICE.rglob("*.md")
+        if not FUORI_DAI_DOCUMENTI.intersection(percorso.relative_to(RADICE).parts)
+    )
+
+
+def destinazioni_rotte(percorso: Path) -> list[str]:
+    """I link relativi di un Markdown che non portano a un file o a una cartella."""
+    corpo = CODICE_IN_LINEA.sub("", BLOCCO_DI_CODICE.sub("", percorso.read_text(encoding="utf-8")))
+    rotte = []
+    for destinazione in LINK_MARKDOWN.findall(corpo):
+        if destinazione.startswith(("#", "http://", "https://", "mailto:")):
+            continue
+        locale = destinazione.split("#", 1)[0]
+        if not (percorso.parent / locale).exists():
+            rotte.append(destinazione)
+    return rotte
+
+
+def link_relativi() -> str:
+    """Ogni link relativo nei Markdown porta a qualcosa che esiste.
+
+    L'ancora dopo `#` non si controlla: dipende da come GitHub costruisce gli
+    id dei titoli, non dal repository.
+    """
+    tutti = documenti()
+    rotti = []
+    for percorso in tutti:
+        rotte = destinazioni_rotte(percorso)
+        rotti.extend(percorso.relative_to(RADICE).as_posix() + " -> " + r for r in rotte)
+    esigi(not rotti, "link rotti: " + "; ".join(rotti))
+    return str(len(tutti)) + " documenti, nessun link relativo rotto"
+
+
 def main() -> int:
     falliti, _ = esegui(
         [
@@ -133,6 +180,7 @@ def main() -> int:
             ("voce del CHANGELOG", voce_del_changelog),
             ("linea di SECURITY.md", linea_di_security),
             ("collegamenti", collegamenti_di_confronto),
+            ("link relativi", link_relativi),
         ]
     )
     return 1 if falliti else 0
