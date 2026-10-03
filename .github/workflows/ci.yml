@@ -190,7 +190,7 @@ jobs:
         if: needs.modifiche.outputs.solo_documenti != 'true'
         run: ${{ matrix.python }} tests/run.py --copertura
 
-      # Due prove leggono i documenti: `rilascio` CHANGELOG e SECURITY,
+      # Due prove leggono i documenti: `rilascio` CHANGELOG, SECURITY e i link,
       # `contratto` la versione di Agno dichiarata. Con soli documenti girano
       # loro, su un sistema solo.
       - name: Prove dei documenti

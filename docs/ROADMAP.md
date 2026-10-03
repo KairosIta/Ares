@@ -103,8 +103,6 @@ trovato. Restano da parte, di proposito:
   conto suo invece di usare `render.riga_sandbox`, perché lavora sul
   dizionario dell'esito; `backup._git` interroga il clone di Ares senza
   disattivare fsmonitor e hook, che lì sono della persona.
-- **`docs/core-refactor-plan.md`** resta il piano di un refactor concluso e
-  non si aggiorna.
 
 ## Ordine di lavoro: nucleo condiviso, memoria, infine UI
 
@@ -112,8 +110,8 @@ trovato. Restano da parte, di proposito:
 dall'interfaccia, e la CLI è il primo client dei servizi in `ares/core/`.
 Restano la memoria, sotto, e infine la desktop. Studio di riferimento:
 [identità, responsabilità e contratto del nucleo](core-contract.md); il
-lavoro è stato pianificato in [core-refactor-plan.md](core-refactor-plan.md)
-sulla base di [core-refactor-audit.md](core-refactor-audit.md).
+lavoro è stato pianificato in [storia/core-refactor-plan.md](storia/core-refactor-plan.md)
+sulla base di [storia/core-refactor-audit.md](storia/core-refactor-audit.md).
 
 I confini e i contratti fissati prima di implementare, ora nel codice:
 

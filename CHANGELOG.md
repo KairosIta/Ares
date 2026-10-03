@@ -28,6 +28,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `Ollama` passano ad Agno gli argomenti che non conoscono. Una prova fissa
   il quaderno nella partizione condivisa del FileSystem, dove stanno le
   note scritte prima.
+- Audit, piano del refactor e mappa delle responsabilità passano in
+  `docs/storia/`, con un indice: sono documenti di lavori conclusi e non si
+  aggiornano. La prova `rilascio` controlla ora che ogni link relativo nei
+  Markdown porti a un file che esiste, anche sulle PR di soli documenti.
 
 ### Fixed
 

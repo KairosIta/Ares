@@ -108,8 +108,9 @@ chiedere niente: il ciclo di vita della sessione e il turno completo.
   l'utente rifiuta. Il client mostra e chiede tramite il protocollo
   `ClienteTurno`; il risultato è un `EsitoTurno`.
 
-La CLI ne è un client: decide cosa chiedere e come mostrarlo. Il piano dei
-passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
+La CLI ne è un client: decide cosa chiedere e come mostrarlo. Il piano con
+cui il nucleo è stato estratto è in
+[storia/core-refactor-plan.md](storia/core-refactor-plan.md).
 
 ### Nucleo del turno (`ares/agent/`)
 

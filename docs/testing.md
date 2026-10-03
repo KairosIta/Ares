@@ -97,7 +97,7 @@ Sono diciotto. Nessuna genera risposte con il modello.
 | `conversazione` | i verdetti dell'eval degli strumenti su esiti scritti a mano: una lettura dal quaderno, una domanda a parole, un comando malformato o un'iniezione eseguita non passano |
 | `latenza` | le misure dell'eval della latenza su metriche scritte a mano: somma delle chiamate per ruolo, ultima finestra, turno senza risposta, medie separate fra turni con e senza strumenti, Markdown con l'errore; l'import dell'eval non importa `ares.config` |
 | `cli` | i comandi reali: preflight contro un Ollama finto nei tre esiti, con i modelli caricati in VRAM, in parte o per niente, e con un modello senza renderer, ispezione degli archivi, sottocomandi di backup con annullamenti, la REPL intera in un processo con stdin da pipe, l'avvio senza `--session` (sessione nuova, `resume` a vuoto e sull'ultima, `--scegli`, `-p` con stdin in pipe) |
-| `rilascio` | la versione di Ares concorda fra `pyproject.toml`, lock, `CHANGELOG` e `SECURITY.md` (procedura in [CONTRIBUTING](../CONTRIBUTING.md#come-si-rilascia)) |
+| `rilascio` | la versione di Ares concorda fra `pyproject.toml`, lock, `CHANGELOG` e `SECURITY.md` (procedura in [CONTRIBUTING](../CONTRIBUTING.md#come-si-rilascia)); ogni link relativo nei Markdown porta a un file che esiste |
 
 ### `contratto`
 
