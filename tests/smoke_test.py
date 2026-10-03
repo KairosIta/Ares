@@ -81,7 +81,7 @@ from ares.agent.assistant import (  # noqa: E402
 )
 from ares.agent.echo import Fotografia, Istantanea, fotografa, istantanea, riduci, ripristina, variazioni  # noqa: E402
 from ares.agent.prompts import descrizione_del_comando, strumenti_spazio  # noqa: E402
-from ares.agent.scaffale import CHIAVE_STATO, ENTITA, GRUPPI, INTUIZIONI, Scaffale  # noqa: E402
+from ares.agent.scaffale import CHIAVE_STATO, ENTITA, INTUIZIONI, Scaffale  # noqa: E402
 from ares.agent.schemas import AresMemories, AresProfile  # noqa: E402
 from ares.agent.turn_core import run_turn_cycle  # noqa: E402
 from ares.cli.commands import StatoChat, gestisci_comando  # noqa: E402
@@ -772,6 +772,9 @@ def strumenti(agent, user_id: str) -> str:
         "remember_about",
         "search_learnings",
         "save_learning",
+        "attiva_strumenti",
+        "leggi_skill",
+        "proponi_skill",
         *(nome for nome, _ in strumenti_spazio([*silenziosi, *confermati], POLITICA)),
     ):
         if nome in istruzioni:
@@ -831,7 +834,8 @@ def strumenti_su_richiesta(user_id: str) -> str:
     esigi("attiva_strumenti" in _nomi(prima), "attiva_strumenti non arriva al modello")
     esigi(not (entita | intuizioni) & _nomi(prima), "schemi dei gruppi al primo turno: " + repr(_nomi(prima)))
     sistema = _sistema(prima)
-    for gruppo in GRUPPI:
+    # I gruppi di questa sessione: proposte manca con ARES_SKILL=0.
+    for gruppo in agent.model.scaffale.gruppi:
         esigi(sistema.count("- " + gruppo.nome + " (") == 1, "il prompt non nomina una volta il gruppo " + gruppo.nome)
     esigi("<istruzioni_entita>" not in sistema, "la guida delle entita' e' nel prompt prima dell'attivazione")
     esigi(entita <= _nomi(dopo), "dopo l'attivazione gli schemi delle entita' non arrivano: " + repr(_nomi(dopo)))
@@ -1504,17 +1508,29 @@ def tempo(agent, lm, user_id: str) -> str:
     righe_oggi = [r for r in prompt.splitlines() if r.startswith("- Oggi: ")]
     esigi(len(righe_oggi) == 1, "la data compare " + str(len(righe_oggi)) + " volte invece di una")
     esigi(prima.date().isoformat() not in righe_oggi[0], "la data non e' ricalcolata a ogni system message")
+    forma_riga = r"- Oggi: [a-z]+'? \d{1,2} [a-z]+ \d{4}\. Per l'ora precisa chiama che_ora_e\."
+    forma_ora = r"[a-z]+'? \d{1,2} [a-z]+ \d{4}, \d\d:\d\d \S+"
     esigi(
-        re.fullmatch(r"- Oggi: [a-z]+' \d{1,2} [a-z]+ \d{4}\. Per l'ora precisa chiama che_ora_e\.", righe_oggi[0])
-        is not None,
+        re.fullmatch(forma_riga, righe_oggi[0]) is not None,
         "la riga del giorno non e' il giorno piu' il rimando all'orologio: " + righe_oggi[0],
     )
+    # Ogni giorno della settimana, non solo quello in cui gira la prova.
+    for giorno in range(7):
+        istante = datetime(2026, 1, 5 + giorno, 9, 30, tzinfo=UTC)
+        esigi(
+            re.fullmatch(forma_riga, prompts.riga_della_data(istante)) is not None,
+            "la riga del giorno non torna di " + istante.strftime("%A") + ": " + prompts.riga_della_data(istante),
+        )
+        esigi(
+            re.fullmatch(forma_ora, prompts.data_e_ora(istante)) is not None,
+            "che_ora_e non torna di " + istante.strftime("%A") + ": " + prompts.data_e_ora(istante),
+        )
     avvio = prompt.split("<questo_avvio>", 1)[-1].split("</questo_avvio>", 1)[0]
     esigi(re.search(r"\d\d:\d\d", avvio) is None, "l'avvio porta un orario, che cambia a ogni turno: " + avvio)
     esigi(prompt == costruisci(), "due system message consecutivi della stessa sessione differiscono")
     adesso = che_ora_e()
     esigi(
-        re.fullmatch(r"[a-z]+' \d{1,2} [a-z]+ \d{4}, \d\d:\d\d \S+", adesso) is not None,
+        re.fullmatch(forma_ora, adesso) is not None,
         "che_ora_e non risponde con giorno, ora e fuso: " + adesso,
     )
 
@@ -1674,6 +1690,22 @@ def eco_apprendimenti(agent, lm, user_id: str) -> str:
     # Un agente senza macchina di apprendimento - `object()` nelle prove
     # della CLI - deve dare una fotografia vuota, non un AttributeError.
     esigi(fotografa(object()) == Fotografia(), "un agente senza apprendimento non da' una fotografia vuota")
+
+    # Date senza fuso, scritte a mano o importate: valgono UTC, senza
+    # TypeError nel confronto con l'inizio del turno.
+    from ares.agent.echo import annota_provenienza
+
+    nuovo.user_id = "eco-senza-fuso"
+    a_mano = AresMemories(user_id=nuovo.user_id)
+    for testo, quando in (("dopo", "2026-10-01T10:00:00"), ("prima", "2025-12-01"), ("giorno", "2026-10-01")):
+        a_mano.memories.append({"id": testo, "content": testo, "updated_at": quando})
+    lm.user_memory_store.save(nuovo.user_id, a_mano)
+    try:
+        toccate = annota_provenienza(nuovo, dal=datetime(2026, 1, 1, tzinfo=UTC), turno="t", cartella=None)
+        annotate = {m["id"] for m in lm.user_memory_store.get(user_id=nuovo.user_id).memories if m.get("turno")}
+    finally:
+        lm.user_memory_store.delete(user_id=nuovo.user_id)
+    esigi(toccate == 2 and annotate == {"dopo", "giorno"}, "date senza fuso: annotate " + repr(annotate))
 
     vecchia = Fotografia(
         profilo={"name": "Prova", "occupation": "collaudo", "timezone": "Europe/Rome"},

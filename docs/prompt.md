@@ -34,6 +34,8 @@ cache viene riusata. L'ora precisa la dà lo strumento `che_ora_e`, e il prompt 
 invece di indovinare. Le skill sono caricate una volta all'avvio: una
 adottata durante la conversazione entra dalla successiva, e il prefisso
 resta fermo.
+Una volta attivato il gruppo `proposte`, prima di `questo_avvio` c'è anche
+la sua guida, in `<istruzioni_proposte>`.
 Dopo le sezioni Agno aggiunge la guida ai risultati lunghi, le guide degli
 store e le memorie. Per ispezionare il risultato completo senza interrogare
 il modello:
@@ -165,8 +167,9 @@ riga con parole inglesi, fuori dai blocchi di dati (memorie, entità,
 nome è detto dalla descrizione, e la guida ai risultati lunghi sostituisce
 quella di Agno invece di affiancarla. `struttura del prompt` verifica che
 le istruzioni siano solo sezioni note e in ordine, che due sessioni con la
-stessa configurazione abbiano le stesse sezioni fisse e che l'ora entri
-solo nell'ultima.
+stessa configurazione abbiano le stesse sezioni fisse, che la data del
+giorno («- Oggi: …», senza ora) entri solo nell'ultima e che due chiamate
+nella stessa giornata diano istruzioni identiche.
 
 Queste prove controllano la composizione. La qualità semantica richiede
 modelli reali e casi ripetuti; le prove con Ollama verificano il ciclo di

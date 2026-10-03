@@ -83,32 +83,53 @@ Con `ARES_SANDBOX=bwrap` nel `.env` ogni comando parte dentro
 [bubblewrap](https://github.com/containers/bubblewrap):
 
 - il filesystem è in sola lettura, tranne la cartella di lavoro e una `/tmp`
-  privata che sparisce con il comando;
+  privata che si svuota dopo ogni comando;
+- nella cartella, `.git`, `ARES.md` e `.ares` (regole e skill del progetto)
+  sono in sola lettura: un comando non può scrivere la configurazione o gli
+  hook di git, che git eseguirebbe poi fuori dalla sandbox, né le regole che
+  Ares rilegge. Se mancano quando il comando parte, il comando li può creare
+  (un `git init` è legittimo); dal comando successivo sono protetti anche
+  loro. Con la sandbox anche il `git status` di `/cartella` gira dentro di
+  lei;
+- `/run` è vuota: niente D-Bus di sistema o di sessione, niente socket di
+  servizi come Docker, libvirt o podman. Con la rete resta solo ciò che serve
+  a risolvere i nomi;
 - lo stato di Ares (`~/.ares` o `ARES_HOME`, con stato e backup), il `.env`
-  del clone, la directory di runtime della sessione (agente SSH, D-Bus) e un
-  elenco di credenziali note della home (`.ssh`, `.gnupg`, `.aws`, `.azure`,
-  `.kube`, `.docker`, `.config/gh`, `.config/gcloud`, `.netrc`,
-  `.git-credentials`, `.pypirc`, `.npmrc`) sono coperti: il comando non li
-  vede;
+  del clone, la directory di runtime della sessione (`/run/user/<uid>` e
+  `XDG_RUNTIME_DIR`, con l’agente SSH e il bus) e un elenco di credenziali
+  note della home (`.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube`, `.docker`,
+  `.config/gh`, `.config/gcloud`, `.config/rclone`, `.netrc`,
+  `.git-credentials`, `.pypirc`, `.npmrc`, `.cargo/credentials`,
+  `.cache/huggingface/token`, `.ollama/id_ed25519`, `.password-store`,
+  `.local/share/keyrings`, `.Xauthority` e i profili di Firefox, Chrome,
+  Chromium e Brave) sono coperti: il comando non li vede. L’elenco si
+  ricalcola a ogni comando, quindi vale anche per ciò che nasce dopo l’avvio;
 - la rete non c’è, salvo `ARES_SANDBOX_RETE=1`;
 - i processi lasciati in background muoiono quando il comando finisce o
   scade.
 
 Se la sandbox è chiesta ma non si può applicare — un sistema diverso da
-Linux, `bwrap` assente, namespace utente negati — la chat non parte e lo
-dice in una riga, e `ares preflight` dà l’ambiente come non pronto: Ares non
-ripiega in silenzio sui comandi senza sandbox. Su Ubuntu 24.04 i namespace
-utente richiedono un profilo AppArmor per `bwrap`.
+Linux, `bwrap` assente, namespace utente negati, una cartella di lavoro che
+è la home o la contiene, che renderebbe scrivibili `.bashrc` e
+`~/.local/bin` — la chat non parte e lo dice in una riga, e `ares preflight`
+dà l’ambiente come non pronto: Ares non ripiega in silenzio sui comandi
+senza sandbox. Su Ubuntu 24.04 i namespace utente richiedono un profilo
+AppArmor per `bwrap`.
 
 I suoi limiti:
 
-- dentro la cartella di lavoro un comando fa ciò che vuole: cancella,
-  riscrive, legge `.env` e `.git` del progetto. La sandbox protegge il resto
-  della macchina, non il progetto, che resta affidato alle conferme e a git;
-- legge tutto ciò che sul disco è leggibile e non è nell’elenco: un segreto
-  in un percorso diverso resta visibile;
+- dentro la cartella di lavoro un comando fa ciò che vuole, tranne toccare
+  `.git`, `ARES.md` e `.ares`: cancella, riscrive, legge `.env`. Può anche
+  scrivere codice che poi esegui tu fuori dalla sandbox (uno script, un
+  `Makefile`, un `.envrc`, il `.git` di un repository annidato): il progetto
+  resta affidato alle conferme e alla tua revisione;
+- legge tutto ciò che sul disco è leggibile e non è nell’elenco: il resto
+  della home, `/etc`, gli altri progetti. Un segreto in un percorso diverso
+  resta visibile;
 - con `ARES_SANDBOX_RETE=1` la rete è intera, senza filtro per dominio: un
-  comando può mandare fuori ciò che legge;
+  comando può mandare fuori ciò che legge, e raggiunge i servizi in ascolto
+  sulla macchina (`localhost`, compreso Ollama) e i socket astratti, come
+  quello di X11;
 - conferme e modalità non cambiano: `auto` diventa più difendibile, non
   innocuo;
 - su Windows e macOS l’opzione non esiste.
@@ -149,12 +170,17 @@ sono procedure che il modello legge e segue. Ares non ne esegue gli script
 e ignora `allowed-tools`: un comando suggerito da una skill passa da
 `run_command` con le conferme della modalità. Quelle del progetto arrivano
 con il clone, come `ARES.md`: nome e descrizione entrano nel prompt come
-regole della cartella, la procedura arriva con la stessa avvertenza, e a
-parità di nome vince la skill della persona. Il banner le elenca tutte. La
-lettura resta nella cartella della skill: un percorso o un link che ne esce
-non si apre. Una skill proposta da Ares va in `~/.ares/skills/proposte/`, che
-non si carica: entra solo con `ares skills adopt --apply` e la conferma
-scritta. Da `ares -p` non si propone.
+regole della cartella, senza parentesi angolari che aprano o chiudano una
+sezione, al più 20 skill e 4000 caratteri di descrizioni; la procedura
+arriva con la stessa avvertenza fra due righe che la delimitano, e gli altri
+file della skill come dati. A parità di nome vince la skill della persona.
+Una skill del progetto che, risolti i link, esce dalla cartella di lavoro
+non si carica. Il banner le elenca tutte, e `ares skills list` dice perché
+una non è caricata. La lettura resta nella cartella della skill: un percorso
+o un link che ne esce non si apre. Una skill proposta da Ares va in
+`~/.ares/skills/proposte/`, che non si carica: entra solo con
+`ares skills adopt --apply` e la conferma scritta, e solo se dopo
+l'anteprima non è cambiata. Da `ares -p` non si propone.
 
 In `ares -p`, e comunque quando stdin non è un terminale, nessuno può
 rispondere: `auto` e `modifiche` sono rifiutate, le conferme valgono no, le

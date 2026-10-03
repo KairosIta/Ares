@@ -17,6 +17,7 @@ from agno.vectordb.search import SearchType
 
 from ares import config
 from ares.agent.agno_interni import OllamaConRagionamento
+from ares.agent.marcatura import ConNota
 from ares.agent.prompts import AVVISO_SANDBOX, data_e_ora, descrizione_del_comando
 from ares.agent.sandbox import Sandbox, prepara_sandbox
 from ares.config import Impostazioni, Percorsi, Politica
@@ -283,9 +284,11 @@ class AresWorkspace(Workspace):
                 pezzi.append(testa_e_coda(esito.stderr, tail))
             if esito.stdout.strip():
                 pezzi.append("Output: " + testa_e_coda(esito.stdout, tail))
-            if self.sandbox is not None:
-                pezzi.append(AVVISO_SANDBOX.format(rete="" if self.sandbox.rete else ", e la rete e' spenta"))
-            return "\n".join(pezzi)
+            testo = "\n".join(pezzi)
+            # L'avviso e' di Ares, non del comando: resta fuori dal blocco dei dati.
+            if self.sandbox is not None and self.sandbox.forse_colpa_sua(esito.stderr + "\n" + esito.stdout):
+                return ConNota(testo, AVVISO_SANDBOX.format(rete="" if self.sandbox.rete else ", e la rete e' spenta"))
+            return testo
         return testa_e_coda(esito.stdout, tail)
 
     async def arun_command(self, args: list[str], tail: int = 100, timeout: int = 120) -> str:

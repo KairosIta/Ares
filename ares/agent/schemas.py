@@ -20,7 +20,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from agno.learn.schemas import Memories, UserProfile
 
@@ -92,6 +92,26 @@ def chiave_memoria(testo: str) -> str:
     return ridotto.rstrip(" .;!")
 
 
+# Quante versioni superate si tengono di una stessa memoria.
+SUPERATE_PER_MEMORIA = 10
+
+
+def scritta_il(voce: dict[str, Any]) -> str:
+    """Quando una memoria e' stata scritta l'ultima volta, come la scrive Agno: modifica, o nascita; vuoto se ignoto."""
+    return str(voce.get("updated_at") or voce.get("created_at") or "")
+
+
+def note_memoria(voce: dict[str, Any], *, data: bool = True, ignota: str = "") -> list[str]:
+    """Il giorno di scrittura (o `ignota`) e la conversazione di provenienza di una memoria, quelle che ci sono."""
+    note = []
+    giorno = (scritta_il(voce)[:10] or ignota) if data else ""
+    if giorno:
+        note.append(giorno)
+    if voce.get("sessione"):
+        note.append("conversazione " + str(voce["sessione"]))
+    return note
+
+
 @dataclass
 class AresMemories(Memories):
     """Memorie che non si perdono quando vengono corrette, rese nel prompt con la loro data.
@@ -100,7 +120,10 @@ class AresMemories(Memories):
     una copia passa in `superate`, con `invalidata_il` e, per una
     riscrittura, `sostituita_da` (l'id della voce valida, che resta lo
     stesso). `memories` contiene solo le valide, quindi il prompt, l'estrattore
-    e l'eco non le vedono; `/memorie superate` le mostra.
+    e l'eco non le vedono; `/memorie superate` le mostra. La copia non porta
+    il `source` di Agno (un pezzo di conversazione che nessuno mostra), e di
+    ogni memoria restano le ultime `SUPERATE_PER_MEMORIA` versioni, perche'
+    ogni riscrittura ne aggiunge una.
 
     `Memories.get_memories_text` usa solo `content`: il modello non saprebbe
     se una preferenza e' di ieri o dell'anno scorso, ne' da dove la sa. La
@@ -113,19 +136,23 @@ class AresMemories(Memories):
 
     superate: list[dict[str, Any]] = field(default_factory=list, metadata={"internal": True})
 
+    CON_DATA: ClassVar[bool] = True
+    LEGENDA: ClassVar[str] = (
+        "(fra parentesi quadre, la data in cui hai saputo la cosa e, se registrata, la conversazione)"
+    )
+
     def _supera(self, voce: dict[str, Any], sostituita_da: str | None) -> None:
-        copia = {**voce, "invalidata_il": datetime.now(UTC).isoformat()}
+        copia = {k: v for k, v in voce.items() if k != "source"}
+        copia["invalidata_il"] = datetime.now(UTC).isoformat()
         if sostituita_da is not None:
             copia["sostituita_da"] = sostituita_da
         self.superate.append(copia)
-
-    def gia_presente(self, testo: str) -> str | None:
-        """L'id della memoria valida che dice gia' `testo`, a meno di maiuscole e spazi."""
-        chiave = chiave_memoria(testo)
-        for voce in self.memories or []:
-            if isinstance(voce, dict) and chiave_memoria(str(voce.get("content") or "")) == chiave:
-                return voce.get("id")
-        return None
+        identificativo = copia.get("id")
+        if identificativo is None:
+            return
+        stesse = [i for i, v in enumerate(self.superate) if isinstance(v, dict) and v.get("id") == identificativo]
+        for indice in reversed(stesse[:-SUPERATE_PER_MEMORIA]):
+            del self.superate[indice]
 
     def ritira(self, sostituzioni: dict[str, str]) -> None:
         """Toglie dalle valide ogni memoria in `sostituzioni`, superata da quella indicata.
@@ -162,13 +189,14 @@ class AresMemories(Memories):
     def get_memories_text(self) -> str:
         """Le memorie come testo per il prompt, ognuna con data e conversazione.
 
-        La legenda in testa evita che la data sia letta come parte di cio'
-        che l'utente ha detto.
+        La legenda in testa, se c'e' almeno una nota, evita che la nota sia
+        letta come parte di cio' che l'utente ha detto.
         """
         if not self.memories:
             return ""
 
         righe = []
+        annotate = False
         for memoria in self.memories:
             if not isinstance(memoria, dict):
                 righe.append("- " + str(memoria))
@@ -176,22 +204,18 @@ class AresMemories(Memories):
             contenuto = memoria.get("content")
             if not contenuto:
                 continue
-            quando = (memoria.get("updated_at") or memoria.get("created_at") or "")[:10]
-            sessione = memoria.get("sessione")
-            note = [quando] if quando else []
-            if sessione:
-                note.append("conversazione " + str(sessione))
+            note = note_memoria(memoria, data=self.CON_DATA)
+            annotate = annotate or bool(note)
             righe.append("- " + contenuto + (" [" + ", ".join(note) + "]" if note else ""))
 
         if not righe:
             return ""
-        legenda = "(fra parentesi quadre, la data in cui hai saputo la cosa e, se registrata, la conversazione)"
-        return "\n".join([legenda, *righe])
+        return "\n".join([self.LEGENDA, *righe] if annotate else righe)
 
 
 @dataclass
 class AresMemorieSenzaData(AresMemories):
-    """Come `AresMemories`, ma nel prompt senza la data: con `DATE_MEMORIE` spento."""
+    """Come `AresMemories`, ma nel prompt senza la data, con la sola conversazione: con `DATE_MEMORIE` spento."""
 
-    def get_memories_text(self) -> str:
-        return Memories.get_memories_text(self)
+    CON_DATA: ClassVar[bool] = False
+    LEGENDA: ClassVar[str] = "(fra parentesi quadre, se registrata, la conversazione in cui hai saputo la cosa)"

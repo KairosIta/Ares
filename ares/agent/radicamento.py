@@ -12,8 +12,8 @@ Il rigore dipende dal campo. Un campo descrittivo e' fatto di parafrasi e
 di qualifiche che i criteri di estrazione chiedono («avvio non
 confermato»): si scarta solo se nessuna sua parola compare nella fonte. Un
 elenco si giudica voce per voce, e un nome parola per parola, perche' le
-invenzioni stanno li'. La lingua si deduce dal dialogo stesso e non si
-giudica.
+invenzioni stanno li'. Lingua e fuso orario sono deduzioni (dal dialogo
+stesso, da «vivo a Roma» a «Europe/Rome») e non si giudicano.
 """
 
 from __future__ import annotations
@@ -29,8 +29,9 @@ CAMPI_ELENCO = frozenset({"tools_and_stack", "expertise"})
 # Campi giudicati parola per parola.
 CAMPI_NOME = frozenset({"name", "preferred_name"})
 
-# Campi che non si radicano nel testo: la lingua e' quella in cui si parla.
-CAMPI_ESENTI = frozenset({"language"})
+# Campi che non si radicano nel testo: la lingua e' quella in cui si parla, il
+# fuso si deduce da un luogo che ha un altro nome.
+CAMPI_ESENTI = frozenset({"language", "timezone"})
 
 # Valori che dicono «non lo so» invece di lasciare il campo vuoto.
 SEGNAPOSTO = frozenset(
@@ -72,10 +73,10 @@ _RADICE = 5
 
 
 def _parole(testo: str) -> list[str]:
-    """Le parole di `testo` in minuscolo, senza accenti e senza punteggiatura."""
+    """Le parole di `testo` in minuscolo, senza accenti e senza punteggiatura, in ogni alfabeto."""
     piano = unicodedata.normalize("NFKD", testo.lower())
     piano = "".join(c for c in piano if not unicodedata.combining(c))
-    return re.findall(r"[a-z0-9]+", piano)
+    return re.findall(r"[^\W_]+", piano)
 
 
 def _significative(parole: Iterable[str]) -> set[str]:
@@ -101,8 +102,9 @@ class Fonte:
 
 
 def segnaposto(valore: str) -> bool:
-    """Vero se `valore` dice soltanto che il dato manca."""
-    return " ".join(_parole(valore)) in SEGNAPOSTO or not _parole(valore)
+    """Vero se `valore` dice soltanto che il dato manca, o e' vuoto o sola punteggiatura."""
+    parole = _parole(valore)
+    return not parole or " ".join(parole) in SEGNAPOSTO
 
 
 def radicato(testo: str, fonte: Fonte) -> bool:

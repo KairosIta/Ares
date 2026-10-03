@@ -14,6 +14,7 @@ per intero conserva le voci che lo store conteneva gia'.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import replace
 from typing import Any
@@ -106,6 +107,11 @@ CAMPI = (
     ),
     ("language", "italiano", "Ciao, come stai?", "italiano", ()),
     ("language", "Non specificato", "Ciao, come stai?", None, ("Non specificato",)),
+    ("timezone", "Europe/Rome", "Vivo a Roma.", "Europe/Rome", ()),
+    ("name", "王伟", "Mi chiamo 王伟.", "王伟", ()),
+    ("name", "Δημήτρης", "Sono Δημήτρης, piacere.", "Δημήτρης", ()),
+    ("name", "Δημήτρης", "Ciao.", None, ("Δημήτρης",)),
+    ("occupation", "—", "Ciao.", None, ("—",)),
 )
 
 # Memoria, testo della conversazione, se resta.
@@ -114,6 +120,7 @@ MEMORIE = (
     ("Il numero della tessera della palestra e' GYM-5521.", "La mia tessera e' GYM-5521.", True),
     ("Possiede un gatto di nome Micio.", "Ho cambiato editor: ora uso Helix.", False),
     ("Non specificato", "Ho cambiato editor: ora uso Helix.", False),
+    ("Il suo amico si chiama Δημήτρης.", "Sono uscito con Δημήτρης.", True),
 )
 
 
@@ -124,7 +131,7 @@ def tabella_dei_campi() -> str:
             verdetto.tenuto == atteso and verdetto.scartato == scartato,
             campo + " " + repr(valore) + ": " + repr(verdetto) + ", atteso " + repr((atteso, scartato)),
         )
-    return str(len(CAMPI)) + " valori: elenchi per voce, nomi per parola, segnaposto, parafrasi e lingua"
+    return str(len(CAMPI)) + " valori: elenchi per voce, nomi per parola in ogni alfabeto, segnaposto, parafrasi"
 
 
 def tabella_delle_memorie() -> str:
@@ -265,6 +272,89 @@ def il_doppione_identico_non_entra() -> str:
     return "la riscrittura identica resta fuori, senza figurare fra gli scarti"
 
 
+def la_fonte_e_solo_il_testo_valido() -> str:
+    """Superate, date, `source` e provenienza delle memorie non radicano una memoria nuova."""
+    utente = Utente.da_grezzo("radicamento-fonte")
+    store = estrai(utente, {}, "Ciao.").user_memory_store
+    gia = AresMemories(user_id=utente.id)
+    ritirata = gia.add_memory("Lavora come medico a Torino.")
+    gia.delete_memory(ritirata)
+    gia.add_memory("Usa Helix come editor.", source="Ciao, lavoro come medico a Torino.")
+    gia.memories[0].update(
+        updated_at="2026-10-10T10:10:10+00:00", sessione="s-10", turno="r-10", cartella="/home/prova/office"
+    )
+    store.save(utente.id, gia)
+    for memoria in ("Lavora come medico.", "Corre 10 km.", "Lavora in home office."):
+        macchina = estrai(utente, {"add_memory": {"memory": memoria}}, "Ciao.")
+        scarti = macchina.user_memory_store.prendi_scarti()
+        esigi(scarti == ["memoria: " + memoria], memoria + " si radica fuori dal testo valido: " + repr(scarti))
+    restano = [m["content"] for m in macchina.user_memory_store.get(user_id=utente.id).memories]
+    esigi(restano == ["Usa Helix come editor."], "memorie: " + repr(restano))
+    return "una memoria ritirata, una data, un source e una cartella non radicano niente"
+
+
+def la_richiesta_e_la_fonte() -> str:
+    """`update_user_memory` passa dal radicamento: la fonte e' il testo della richiesta."""
+    utente = Utente.da_grezzo("radicamento-richiesta")
+    store = estrai(utente, {}, "Ciao.").user_memory_store
+    finto = EstrattoreFinto({"add_memory": {"memory": "Possiede un gatto di nome Micio."}})
+    store.config.model = finto
+    store.run_memories_update(task="Ricorda che usa Helix come editor.", user_id=utente.id)
+    esigi(store.get(user_id=utente.id) is None, "la memoria inventata e' nell'archivio")
+    esigi(store.prendi_scarti() == ["memoria: Possiede un gatto di nome Micio."], "lo scarto non arriva all'eco")
+    finto.scritti.clear()
+    finto.argomenti = {"add_memory": {"memory": "Usa Helix come editor."}}
+    store.run_memories_update(task="Ricorda che usa Helix come editor.", user_id=utente.id)
+    restano = [m["content"] for m in store.get(user_id=utente.id).memories]
+    esigi(restano == ["Usa Helix come editor."], "la memoria richiesta non e' salvata: " + repr(restano))
+    return "dalla richiesta passa cio' che dice, non un'invenzione"
+
+
+class EstrattoreTrattenuto(EstrattoreFinto):
+    """La prima tool call aspetta `via` prima di arrivare allo store; le altre chiamate no."""
+
+    def __init__(self, argomenti: dict[str, dict[str, Any]]) -> None:
+        super().__init__(argomenti)
+        self.fermo, self.via = threading.Event(), threading.Event()
+
+    def invoke(self, messages: Any, tools: Any = None, **kwargs: Any) -> ModelResponse:
+        risposta = self._risposta(tools)
+        if risposta.tool_calls and not self.fermo.is_set():
+            self.fermo.set()
+            self.via.wait(10)
+        return risposta
+
+
+def estrazioni_intrecciate() -> str:
+    """Un'estrazione che finisce mentre un'altra aspetta il modello non le toglie la fonte."""
+    utente = Utente.da_grezzo("radicamento-fili")
+    store = estrai(utente, {}, "Ciao.").user_memory_store
+    finto = EstrattoreTrattenuto({"add_memory": {"memory": "Possiede un gatto di nome Micio."}})
+    store.config.model = finto
+
+    def estrazione(testo: str) -> None:
+        store.extract_and_save(messages=[Message(role="user", content=testo)], user_id=utente.id)
+
+    lenta = threading.Thread(target=estrazione, args=("Ho cambiato editor: ora uso Helix.",))
+    lenta.start()
+    esigi(finto.fermo.wait(10), "l'estrazione lenta non e' arrivata al modello")
+    estrazione("Ciao.")
+    finto.via.set()
+    lenta.join(10)
+    esigi(store.get(user_id=utente.id) is None, "la memoria inventata e' passata senza fonte")
+    esigi(store.prendi_scarti() == ["memoria: Possiede un gatto di nome Micio."], "lo scarto della lenta e' perso")
+
+    # Dopo un Ctrl-C il cancello e' chiuso: cio' che il filo rimasto appeso
+    # scarta non arriva all'eco del turno dopo.
+    cancello = learning.Cancello()
+    cancello.chiudi()
+    finto.scritti.clear()
+    contesto = {"messages": [Message(role="user", content="Ciao.")], "user_id": utente.id}
+    learning._estrai(store, contesto, cancello)
+    esigi(store.prendi_scarti() == [], "gli scarti di un'estrazione interrotta arrivano all'eco")
+    return "la fonte resta a chi la usa; gli scarti dopo un Ctrl-C non arrivano al turno dopo"
+
+
 def main() -> int:
     falliti, _ = esegui(
         (
@@ -273,6 +363,9 @@ def main() -> int:
             ("archivio radicato", l_archivio_riceve_solo_il_radicato),
             ("gia' noto", il_gia_noto_resta),
             ("doppione identico", il_doppione_identico_non_entra),
+            ("fonte valida", la_fonte_e_solo_il_testo_valido),
+            ("richiesta", la_richiesta_e_la_fonte),
+            ("estrazioni intrecciate", estrazioni_intrecciate),
         )
     )
     return chiudi(falliti, RADICE_PROVA)

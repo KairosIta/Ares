@@ -7,8 +7,8 @@ Uso:
     .venv/bin/python tests/run.py --solo backup entita
 
 Ogni prova e' uno script eseguibile da solo, e il runner la lancia in un
-processo separato invece di importarla. Ognuna prepara `ARES_TMP`,
-`ARES_BACKUP_DIR` e la propria cartella di lavoro *prima* di importare
+processo separato invece di importarla. Ognuna prepara `ARES_HOME`,
+`ARES_TMP`, `ARES_BACKUP_DIR` e la propria cartella di lavoro *prima* di importare
 `config`, che fotografa l'ambiente all'import: due prove nello stesso
 interprete condividerebbero la prima fotografia, e la seconda potrebbe
 scrivere nell'archivio vero. Per questo `prepara_ambiente` rifiuta di

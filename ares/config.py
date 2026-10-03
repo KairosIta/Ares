@@ -1,8 +1,9 @@
 """Configurazione centrale di Ares.
 
 I valori predefiniti sono pensati per un host locale con circa 16 GiB di
-VRAM. Modelli, percorsi e identita' si sovrascrivono dal `.env` o
-dall'ambiente; il resto si cambia qui.
+VRAM. Modelli, percorsi, identita', contesto, campionamento e gli
+interruttori delle funzioni facoltative si sovrascrivono dal `.env` o
+dall'ambiente (l'elenco e' `.env.example`); il resto si cambia qui.
 
 Importare il modulo non tocca il disco: legge `.env` e definisce nomi. I
 nomi sono la sorgente; `leggi_percorsi`, `leggi_impostazioni` e
@@ -224,8 +225,8 @@ try:
     # che con una tool call; vale solo con un estrattore locale (vedi
     # `Impostazioni.estrazione_vincolata`). Assente: acceso.
     ESTRAZIONE_VINCOLATA = leggi_interruttore("ARES_ESTRAZIONE_VINCOLATA", AMBIENTE.get("ARES_ESTRAZIONE_VINCOLATA"))
-    # Gli strumenti di entita' e intuizioni fuori dal prompt finche' il
-    # modello non li attiva (`agent/scaffale.py`). Assente: acceso.
+    # Gli strumenti di entita', intuizioni e `proponi_skill` fuori dal prompt
+    # finche' il modello non li attiva (`agent/scaffale.py`). Assente: acceso.
     SU_RICHIESTA = leggi_interruttore("ARES_STRUMENTI_SU_RICHIESTA", AMBIENTE.get("ARES_STRUMENTI_SU_RICHIESTA"))
     # I comandi dentro bubblewrap (`agent/sandbox.py`). Assente: spenta, perche'
     # accesa toglierebbe la rete a comandi che oggi funzionano.
@@ -765,8 +766,8 @@ class Apprendimento:
 
     `memorie_datate` viene da `DATE_MEMORIE`, `strumenti_memoria` da
     `MEMORY_AGENT_TOOLS`, `su_richiesta` da `ARES_STRUMENTI_SU_RICHIESTA`:
-    gli strumenti di entita' e intuizioni arrivano al modello solo dopo che
-    li ha attivati. `skill` da `ARES_SKILL`: le procedure scritte o adottate
+    gli strumenti di entita', intuizioni e `proponi_skill` arrivano al
+    modello solo dopo che li ha attivati. `skill` da `ARES_SKILL`: le procedure scritte o adottate
     dalla persona, lette quando servono.
     """
 

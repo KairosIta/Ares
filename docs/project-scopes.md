@@ -7,7 +7,10 @@ primi due punti della [roadmap](ROADMAP.md) — *Identità stabile e memoria
 per progetto* e *Ambiti applicati dal codice in scrittura e recupero* — e ne
 prepara l'implementazione. Distingue i fatti verificati nel codice e nel
 framework dalle scelte proposte: ciò che non è marcato come verificato è una
-proposta. Le prove di accettazione (§8) non sono implementate.
+proposta. Le prove di accettazione (§8) non sono implementate. La
+scrittura della provenienza dopo il turno (§5) esiste invece già
+(`echo.annota_provenienza`: sessione, turno, cartella, `valida_dal`);
+mancano la chiave di progetto e il filtro in resa.
 
 Le due verifiche preliminari sono fatte (§3.4): una provenienza di progetto
 nelle memorie si scrive con le API pubbliche, sopravvive a una riscrittura e

@@ -11,6 +11,7 @@ from agno.agent import Agent
 from ares import config
 from ares.agent.echo import superate, valide
 from ares.agent.prompts import percorso_istruzioni
+from ares.agent.sandbox import SandboxNonDisponibile, prepara_sandbox
 from ares.cli import cartella
 from ares.cli.conversazioni import conto_scambi, righe_sessione, testo_markdown
 from ares.cli.log import configura_log_agno
@@ -316,7 +317,15 @@ def _comando_cartella(stato: StatoChat, argomento: str) -> None:
     UI.pair("percorso", str(radice), style="ares.cyan")
     ramo = ramo_git(radice)
     if ramo:
-        modificati = cartella.file_modificati(radice)
+        try:
+            sandbox = prepara_sandbox(stato.percorsi, stato.politica)
+        except SandboxNonDisponibile:
+            sandbox = None
+        modificati = (
+            cartella.file_modificati(radice, sandbox)
+            if sandbox is not None or not stato.politica.workspace.sandbox
+            else None
+        )
         if modificati is None:
             stato_git = "stato non leggibile"
         elif modificati:

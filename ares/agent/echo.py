@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from ares.agent.schemas import scritta_il
+
 # Identificativi e date popolati dal framework: non sono appresi, e una
 # data aggiornata a ogni scrittura segnerebbe il profilo come cambiato.
 CAMPI_DI_SERVIZIO = frozenset({"user_id", "session_id", "agent_id", "team_id", "created_at", "updated_at", "memories"})
@@ -140,17 +142,16 @@ def _memorie_o_superate(contenitore: Any) -> bool:
     return bool(_memorie(contenitore) or getattr(contenitore, "superate", None))
 
 
-# Le chiavi di provenienza che Ares scrive su una memoria toccata dal turno.
-# Il modello non le vede: estrazione e prompt leggono solo il contenuto.
-CHIAVI_PROVENIENZA = ("sessione", "turno", "cartella", "valida_dal")
-
-
 def _istante(valore: Any) -> datetime | None:
-    """Una data ISO-8601 di Agno (con la `Z` finale), o `None` se non lo e'."""
+    """Una data ISO-8601 (quella di Agno ha la `Z` finale), o `None` se non lo e'.
+
+    Una data senza fuso, scritta a mano o importata, vale UTC come quelle di Agno.
+    """
     try:
-        return datetime.fromisoformat(str(valore))
+        istante = datetime.fromisoformat(str(valore))
     except ValueError:
         return None
+    return istante if istante.tzinfo is not None else istante.replace(tzinfo=UTC)
 
 
 def annota_provenienza(agent: Any, *, dal: datetime, turno: str | None, cartella: str | None) -> int:
@@ -178,7 +179,7 @@ def annota_provenienza(agent: Any, *, dal: datetime, turno: str | None, cartella
     for voce in getattr(contenitore, "memories", None) or []:
         if not isinstance(voce, dict):
             continue
-        scritta = _istante(voce.get("updated_at") or voce.get("created_at"))
+        scritta = _istante(scritta_il(voce))
         if scritta is None or scritta < dal:
             continue
         voce.update(valori)
@@ -204,8 +205,9 @@ def superate(agent: Any) -> list[dict[str, Any]]:
 
 
 def prendi_scarti(agent: Any) -> list[str]:
-    """Cio' che l'estrazione ha scartato perche' assente dalla conversazione, svuotato.
+    """Cio' che l'estrazione ha scartato perche' assente dal testo che leggeva, svuotato.
 
+    Il testo e' la conversazione, o la richiesta di `update_user_memory`.
     Gli store tengono gli scarti finche' qualcuno non li legge: il turno li
     prende all'inizio, per non mostrare quelli di un turno precedente, e
     alla fine.
@@ -222,7 +224,7 @@ def righe_scarti(scarti: list[str]) -> list[str]:
     """Le righe dell'eco per cio' che non e' entrato in memoria, o nessuna."""
     if not scarti:
         return []
-    return ["   non appreso, assente dalla conversazione:", *("   | " + scarto for scarto in scarti)]
+    return ["   non appreso, assente dal testo da cui veniva estratto:", *("   | " + scarto for scarto in scarti)]
 
 
 def variazioni(prima: Fotografia, dopo: Fotografia) -> list[str]:

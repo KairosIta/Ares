@@ -1,7 +1,9 @@
 # Mappa delle responsabilità di Ares
 
 Data: 2026-09-28.
-**Stato: fotografia del codice attuale.** Non è una proposta di rifattorizzazione
+**Stato: fotografia del codice al 2026-09-28, non aggiornata dopo.**
+Mancano, fra gli altri, `ares/core/`, `ares/memories/` e `ares/skills/`, e i
+numeri dell'agente sono cresciuti. Non è una proposta di rifattorizzazione
 completata, ma un punto di partenza per decidere cosa spostare nel nucleo
 applicativo.
 

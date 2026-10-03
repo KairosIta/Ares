@@ -17,12 +17,20 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   leggono e basta: gli script non si eseguono e `allowed-tools` non concede
   niente. Quelle del progetto valgono come `ARES.md`; a parità di nome vince
   quella della persona; una cartella che non si carica compare all'avvio
-  con il motivo. Ares può proporne una con `proponi_skill`, sullo scaffale
+  con il motivo. Le skill del progetto non sono fidate come quelle della
+  persona: le descrizioni entrano nel prompt senza poter aprire tag, il
+  corpo e gli altri file arrivano fra delimitatori, al massimo 20 skill e
+  4000 caratteri di descrizioni, e una cartella collegata fuori dal
+  progetto non si carica. Ares può proporne una con `proponi_skill`, sullo scaffale
   nel gruppo `proposte` e mai da `ares -p`: la proposta va in
   `~/.ares/skills/proposte/`, che non si carica, finché la persona non la
   adotta. `ares skills list`, `adopt` e `discard` (con anteprima, `--apply`
-  e conferma scritta; una skill sostituita resta in `.precedenti/`), `/skill`
-  nella chat e una riga nel banner. `ARES_SKILL=0` le spegne. Non usa
+  e conferma scritta; una proposta cambiata dopo l'anteprima si rifiuta, una
+  skill sostituita resta in `.precedenti/` e un'adozione fallita a metà la
+  rimette a posto; `proposte` e i nomi riservati di Windows non si possono
+  usare), `/skill`
+  nella chat e una riga nel banner; attivato il gruppo, la sua guida resta
+  nel prompt a ogni turno. `ARES_SKILL=0` le spegne. Non usa
   `agno.skills`, il cui testo è in inglese e i cui strumenti eseguono gli
   script. Prova offline `skill`; le prove ora usano anche una casa
   usa-e-getta (`ARES_HOME`). Sul 9B una skill scritta dal cloud porta la
@@ -32,17 +40,27 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - **Sandbox dei comandi, opzionale, su Linux** (proposta 3.5 di
   `docs/agentic-improvements.md`). Con `ARES_SANDBOX=bwrap` ogni
   `run_command` parte dentro bubblewrap (`ares/agent/sandbox.py`): radice in
-  sola lettura, cartella di lavoro e `/tmp` privata scrivibili; stato di
-  Ares, `.env` del clone, directory di runtime della sessione e credenziali
-  note della home coperti; namespace nuovi per tutto, rete compresa
+  sola lettura, cartella di lavoro e `/tmp` privata scrivibili, ma `.git`,
+  `ARES.md` e `.ares` della cartella in sola lettura (git ne esegue la
+  configurazione e gli hook; i commit si fanno quindi fuori da Ares);
+  `/run` vuota, quindi niente D-Bus di sistema né socket di servizi; stato
+  di Ares, `.env` del clone, directory di runtime dell'utente (anche senza
+  `XDG_RUNTIME_DIR`) e credenziali note della home coperti, ricalcolati a
+  ogni comando; una cartella di lavoro che contiene la home si rifiuta;
+  namespace nuovi per tutto, rete compresa
   (`ARES_SANDBOX_RETE=1` la ridà, senza filtro per dominio); i processi
   lasciati in background muoiono con il comando. Se la sandbox è chiesta e
   non si può applicare la chat esce con 1 e una riga, `build_workspace`
   rifiuta per i client senza terminale e `ares preflight` dà l'ambiente
   come non pronto. Banner e `/cartella` la mostrano. Il modello la conosce
-  da una frase nella descrizione del comando e nella scheda dell'ambiente;
-  i limiti e il «non riprovare, non aggirare» arrivano nell'errore di un
-  comando fallito. Conferme e modalità non cambiano. SECURITY.md passa da
+  da una frase nella descrizione del comando e nella scheda dell'ambiente,
+  con la stessa frase nella sezione `strumenti` del prompt: i comandi
+  leggono oltre la cartella ma scrivono solo lì e in una `/tmp` che si
+  svuota dopo ogni comando. I limiti e il «non riprovare, non aggirare»
+  arrivano come nota di Ares, fuori dal blocco dei dati, quando l'errore di
+  un comando può venire dalla sandbox. `/cartella` chiede a git lo stato
+  senza fsmonitor né hook, e con la sandbox dentro la sandbox. Conferme e
+  modalità non cambiano. SECURITY.md passa da
   «Ares non è una sandbox» a una sezione sulla sandbox opzionale e sui suoi
   limiti. Prova offline `sandbox`, con bwrap vero dove crea i namespace; la
   CI Ubuntu installa `bubblewrap`. Sul 9B la sandbox non cambia quante
@@ -58,14 +76,42 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   maiuscole e spazi, che non passano dal modello, e le vicine per embedding
   sopra un coseno di 0,5; il modello di apprendimento giudica ciascuna
   coppia (doppione, superata o distinte), con lo schema in locale e una
-  parola sul cloud. Di una coppia non distinta si ritira la più vecchia a
-  favore della più recente; una ritirata passa fra le superate con
+  parola sul cloud. Di una memoria superata si ritira la più vecchia; di un
+  doppione resta la più completa, a pari lunghezza la più recente; una ritirata passa fra le superate con
   `sostituita_da` (`AresMemories.ritira`), quindi niente si cancella e
   `/memorie superate` la mostra. Sul percorso caldo, l'estrazione non
   salva più una memoria identica a una valida. Su 13 coppie scritte a mano,
   tre ripetizioni, il giudizio vincolato fa 39/39 con i tre 9B locali e il
   cloud 39/39 (`docs/memory-quality.md`). Prova offline `consolidamento`.
   La frequenza dell'estrazione non cambia.
+
+- **Le memorie sanno da dove vengono, e una correzione non cancella**
+  (proposta 3.7 di `docs/agentic-improvements.md`). Dopo ogni turno Ares
+  scrive sulle memorie che il turno ha scritto la sessione, il turno, la
+  cartella e da quando valgono (`echo.annota_provenienza`), con le API
+  pubbliche e qualunque strada abbia scritto la memoria; un rifiuto
+  dell'eco le toglie con il resto. Una memoria corretta o tolta,
+  dall'estrazione o da `update_user_memory`, non sparisce: passa fra le superate
+  di `AresMemories`, con `invalidata_il` e, per una correzione,
+  `sostituita_da`; ne restano le ultime dieci versioni per memoria. Una
+  data senza fuso vale UTC, e un errore nello scrivere la provenienza
+  diventa un avviso senza fermare il turno. Prompt, estrattore, eco e benchmark vedono solo le
+  valide. Nel prompt ogni memoria porta, accanto alla data, la conversazione
+  da cui viene: il modello sa rispondere «da dove lo sai?» e può rileggerla
+  con `read_past_session`. `/memorie origine` dice da quale conversazione e cartella viene
+  ogni memoria, `/memorie superate` mostra quelle corrette o tolte, e
+  `/memorie` dice quante ce ne sono. Le memorie scritte prima restano senza
+  provenienza e lo dichiarano; la retention delle sessioni lascia la
+  provenienza come riferimento pendente. Prove offline in `ambiti` (memorie
+  superate attraverso lo store vero, provenienza del turno e ripristino),
+  `smoke` e `repl` (i comandi).
+
+- **Un alias per ogni sottocomando**: `ares-memories`, `ares-skills` e
+  `ares-migrate` si aggiungono agli altri, e `python -m ares.memories` e
+  `python -m ares.skills` funzionano come per entità e sessioni. La prova
+  `cli` verifica che ogni sottocomando di `ares` abbia il suo alias.
+
+### Changed
 
 - **Strumenti su richiesta** (proposta 3.9 di `docs/agentic-improvements.md`).
   I sei strumenti di entità e intuizioni non arrivano al modello finché non
@@ -92,31 +138,13 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   toccano lo scaffale. Il cloud passa 21/21 sui casi provati
   (`docs/conversation-eval.md`).
 
-- **Le memorie sanno da dove vengono, e una correzione non cancella**
-  (proposta 3.7 di `docs/agentic-improvements.md`). Dopo ogni turno Ares
-  scrive sulle memorie che il turno ha scritto la sessione, il turno, la
-  cartella e da quando valgono (`echo.annota_provenienza`), con le API
-  pubbliche e qualunque strada abbia scritto la memoria; un rifiuto
-  dell'eco le toglie con il resto. Una memoria corretta o tolta,
-  dall'estrazione o da `update_user_memory`, non sparisce: passa fra le superate
-  di `AresMemories`, con `invalidata_il` e, per una correzione,
-  `sostituita_da`. Prompt, estrattore, eco e benchmark vedono solo le
-  valide. Nel prompt ogni memoria porta, accanto alla data, la conversazione
-  da cui viene: il modello sa rispondere «da dove lo sai?» e può rileggerla
-  con `read_past_session`. `/memorie origine` dice da quale conversazione e cartella viene
-  ogni memoria, `/memorie superate` mostra quelle corrette o tolte, e
-  `/memorie` dice quante ce ne sono. Le memorie scritte prima restano senza
-  provenienza e lo dichiarano; la retention delle sessioni lascia la
-  provenienza come riferimento pendente. Prove offline in `ambiti` (memorie
-  superate attraverso lo store vero, provenienza del turno e ripristino),
-  `smoke` e `repl` (i comandi).
-
 - **Con un estrattore locale il contesto di sessione è un JSON vincolato
   dallo schema** (proposta 3.6 di `docs/agentic-improvements.md`, passo 2).
   Al posto della tool call, una richiesta senza strumenti con `format` pari
   allo schema degli argomenti e temperatura 0; il JSON si applica con la
   stessa funzione, quindi conversione delle liste, cancello e retry valgono
-  come prima. Il MiMo-V2.6 9B salva il contesto al primo tentativo in 72
+  come prima. Una lista vuota per `plan` o `progress` non cancella quella
+  già salvata. Il MiMo-V2.6 9B salva il contesto al primo tentativo in 72
   fasi su 72 (erano 66), nessuna fase finisce più in errore per «contesto
   non salvato», e l'estrazione scende da 10,9 a 6,9 s; sul 9B di serie da
   6,4 a 5,1 s. Con il cloud di Ollama, che non applica lo schema, resta la
@@ -138,7 +166,12 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   per parola; un segnaposto come «Non specificato» o «Sconosciuto» non
   entra mai; un campo descrittivo o una memoria cadono solo se nessuna loro
   parola compare nel testo, perché l'estrattore riformula e aggiunge le
-  qualifiche che i criteri gli chiedono; la lingua non si giudica. Il
+  qualifiche che i criteri gli chiedono; lingua e fuso orario, che sono
+  deduzioni, non si giudicano. Di ciò che lo store conteneva contano solo i
+  campi del profilo e il testo delle memorie valide: non le superate, le
+  date o i percorsi. Le parole valgono in ogni alfabeto. La fonte è propria
+  di ogni estrazione, quindi un'estrazione rimasta appesa dopo un Ctrl-C non
+  tocca quella del turno dopo. Il
   controllo è in codice, non nel prompt, e non costa inferenze. Ciò che
   viene scartato compare nell'eco del turno sotto «non appreso», senza
   chiedere conferma, e nel rapporto del benchmark della memoria
@@ -153,11 +186,8 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   prompt attuali non inventa più. Il giudizio dell'estrattore e il recupero
   non cambiano.
 
-### Fixed
-
-- La sezione `strumenti` del prompt diceva che i comandi non sono isolati
-  anche con la sandbox accesa; ora dice che leggono oltre la cartella ma
-  scrivono solo lì e in `/tmp`.
+- **`pyyaml` è una dipendenza diretta**: legge il frontmatter dei
+  `SKILL.md`. Arrivava già con Agno, quindi il lock non cambia versione.
 
 ## [0.12.0] - 2026-10-02
 

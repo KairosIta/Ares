@@ -12,9 +12,9 @@ separatamente. L'embedding resta locale per costruzione.
 Il codice vive nel package `ares/`, diviso per responsabilità. Fra
 parentesi il sottocomando di `ares` che ogni package espone: `cli/app.py` li
 registra per nome di modulo, così `ares backup list` non importa Agno e
-`ares --help` li elenca tutti. Gli alias `ares-backup`, `ares-sessions`...
-passano dalla stessa App, e ogni sottopackage con un `__main__.py` risponde
-anche a `python -m`.
+`ares --help` li elenca tutti. Ogni sottocomando ha un alias `ares-<nome>`
+(`ares-backup`, `ares-skills`...) che passa dalla stessa App, e ogni
+sottopackage con un `__main__.py` risponde anche a `python -m`.
 
 ```text
 ares/
@@ -55,11 +55,14 @@ chat non parte finché la migrazione non è avvenuta.
 - `chat.py` avvia e coordina la REPL. `commands.py` contiene la tabella dei
   comandi locali, il loro dispatch e lo `StatoChat` che `/sessione`,
   `/metriche` e `/debug` modificano a metà conversazione. `render.py`
-  presenta eventi, conferme e metriche del turno.
+  presenta eventi, conferme e metriche del turno. `conversazioni.py` rende
+  come testo le sessioni in archivio, per `/sessioni` e per il Markdown di
+  `/esporta`.
 - `log.py` zittisce o accende il log di Agno (chat, `/debug`,
   `ares inspect --prompt`); non importa niente di Ares.
 - `conferma.py` è la conferma scritta dei comandi di manutenzione — la frase
-  esatta da riscrivere prima di un restore, un prune o una fusione — con
+  esatta da riscrivere prima di un restore, un prune, una fusione, un
+  consolidamento delle memorie o dell'adozione o dello scarto di una skill — con
   l'editor della chat sul terminale e `input()` in una pipe.
 - `cartella.py` decide dove Ares lavora: la directory da cui si lancia
   `ares`, o quella di `--workspace`. Se è rischiosa — la radice del disco,
@@ -122,9 +125,12 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   profilo, memorie e contesto estraggono insieme, ciascuno in un thread;
   dopo un Ctrl-C un `Cancello` ferma le loro scritture, perché nessuna
   arrivi dopo la fotografia del turno. Profilo e memorie salvano solo ciò
-  che ha un appiglio nella conversazione o in ciò che lo store conteneva
-  già: i criteri sono in `radicamento.py`, e ciò che viene scartato resta
-  allo store finché l'eco del turno non lo legge. Con un estrattore locale
+  che ha un appiglio nella conversazione (per `update_user_memory`, il
+  testo della richiesta) o nei valori che lo store conteneva già: i campi
+  del profilo e il testo delle memorie valide, non le superate né la
+  contabilità. I criteri sono in `radicamento.py`; fonte e note valgono per
+  una sola estrazione, e ciò che viene scartato resta allo store finché
+  l'eco del turno non lo legge. Con un estrattore locale
   il contesto di sessione non usa la tool call: `EstrazioneVincolata`
   chiede un JSON vincolato dallo schema (`format` di Ollama, temperatura 0,
   nessuno strumento nella stessa richiesta) e lo applica con la stessa
@@ -142,10 +148,12 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   toglie dalla richiesta gli strumenti che lo scaffale tiene nascosti.
 - `skill.py` carica le skill da `~/.ares/skills` e da `.ares/skills` della
   cartella, senza `proposte/` e le cartelle nascoste; scarta con il motivo
-  quelle senza descrizione o con un nome fuori specifica, e a parità di nome
-  tiene quella della persona. Nel prompt mette la sezione `skill`, una riga
-  `nome: descrizione` per skill; `leggi_skill` restituisce la procedura o un
-  altro file della cartella della skill, senza uscirne. `proponi_skill`
+  quelle senza descrizione, con un nome fuori specifica o riservato, quelle
+  del progetto che portano fuori dalla cartella e quelle oltre il tetto del
+  progetto, e a parità di nome tiene quella della persona. Nel prompt mette
+  la sezione `skill`, una riga `nome: descrizione` per skill; `leggi_skill`
+  restituisce la procedura o un altro file della cartella della skill, senza
+  uscirne, e per quelle del progetto fra due righe di delimitazione. `proponi_skill`
   scrive in `proposte/`, che non si carica. Agno ha un suo `agno.skills`, ma
   il testo per il prompt è in inglese e gli strumenti eseguono gli script:
   qui si usa solo la specifica.
@@ -156,7 +164,9 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   filtro sta in `get_request_params`, che Agno chiama a ogni richiesta,
   quindi lo schema compare già nella richiesta successiva dello stesso
   turno. I gruppi attivati restano in `session_state` e un pre-hook li
-  riprende con la sessione; la guida, dopo l'attivazione, torna nel prompt.
+  riprende con la sessione; la guida, dopo l'attivazione, torna nel prompt:
+  quelle di entità e intuizioni dai loro store, quella delle proposte da
+  `Istruzioni`.
   Un gruppo non si disattiva: toglierne lo schema sposterebbe di nuovo il
   prefisso del prompt.
 - `prompts.py` compone il prompt solo con ciò che è davvero abilitato:
@@ -174,11 +184,15 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
     ordini, troncato oltre un tetto e dichiarato tale al modello;
   - le ultime conversazioni nate nella stessa cartella, con l'id per
     `read_past_session`, perché `search_past_sessions` non sa dove una
-    sessione è nata.
+    sessione è nata;
+  - gli strumenti accesi e, con lo scaffale, una riga per ogni gruppo da
+    attivare con `attiva_strumenti`;
+  - la sezione `skill`, una riga `nome: descrizione` per skill.
 - `schemas.py` estende profilo e memorie con i campi e il rendering che gli
   store usano nel prompt. `AresMemories` non perde una memoria corretta o
-  tolta: la copia in `superate`, con `invalidata_il` e `sostituita_da`, e
-  tiene in `memories` solo le valide, che sono le sole a raggiungere prompt,
+  tolta: la copia in `superate`, con `invalidata_il` e `sostituita_da`
+  (senza il `source` di Agno, e al più le ultime dieci versioni di ogni
+  memoria), e tiene in `memories` solo le valide, che sono le sole a raggiungere prompt,
   estrattore ed eco. Una cancellazione di Agno riassegna la lista filtrata:
   `__setattr__` la intercetta, qualunque strada l'abbia chiesta.
 - `echo.py` fotografa profilo e memorie prima e dopo un turno e ne
@@ -186,7 +200,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   raccoglie anche ciò che il radicamento ha scartato, e dopo ogni turno
   scrive sulle memorie toccate da quale sessione, turno e cartella vengono
   (`annota_provenienza`), riconoscendole dall'`updated_at` che Agno
-  aggiorna. Nel prompt ogni memoria porta, accanto alla data, l'id della
+  aggiorna (una data senza fuso vale UTC). Un errore in questo passo arriva
+  al client come guasto, senza togliere al turno eco e conferma. Nel prompt ogni memoria porta, accanto alla data, l'id della
   conversazione da cui viene, che `read_past_session` rilegge; cartella e
   turno restano per `/memorie origine`.
 - `ares/config.py` raccoglie le impostazioni versionate e decide i percorsi
@@ -224,6 +239,13 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
   modello. Utenti diversi restano indipendenti. I file dei lock per utente
   vivono accanto al lock di stato, con un hash dell'identità nel nome, e non
   vengono rimossi al rilascio, per non separare i processi su file diversi.
+- `identita.py` decide la forma canonica dell'id utente: `Utente` si
+  ottiene solo da `Utente.da_grezzo`, così namespace, chiave di profilo e
+  memorie in Agno e lock dei turni usano lo stesso id (`Demo` e `demo` non
+  diventano due archivi).
+- `vecchio_posto.py` riconosce, senza toccarli, stato e backup rimasti nel
+  posto delle versioni vecchie: `core/stato.py` rifiuta di aprire lo stato
+  finché ci sono, `ops/migrazione.py` li sposta.
 - `git.py` legge il ramo corrente da `.git/HEAD`, anche in un worktree,
   senza lanciare git: banner e prompt non aspettano un processo né
   falliscono dove git non c'è.
@@ -233,7 +255,8 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `ops/preflight.py` verifica che Ollama risponda e che i modelli
   configurati siano scaricati, senza accendere niente e senza scrivere su
   disco. Avvisa se un modello locale già caricato con il contesto di Ares
-  non sta tutto in VRAM (`/api/ps`).
+  non sta tutto in VRAM (`/api/ps`); con `ARES_SANDBOX=bwrap` verifica
+  anche che la sandbox si possa applicare.
 - `ops/inspect_learning.py` rilegge gli archivi a modello spento; con
   `--prompt` stampa il system message intero che la chat manderebbe al
   modello da questa cartella, comprese istruzioni e memorie aggiunte da Agno.
@@ -260,12 +283,14 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
 - `memories/maintenance.py` espone `ares memories consolidate` e coordina
   lock, conferma, backup e verifica; `memories/consolida.py` decide il piano
   senza scrivere: coppie candidate (testi identici, vicine per embedding),
-  un giudizio per coppia, la più vecchia ritirata a favore della più
-  recente, le catene risolte su una memoria valida.
+  un giudizio per coppia; di una superata si ritira la più vecchia, di un
+  doppione la meno completa (la più corta, a pari lunghezza la più
+  vecchia); le catene si risolvono su una memoria valida.
 - `skills/revisione.py` è `ares skills`: elenca attive, non caricate e
   proposte; `adopt` mostra una proposta e con `--apply` e la conferma la
-  sposta fra le attive, conservando in `.precedenti/` quella che sostituisce;
-  `discard` la cancella. Le skill sono file della persona fuori dallo stato:
+  sposta fra le attive, conservando in `.precedenti/` quella che sostituisce
+  e rimettendola a posto se lo spostamento fallisce; rifiuta una proposta
+  cambiata dopo l'anteprima. `discard` la cancella. Le skill sono file della persona fuori dallo stato:
   niente lock né snapshot.
 - `sessions/maintenance.py` coordina anteprima, conferma, lock e snapshot
   della retention; `sessions/retention.py` apre entrambi i backend, registra
@@ -286,9 +311,11 @@ passi successivi è in [core-refactor-plan.md](core-refactor-plan.md).
    presidiato (`core/autorizzazioni.py`).
 5. Il core esegue `continue_run` sullo stesso run dopo la decisione.
 6. La macchina di apprendimento riceve l'output completo e aggiorna gli store.
-7. Il nucleo confronta profilo e memorie con la fotografia; il client mostra
-   le variazioni e, se l'utente rifiuta, il nucleo ripristina. Poi il lock
-   si rilascia.
+7. Il nucleo annota la provenienza sulle memorie scritte dal turno,
+   confronta profilo e memorie con la fotografia e raccoglie ciò che il
+   radicamento ha scartato; il client mostra variazioni e scarti e, se
+   l'utente rifiuta le variazioni, il nucleo ripristina. Poi il lock si
+   rilascia.
 
 L'apprendimento usa sempre il run finale, quindi non perde il contenuto
 prodotto dopo una conferma.
@@ -324,14 +351,19 @@ dichiaratamente aggirabile.
 
 La sandbox (`agent/sandbox.py`), opzionale e solo su Linux, avvolge
 `run_command` in `bwrap`: radice in sola lettura, cartella di lavoro e
-`/tmp` privata scrivibili, stato di Ares, `.env`, runtime della sessione e
-credenziali note coperti, namespace nuovi per tutto, rete compresa salvo
-`ARES_SANDBOX_RETE=1`. `prepara_sandbox` la costruisce dalla politica e
-rifiuta con `SandboxNonDisponibile` se non si può applicare: la chat lo
-controlla dopo la cartella, `build_workspace` di nuovo per i client senza
-terminale, `ares preflight` per chi prepara l'ambiente. La descrizione di
-`run_command` lo dice in una frase; cosa fare quando un limite ferma un
-comando lo dice l'errore stesso (`prompts.AVVISO_SANDBOX`).
+`/tmp` privata scrivibili ma `.git`, `ARES.md` e `.ares` della cartella in
+sola lettura, `/run` vuota, stato di Ares, `.env`, runtime della sessione e
+credenziali note coperti (l'elenco si ricalcola a ogni comando), namespace
+nuovi per tutto, rete compresa salvo `ARES_SANDBOX_RETE=1`.
+`prepara_sandbox` la costruisce dalla politica e rifiuta con
+`SandboxNonDisponibile` se non si può applicare o se la cartella contiene la
+home: la chat lo controlla dopo la cartella, `build_workspace` di nuovo per
+i client senza terminale, `ares preflight` per chi prepara l'ambiente. Con
+la sandbox anche il `git status` di `/cartella` gira dentro di lei. Prompt e
+descrizione di `run_command` dicono i limiti con la stessa frase
+(`prompts.limiti_dei_comandi`); cosa fare quando un limite ferma un comando
+lo dice una nota in coda all'errore, fuori dal blocco dei dati e solo se
+l'errore può venire dalla sandbox (`prompts.AVVISO_SANDBOX`).
 
 Le skill si leggono e basta (`agent/skill.py`): `leggi_skill` resta nella
 cartella della skill, gli script non si eseguono e `allowed-tools` non
@@ -434,9 +466,12 @@ memoria resta vera anche se la conversazione da cui è nata non c'è più.
 
 ## Configurazione
 
-Le impostazioni versionate sono in `ares/config.py`. Identità, percorsi
-locali e i due modelli (conversazione ed estrazione delle memorie) si
-sovrascrivono con le variabili di `.env.example`; il `.env` del clone non
+Le impostazioni versionate sono in `ares/config.py`. Con le variabili di
+`.env.example` si sovrascrivono identità, percorsi locali, i due modelli
+(conversazione ed estrazione delle memorie), il contesto (`ARES_NUM_CTX`),
+le sei opzioni di campionamento (`ARES_TEMPERATURE`, `ARES_TOP_P`...) e gli
+interruttori `ARES_ESTRAZIONE_VINCOLATA`, `ARES_STRUMENTI_SU_RICHIESTA`,
+`ARES_SANDBOX`, `ARES_SANDBOX_RETE` e `ARES_SKILL`; il `.env` del clone non
 viene pubblicato.
 
 `config.py` è la sorgente dei valori, ma il resto del codice non li legge
@@ -445,8 +480,8 @@ da lì: li riceve in tre oggetti, costruiti una volta al confine del processo.
 | Oggetto | Costruito da | Contiene |
 | --- | --- | --- |
 | `Percorsi` | `leggi_percorsi()` | home, stato, backup, cartella di lavoro; i nomi derivati (SQLite, indice, lock, cronologia) sono proprietà |
-| `Impostazioni` | `leggi_impostazioni()` | modelli di conversazione, estrazione ed embedding, host e `keep_alive` di Ollama, contesto, temperature, `think`, campionamento (`top_p`, `top_k`, `min_p`, `repeat_penalty`, `presence_penalty`) |
-| `Politica` | `leggi_politica()` | cosa si impara (`Apprendimento`), quanta cronologia (`Cronologia`), come si usa la cartella (`Workspace`), cosa si mostra (`Mostra`) |
+| `Impostazioni` | `leggi_impostazioni()` | modelli di conversazione, estrazione ed embedding, host e `keep_alive` di Ollama, contesto, temperature, `think`, campionamento (`top_p`, `top_k`, `min_p`, `repeat_penalty`, `presence_penalty`), `vincolo_estrazione` (da cui `estrazione_vincolata`) |
+| `Politica` | `leggi_politica()` | cosa si impara e quali strumenti si offrono (`Apprendimento`, con strumenti su richiesta e skill), quanta cronologia (`Cronologia`), come si usa la cartella (`Workspace`, con la sandbox dei comandi), cosa si mostra (`Mostra`) |
 
 L'identità viaggia a parte, come `Utente`.
 
