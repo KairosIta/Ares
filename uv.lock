@@ -4,7 +4,7 @@ requires-python = ">=3.12, <3.14"
 
 [[package]]
 name = "agno"
-version = "3.0.11"
+version = "3.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agnoctl" },
@@ -18,9 +18,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/87/69e4de59b404fcfe303ed76f199407eb675cd83f8de10bba89ddb8fec6f8/agno-3.0.11.tar.gz", hash = "sha256:8e625ebea5265f0cf47b5dafbd749b0e6feb226f8b14f230e2674f5ded41fb7f", size = 3534513, upload-time = "2026-09-23T13:15:40.628Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/40/e91962a2a94d34b7f168528f7479283a75bad899bba518d1b7129f2509d4/agno-3.1.1.tar.gz", hash = "sha256:ffa87212c9e3a0045ddfa6414a2e2c02a4970a8e9060a6f7ba0281071dee18c2", size = 3696946, upload-time = "2026-10-02T12:39:13.609Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/dc/df6eb84fe95ffb5bb8a34b997ad63886151f9c565acb60bf57225f71365e/agno-3.0.11-py3-none-any.whl", hash = "sha256:2517e8524739956648f4b62e6cf568623986144fa1426e430ace14efa1b78257", size = 4020409, upload-time = "2026-09-23T13:15:37.685Z" },
+    { url = "https://files.pythonhosted.org/packages/32/f1/42379b2cd5369d0fe79417fab564395e056026ba5b695fbe1ed6baeadfa4/agno-3.1.1-py3-none-any.whl", hash = "sha256:d158ccd5b4d91b2317e5c1ee748cc29f2c09ce876277db2fdcdc6f5430619e14", size = 4197174, upload-time = "2026-10-02T12:39:10.421Z" },
 ]
 
 [[package]]
@@ -98,7 +98,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agno", specifier = ">=3.0.2,<3.1" },
+    { name = "agno", specifier = ">=3.1.1,<3.2" },
     { name = "cyclopts", specifier = ">=5.0.0" },
     { name = "lancedb" },
     { name = "ollama" },

@@ -40,7 +40,7 @@ Ares è un'applicazione, quindi la riproducibilità sta tutta nel lock:
   PyPI l'installazione si ferma invece di riuscire.
 - **`pyproject.toml`** elenca le dipendenze dirette senza versione, ognuna
   con il motivo per cui c'è. Un `<` si mette solo per un'incompatibilità
-  nota, scritta accanto: oggi c'è solo `agno>=3.0.2,<3.1`, perché le API di
+  nota, scritta accanto: oggi c'è solo `agno>=3.1.1,<3.2`, perché le API di
   `agno.learn` cambiano tra minor.
 
 Le versioni cambiano solo quando esegui `uv lock`, che è conservativo:

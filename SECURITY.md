@@ -204,7 +204,7 @@ privato restano persistenti.
 Profilo e memorie vengono scritti dagli strumenti del modello e
 dall'estrazione automatica dopo ogni risposta, e ciò che entra viene
 reiniettato in ogni sessione futura: un'istruzione in un file o nell'output
-di un comando può lasciare una traccia oltre il turno. Agno 3.0.11 non
+di un comando può lasciare una traccia oltre il turno. Agno 3.1.1 non
 offre una conferma su questi due store (`PROPOSE` vale solo per le
 intuizioni, `HITL` per nessuno), quindi Ares la costruisce **a valle**: con
 `MOSTRA_APPRENDIMENTI` e `CONFERMA_APPRENDIMENTI` accesi, sotto ogni

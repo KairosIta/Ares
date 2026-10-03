@@ -1,6 +1,6 @@
 # Agno in Ares
 
-Ares usa **Agno 3.0.11** (verificata il 25 settembre 2026) come framework
+Ares usa **Agno 3.1.1** (verificata il 3 ottobre 2026) come framework
 dell'agente. Agno fornisce il ciclo di esecuzione, gli store e le primitive
 agentiche; Ares decide politica local-first, modelli Ollama, interfaccia,
 confini degli strumenti, schema dei dati, backup e comportamento
@@ -50,16 +50,38 @@ e [3.0.1](https://github.com/agno-agi/agno/releases/tag/v3.0.1).
 
 ### Aggiornare Agno
 
-Il vincolo in `pyproject.toml` è `>=3.0.2,<3.1`: le patch, fino alla
-[3.0.11](https://github.com/agno-agi/agno/releases/tag/v3.0.11), entrano dal
-solo `uv.lock`. Prima di entrare nel lock ogni patch viene provata sulle
-superfici che Ares usa: le firme di `LearningMachine.process` e di
-`SessionContextStore`, che Ares sovrascrive, e il ciclo REPL completo.
+Il vincolo in `pyproject.toml` è `>=3.1.1,<3.2`: le patch entrano dal solo
+`uv.lock`, la minor successiva solo dopo una prova. Prima di entrare nel
+lock ogni versione viene provata sulle superfici che Ares usa.
+`tests/agno_contract_test.py` controlla che gli interni elencati in
+`agent/agno_interni.py` esistano ancora e che ogni metodo che Ares
+ridefinisce accetti tutti gli argomenti della firma di Agno: un parametro
+nuovo farebbe fallire un override rigido solo quando Agno lo passa, a metà
+turno. Gli override di `Ollama` prendono anche `**kwargs`, che passano ad
+Agno così come arrivano.
+
+La 3.1 ([3.1.0](https://github.com/agno-agi/agno/releases/tag/v3.1.0),
+[3.1.1](https://github.com/agno-agi/agno/releases/tag/v3.1.1)) non cambia
+`agno.learn` né il modello Ollama. Due cambi toccano superfici che Ares usa,
+e nessuno cambia il suo comportamento:
+
+- `continue_run` toglie esplicitamente il run ripreso dalla cronologia.
+  Nella 3.0.11 lo escludeva già il suo stato: misurati con il modello a
+  copione di `agno_contract_test.py`, i messaggi che arrivano al modello in
+  un turno con pausa e ripresa sono gli stessi con le due versioni;
+- il FileSystem può dividere i file per utente, ma solo se lo store è
+  `user_scoped` o il namespace contiene `{user_id}`. Il quaderno di Ares ha
+  un namespace letterale per utente e resta nella partizione condivisa,
+  dove stanno le note scritte prima: `agno_contract_test.py` lo sorveglia.
+
+Le altre novità (più store FileSystem per agente, autorizzazioni di
+AgentOS) Ares non le usa.
 
 La versione è citata a mano in più documenti. `tests/agno_contract_test.py`
 li confronta con l'installato (l'elenco è `FILE_CHE_DICHIARANO`) e nomina il
-file da allineare. `CHANGELOG.md` e `docs/memory-quality.md` sono esclusi,
-perché citano le versioni di allora.
+file da allineare. `CHANGELOG.md` e gli studi con misure
+(`memory-quality.md`, `conversation-eval.md`, `agentic-improvements.md`,
+`project-scopes.md`) sono esclusi, perché citano le versioni di allora.
 
 La major estende anche l'isolamento per utente e rende stabili gli id dei
 toolkit. Ares mantiene i propri namespace espliciti `user/<id>`: per le
