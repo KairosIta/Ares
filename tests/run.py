@@ -18,7 +18,8 @@ La copertura gira in modalita' parallela (un file per processo, uniti da
 `coverage combine`), configurata in `pyproject.toml`.
 
 Le prove girano una alla volta: quelle con Ollama si contendono la GPU, e
-le offline durano meno di un minuto.
+le offline durano poco piu' di un minuto su Linux (su Windows `cli` da sola
+ne prende quasi tre).
 """
 
 import argparse
@@ -247,12 +248,13 @@ def main(argomenti: list[str] | None = None) -> int:
             print("La misura di copertura e' fallita:", ", ".join(guasti))
             falliti.append("copertura")
         if not args.tutte and not args.solo:
-            # Misurato il 22 settembre 2026: `--tutte --copertura` da' lo
-            # stesso rapporto. Le prove con Ollama verificano cio' che un
-            # modello finto non puo' dire, ma non coprono righe in piu': questa
-            # percentuale e' gia' il perimetro completo.
+            # Misurato il 3 ottobre 2026: `--tutte --copertura` copre quattro
+            # righe in piu', la risposta di Ollama non in streaming
+            # (`OllamaConRagionamento._parse_provider_response`). Le prove con
+            # Ollama verificano cio' che un modello finto non puo' dire, non
+            # allargano il perimetro.
             print()
-            print("Misura delle sole prove offline: aggiungere --tutte non cambia il rapporto.")
+            print("Misura delle sole prove offline: --tutte aggiunge solo la risposta di Ollama non in streaming.")
 
     if falliti:
         print()

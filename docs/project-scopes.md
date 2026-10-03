@@ -2,7 +2,13 @@
 
 Data: 22 settembre 2026.
 
-**Stato: proposta di progettazione, non implementata.** Approfondisce i
+**Stato al 3 ottobre 2026: non implementata.** Nel frattempo le
+conversazioni portano la cartella da cui nascono (`ares resume` riprende
+quelle della cartella corrente) e ogni memoria registra conversazione e
+cartella di provenienza; profilo, memorie e intuizioni restano però
+condivisi fra progetti.
+
+Approfondisce i
 primi due punti della [roadmap](ROADMAP.md) — *Identità stabile e memoria
 per progetto* e *Ambiti applicati dal codice in scrittura e recupero* — e ne
 prepara l'implementazione. Distingue i fatti verificati nel codice e nel

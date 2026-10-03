@@ -290,8 +290,10 @@ globale usa l’ambiente bloccato e segue il codice del clone a ogni pull.
 `ares` da solo apre la chat, `ares --help` elenca i sottocomandi di
 manutenzione (`ares backup`, `ares sessions`, `ares entities`, `ares
 memories`, `ares skills`, `ares preflight`, `ares inspect`, `ares migrate`).
-Ognuno ha il suo alias (`ares-backup`, `ares-skills`...) che fa la stessa
-cosa, e dal clone funziona anche `python -m ares`. Su Windows `setup.ps1 -SkipPreflight` prepara soltanto le
+Ognuno ha anche un alias (`ares-backup`, `ares-skills`...) che fa la stessa
+cosa, ma i setup mettono sul PATH solo `ares`: gli alias si lanciano dal venv
+del clone (`.venv/bin/ares-backup`, su Windows `.venv\Scripts\ares-backup.exe`).
+Dal clone funziona anche `python -m ares`. Su Windows `setup.ps1 -SkipPreflight` prepara soltanto le
 dipendenze: lo usa la CI, dove Ollama non c'è.
 
 Tutto ciò che Ares impara vive in `~/.ares` (lo stato in `stato/`, gli

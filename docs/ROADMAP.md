@@ -108,18 +108,14 @@ trovato. Restano da parte, di proposito:
 
 ## Ordine di lavoro: nucleo condiviso, memoria, infine UI
 
-Studio di riferimento: [identità, responsabilità e contratto del nucleo](core-contract.md),
-con evidenze sul codice, proposte e prove di accettazione. Il primo
-incremento, il ciclo di vita della sessione, è pianificato in
-[core-refactor-plan.md](core-refactor-plan.md) sulla base di
-[core-refactor-audit.md](core-refactor-audit.md).
+**Il nucleo condiviso è concluso** (#123-#134, v0.9.0): Ares è indipendente
+dall'interfaccia, e la CLI è il primo client dei servizi in `ares/core/`.
+Restano la memoria, sotto, e infine la desktop. Studio di riferimento:
+[identità, responsabilità e contratto del nucleo](core-contract.md); il
+lavoro è stato pianificato in [core-refactor-plan.md](core-refactor-plan.md)
+sulla base di [core-refactor-audit.md](core-refactor-audit.md).
 
-La priorità è rendere Ares indipendente dall'interfaccia. La CLI sarà il
-primo client dei servizi condivisi e continuerà a permettere di usare e
-verificare Ares durante il lavoro. La progettazione e l'implementazione
-della desktop vengono alla fine.
-
-Prima di implementare, definire i confini e i contratti del nucleo:
+I confini e i contratti fissati prima di implementare, ora nel codice:
 
 - Configurazione dell'applicazione separata dal contesto di ogni
   conversazione, senza cambiare workspace e politiche tramite globali
@@ -143,11 +139,12 @@ apprese al punto 5. Definire prima i contratti, poi implementare per passi
 concreti insieme ai rispettivi approfondimenti, evitando di costruire
 un'infrastruttura generica prima di conoscerne le necessità.
 
-**Verifica attesa:** la CLI e un client di test senza terminale usano gli
-stessi servizi e ottengono gli stessi effetti a parità di richieste e
-politiche. Provare due workspace nello stesso processo, approvazioni
-duplicate o tardive, interruzioni, apprendimento e manutenzione. Preservare
-le garanzie esistenti; dichiarare e verificare ogni cambiamento di politica.
+**Verifica:** la CLI e un client di test senza terminale
+(`tests/core_test.py`) usano gli stessi servizi e ottengono gli stessi
+effetti a parità di richieste e politiche. Per i passi successivi vale lo
+stesso metodo: provare più workspace, approvazioni duplicate o tardive,
+interruzioni, apprendimento e manutenzione, preservare le garanzie
+esistenti e dichiarare e verificare ogni cambiamento di politica.
 
 ## Memoria: cinque approfondimenti prima dell'implementazione
 
@@ -303,7 +300,7 @@ Approfondimento disponibile: [migliorie agentiche con il modello locale al
 centro](agentic-improvements.md), del 1 ottobre 2026: dieci interventi con
 evidenze nel codice, fonti 2025-2026, prove di accettazione e un protocollo
 per confrontare i modelli locali. È uno studio, non aggiornato: le dieci
-proposte sono state implementate fra v0.12.0 e Unreleased (vedi CHANGELOG).
+proposte sono state implementate fra v0.12.0 e v0.13.0 (vedi CHANGELOG).
 
 Restano dalla roadmap precedente, subordinati alle priorità sopra:
 

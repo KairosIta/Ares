@@ -2,7 +2,13 @@
 
 Data: 13 settembre 2026.
 
-**Stato: proposta di progettazione, in parte implementata.** Approfondisce
+**Stato al 3 ottobre 2026: implementata.** Il nucleo è concluso (#123-#134,
+v0.9.0): sessioni, turni, autorizzazioni e stato in uso vivono in
+`ares/core/`, e la CLI ne è un client. Le sezioni sotto conservano lo
+studio di allora, proposte comprese; dove il codice è andato diversamente
+fa fede il codice.
+
+Approfondisce
 il primo passo della [roadmap](ROADMAP.md): rendere Ares indipendente
 dall'interfaccia, collegando il contratto ai cinque punti sulla memoria. Le
 scelte proposte sono distinte dai fatti verificati nel codice.
@@ -18,8 +24,9 @@ Già implementato:
   secondo (prove in `tests/cli_test.py`);
 - **configurazione passata ai costruttori** (§4).
 
-Restano proposte sessioni e turni come operazioni del nucleo, eventi e
-autorizzazioni.
+Al 13 settembre restavano proposte sessioni e turni come operazioni del
+nucleo, eventi e autorizzazioni; sono entrati con il refactor
+([core-refactor-plan.md](core-refactor-plan.md)).
 
 ## 1. Risultato atteso e perimetro
 

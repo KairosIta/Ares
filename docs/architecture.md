@@ -13,7 +13,8 @@ Il codice vive nel package `ares/`, diviso per responsabilità. Fra
 parentesi il sottocomando di `ares` che ogni package espone: `cli/app.py` li
 registra per nome di modulo, così `ares backup list` non importa Agno e
 `ares --help` li elenca tutti. Ogni sottocomando ha un alias `ares-<nome>`
-(`ares-backup`, `ares-skills`...) che passa dalla stessa App, e ogni
+nel venv (`ares-backup`, `ares-skills`...; i setup mettono sul PATH solo
+`ares`) che passa dalla stessa App, e ogni
 sottopackage con un `__main__.py` risponde anche a `python -m`.
 
 ```text
