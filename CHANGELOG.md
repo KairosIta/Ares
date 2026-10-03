@@ -6,6 +6,30 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+### Changed
+
+- **Prompt della conversazione rivisto.** Gli strumenti di cartella e
+  quaderno arrivano al modello con descrizioni italiane di Ares
+  (`ares/agent/descrizioni.py`): quelle di Agno erano in inglese, citavano
+  `write_file` o `append_file` senza il prefisso che il modello vede, e due
+  dicevano cose false (`read_file` rimandava ai numeri di riga per
+  `edit_file`, che lavora sul testo; `list_files` citava `allow_paths`, che
+  non è un parametro). L'errore di una scrittura su un file non letto nomina
+  `workspace_read_file`. In `piano` il prompt non parla più di scritture né
+  di dove arrivano i comandi; i limiti dei comandi stanno nella descrizione
+  dello strumento e nella scheda dell'ambiente, non tre volte. Il paragrafo
+  sul ragionamento con i ricordi entra solo con l'apprendimento automatico
+  acceso, e il prompt chiama sempre «persona» chi usa Ares.
+
+### Security
+
+- `ARES.md` e la prima domanda delle conversazioni precedenti non possono
+  più aprire o chiudere sezioni del messaggio di sistema (le parentesi
+  angolari diventano `‹ ›`), e una riga di `ARES.md` che imita il
+  delimitatore viene citata. Un `ARES.md` vuoto o che è una cartella non
+  viene annunciato come regole del progetto. Gli errori scritti da Ares
+  (comando negato, timeout) non arrivano più marcati come dati del mondo.
+
 ## [0.13.0] - 2026-10-03
 
 Ares impara meglio e con più prudenza, anche con il modello locale. Profilo

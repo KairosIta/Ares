@@ -17,7 +17,8 @@ from agno.vectordb.search import SearchType
 
 from ares import config
 from ares.agent.agno_interni import OllamaConRagionamento
-from ares.agent.marcatura import ConNota
+from ares.agent.descrizioni import CARTELLA, QUADERNO, descrivi
+from ares.agent.marcatura import ConNota, DiAres
 from ares.agent.prompts import AVVISO_SANDBOX, data_e_ora, descrizione_del_comando
 from ares.agent.sandbox import Sandbox, prepara_sandbox
 from ares.config import Impostazioni, Percorsi, Politica
@@ -130,6 +131,7 @@ def build_quaderno(fs: FileSystem) -> Toolkit:
     """
     strumenti = fs.tools()
     _con_prefisso(strumenti, config.QUADERNO_PREFIX)
+    descrivi(strumenti, config.QUADERNO_PREFIX, QUADERNO, q=config.QUADERNO_PREFIX)
     return strumenti
 
 
@@ -251,6 +253,7 @@ class AresWorkspace(Workspace):
     gira dentro `bwrap` (`agent/sandbox.py`).
     """
 
+    prefisso: str = ""
     regole: Callable[[], Regole] | None = None
     sandbox: Sandbox | None = None
 
@@ -258,7 +261,7 @@ class AresWorkspace(Workspace):
         """Esegue `args` nella cartella di lavoro e restituisce testa e coda dell'output, o l'errore."""
         regola = self.regole().decidi(args) if self.regole is not None else None
         if regola is not None and regola.effetto == "nega":
-            return (
+            return DiAres(
                 "Errore: comando negato da una regola di autorizzazione della persona (" + regola.fonte + "). "
                 "Non riprovare con una variante."
             )
@@ -274,9 +277,9 @@ class AresWorkspace(Workspace):
                 env=ambiente_del_comando(),
             )
         except subprocess.TimeoutExpired:
-            return "Errore: il comando non e' finito entro " + str(timeout) + " secondi ed e' stato interrotto."
+            return DiAres("Errore: il comando non e' finito entro " + str(timeout) + " secondi ed e' stato interrotto.")
         except OSError as errore:
-            return "Errore nell'avvio del comando: " + str(errore)
+            return DiAres("Errore nell'avvio del comando: " + str(errore))
         if esito.returncode != 0:
             # Molti programmi scrivono l'errore su stdout: si danno entrambi.
             pezzi = ["Errore (uscita " + str(esito.returncode) + ")."]
@@ -290,6 +293,15 @@ class AresWorkspace(Workspace):
                 return ConNota(testo, AVVISO_SANDBOX.format(rete="" if self.sandbox.rete else ", e la rete e' spenta"))
             return testo
         return testa_e_coda(esito.stdout, tail)
+
+    def _check_read_before_write(self, file_path: Path, op: str) -> str | None:
+        """L'errore di Agno per un file esistente non ancora letto, con il nome vero dello strumento di lettura."""
+        if super()._check_read_before_write(file_path, op) is None:
+            return None
+        return (
+            "Errore: " + file_path.name + " esiste e in questa conversazione non l'hai ancora letto. "
+            "Leggilo con " + self.prefisso + "read_file, poi riprova."
+        )
 
     async def arun_command(self, args: list[str], tail: int = 100, timeout: int = 120) -> str:
         """La variante asincrona delega a `run_command` in un thread: stesse garanzie, un codice solo."""
@@ -306,9 +318,11 @@ class AresWorkspace(Workspace):
         **kwargs,
     ):
         super().__init__(root, **kwargs)
+        self.prefisso = prefisso
         self.regole = regole
         self.sandbox = sandbox
         _con_prefisso(self, prefisso)
+        descrivi(self, prefisso, CARTELLA, w=prefisso)
         for elenco in (self.functions, self.async_functions):
             if prefisso + "run_command" in elenco:
                 elenco[prefisso + "run_command"].description = descrizione_del_comando(

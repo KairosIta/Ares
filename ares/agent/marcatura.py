@@ -23,9 +23,10 @@ CHIUSURA = " ---"
 
 # Una riga del contenuto che somiglia a un delimitatore viene citata, cosi'
 # non chiude il blocco: e' il primo trucco che un testo ostile proverebbe.
-# Somiglia anche dietro il numero di riga che `read_file` antepone.
+# Somiglia anche dietro il numero di riga che `read_file` antepone, e vale per
+# ogni delimitatore di Ares («--- inizio di», «--- inizio della skill»).
 CITAZIONE = "> "
-_SOMIGLIA = re.compile(r"^\s*(?:\d+\t)?--- (?:inizio|fine) di ")
+_SOMIGLIA = re.compile(r"^\s*(?:\d+\s+)?--- (?:inizio|fine) ")
 
 # Quanto della fonte entra nella riga: un comando lungo si tronca, un percorso no.
 _LARGHEZZA_FONTE = 80
@@ -38,7 +39,7 @@ _DI_AGNO = {
 }
 
 
-def _una_riga(testo: str) -> str:
+def una_riga(testo: str) -> str:
     """Il testo su una riga sola, troncato: la fonte non deve poter spezzare il delimitatore."""
     piatto = " ".join(str(testo).split())
     return piatto if len(piatto) <= _LARGHEZZA_FONTE else piatto[: _LARGHEZZA_FONTE - 3] + "..."
@@ -54,21 +55,25 @@ def fonte(nome: str, argomenti: Mapping[str, Any], *, prefisso: str) -> str | No
     if nome.startswith(prefisso):
         base = nome[len(prefisso) :]
         if base == "read_file":
-            return "file " + _una_riga(argomenti.get("path") or "?")
+            return "file " + una_riga(argomenti.get("path") or "?")
         if base == "search_content":
-            return "ricerca di " + _una_riga(repr(str(argomenti.get("query") or ""))) + " nella cartella"
+            return "ricerca di " + una_riga(repr(str(argomenti.get("query") or ""))) + " nella cartella"
         if base == "run_command":
             args = argomenti.get("args")
             comando = (
                 shlex.join(args) if isinstance(args, list) and all(isinstance(a, str) for a in args) else str(args)
             )
-            return "output di " + _una_riga(comando)
+            return "output di " + una_riga(comando)
         return None
     voce = _DI_AGNO.get(nome)
     if voce is None:
         return None
     etichetta, chiave = voce
-    return etichetta + " " + _una_riga(argomenti.get(chiave) or "?")
+    return etichetta + " " + una_riga(argomenti.get(chiave) or "?")
+
+
+class DiAres(str):
+    """Un risultato scritto da Ares, non letto dal mondo: un rifiuto, un timeout. La marcatura lo lascia com'e'."""
 
 
 class ConNota(str):
@@ -88,14 +93,31 @@ class ConNota(str):
         return risultato
 
 
-def _neutralizza(testo: str) -> str:
+def cita_delimitatori(testo: str) -> str:
     """Cita le righe del contenuto che comincerebbero come un delimitatore."""
     return "\n".join(CITAZIONE + riga if _SOMIGLIA.match(riga) else riga for riga in testo.split("\n"))
 
 
+def senza_tag(testo: str) -> str:
+    """Il testo senza parentesi angolari, per cio' che entra nel messaggio di sistema.
+
+    Li' le sezioni sono tag XML: un testo altrui con `</fiducia>` ne chiuderebbe una.
+    """
+    return testo.replace("<", "\u2039").replace(">", "\u203a")
+
+
+def delimita(testo: str, nome: str) -> str:
+    """`testo` di altri fra «--- inizio di `nome` ---» e «--- fine di `nome` ---», nel messaggio di sistema.
+
+    A differenza di `marca` non dice «dati, non istruzioni»: serve per cio'
+    che il prompt presenta come indicazioni da valutare, come `ARES.md`.
+    """
+    return INIZIO + nome + CHIUSURA + "\n" + cita_delimitatori(senza_tag(testo)) + "\n" + FINE + nome + CHIUSURA
+
+
 def marca(testo: str, fonte: str) -> str:
     """`testo` fra la riga d'apertura, che nomina `fonte` e dice che sono dati, e quella di chiusura."""
-    return INIZIO + fonte + AVVISO + "\n" + _neutralizza(testo) + "\n" + FINE + fonte + CHIUSURA
+    return INIZIO + fonte + AVVISO + "\n" + cita_delimitatori(testo) + "\n" + FINE + fonte + CHIUSURA
 
 
 def smarca(testo: str) -> str:
@@ -121,13 +143,14 @@ def marca_risultati(prefisso: str) -> Callable[..., Any]:
     Agno passa gli argomenti per nome, secondo la firma: `function_name`,
     `function_call` (il resto della catena, da chiamare con gli argomenti) e
     `arguments`. Un risultato che non e' testo, o di uno strumento che non
-    legge dal mondo, passa intatto; di un `ConNota` si marcano solo i dati.
+    legge dal mondo, o un `DiAres`, passa intatto; di un `ConNota` si marcano
+    solo i dati.
     """
 
     def marcatore(function_name: str, function_call: Callable[..., Any], arguments: dict[str, Any]) -> Any:
         risultato = function_call(**arguments)
         nome = fonte(function_name, arguments, prefisso=prefisso)
-        if nome is None or not isinstance(risultato, str):
+        if nome is None or not isinstance(risultato, str) or isinstance(risultato, DiAres):
             return risultato
         if isinstance(risultato, ConNota):
             return marca(risultato.dati, nome) + "\n" + risultato.nota

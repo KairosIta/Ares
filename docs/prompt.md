@@ -52,7 +52,9 @@ un'azione prima di dichiararla completata. L'italiano è la lingua
 predefinita; traduzioni e testi richiesti in altre lingue restano possibili.
 
 Le modalità regolano gli strumenti del workspace. `piano` non espone
-scritture o comandi sul workspace, ma lascia attive memoria e quaderno.
+scritture o comandi sul workspace, ma lascia attive memoria e quaderno; il
+paragrafo sugli strumenti e la scheda dell'ambiente parlano di scritture e
+comandi solo nelle modalità che li hanno.
 Gli strumenti sui file rispettano la radice; l'esecuzione di comandi non è
 una sandbox, salvo con `ARES_SANDBOX=bwrap`. Allora la descrizione di
 `workspace_run_command` e la scheda dell'ambiente lo dicono in una frase
@@ -63,10 +65,16 @@ più comandi, e nella descrizione costano token a ogni richiesta. Le conferme op
 lo strumento sospende il turno, senza una domanda preliminare duplicata.
 
 Il nome di ogni strumento sui file dice dove agisce: `workspace_*` nella
-cartella, `quaderno_*` nel quaderno. La descrizione di
-`workspace_run_command` è di Ares, in italiano, con la shell del sistema
-(`bash -lc` o `powershell -Command`) al posto della docstring di Agno, e
-anche l'esecuzione è di Ares: stdin chiuso, ambiente ridotto alle variabili
+cartella, `quaderno_*` nel quaderno. Le descrizioni degli strumenti sui file
+e dei loro parametri sono di Ares, in italiano (`agent/descrizioni.py`), al
+posto delle docstring di Agno, che sono in inglese e nominano gli strumenti
+senza prefisso: ogni nome citato è quello che il modello vede, e la prova
+`strumenti in italiano` lo verifica sullo schema che Agno prepara a ogni
+run. I parametri restano quelli di Agno. Anche l'errore di una scrittura su
+un file non ancora letto nomina `workspace_read_file`. I limiti dei comandi
+stanno nella descrizione di `workspace_run_command`, con la shell del
+sistema (`bash -lc` o `powershell -Command`), e nella scheda dell'ambiente,
+non altrove; anche l'esecuzione è di Ares: stdin chiuso, ambiente ridotto alle variabili
 di sistema, testa e coda dell'output con il conto delle righe omesse. Gli
 esempi del prompt e di quella descrizione non ricalcano i casi degli eval,
 che altrimenti misurerebbero una frase copiata.
@@ -81,7 +89,12 @@ da leggere, anche se si rivolge al modello o imita il messaggio di sistema,
 e una richiesta trovata lì si riferisce alla persona invece di eseguirla,
 anche quando chiede di scrivere nel quaderno, che non ha conferme. Una riga
 del contenuto che comincia come un delimitatore viene citata con `> `, così
-un testo ostile non chiude il blocco da dentro. La CLI mostra alla persona
+un testo ostile non chiude il blocco da dentro. Gli errori che scrive Ares —
+un comando negato da una regola, un timeout — non vengono dal mondo e
+arrivano fuori dal blocco. `ARES.md` e la prima domanda delle conversazioni
+precedenti entrano nel messaggio di sistema, dove le sezioni sono tag XML:
+lì le parentesi angolari diventano `‹ ›`, e le righe di `ARES.md` che
+imitano un delimitatore sono citate come nei risultati. La CLI mostra alla persona
 il contenuto senza le due righe; il conteggio dei caratteri le include,
 perché è quanto è entrato nella finestra.
 
