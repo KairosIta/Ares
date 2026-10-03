@@ -941,6 +941,48 @@ def prompt_in_italiano(agent, user_id: str, session_id: str) -> str:
     return str(len(attesi)) + " blocchi italiani presenti, nessuna riga inglese fuori dai dati"
 
 
+def strumenti_in_italiano(user_id: str) -> str:
+    """Gli strumenti di cartella e quaderno arrivano al modello descritti in italiano, con i nomi veri.
+
+    Si guarda lo schema come lo prepara Agno a ogni run, non quello
+    configurato: Agno ricava i parametri dalla docstring, e un testo che resta
+    solo nella configurazione non arriva al modello. Ogni nome di strumento
+    citato in una descrizione deve esistere, prefisso compreso.
+    """
+    spazio = build_workspace(PERCORSI, POLITICA, "auto")
+    quaderno = build_quaderno(build_filesystem(PERCORSI, Utente.da_grezzo(user_id)))
+    funzioni = {**spazio.functions, **quaderno.functions}
+    basi = {nome.split("_", 1)[1] for nome in funzioni}
+    schemi = []
+    for nome, funzione in funzioni.items():
+        copia = funzione.model_copy()
+        copia.process_entrypoint()
+        schema = copia.to_dict()
+        schemi.append(schema)
+        testi = [schema["description"] or ""] + [
+            voce.get("description", "") for voce in schema["parameters"]["properties"].values()
+        ]
+        for testo in testi:
+            inglesi = {p.lower() for p in _PAROLE_INGLESI.findall(testo)}
+            esigi(len(inglesi) < 2, nome + " ha un testo in inglese: " + testo)
+        esigi(
+            all(voce.get("description") for voce in schema["parameters"]["properties"].values()),
+            nome + ": un parametro senza descrizione",
+        )
+        # Un nome che finisce come uno strumento (read_file, append_file) deve averne il prefisso.
+        for citato in re.findall(r"\b[a-z]+_[a-z_]+\b", " ".join(testi)):
+            if any(citato.endswith(base) for base in basi):
+                esigi(citato in funzioni, nome + " cita " + citato + ", che il modello non ha")
+    esistente = PERCORSI.lavoro / "gia-scritto.txt"
+    esistente.write_text("x\n", encoding="utf-8")
+    errore = spazio._check_read_before_write(esistente, "write")
+    esigi(
+        errore is not None and config.WORKSPACE_PREFIX + "read_file" in errore and "hasn't" not in errore,
+        "l'errore della lettura mancante non nomina lo strumento vero: " + str(errore),
+    )
+    return str(len(schemi)) + " strumenti descritti in italiano, ogni nome citato esiste"
+
+
 def struttura_del_prompt(agent, user_id: str, session_id: str) -> str:
     """Il prompt e' fatto di sezioni note, in ordine, con cio' che cambia in fondo.
 
@@ -1058,6 +1100,12 @@ def modalita() -> str:
                 (strumento in paragrafo) == (alias in silenziosi or alias in confermati),
                 nome + ": " + strumento + " nel paragrafo sugli strumenti quando non dovrebbe, o viceversa",
             )
+        scrive = any(alias in silenziosi or alias in confermati for alias in ("write", "edit", "move", "delete"))
+        esigi(("Prima di modificare un file" in paragrafo) == scrive, nome + ": regole di scrittura fuori posto")
+        comandi = "shell" in silenziosi or "shell" in confermati
+        esigi(("lancialo con" in paragrafo) == comandi, nome + ": guida ai comandi fuori posto")
+        esigi(("I comandi girano" in scheda) == comandi, nome + ": limiti dei comandi fuori posto")
+        esigi("I comandi girano" not in paragrafo, nome + ": limiti dei comandi ripetuti negli strumenti")
         esiti.append(nome + " " + str(len(silenziosi)) + "+" + str(len(confermati)))
     esigi("Proponi" in prompts.istruzioni_sulla_modalita("piano"), "piano non chiede di proporre")
     try:
@@ -2825,6 +2873,7 @@ def main() -> int:
             ("strumenti           ", lambda: strumenti(agent, args.user)),
             ("strumenti su richiesta", lambda: strumenti_su_richiesta(args.user)),
             ("prompt in italiano  ", lambda: prompt_in_italiano(agent, args.user, args.session)),
+            ("strumenti in italiano", lambda: strumenti_in_italiano(args.user)),
             ("struttura del prompt", lambda: struttura_del_prompt(agent, args.user, args.session)),
             ("istruzioni modalita'", istruzioni_fuori_modalita),
             ("modalita            ", modalita),

@@ -261,13 +261,23 @@ def descrizioni() -> str:
     )
     esigi(limiti_dei_comandi(True, True).endswith("sola lettura."), limiti_dei_comandi(True, True))
     esigi(descrizione_del_comando(True, False).endswith(chiusa), "la descrizione non usa la frase comune")
-    # Una sola fonte: la stessa frase nella descrizione, nella scheda dell'ambiente e negli strumenti.
+    # Una sola fonte, in due posti: la descrizione dello strumento e la scheda dell'ambiente.
     strumenti = " ".join(istruzioni_sugli_strumenti(Path.cwd(), politica=CON_SANDBOX))
-    esigi(chiusa in strumenti, "sezione strumenti: " + strumenti)
-    ambiente = " ".join(istruzioni_sull_ambiente(impostazioni=config.leggi_impostazioni(), politica=CON_SANDBOX))
+    esigi(chiusa not in strumenti, "la frase ripetuta negli strumenti: " + strumenti)
+    impostazioni = config.leggi_impostazioni()
+    ambiente = " ".join(
+        istruzioni_sull_ambiente(impostazioni=impostazioni, politica=CON_SANDBOX, radice_lavoro=Path.cwd())
+    )
     esigi(chiusa in ambiente, "scheda dell'ambiente: " + ambiente)
-    esigi(limiti_dei_comandi(False, False) in " ".join(istruzioni_sugli_strumenti(Path.cwd(), politica=POLITICA)), "")
-    return "una frase sola per i tre posti, con la /tmp che si svuota e i file in sola lettura"
+    senza = " ".join(istruzioni_sull_ambiente(impostazioni=impostazioni, politica=POLITICA, radice_lavoro=Path.cwd()))
+    esigi(limiti_dei_comandi(False, False) in senza, senza)
+    # Dove i comandi non ci sono, non se ne descrivono i limiti.
+    for radice, modo in ((None, None), (Path.cwd(), "piano")):
+        scheda = " ".join(
+            istruzioni_sull_ambiente(impostazioni=impostazioni, politica=CON_SANDBOX, radice_lavoro=radice, modo=modo)
+        )
+        esigi("I comandi girano" not in scheda, str(modo) + ": " + scheda)
+    return "una frase sola in due posti, con la /tmp che si svuota e i file in sola lettura; assente senza comandi"
 
 
 def avviso() -> str:

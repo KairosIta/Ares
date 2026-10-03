@@ -20,7 +20,7 @@ configurata né verificata.
 | Learning Machine | profilo, memoria utente, contesto di sessione, entità e conoscenza appresa | schema italiano, namespace per utente e post-hook sul run completo |
 | `Knowledge` + LanceDB | ricerca ibrida nelle intuizioni riutilizzabili | indice incorporato, embedding locale e nessun servizio vettoriale remoto |
 | FileSystem | quaderno persistente verbatim separato dalle memorie curate | database distinto e namespace per utente; nomi `quaderno_*` |
-| Workspace + HITL | lettura, modifica e comandi in una sola directory | nomi `workspace_*`; `run_command` descritto in italiano con la shell del sistema; operazioni sensibili fermano il run e chiedono conferma |
+| Workspace + HITL | lettura, modifica e comandi in una sola directory | nomi `workspace_*`; descrizioni in italiano, `run_command` con la shell del sistema; operazioni sensibili fermano il run e chiedono conferma |
 | cronologia e ricerca fra sessioni | finestra recente nel prompt e strumenti per recuperare il passato | limiti espliciti per non saturare il contesto |
 | `ResultStore` | risultati tool oltre 16.000 caratteri salvati lossless entro la quota Agno e sostituiti da un'anteprima | indice in `kairos.db`, payload in `filesystem.db`, entrambi inclusi nei backup; retention legata alla sessione |
 

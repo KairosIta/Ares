@@ -28,6 +28,7 @@ INTERNI: tuple[tuple[str, str, str], ...] = (
     ("agno.agent._tools", "determine_tools_for_model", ""),
     ("agno.learn.machine", "_filter_store_kwargs", ""),
     ("agno.offload.tools", "OFFLOAD_INSTRUCTION", ""),
+    ("agno.tools.workspace", "Workspace", "_check_read_before_write"),
     ("agno.models.ollama", "Ollama", "get_request_params"),
     ("agno.models.ollama", "Ollama", "_format_message"),
     ("agno.models.ollama", "Ollama", "_parse_provider_response"),

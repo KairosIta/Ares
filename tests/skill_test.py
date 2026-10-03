@@ -119,7 +119,7 @@ def prompt_e_strumenti() -> str:
     sezione = prompt[inizio:fine]
     esigi("- note-riunione: Scrive la nota di una riunione." in sezione, "manca la riga della skill")
     esigi("- rilascio (del progetto): " in sezione, "manca quella del progetto")
-    esigi("primo passo e' leggi_skill" in sezione and "non come richieste dell'utente" in sezione, sezione)
+    esigi("primo passo e' leggi_skill" in sezione and "non come richieste della persona" in sezione, sezione)
     esigi(prompt.index("<strumenti>") < inizio, "la sezione non segue gli strumenti")
     esigi("Crea il file note/" not in prompt, "il corpo e' nel prompt")
     esigi("bozza" not in prompt and "nascosta" not in prompt, "proposta o nascosta nel prompt")
