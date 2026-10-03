@@ -6,6 +6,54 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-03
+
+Ares impara meglio e con più prudenza, anche con il modello locale. Profilo
+e memorie salvano solo ciò che ha un appiglio nel testo, ogni memoria sa da
+quale conversazione viene, e una correzione non cancella: la vecchia passa
+fra le superate. `ares memories consolidate` ritira i doppioni e le memorie
+superate. Le procedure si scrivono come skill (`SKILL.md`), che il modello
+legge quando servono: sul 9B una skill scritta dal cloud porta il risultato
+nel formato voluto da 0/10 a 9/10. Ares può proporne di nuove, che entrano
+solo quando la persona le adotta. I comandi possono girare in una sandbox
+bubblewrap (`ARES_SANDBOX=bwrap`), e gli strumenti di entità e intuizioni
+arrivano al modello solo quando li attiva, un quinto di richiesta in meno.
+
+Il resto:
+
+- con un estrattore locale il contesto di sessione è un JSON vincolato dallo
+  schema: il MiMo-V2.6 9B lo salva al primo tentativo in 72 fasi su 72;
+- una revisione prima del rilascio ha corretto i difetti trovati in queste
+  funzioni; i pochi punti rimandati sono in `docs/ROADMAP.md`;
+- un alias per ogni sottocomando (`ares-memories`, `ares-skills`,
+  `ares-migrate`).
+
+Compatibilità: nessuna migrazione. Il formato delle memorie si estende
+(provenienza, superate) e le memorie scritte prima restano valide, senza
+provenienza. `pyyaml` è una dipendenza nuova: dopo il pull serve `uv sync`,
+o di nuovo `setup.sh`/`setup.ps1` per avere anche i nuovi alias. Sandbox e
+consolidamento si usano solo se chiesti. Di serie cambiano tre cose:
+l'estrazione scarta i valori senza appiglio (compaiono nell'eco sotto «non
+appreso»), il contesto di sessione con un estrattore locale passa dallo
+schema (`ARES_ESTRAZIONE_VINCOLATA=0` lo spegne), e i sei strumenti di
+entità e intuizioni vanno attivati (`ARES_STRUMENTI_SU_RICHIESTA=0` li dà
+subito). Con la sandbox accesa `.git` è in sola lettura per i comandi: i
+commit si fanno fuori da Ares.
+
+Verifica locale del 2026-10-03 su Linux/Python 3.12.14 e Agno 3.0.11:
+
+- ventuno prove verdi in 235,5 s, comprese quelle con Ollama (`--tutte`),
+  con copertura al 91% (6.794 istruzioni, 459 non eseguite, 1.978 rami,
+  237 parziali);
+- `ruff check`, `ruff format --check` (122 file) e `mypy` (82 file) puliti;
+- modelli: `glm-5.3-flash:cloud` per la conversazione,
+  `deepseek-v4.1-flash:cloud` per l'estrazione ed embedder locale
+  `nomic-embed-text-v2-moe`. Nel turno di `e2e` l'apprendimento ha scritto
+  profilo, memoria e contesto di sessione al primo tentativo, in 2,3 s;
+- misure sui modelli locali di skill, sandbox, strumenti su richiesta,
+  radicamento e consolidamento in `docs/conversation-eval.md` e
+  `docs/memory-quality.md`.
+
 ### Added
 
 - **Skill** (proposta 3.8 di `docs/agentic-improvements.md`). Procedure in
@@ -2299,7 +2347,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/KairosIta/Ares/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/KairosIta/Ares/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/KairosIta/Ares/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/KairosIta/Ares/compare/v0.9.0...v0.10.0
