@@ -32,6 +32,10 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   `docs/storia/`, con un indice: sono documenti di lavori conclusi e non si
   aggiornano. La prova `rilascio` controlla ora che ogni link relativo nei
   Markdown porti a un file che esiste, anche sulle PR di soli documenti.
+- Il riepilogo di `tests/run.py` conta i controlli non concludenti accanto
+  a ogni prova e li elenca in fondo: prima un `ok` li nascondeva, per
+  esempio la sandbox non provata sulla CI Windows. Il codice di uscita non
+  cambia.
 
 ### Fixed
 

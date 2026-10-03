@@ -12,6 +12,7 @@ fotografa `ARES_HOME`, `ARES_TMP`, `ARES_BACKUP_DIR` e il `.env` all'import, qui
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -23,6 +24,11 @@ from pathlib import Path
 # Prefisso delle note "non concludenti": il controllo e' passato ma non ha
 # potuto dimostrare niente. Solo un FALLITO cambia il codice di uscita.
 NON_CONCLUSIVO = "non concludente: "
+
+# Il file in cui `esegui` lascia l'esito per il runner, che lancia ogni prova
+# in un processo a parte e ne vede solo il codice di uscita. Senza, una prova
+# lanciata da sola non scrive niente.
+VARIABILE_ESITO = "ARES_PROVA_ESITO"
 
 
 # Le variabili con cui Rich tratta una pipe come un terminale.
@@ -124,6 +130,10 @@ def esegui(prove: Iterable[tuple[str, Callable[[], str]]]) -> tuple[list[str], l
             non_conclusivi.append(nome)
         else:
             ok(nome, nota)
+    destinazione = os.environ.get(VARIABILE_ESITO)
+    if destinazione:
+        dati = {"falliti": falliti, "non_concludenti": non_conclusivi}
+        Path(destinazione).write_text(json.dumps(dati, ensure_ascii=False), encoding="utf-8")
     return falliti, non_conclusivi
 
 
