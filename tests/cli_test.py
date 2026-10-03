@@ -48,6 +48,8 @@ from ares import config  # noqa: E402
 # non li tiene piu' in nomi propri, quindi la prova se li porta dietro e li
 # passa a chi ne ha bisogno.
 PERCORSI = config.leggi_percorsi()
+from agno.run.base import RunStatus  # noqa: E402
+
 from ares.agent.echo import Fotografia, Istantanea  # noqa: E402
 from ares.agent.turn_core import TurnEvent, TurnEventKind  # noqa: E402
 from ares.backup import snapshots  # noqa: E402
@@ -822,8 +824,9 @@ class FinteMetriche:
 
 
 class FintaRisposta:
-    def __init__(self, is_paused=False, metriche=None):
+    def __init__(self, is_paused=False, metriche=None, status=None):
         self.is_paused = is_paused
+        self.status = status or (RunStatus.paused if is_paused else RunStatus.completed)
         self.metrics = metriche
         self.active_requirements: list = []
 
@@ -1191,6 +1194,36 @@ def chat_ciclo() -> str:
     esigi("tok" in testo and "turno" in testo, "le metriche non compaiono con --metriche")
     esigi("A presto" in testo, "la REPL non saluta dopo un Ctrl-C al prompt")
 
+    # Ctrl-C su un comando o fuori dallo stream ferma quello, non la chat; un
+    # guasto del comando non diventa un avvio fallito.
+    def comando(testo, stato):
+        if testo == "/lento":
+            raise KeyboardInterrupt
+        raise OSError("disco pieno")
+
+    def turno_interrotto(*argomenti, **chiavi):
+        raise KeyboardInterrupt
+
+    input_cli = FintoInput(["/lento", "/guasto", "ciao", EOFError])
+    uscita = io.StringIO()
+    with (
+        patch.object(nucleo_sessioni, "build_assistant", lambda *a, **k: object()),
+        patch.object(chat, "CliInput", lambda **k: input_cli),
+        patch.object(chat, "gestisci_comando", comando),
+        patch.object(chat, "esegui_turno", turno_interrotto),
+        patch.object(chat, "promemoria_backup", lambda *a, **k: []),
+        redirect_stdout(uscita),
+    ):
+        esito = chat.avvia(session=SESSIONE, user=UTENTE)
+    testo = _piatto(uscita.getvalue())
+    esigi("Comando interrotto" in testo, "il Ctrl-C su un comando non lo dice: " + testo)
+    esigi("disco pieno" in testo, "il guasto del comando non compare: " + testo)
+    esigi("Turno interrotto" in testo, "il Ctrl-C fuori dallo stream non lo dice: " + testo)
+    esigi(
+        esito == 0 and "Avvio interrotto" not in testo and "A presto" in testo,
+        "un Ctrl-C a chat aperta la chiude come un avvio interrotto: " + testo,
+    )
+
     # Senza `--metriche` e con un modello locale la riga del costo non c'e' e
     # l'avviso del cloud nemmeno: sono le due condizioni che li accendono, e
     # provarle solo accese non direbbe che dipendono da qualcosa.
@@ -1443,6 +1476,17 @@ def chat_sessioni() -> str:
     ):
         esito = chat._esegui_chat(user=UTENTE, prompt="riassumi", metriche=True)
     esigi(esito == 0 and turni == ["riassumi\n\ndati dalla pipe"], "-p non unisce domanda e stdin: " + repr(turni))
+    # Lo 0 vale solo per un turno completato: uno script deve distinguere
+    # una risposta da una conferma negata o da un turno annullato.
+    for risposta, atteso in (
+        (FintaRisposta(), chat.ESITO_FATTO),
+        (FintaRisposta(is_paused=True), chat.ESITO_RIFIUTO),
+        (FintaRisposta(status=RunStatus.cancelled), chat.ESITO_GUASTO),
+        (FintaRisposta(status=RunStatus.error), chat.ESITO_GUASTO),
+        (None, chat.ESITO_GUASTO),
+    ):
+        stato_turno = risposta.status if risposta else None
+        esigi(chat._esito_colpo(risposta) == atteso, "-p esce male su " + repr(stato_turno))
     esigi("ARES" not in uscita.getvalue() + errori.getvalue(), "-p stampa il banner")
     esigi(
         uscita.getvalue() == "risposta per la pipe\n",
@@ -1874,6 +1918,42 @@ def aiuto_senza_effetti() -> str:
     return str(len(comandi)) + " aiuti e un preflight intero senza creare l'archivio"
 
 
+def percorsi_dall_ambiente() -> str:
+    """`ARES_HOME` e compagni: la tilde si espande, un percorso relativo si rifiuta.
+
+    Ne' il `.env` ne' `Path` espandono `~`: senza, `ARES_HOME=~/dati` creerebbe
+    `./~/dati` in ogni cartella da cui si lancia Ares.
+    """
+    percorsi = config.leggi_percorsi({"ARES_HOME": "~/dati-ares", "ARES_BACKUP_DIR": "~/copie"}, cwd=RADICE_PROVA)
+    esigi(percorsi.home == Path.home() / "dati-ares", "la tilde di ARES_HOME non si espande: " + str(percorsi.home))
+    esigi(percorsi.stato == percorsi.home / "stato", "lo stato non segue ARES_HOME: " + str(percorsi.stato))
+    esigi(percorsi.backup == Path.home() / "copie", "la tilde di ARES_BACKUP_DIR non si espande")
+    for variabile in ("ARES_HOME", "ARES_TMP", "ARES_BACKUP_DIR"):
+        try:
+            config.leggi_percorsi({variabile: "relativo/stato"}, cwd=RADICE_PROVA)
+        except ValueError as errore:
+            esigi(variabile in str(errore), "l'errore non nomina la variabile: " + str(errore))
+        else:
+            esigi(False, variabile + " relativo accettato")
+
+    # All'import, una riga e non un traceback al primo comando.
+    figlio = subprocess.run(
+        [sys.executable, "-c", "import ares.config"],
+        cwd=config.BASE_DIR,
+        env={**os.environ, "ARES_HOME": "relativo"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    esigi(figlio.returncode == 1, "un ARES_HOME relativo non ferma l'avvio: " + figlio.stderr)
+    esigi(
+        figlio.stderr.strip()
+        == "Configurazione di Ares non valida: ARES_HOME deve essere un percorso assoluto o con ~: 'relativo'",
+        "l'avviso non e' una riga sola: " + figlio.stderr,
+    )
+    return "tilde espansa, percorsi relativi rifiutati con una riga all'import"
+
+
 def chat_non_presidiato() -> str:
     """Senza terminale nessuno legge cio' che il modello propone.
 
@@ -1922,7 +2002,7 @@ def chat_non_presidiato() -> str:
 
     def turno(*argomenti, presidiato: bool):
         presenze.append(presidiato)
-        return SimpleNamespace(metrics=None)
+        return FintaRisposta()
 
     def avvio(*, presidiato: bool, prompt: str | None = None, modo: str = config.MODO_PREDEFINITO) -> int:
         uscita = io.StringIO()
@@ -2050,6 +2130,7 @@ def main() -> int:
         ok("chat sessioni", chat_sessioni())
         ok("migrazione", migrazione_stato())
         ok("chat avvio", chat_avvio())
+        ok("percorsi dall'ambiente", percorsi_dall_ambiente())
         ok("chat non presidiato", chat_non_presidiato())
         ok("chat sessione altrui", chat_sessione_altrui())
         ok("chat residui", chat_residui())

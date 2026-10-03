@@ -67,7 +67,7 @@ chat non parte finché la migrazione non è avvenuta.
 - `cartella.py` decide dove Ares lavora: la directory da cui si lancia
   `ares`, o quella di `--workspace`. Se è rischiosa — la radice del disco,
   la home, una directory di sistema, una che contiene lo stato o il codice
-  di Ares — la fa confermare per iscritto; senza terminale una cartella
+  di Ares, una che sta dentro stato, backup o `~/.ares` — la fa confermare per iscritto; senza terminale una cartella
   rischiosa passa solo se nominata con `--workspace`. Scrive anche lo
   scheletro di `ARES.md` per `ares init`, genera i nomi delle conversazioni
   nuove e presenta l'elenco di `ares resume --scegli`.

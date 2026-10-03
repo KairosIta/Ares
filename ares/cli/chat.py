@@ -30,6 +30,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from agno.run.agent import RunOutput
+from agno.run.base import RunStatus
 
 from ares import config
 from ares.agent.prompts import percorso_istruzioni
@@ -219,7 +220,20 @@ def _colpo_singolo(stato: StatoChat, testo: str) -> int:
     if stato.metriche and risposta is not None:
         for riga in righe_metriche(risposta, stato.impostazioni):
             UI.metrics(riga)
-    return ESITO_FATTO if risposta is not None else ESITO_GUASTO
+    return _esito_colpo(risposta)
+
+
+def _esito_colpo(risposta: RunOutput | None) -> int:
+    """Il codice di `-p`: 0 solo per un turno completato.
+
+    Uno script deve distinguere una risposta da un turno fermo: in pausa vuol
+    dire una conferma negata (2), annullato o fallito un guasto (1).
+    """
+    if risposta is None:
+        return ESITO_GUASTO
+    if risposta.status is RunStatus.completed:
+        return ESITO_FATTO
+    return ESITO_RIFIUTO if risposta.is_paused else ESITO_GUASTO
 
 
 def _esegui_chat(
@@ -404,7 +418,9 @@ def _ciclo(input_cli: CliInput, stato: StatoChat) -> None:
 
     Un turno occupato non e' un guasto: la chat e' aperta altrove e questa
     aspetta. `/esci` e la fine dell'input escono di qui; il saluto e' del
-    chiamante.
+    chiamante. Ctrl-C su un comando o fuori dallo stream del turno ferma
+    quello, non la chat: risalendo arriverebbe ad `avvia` come un avvio
+    interrotto.
     """
     while True:
         try:
@@ -417,8 +433,14 @@ def _ciclo(input_cli: CliInput, stato: StatoChat) -> None:
             continue
 
         if testo.startswith("/"):
-            if not gestisci_comando(testo, stato):
-                return
+            try:
+                if not gestisci_comando(testo, stato):
+                    return
+            except KeyboardInterrupt:
+                UI.blank()
+                UI.line("Comando interrotto.", style="ares.warning")
+            except (StatoOccupato, OSError) as errore:
+                UI.line("Il comando e' fallito: " + str(errore), style="ares.error")
             UI.blank()
             continue
 
@@ -428,6 +450,11 @@ def _ciclo(input_cli: CliInput, stato: StatoChat) -> None:
             )
         except StatoOccupato as errore:
             UI.line(str(errore), style="ares.warning")
+            UI.blank()
+            continue
+        except KeyboardInterrupt:
+            UI.blank()
+            UI.line("Turno interrotto.", style="ares.warning")
             UI.blank()
             continue
         if risposta is not None:

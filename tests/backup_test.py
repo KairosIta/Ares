@@ -617,6 +617,36 @@ def prova_guardie_restore() -> None:
     esigi(sorgente.is_dir() and destinazione.is_dir(), "la rinomina rifiutata ha modificato le directory")
 
 
+def prova_ctrl_c_senza_residui() -> None:
+    """Un Ctrl-C a meta' copia non lascia staging: sono nascosti, e nessun elenco li mostra."""
+    radice = PERCORSI.backup.resolve()
+    prima = set(radice.glob(".staging-*"))
+    with patch("ares.backup.snapshots._copia_sqlite", side_effect=KeyboardInterrupt):
+        try:
+            crea_snapshot(PERCORSI)
+        except KeyboardInterrupt:
+            pass
+        else:
+            esigi(False, "lo snapshot interrotto non ha rilanciato il Ctrl-C")
+    dopo = set(radice.glob(".staging-*"))
+    esigi(dopo == prima, "lo snapshot interrotto ha lasciato uno staging: " + repr(sorted(dopo - prima)))
+
+    snapshot = snapshot_sintetico(RADICE_PROVA, "restore-interrotto")
+    manifest = manifest_minimo()
+    manifest["components"]["kairos.db"] = True
+    parent = PERCORSI.stato.resolve().parent
+    prima = set(parent.glob("." + PERCORSI.stato.name + "-restore-*"))
+    with patch("ares.backup.restore.shutil.copy2", side_effect=KeyboardInterrupt):
+        try:
+            restore._prepara_restore(PERCORSI, snapshot, manifest)
+        except KeyboardInterrupt:
+            pass
+        else:
+            esigi(False, "la preparazione interrotta non ha rilanciato il Ctrl-C")
+    dopo = set(parent.glob("." + PERCORSI.stato.name + "-restore-*"))
+    esigi(dopo == prima, "il restore interrotto ha lasciato uno staging: " + repr(sorted(dopo - prima)))
+
+
 def prova_restore_da_migrare() -> None:
     """Con lo stato ancora nel posto di prima il restore non installa uno stato nuovo accanto.
 
@@ -844,6 +874,9 @@ def main() -> int:
 
         prova_copia_sqlite()
         ok("copia sqlite", "la sorgente si chiude se la destinazione non si apre")
+
+        prova_ctrl_c_senza_residui()
+        ok("ctrl-c senza residui", "snapshot e preparazione del restore interrotti puliscono lo staging")
 
         pubblicazione_staging = RADICE_PROVA / "pubblicazione-staging"
         pubblicazione_finale = RADICE_PROVA / "pubblicazione-finale"

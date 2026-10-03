@@ -419,8 +419,9 @@ nessuno guarda, e una conferma letta dalla stessa pipe che porta
 l'istruzione non è una conferma.
 
 Se la cartella è rischiosa — la home intera, la radice del disco, una
-directory di sistema, una che contiene lo stato o il codice di Ares — te lo
-dice e chiede di riscrivere il percorso prima di partire; da uno script senza
+directory di sistema, una che contiene lo stato o il codice di Ares, una che
+sta dentro `~/.ares`, dove gli strumenti scriverebbero stato, backup o skill
+attive — te lo dice e chiede di riscrivere il percorso prima di partire; da uno script senza
 terminale una cartella così si apre solo nominandola con `--workspace`. Per
 lavorare su un'altra cartella senza spostarti:
 
@@ -542,6 +543,9 @@ git diff | ares -p "scrivi il messaggio di commit"
 
 `ares resume -p "..."` fa lo stesso sull'ultima conversazione nata in questa
 cartella, con il suo contesto.
+
+Esce con `0` solo se il turno si è concluso: `2` se si è fermato su una
+conferma che nessuno poteva dare, `1` se è stato annullato o è fallito.
 
 ### La chat
 

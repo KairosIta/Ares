@@ -34,6 +34,21 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 - Il radicamento confronta le sigle corte («AWS», «Vim», «Go», «C») a parola
   intera: prima valevano sempre radicate, e sono proprio quelle che un
   estrattore piccolo inventa.
+- **`ares -p` esce con 0 solo se il turno si è concluso.** Un turno fermo su
+  una conferma esce con 2, uno annullato o fallito con 1: prima uno script
+  riceveva 0 anche senza risposta.
+- Ctrl-C su un comando della chat (`/sessione`, `/entita`...) o fuori dallo
+  stream del turno ferma quello e torna al prompt: prima chiudeva la chat
+  con «Avvio interrotto». Un guasto di un comando non diventa più
+  «Impossibile avviare Ares» con esito 3. Un Ctrl-C durante il ripristino di
+  profilo e memorie viene riportato come ripristino incompleto.
+- `ARES_HOME`, `ARES_TMP` e `ARES_BACKUP_DIR` espandono la `~`, e un
+  percorso relativo ferma l'avvio con una riga: prima `ARES_HOME=~/dati` nel
+  `.env` creava `./~/dati` in ogni cartella da cui si lanciava Ares.
+- Uno snapshot o un restore interrotto con Ctrl-C non lascia più una
+  directory `.staging-*` nascosta, che nessun elenco mostrava.
+- La CI fa girare le prove che leggono i documenti (`rilascio`,
+  `contratto`) anche sulle PR di soli documenti.
 
 ### Security
 
@@ -58,6 +73,9 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
   scrittura non chiede conferma.
 - Con la sandbox `.ares` è in sola lettura anche quando manca: un comando
   confermato non può più crearla con regole `consenti` dentro.
+- Una cartella di lavoro dentro lo stato, i backup o `~/.ares` è rischiosa
+  e chiede conferma: lanciato da `~/.ares/skills`, Ares scriveva skill
+  attive senza passare da `ares skills adopt`.
 
 ## [0.13.0] - 2026-10-03
 

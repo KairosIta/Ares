@@ -92,7 +92,7 @@ def _pubblica_snapshot(staging: Path, definitivo: Path) -> None:
         rendi_privato(temporaneo_manifest)
         _privato(definitivo)
         os.replace(temporaneo_manifest, definitivo / MANIFEST)
-    except Exception:
+    except BaseException:
         shutil.rmtree(definitivo, ignore_errors=True)
         raise
     else:
@@ -264,7 +264,7 @@ def _crea_snapshot_senza_lock(percorsi: Percorsi, tipo: str = "manuale") -> Path
         definitivo = root / identificativo
         _pubblica_snapshot(staging, definitivo)
         return definitivo
-    except Exception:
+    except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
 

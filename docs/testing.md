@@ -309,7 +309,8 @@ I comandi mostrano il percorso Linux. Su Windows sostituisci
 GitHub Actions esegue tre job:
 
 - **`Cosa cambia`** guarda quali file tocca il commit e salta i passi
-  pesanti quando sono solo documenti;
+  pesanti quando sono solo documenti; restano le due prove che leggono i
+  documenti, `rilascio` e `contratto`, su Ubuntu con la 3.12;
 - **`Analisi statica`** gira una volta su Ubuntu con ruff e mypy;
 - **`tests`** installa le dipendenze bloccate, verifica lo script di setup,
   compila il codice e lancia `tests/run.py --copertura` su Ubuntu con
