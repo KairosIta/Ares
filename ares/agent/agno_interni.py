@@ -11,6 +11,7 @@ from typing import Any
 from agno.models.message import Message
 from agno.models.ollama import Ollama
 from agno.models.response import ModelResponse
+from agno.tools._local_file_utils import DEFAULT_EXCLUDE_PATTERNS
 
 from ares.agent.scaffale import visibili
 
@@ -29,11 +30,17 @@ INTERNI: tuple[tuple[str, str, str], ...] = (
     ("agno.learn.machine", "_filter_store_kwargs", ""),
     ("agno.offload.tools", "OFFLOAD_INSTRUCTION", ""),
     ("agno.tools.workspace", "Workspace", "_check_read_before_write"),
+    ("agno.tools._local_file_utils", "DEFAULT_EXCLUDE_PATTERNS", ""),
     ("agno.models.ollama", "Ollama", "get_request_params"),
     ("agno.models.ollama", "Ollama", "_format_message"),
     ("agno.models.ollama", "Ollama", "_parse_provider_response"),
     ("agno.models.ollama", "Ollama", "_parse_provider_response_delta"),
 )
+
+
+# Cio' che il Workspace di Agno esclude di serie (segreti, cache, .git):
+# Ares ci aggiunge i propri nomi, e passarli da soli toglierebbe questi.
+FUORI_DAGLI_STRUMENTI: tuple[str, ...] = tuple(DEFAULT_EXCLUDE_PATTERNS)
 
 
 class FunzioniRitoccate:

@@ -8,10 +8,13 @@ la persona (i nomi sono in `Politica.workspace`). Il formato:
     consenti = ["git status", "git log", "git diff", "ls", "uv run pytest"]
     nega = ["rm -rf", "git push", "curl", "wget"]
 
-Una regola e' un prefisso sulle parole del comando. Un comando composto
-(`&&`, `||`, `;`, `|`) si spezza e ogni parte deve essere coperta; `nega`
-vince su `consenti`; una parte scoperta, una redirezione, una sostituzione o
-una riga di PowerShell fanno chiedere come oggi. Una regola non concede
+Una regola `consenti` e' un prefisso sulle parole del comando. Un comando
+composto (`&&`, `||`, `;`, `|`) si spezza e ogni parte deve essere coperta;
+una parte scoperta, una redirezione, una sostituzione, un a capo, un
+commento o una riga di PowerShell fanno chiedere come oggi. Una regola
+`nega` e' piu' larga e vince sempre: basta che le sue parole compaiano in
+ordine in un comando, anche dietro `sudo` o dentro `bash -c`, anche con
+altre parole in mezzo (`git -C . push` e' negato da `git push`). Una regola non concede
 cio' che la modalita' vieta: tace una conferma che la modalita' chiederebbe,
 e solo con qualcuno davanti. `nega` vale anche in `auto`, dove nessuna
 conferma c'e': lo applica `AresWorkspace.run_command` prima di eseguire.
@@ -41,7 +44,7 @@ _OPZIONI_RIGA = frozenset({"-c", "-lc", "-cl", "-ec", "-ce", "-lec", "-elc"})
 _INTERPRETI_OPACHI = frozenset({"powershell", "powershell.exe", "pwsh", "pwsh.exe", "cmd", "cmd.exe"})
 # I wrapper che non cambiano il comando: si tolgono, con le assegnazioni `X=y` davanti.
 _WRAPPER = frozenset({"env", "time", "nohup", "command"})
-_SEPARATORI = frozenset({"&&", "||", ";", ";;", "|", "&", "\n"})
+_SEPARATORI = frozenset({"&&", "||", ";", ";;", "|", "&"})
 _ASSEGNAZIONE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
@@ -84,17 +87,16 @@ class Regole:
     def decidi(self, args: Any) -> Regola | None:
         """La regola che decide il comando `args`, o `None` se si chiede come oggi.
 
-        `nega` su una parte qualunque vince; `consenti` solo se ogni parte e'
-        coperta (si riporta la regola della prima). Un comando che non si sa
-        spezzare non e' deciso da nessuna regola.
+        `nega` vince se le sue parole compaiono in ordine in un comando di
+        `args`, anche uno che non si sa spezzare; `consenti` solo se ogni
+        parte e' coperta (si riporta la regola della prima).
         """
+        negata = self._negata(args)
+        if negata is not None:
+            return negata
         pezzi = spezza(args)
         if pezzi is None:
             return None
-        for pezzo in pezzi:
-            for regola in self.regole:
-                if regola.effetto == "nega" and regola.copre(pezzo):
-                    return regola
         scelte = []
         for pezzo in pezzi:
             scelta = next((r for r in self.regole if r.effetto == "consenti" and r.copre(pezzo)), None)
@@ -102,6 +104,61 @@ class Regole:
                 return None
             scelte.append(scelta)
         return scelte[0]
+
+    def _negata(self, args: Any) -> Regola | None:
+        """La prima regola `nega` le cui parole compaiono in ordine in un comando di `args`."""
+        negazioni = [regola for regola in self.regole if regola.effetto == "nega"]
+        if not negazioni:
+            return None
+        for comando in comandi_grezzi(args):
+            for regola in negazioni:
+                if _in_ordine(regola.parole, comando):
+                    return regola
+        return None
+
+
+def _in_ordine(parole: Sequence[str], comando: Sequence[str]) -> bool:
+    """Vero se `parole` compaiono in `comando` in quest'ordine; la prima per nome, senza percorso."""
+    for inizio, parola in enumerate(comando):
+        if _base(parola) != _base(parole[0]):
+            continue
+        resto = iter(comando[inizio + 1 :])
+        if all(any(voce == cercata for voce in resto) for cercata in parole[1:]):
+            return True
+    return False
+
+
+def comandi_grezzi(args: Any) -> list[list[str]]:
+    """Le parole di `args` divise in comandi, leggendo anche dentro gli argomenti che sono righe di shell.
+
+    Per `nega`, che deve scattare anche dove `spezza` rinuncia: nessuna
+    pretesa di capire il comando, solo le parole che contiene. Un argomento
+    che non si sa dividere si divide sugli spazi.
+    """
+    if isinstance(args, str):
+        args = [args]
+    if not isinstance(args, list):
+        return []
+    comandi: list[list[str]] = [[]]
+    for argomento in args:
+        if not isinstance(argomento, str):
+            continue
+        for numero, riga in enumerate(argomento.splitlines()):
+            if numero:
+                comandi.append([])  # un a capo separa due comandi
+            lexer = shlex.shlex(riga, posix=True, punctuation_chars=True)
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            try:
+                parole = list(lexer)
+            except ValueError:
+                parole = riga.split()
+            for parola in parole:
+                if parola and all(carattere in "();<>|&{}`$" for carattere in parola):
+                    comandi.append([])
+                else:
+                    comandi[-1].append(parola)
+    return [comando for comando in comandi if comando]
 
 
 def _pulisci(parole: Sequence[str]) -> tuple[str, ...] | None:
@@ -126,10 +183,15 @@ def _spezza_riga(riga: str) -> list[tuple[str, ...]] | None:
     """I comandi semplici di una riga di shell, o `None` se contiene cio' che qui non si legge.
 
     Redirezioni, sottoshell e sostituzioni (`$(...)`, backtick, variabili)
-    nascondono che cosa gira davvero: si lascia chiedere.
+    nascondono che cosa gira davvero: si lascia chiedere. Cosi' un a capo,
+    che per la shell separa due comandi e per `shlex` e' uno spazio, e un
+    commento, che `shlex` toglie anche a meta' parola e la shell no.
     """
+    if "\n" in riga or "\r" in riga:
+        return None
     lexer = shlex.shlex(riga, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
+    lexer.commenters = ""
     try:
         token = list(lexer)
     except ValueError:
@@ -144,7 +206,7 @@ def _spezza_riga(riga: str) -> list[tuple[str, ...]] | None:
             continue
         if all(carattere in "();<>|&" for carattere in parola):
             return None
-        if "$" in parola or "`" in parola:
+        if "$" in parola or "`" in parola or parola.startswith("#"):
             return None
         corrente.append(parola)
     if corrente:

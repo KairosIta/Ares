@@ -16,7 +16,7 @@ from agno.vectordb.lancedb import LanceDb
 from agno.vectordb.search import SearchType
 
 from ares import config
-from ares.agent.agno_interni import OllamaConRagionamento
+from ares.agent.agno_interni import FUORI_DAGLI_STRUMENTI, OllamaConRagionamento
 from ares.agent.descrizioni import CARTELLA, QUADERNO, descrivi
 from ares.agent.marcatura import ConNota, DiAres
 from ares.agent.prompts import AVVISO_SANDBOX, data_e_ora, descrizione_del_comando
@@ -254,6 +254,8 @@ class AresWorkspace(Workspace):
     """
 
     prefisso: str = ""
+    istruzioni: str | None = None
+    silenziosi: frozenset[str] = frozenset()
     regole: Callable[[], Regole] | None = None
     sandbox: Sandbox | None = None
 
@@ -265,6 +267,7 @@ class AresWorkspace(Workspace):
                 "Errore: comando negato da una regola di autorizzazione della persona (" + regola.fonte + "). "
                 "Non riprovare con una variante."
             )
+        segnaposto = self.sandbox.segnaposto() if self.sandbox is not None else ()
         try:
             esito = subprocess.run(
                 self.sandbox.argv(args) if self.sandbox is not None else args,
@@ -280,6 +283,9 @@ class AresWorkspace(Workspace):
             return DiAres("Errore: il comando non e' finito entro " + str(timeout) + " secondi ed e' stato interrotto.")
         except OSError as errore:
             return DiAres("Errore nell'avvio del comando: " + str(errore))
+        finally:
+            if self.sandbox is not None:
+                self.sandbox.ripulisci(segnaposto)
         if esito.returncode != 0:
             # Molti programmi scrivono l'errore su stdout: si danno entrambi.
             pezzi = ["Errore (uscita " + str(esito.returncode) + ")."]
@@ -294,14 +300,40 @@ class AresWorkspace(Workspace):
             return testo
         return testa_e_coda(esito.stdout, tail)
 
+    def _istruzioni_senza_conferma(self, percorso: Path, op: str) -> str | None:
+        """L'errore per chi cambia `ARES.md` con uno strumento che in questa modalita' non chiede conferma.
+
+        `ARES.md` entra nel prompt di ogni conversazione nella cartella: un
+        testo ostile letto in un file non deve poterlo riscrivere in silenzio.
+        """
+        if self.istruzioni is None or op not in self.silenziosi:
+            return None
+        bersaglio = Path(self.root, percorso)
+        if bersaglio.parent.resolve() != self.root or bersaglio.name.casefold() != self.istruzioni.casefold():
+            return None
+        return (
+            "Errore: " + self.istruzioni + " contiene le regole del progetto e in questa modalita' cambiarlo non "
+            "chiede conferma. Proponi alla persona il testo da metterci, o chiedile di passare a /modo manuale."
+        )
+
     def _check_read_before_write(self, file_path: Path, op: str) -> str | None:
-        """L'errore di Agno per un file esistente non ancora letto, con il nome vero dello strumento di lettura."""
+        """L'errore di Agno per un file esistente non ancora letto, con il nome vero dello strumento di lettura.
+
+        Prima, il rifiuto di cambiare `ARES.md` senza conferma.
+        """
+        protetto = self._istruzioni_senza_conferma(file_path, op)
+        if protetto is not None:
+            return protetto
         if super()._check_read_before_write(file_path, op) is None:
             return None
         return (
             "Errore: " + file_path.name + " esiste e in questa conversazione non l'hai ancora letto. "
             "Leggilo con " + self.prefisso + "read_file, poi riprova."
         )
+
+    def move_file(self, src: str, dst: str, overwrite: bool = False) -> str:
+        """Sposta o rinomina un file: Agno controlla solo l'origine, qui anche una destinazione `ARES.md`."""
+        return self._istruzioni_senza_conferma(Path(dst), "move") or super().move_file(src, dst, overwrite)
 
     async def arun_command(self, args: list[str], tail: int = 100, timeout: int = 120) -> str:
         """La variante asincrona delega a `run_command` in un thread: stesse garanzie, un codice solo."""
@@ -315,10 +347,17 @@ class AresWorkspace(Workspace):
         prefisso: str,
         regole: Callable[[], Regole] | None = None,
         sandbox: Sandbox | None = None,
+        istruzioni: str | None = None,
+        protetti: tuple[str, ...] = (),
         **kwargs,
     ):
+        # `protetti` si aggiungono ai segreti e alle cache che Agno esclude gia'.
+        if protetti:
+            kwargs["exclude_patterns"] = [*FUORI_DAGLI_STRUMENTI, *protetti]
         super().__init__(root, **kwargs)
         self.prefisso = prefisso
+        self.istruzioni = istruzioni
+        self.silenziosi = frozenset(kwargs.get("allowed") or ())
         self.regole = regole
         self.sandbox = sandbox
         _con_prefisso(self, prefisso)
@@ -353,6 +392,9 @@ def build_workspace(percorsi: Percorsi, politica: Politica, modo: str | None = N
         prefisso=politica.workspace.prefisso,
         regole=lambda: leggi_regole(percorsi, politica),
         sandbox=prepara_sandbox(replace(percorsi, lavoro=radice), politica),
+        istruzioni=politica.workspace.istruzioni,
+        # Regole e skill del progetto: il modello non le legge ne' le scrive.
+        protetti=(Path(politica.workspace.regole_progetto).parts[0],),
         allowed=silenziosi,
         confirm=confermati,
         require_read_before_write=politica.workspace.leggi_prima_di_scrivere,

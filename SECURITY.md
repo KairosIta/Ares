@@ -87,9 +87,10 @@ Con `ARES_SANDBOX=bwrap` nel `.env` ogni comando parte dentro
 - nella cartella, `.git`, `ARES.md` e `.ares` (regole e skill del progetto)
   sono in sola lettura: un comando non può scrivere la configurazione o gli
   hook di git, che git eseguirebbe poi fuori dalla sandbox, né le regole che
-  Ares rilegge. Se mancano quando il comando parte, il comando li può creare
-  (un `git init` è legittimo); dal comando successivo sono protetti anche
-  loro. Con la sandbox anche il `git status` di `/cartella` gira dentro di
+  Ares rilegge. `.ares` è protetta anche se manca: al suo posto, per la
+  durata del comando, c'è una directory vuota in sola lettura, tolta dopo.
+  `.git` e `ARES.md` che mancano il comando li può creare (un `git init` è
+  legittimo); dal comando successivo sono protetti anche loro. Con la sandbox anche il `git status` di `/cartella` gira dentro di
   lei;
 - `/run` è vuota: niente D-Bus di sistema o di sessione, niente socket di
   servizi come Docker, libvirt o podman. Con la rete resta solo ciò che serve
@@ -148,9 +149,13 @@ modalità decidono cosa chiede conferma:
 | `piano` | solo strumenti di lettura | — |
 
 La conferma mostra per intero cosa sta per succedere. `ARES.md` entra nel
-prompt come regole del progetto delimitate, non come ordini; se è un link
-fuori dalla cartella vale come assente, e il confine del workspace non si
-aggira con un link. Anche ciò che gli strumenti leggono — un file, l'output
+prompt come regole del progetto delimitate, non come ordini, senza
+parentesi angolari che aprano o chiudano una sezione; se è un link fuori
+dalla cartella vale come assente, e il confine del workspace non si aggira
+con un link. Gli strumenti sui file non vedono `.ares` (regole e skill del
+progetto), e non cambiano `ARES.md` in una modalità in cui la scrittura non
+chiede conferma: in `modifiche` e in `auto` il modello deve proporre il
+testo. Anche ciò che gli strumenti leggono — un file, l'output
 di un comando, una ricerca, un risultato riletto, una conversazione passata
 — arriva al modello delimitato, con la fonte dichiarata e l'avviso che sono
 dati; le righe che imitano il delimitatore vengono citate. È una difesa sul
@@ -159,10 +164,16 @@ contenuto, non un filtro: il confine resta la conferma.
 Le regole di autorizzazione (`.ares/permessi.toml` nella cartella,
 `permessi.toml` in `~/.ares`) tacciono la conferma di un comando per
 prefisso o lo negano sempre, anche in `auto`. Le legge il nucleo, non il
-modello; `nega` vince; un comando che non si sa spezzare chiede. Sono un
-prefisso sulle parole: `git -c core.pager=x status` non è coperto da
-`git status`, e un alias o uno script nella cartella con il nome di un
-comando consentito passano. Il file del progetto arriva con il clone, come
+modello. `consenti` è un prefisso sulle parole di ogni comando di una riga:
+`git -c core.pager=x status` non è coperto da `git status`; un comando che
+non si sa spezzare — redirezioni, sostituzioni, un a capo, un commento —
+chiede; un alias o uno script nella cartella con il nome di un comando
+consentito passano. `nega` è più larga e vince sempre: basta che le sue
+parole compaiano in ordine in un comando, anche dietro `sudo` o `env`,
+dentro `bash -c` o con altre parole in mezzo (`git -C . push` è negato da
+`git push`, e lo è anche `git log --grep push`). Resta un elenco di parole,
+non un confine: un comando costruito a runtime (`$(echo rm) -rf`) o un
+programma che fa la stessa cosa con un altro nome non lo tocca. Il file del progetto arriva con il clone, come
 `ARES.md`: il banner dice quante regole ha letto e da quali file.
 
 Le skill (`.ares/skills` nella cartella, `~/.ares/skills` per la persona)
