@@ -6,6 +6,50 @@ adotta il versionamento semantico a partire dal primo rilascio pubblico.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-04
+
+Una revisione di Ares da cima a fondo, con le correzioni che ne sono
+uscite. Le regole di autorizzazione non si aggirano più con un a capo, un
+commento, `sudo` o `bash -c`, e il modello non può scrivere `.ares` né
+cambiare `ARES.md` senza conferma: prima, in `modifiche`, poteva darsi da
+solo nuovi permessi. Una memoria rifiutata non torna al turno dopo, perché
+l'estrattore legge solo il turno concluso. Il prompt descrive gli strumenti
+in italiano e dice solo ciò che la modalità permette. Ares passa ad Agno
+3.1.1, e il contract test controlla ora anche le firme dei metodi che Ares
+ridefinisce.
+
+Il resto:
+
+- `ares -p` esce con 0 solo se il turno si è concluso, e Ctrl-C a chat
+  aperta ferma il comando o il turno invece di chiudere la chat;
+- `ARES_HOME`, `ARES_TMP` e `ARES_BACKUP_DIR` espandono la `~`, e una
+  cartella dentro lo stato o `~/.ares` chiede conferma;
+- documenti di studio con lo stato datato, quelli conclusi in
+  `docs/storia/`, link relativi e controlli non concludenti verificati dalle
+  prove.
+
+Compatibilità: nessuna migrazione dei dati. Dopo il pull serve `uv sync`
+(o di nuovo `setup.sh`/`setup.ps1`) per Agno 3.1.1. Tre comportamenti
+cambiano per chi usa Ares da script: `ares -p` esce con 2 su un turno fermo
+a una conferma e con 1 su uno annullato o fallito; un `ARES_HOME`,
+`ARES_TMP` o `ARES_BACKUP_DIR` relativo ferma l'avvio invece di creare lo
+stato nella cartella corrente; una regola `consenti` non copre più una riga
+con un a capo o un commento, che torna a chiedere conferma.
+
+Verifica locale del 2026-10-04 su Linux/Python 3.12.14 e Agno 3.1.1:
+
+- ventidue prove verdi in 273,3 s, comprese quelle con Ollama (`--tutte`),
+  con copertura al 91% (6.982 istruzioni, 463 non eseguite, 2.064 rami,
+  242 parziali) e nessun controllo non concludente;
+- `ruff check`, `ruff format --check` (125 file) e `mypy` (83 file) puliti;
+- modelli: `glm-5.3-flash:cloud` per la conversazione,
+  `deepseek-v4.1-flash:cloud` per l'estrazione ed embedder locale
+  `nomic-embed-text-v2-moe`. Nel turno di `e2e` l'apprendimento ha scritto
+  profilo, memoria e contesto di sessione al primo tentativo, in 10,7 s;
+- misure delle correzioni in `docs/conversation-eval.md` e
+  `docs/memory-quality.md`: comportamento invariato su cloud e, nel rumore
+  noto, su `ares-qwen3.8-9b` e `ares-mimo-2.6-9b`.
+
 ### Changed
 
 - **Prompt della conversazione rivisto.** Gli strumenti di cartella e
@@ -2434,7 +2478,8 @@ cioè la configurazione che questa versione distribuisce - sia con
 - namespace isolati e lock cooperativo dello stato;
 - dati persistenti, snapshot e configurazione locale esclusi dal repository.
 
-[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/KairosIta/Ares/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/KairosIta/Ares/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/KairosIta/Ares/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/KairosIta/Ares/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/KairosIta/Ares/compare/v0.10.0...v0.11.0
