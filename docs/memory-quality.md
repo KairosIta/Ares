@@ -1184,3 +1184,26 @@ non trova altro. La memoria che resta è la più recente: qui è quella con
 l'inciso, e la regola è dichiarata invece di affidare al modello anche la
 scelta del testo migliore. La frequenza dell'estrazione non cambia: il
 consolidamento è un comando che dai tu, come il backup.
+
+### Estrazione dal solo turno, 3 ottobre 2026
+
+Profilo e memorie si estraggono senza la cronologia del run, un
+`update_memory` con lo stesso testo non tocca la memoria, e le sigle corte
+si radicano a parola intera. Prima e dopo nella stessa giornata, da due
+copie del codice, tre ripetizioni.
+
+| Configurazione | Superate | Fallite | Da revisionare | Non conclusive |
+| --- | ---: | ---: | ---: | ---: |
+| cloud (glm + deepseek), prima | 36 | 0 | 34 | 2 |
+| cloud, dopo | 36 | 0 | 33 | 3 |
+| 9B per conversazione ed estrazione, prima | 25 | 12 | 24 | 11 |
+| 9B, dopo | 27 | 15 | 18 | 12 |
+
+Il benchmark non misura il filtro sulla cronologia: ogni fase passa
+all'estrazione i soli due messaggi del turno, senza storia, quindi prima e
+dopo l'estrattore riceve lo stesso testo. Lo prova `radicamento` offline
+(`cronologia fuori`). Le sigle corte non cambiano niente qui: in nessuna
+fase il 9B ne ha inventata una, e gli scarti restano zero. Le differenze
+sul 9B sono di una fase per caso, nei due versi (`dimenticanza` 3/3 → 2/3,
+`correzione` 0/3 → 1/3 superate nella fase corretta), cioè il rumore già
+noto di questo modello.

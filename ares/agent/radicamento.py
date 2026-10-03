@@ -110,11 +110,16 @@ def segnaposto(valore: str) -> bool:
 def radicato(testo: str, fonte: Fonte) -> bool:
     """Vero se almeno una parola di contenuto di `testo` compare nella fonte.
 
-    Un testo senza parole di contenuto («Go», «C») non si puo' giudicare e
-    vale radicato.
+    Un testo fatto solo di parole corte («AWS», «Go», «C») si confronta a
+    parola intera: le sigle sono proprio cio' che un estrattore piccolo
+    inventa. Uno senza parole vale radicato.
     """
-    radici = _significative(_parole(testo))
-    return not radici or bool(radici & fonte.radici)
+    parole = _parole(testo)
+    radici = _significative(parole)
+    if radici:
+        return bool(radici & fonte.radici)
+    corte = [parola for parola in parole if parola not in _VUOTE]
+    return not corte or any(parola in fonte.parole for parola in corte)
 
 
 def _nome_radicato(valore: str, fonte: Fonte) -> bool:

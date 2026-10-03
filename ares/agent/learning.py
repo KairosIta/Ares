@@ -679,14 +679,29 @@ class EstrazioneRadicata:
             self._corrente.estrazione = precedente
 
     def extract_and_save(self, *args: Any, **kwargs: Any) -> Any:
+        kwargs = _solo_il_turno(kwargs)
         esistente = self.get(user_id=kwargs.get("user_id"))  # type: ignore[attr-defined]
         with self._in_estrazione(self._nuova_estrazione(kwargs, esistente)):
             return super().extract_and_save(*args, **kwargs)  # type: ignore[misc]
 
     async def aextract_and_save(self, *args: Any, **kwargs: Any) -> Any:
+        kwargs = _solo_il_turno(kwargs)
         esistente = await self.aget(user_id=kwargs.get("user_id"))  # type: ignore[attr-defined]
         with self._in_estrazione(self._nuova_estrazione(kwargs, esistente)):
             return await super().aextract_and_save(*args, **kwargs)  # type: ignore[misc]
+
+
+def _solo_il_turno(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """`kwargs` con i soli messaggi del turno, senza la cronologia che Agno ripete in ogni run.
+
+    Profilo e memorie si estraggono dal turno appena concluso: dalla
+    cronologia l'estrattore riscriverebbe una memoria che la persona ha
+    appena rifiutato, e rileggerebbe a ogni turno gli ultimi cinque. Il
+    contesto di sessione la tiene, perche' riassume la conversazione.
+    """
+    if not kwargs.get("messages"):
+        return kwargs
+    return {**kwargs, "messages": [m for m in kwargs["messages"] if not getattr(m, "from_history", False)]}
 
 
 class AresUserProfileStore(EstrazioneRadicata, ScrittureSorvegliate, FunzioniRitoccate, UserProfileStore):
