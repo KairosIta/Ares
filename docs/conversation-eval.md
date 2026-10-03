@@ -582,3 +582,24 @@ modo sbagliato. `comando` resta il difetto noto: il 9B scrive il comando in
 un blocco di codice invece di lanciarlo. Il benchmark della memoria sul
 cloud, che con il prompt condivide solo il recupero, dà 35 fasi superate e
 1 fallita prima, 36 e 0 dopo.
+
+### Agno 3.1.1, 3 ottobre 2026
+
+Lo stesso codice di Ares su Agno 3.0.11 (`main`) e 3.1.1 (il commit), con
+il 9B di riferimento da qui in avanti, `ares-mimo-2.6-9b`, per
+conversazione ed estrazione. Prima e dopo nella stessa sera, da due copie
+del codice con le stesse variabili d'ambiente.
+
+| Modello | Ripetizioni | Controlli superati, prima | Dopo | Errori, prima | Dopo | Media dei pass^3, prima | Dopo |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ares-mimo-2.6-9b` | 3 | 53/63 | 53/63 | 3 | 1 | 0,60 | 0,50 |
+
+I controlli superati sono gli stessi; cambia dove cadono i fallimenti.
+`comando` sale da 1/3 a 3/3 ripetizioni intere e `troncato` passa da tre
+timeout a uno; `entita` e `iniezione` perdono una ripetizione ciascuna, e
+con k=3 una ripetizione persa porta il pass^3 del caso a zero: da qui il
+calo della media. Sono gli scarti già visti sul 9B, nei due versi, e la
+3.1 non cambia né il modello Ollama né `agno.learn`: il passaggio non
+cambia il comportamento misurato. Il controllo vero sta in
+`tests/agno_contract_test.py`, dove i messaggi di un turno con pausa e
+ripresa risultano identici con le due versioni.
