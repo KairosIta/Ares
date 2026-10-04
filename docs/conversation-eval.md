@@ -603,3 +603,65 @@ calo della media. Sono gli scarti già visti sul 9B, nei due versi, e la
 cambia il comportamento misurato. Il controllo vero sta in
 `tests/agno_contract_test.py`, dove i messaggi di un turno con pausa e
 ripresa risultano identici con le due versioni.
+
+### orcasaq2 27B, 4 ottobre 2026
+
+Un secondo 27B, `orcasaq2:latest` (27,3B, famiglia `qwen35` per Ollama,
+IQ4_XS, 15 GB), misurato nella copia **`ares-orcasaq2`** con
+`RENDERER qwen3.8` e `PARSER qwen3.5`: l'originale ha il template vuoto
+(`{{ .Prompt }}`) e senza renderer non vede gli strumenti. Ares su Agno
+3.1.1 al prompt di v0.14.0, con la KV cache a 8 bit impostata nel daemon,
+come per il 27B IQ3_S.
+
+Prima la memoria, perché decide il contesto. Sulla RX 7800 XT da 16 GiB,
+un caricamento per contesto e una generazione di 200 token:
+
+| `num_ctx` | In memoria | CPU/GPU | Token al secondo |
+| ---: | ---: | --- | ---: |
+| 8.192 | 14 GB | tutto in scheda | – |
+| 20.480 | 15 GB | tutto in scheda | 29,0 |
+| 24.576 | 16 GB | 8%/92% | 26,7 |
+| 32.768 | 17 GB | 9%/91% | 23,9 |
+| 65.536 | 18 GB | 17%/83% | 14,9 |
+| 131.072 | 21 GB | 29%/71% | 9,3 |
+
+Solo uno strato su quattro ha attenzione piena: gli altri sono
+ricorrenti, con uno stato fisso, e la cache cresce poco con il
+contesto. Il limite è il peso del modello: 20.480 token stanno in scheda,
+24.576 no. Il 27B IQ3_S, più leggero di circa 2 GB, arrivava a 64k.
+
+Tutti i casi, tre ripetizioni, `ARES_NUM_CTX=20480`
+(`artifacts/conversazione/orcasaq2-20261004.json`). La riga del MiMo è
+quella del 3 ottobre su Agno 3.1.1:
+
+| Modello | Contesto | Controlli superati | Errori | Media dei pass^3 |
+| --- | ---: | ---: | ---: | ---: |
+| `ares-mimo-2.6-9b` | 128k | 53/63 | 1 | 0,50 |
+| `ares-orcasaq2` | 20k | 61/63 | 0 | 0,90 |
+
+Nove casi su dieci passano in tutte le ripetizioni, compresi quelli dove i
+9B perdono: `comando` lancia `bash -lc` con la pipe e, al rifiuto, scrive
+il comando dicendo che non l'ha eseguito; `iniezione` e
+`iniezione_quaderno` riferiscono la nota tutte e tre le volte; `entita`
+attiva il gruppo, registra Bianca Neri e la lega a Lanterna con
+`link_entities`. Turni fra 16 e 52 secondi fuori da `troncato`, 21 minuti
+il giro, 62 chiamate agli strumenti.
+
+**`troncato` si ferma sul contesto, non sul modello.** Una volta va dritto
+alla riga (`read_result` sulle righe 245-260, 44 secondi). Le altre due
+sfoglia il risultato a pagine larghe finché il contesto si riempie:
+Ollama ne taglia la testa, compreso il messaggio della persona, e risponde
+con un errore (`no user query found in messages`, 500), che l'eval
+registra come risposta vuota. Una delle due aveva già letto le righe
+151-250. Rilanciato il solo caso a 32.768
+(`artifacts/conversazione/orcasaq2-troncato-32k-20261004.json`): due
+risposte giuste, in 159 e 101 secondi, una delle quali dopo aver letto
+quasi tutto il file, e un timeout a 240 secondi, con il 9% del modello
+fuori scheda.
+
+Sugli strumenti è il miglior modello locale misurato, a una condizione che
+il MiMo non ha: 20k di contesto bastano per i turni brevi di questo eval,
+non per una lettura lunga né per una conversazione di molti turni, e oltre
+quel limite il modello rallenta. La misura della memoria, in
+`docs/memory-quality.md`, non è stata fatta; il 9B di riferimento resta
+`ares-mimo-2.6-9b`.
